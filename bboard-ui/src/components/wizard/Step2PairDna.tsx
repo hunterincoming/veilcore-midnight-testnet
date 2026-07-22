@@ -9,7 +9,7 @@ import ScienceIcon from '@mui/icons-material/ScienceOutlined';
 import LinkIcon from '@mui/icons-material/LinkOutlined';
 import { motion } from 'framer-motion';
 import { fingerprintFile, shortFingerprint } from '../../veilcore/commitment';
-import { getRecord, pairDna, type StrainRecord } from '../../veilcore/records';
+import { getRecord, pairDna, conflictsFor, type StrainRecord } from '../../veilcore/records';
 import { FingerprintReveal } from './FingerprintReveal';
 import { Dropzone } from './Dropzone';
 
@@ -23,6 +23,7 @@ export const Step2PairDna: React.FC<{ recordId: string; onDone: () => void; onBa
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [paired, setPaired] = useState<StrainRecord>();
+  const [conflicts, setConflicts] = useState<StrainRecord[]>([]);
   const [error, setError] = useState<string>();
   const record = getRecord(recordId);
 
@@ -32,8 +33,10 @@ export const Step2PairDna: React.FC<{ recordId: string; onDone: () => void; onBa
     setError(undefined);
     try {
       const dnaHex = await fingerprintFile(file);
+      const found = conflictsFor(dnaHex, recordId);
       const updated = pairDna(recordId, dnaHex, file.name);
       if (!updated) throw new Error('Could not find the record to pair.');
+      setConflicts(found);
       setPaired(updated);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -43,6 +46,8 @@ export const Step2PairDna: React.FC<{ recordId: string; onDone: () => void; onBa
   };
 
   if (paired && paired.dnaFingerprint) {
+    const priority = [paired, ...conflicts].slice().sort((a, b) => a.loggedAt - b.loggedAt)[0];
+    const yoursFirst = priority.id === paired.id;
     return (
       <Stack spacing={2}>
         <FingerprintReveal
@@ -70,6 +75,17 @@ export const Step2PairDna: React.FC<{ recordId: string; onDone: () => void; onBa
             label={`WHAT · ${shortFingerprint(paired.dnaFingerprint)}`}
           />
         </Stack>
+        {conflicts.length > 0 && (
+          <Alert severity="warning" variant="outlined">
+            Heads up: this genetic fingerprint also matches {conflicts.length} other record
+            {conflicts.length === 1 ? '' : 's'} on this device
+            {yoursFirst
+              ? ' — but your record here was logged first, so it has priority.'
+              : `. An earlier record — ${priority.strainName}, logged ${new Date(
+                  priority.loggedAt,
+                ).toLocaleDateString()} — has priority.`}
+          </Alert>
+        )}
         <Alert severity="success" variant="outlined">
           Paired. Your record now proves both <b>when</b> you made it and <b>what</b> it genetically is — the complete
           picture.

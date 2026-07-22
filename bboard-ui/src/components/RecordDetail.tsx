@@ -4,15 +4,16 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import React, { useState } from 'react';
-import { Box, Button, Divider, Paper, Stack, Typography } from '@mui/material';
+import { Alert, Box, Button, Chip, Divider, Paper, Stack, Typography } from '@mui/material';
 import { Link as RouterLink, useParams } from 'react-router-dom';
 import ArrowBackIcon from '@mui/icons-material/ArrowBackOutlined';
 import ScienceIcon from '@mui/icons-material/ScienceOutlined';
 import DescriptionIcon from '@mui/icons-material/DescriptionOutlined';
 import VerifiedIcon from '@mui/icons-material/VerifiedOutlined';
-import { useRecords, getRecord } from '../veilcore/records';
+import { useRecords, getRecord, attestRecord } from '../veilcore/records';
 import { shortFingerprint } from '../veilcore/commitment';
 import { StatusChain } from './StatusChain';
+import { LineageGraph } from './LineageGraph';
 import { AppHeader } from './AppHeader';
 import { Step2PairDna } from './wizard/Step2PairDna';
 import { Step3Certificate } from './wizard/Step3Certificate';
@@ -77,16 +78,23 @@ export const RecordDetail: React.FC = () => {
           <Paper sx={{ p: { xs: 2.5, md: 3 } }}>
             <Stack spacing={2}>
               <Field label="Bred by">{record.bredBy}</Field>
+              {record.breedingMethod && <Field label="Breeding method">{record.breedingMethod}</Field>}
+              {record.parents && record.parents.length > 0 && (
+                <Field label="Parents">{record.parents.map((p) => p.name).join('  ×  ')}</Field>
+              )}
               <Field label="Stated creation date (breeder's claim)">{record.dateCreated}</Field>
               <Field label="Sealed with Veilcore">{fmt(record.loggedAt)}</Field>
+              {record.refId && <Field label="Reference / lot ID">{record.refId}</Field>}
+              {record.photoFingerprints && record.photoFingerprints.length > 0 && (
+                <Field label="Photos">
+                  {record.photoFingerprints.length} sealed (fingerprints only — images never stored)
+                </Field>
+              )}
               {record.notes && <Field label="Notes">{record.notes}</Field>}
               <Field label="DNA report">
                 {record.dnaFingerprint
                   ? `paired (${record.dnaFileName ?? 'file'}) · ${shortFingerprint(record.dnaFingerprint)}`
                   : 'not paired yet'}
-              </Field>
-              <Field label="Lab attestation">
-                {record.attestation ? `attested by ${record.attestation.lab}` : 'awaiting lab attestation'}
               </Field>
               <Divider />
               <Field label="Record fingerprint">
@@ -95,6 +103,42 @@ export const RecordDetail: React.FC = () => {
                 </Box>
               </Field>
             </Stack>
+          </Paper>
+
+          <Paper sx={{ p: { xs: 2.5, md: 3 } }}>
+            <Typography variant="overline" sx={{ display: 'block', mb: 1.25 }}>
+              Lab attestation
+            </Typography>
+            {record.attestation ? (
+              <Alert severity="success" variant="outlined">
+                Attested by {record.attestation.lab} · {new Date(record.attestation.attestedAt).toLocaleDateString()} —
+                a second party has confirmed this sample.
+              </Alert>
+            ) : (
+              <Stack spacing={1.5}>
+                <Typography variant="body2" color="text.secondary">
+                  A second party confirming they received this sample makes your record far stronger evidence than one
+                  you signed alone.
+                </Typography>
+                <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
+                  <Button
+                    variant="outlined"
+                    startIcon={<ScienceIcon />}
+                    onClick={() => attestRecord(record.id, 'Demo Genetics Lab')}
+                  >
+                    Simulate lab attestation
+                  </Button>
+                  <Chip size="small" variant="outlined" label="Demo action" />
+                </Stack>
+              </Stack>
+            )}
+          </Paper>
+
+          <Paper sx={{ p: { xs: 2.5, md: 3 } }}>
+            <Typography variant="overline" sx={{ display: 'block', mb: 1.5 }}>
+              Lineage
+            </Typography>
+            <LineageGraph record={record} />
           </Paper>
 
           <Stack direction="row" spacing={1.5} sx={{ flexWrap: 'wrap' }}>

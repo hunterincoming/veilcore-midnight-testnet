@@ -25,13 +25,17 @@ export const fingerprintText = async (text: string): Promise<string> =>
 export const fingerprintFile = async (file: File): Promise<string> =>
   fingerprintOf(await sha256(new Uint8Array(await file.arrayBuffer())));
 
-/** Stable fingerprint of a strain record's logged fields. */
+/** Stable fingerprint of a strain record's logged fields (all of it is sealed). */
 export const fingerprintRecord = (r: {
   strainName: string;
   bredBy: string;
   dateCreated: string;
   notes: string;
   loggedAt: number;
+  parents?: { recordId?: string; name: string }[];
+  breedingMethod?: string;
+  photoFingerprints?: string[];
+  refId?: string;
 }): Promise<string> =>
   fingerprintText(
     JSON.stringify({
@@ -40,6 +44,10 @@ export const fingerprintRecord = (r: {
       dateCreated: r.dateCreated,
       notes: r.notes,
       loggedAt: r.loggedAt,
+      parents: r.parents ?? [],
+      breedingMethod: r.breedingMethod ?? '',
+      photoFingerprints: r.photoFingerprints ?? [],
+      refId: r.refId ?? '',
     }),
   );
 

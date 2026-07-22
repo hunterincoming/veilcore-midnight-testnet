@@ -6,7 +6,7 @@ import { Box, Paper, Stack, Typography } from '@mui/material';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import EastIcon from '@mui/icons-material/East';
 import { motion } from 'framer-motion';
-import { useLicenses, allLicenses } from '../../veilcore/licenses';
+import { useLicenses, allLicenses, FEE_NOTE } from '../../veilcore/licenses';
 import { getRecord } from '../../veilcore/records';
 import { AppHeader } from '../AppHeader';
 import { LicenseStateChip } from './LicenseStateChip';
@@ -24,8 +24,11 @@ export const LicensingHub: React.FC = () => {
       <Typography variant="h4" sx={{ mb: 0.5 }}>
         Licensing hub
       </Typography>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
         Every license you&apos;ve issued, across all your cultivars — your licensing portfolio.
+      </Typography>
+      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 3 }}>
+        {FEE_NOTE}
       </Typography>
 
       {licenses.length === 0 ? (

@@ -8,7 +8,7 @@ import { Box, Button, Divider, Stack, Typography } from '@mui/material';
 import { useNavigate, useParams, useSearchParams, Link as RouterLink } from 'react-router-dom';
 import ArrowBackIcon from '@mui/icons-material/ArrowBackOutlined';
 import { getRecord } from '../../veilcore/records';
-import { createLicense, renewLicense, getLicense, type LicenseTerms } from '../../veilcore/licenses';
+import { createLicense, renewLicense, getLicense, FEE_NOTE, type LicenseTerms } from '../../veilcore/licenses';
 import { fingerprintText } from '../../veilcore/commitment';
 import { AppHeader } from '../AppHeader';
 import { LicenseTermsFields, emptyTerms, type SetTerm } from './LicenseTermsFields';
@@ -71,6 +71,10 @@ export const TermsBuilder: React.FC = () => {
       </Typography>
 
       <LicenseTermsFields terms={t} set={set} />
+
+      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1.5 }}>
+        {FEE_NOTE}
+      </Typography>
 
       <Divider sx={{ my: 3 }} />
       <Box>

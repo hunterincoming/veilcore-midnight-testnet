@@ -146,6 +146,19 @@ const subscribe = (l: () => void): (() => void) => {
 
 export const useLicenses = (): License[] => useSyncExternalStore(subscribe, () => licenses);
 
+// ---- Veilcore platform fee ----
+// Single source of truth — change this one constant to change the fee everywhere.
+export const VEILCORE_FEE_PCT = 3;
+
+/** Veilcore's fee for a given deal value (a calculated obligation, never a charge). */
+export const veilcoreFee = (dealValue: number): number => (dealValue * VEILCORE_FEE_PCT) / 100;
+
+/** The deal value a royalty report represents: reported sales (percent) or units × fee (flat). */
+export const dealValueOf = (l: License, input: number): number =>
+  l.terms.royaltyType === 'percent' ? input : input * (Number(l.terms.royaltyAmount) || 0);
+
+export const FEE_NOTE = `Veilcore fee (${VEILCORE_FEE_PCT}% of deal value) — calculated, not collected.`;
+
 // display helpers
 export const RIGHTS_LABEL: Record<Rights, string> = {
   cultivate: 'Cultivate only',

@@ -6,7 +6,7 @@ import { Box, Stack, Typography } from '@mui/material';
 import CheckIcon from '@mui/icons-material/Check';
 import { TEAL } from '../../config/theme';
 
-export const STEP_LABELS = ['Log cultivar', 'Pair DNA', 'Evidence', 'License', 'Prove'];
+export const STEP_LABELS = ['Log cultivar', 'Pair DNA', 'Evidence', 'Prove', 'License'];
 
 export const ProgressPath: React.FC<{ current: number }> = ({ current }) => (
   <Stack direction="row" sx={{ alignItems: 'flex-start', width: '100%', maxWidth: 720, mx: 'auto' }}>

@@ -16,6 +16,10 @@ import {
   addRoyalty,
   effectiveState,
   RIGHTS_LABEL,
+  VEILCORE_FEE_PCT,
+  FEE_NOTE,
+  veilcoreFee,
+  dealValueOf,
   type License,
 } from '../../veilcore/licenses';
 import { getRecord } from '../../veilcore/records';
@@ -39,6 +43,7 @@ const TermsSummary: React.FC<{ l: License }> = ({ l }) => (
           : `${money(Number(l.terms.royaltyAmount) || 0)} ${l.terms.unitBasis}`
       }
     />
+    <Row k={`Veilcore fee (${VEILCORE_FEE_PCT}% of deal value)`} v="calculated, not collected" />
     <Row k="Exclusivity" v={l.terms.exclusive ? 'Exclusive' : 'Non-exclusive'} />
     <Row k="Sublicensing" v={l.terms.sublicensable ? 'Allowed' : 'Not allowed'} />
     {l.terms.extraTerms && <Row k="Additional terms" v={l.terms.extraTerms} />}
@@ -111,6 +116,8 @@ export const LicenseDetail: React.FC = () => {
   };
 
   const totalOwed = license.royaltyLog.reduce((s, e) => s + e.amountOwed, 0);
+  const totalDeal = license.royaltyLog.reduce((s, e) => s + dealValueOf(license, e.input), 0);
+  const totalFee = veilcoreFee(totalDeal);
   const royaltyInputLabel =
     license.terms.royaltyType === 'percent' ? 'Reported sales ($)' : `Units (${license.terms.unitBasis})`;
 
@@ -256,25 +263,45 @@ export const LicenseDetail: React.FC = () => {
               </Stack>
             )}
             {license.royaltyLog.length > 0 ? (
-              <Stack spacing={1}>
-                {license.royaltyLog.map((e, i) => (
-                  <Stack key={i} direction="row" sx={{ justifyContent: 'space-between' }}>
-                    <Typography variant="body2" color="text.secondary">
-                      {new Date(e.at).toLocaleDateString()} · {e.input} {license.terms.royaltyType === 'percent' ? 'in sales' : 'units'}
-                      {e.note ? ` · ${e.note}` : ''}
-                    </Typography>
-                    <Typography variant="body2">{money(e.amountOwed)}</Typography>
-                  </Stack>
-                ))}
+              <Stack spacing={1.25}>
+                {license.royaltyLog.map((e, i) => {
+                  const dv = dealValueOf(license, e.input);
+                  return (
+                    <Box key={i} sx={{ p: 1, borderRadius: 1, background: 'rgba(255,255,255,0.02)' }}>
+                      <Typography variant="caption" color="text.secondary">
+                        {new Date(e.at).toLocaleDateString()}
+                        {e.note ? ` · ${e.note}` : ''}
+                      </Typography>
+                      <Row k="Deal value" v={money(dv)} />
+                      <Row k="Your royalty" v={money(e.amountOwed)} />
+                      <Row k={`Veilcore fee (${VEILCORE_FEE_PCT}%)`} v={money(veilcoreFee(dv))} />
+                    </Box>
+                  );
+                })}
                 <Divider />
                 <Stack direction="row" sx={{ justifyContent: 'space-between' }}>
-                  <Typography variant="subtitle2">Total owed (recorded)</Typography>
-                  <Typography variant="subtitle2">{money(totalOwed)}</Typography>
+                  <Typography variant="subtitle2">Total deal value</Typography>
+                  <Typography variant="subtitle2">{money(totalDeal)}</Typography>
                 </Stack>
+                <Stack direction="row" sx={{ justifyContent: 'space-between' }}>
+                  <Typography variant="body2" color="text.secondary">
+                    Your royalty (recorded)
+                  </Typography>
+                  <Typography variant="body2">{money(totalOwed)}</Typography>
+                </Stack>
+                <Stack direction="row" sx={{ justifyContent: 'space-between' }}>
+                  <Typography variant="body2" color="text.secondary">
+                    Veilcore fee ({VEILCORE_FEE_PCT}%)
+                  </Typography>
+                  <Typography variant="body2">{money(totalFee)}</Typography>
+                </Stack>
+                <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>
+                  {FEE_NOTE}
+                </Typography>
               </Stack>
             ) : (
               <Typography variant="body2" color="text.secondary">
-                No obligations recorded yet.
+                No obligations recorded yet. {FEE_NOTE}
               </Typography>
             )}
           </Paper>

@@ -15,7 +15,7 @@ import { Step3Certificate } from './Step3Certificate';
 import { Step4License } from './Step4License';
 import { Step4ProveOwnership } from './Step4ProveOwnership';
 import { AppHeader } from '../AppHeader';
-import { getLicense, RIGHTS_LABEL } from '../../veilcore/licenses';
+import { getLicense, RIGHTS_LABEL, VEILCORE_FEE_PCT } from '../../veilcore/licenses';
 import { getRecord } from '../../veilcore/records';
 import { TEAL } from '../../config/theme';
 
@@ -70,13 +70,14 @@ export const WizardShell: React.FC = () => {
                 <Row k="Licensee" v={license.terms.licensee} />
                 <Row k="Rights" v={RIGHTS_LABEL[license.terms.rights]} />
                 <Row
-                  k="Royalty"
+                  k="Royalty (your cut)"
                   v={
                     license.terms.royaltyType === 'percent'
                       ? `${license.terms.royaltyAmount}% · ${license.terms.unitBasis}`
                       : `$${license.terms.royaltyAmount} · ${license.terms.unitBasis}`
                   }
                 />
+                <Row k={`Veilcore fee (${VEILCORE_FEE_PCT}% of deal value)`} v="calculated, not collected" />
                 <Row k="Term" v={`${license.terms.startDate} → ${license.terms.endDate}`} />
               </Stack>
             </Paper>
@@ -130,18 +131,18 @@ export const WizardShell: React.FC = () => {
           <Step3Certificate recordId={recordId} onBack={() => setStep(2)} onDone={() => setStep(4)} />
         ) : null;
       case 4:
+        return <Step4ProveOwnership onBack={() => setStep(3)} onRestart={restart} onDone={() => setStep(5)} />;
+      case 5:
         return recordId ? (
           <Step4License
             recordId={recordId}
-            onBack={() => setStep(3)}
+            onBack={() => setStep(4)}
             onDone={(licId) => {
               setLicenseId(licId);
-              setStep(5);
+              setDone(true);
             }}
           />
         ) : null;
-      case 5:
-        return <Step4ProveOwnership onBack={() => setStep(4)} onRestart={restart} onDone={() => setDone(true)} />;
       default:
         return null;
     }

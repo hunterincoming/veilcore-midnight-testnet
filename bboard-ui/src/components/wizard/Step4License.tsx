@@ -18,6 +18,8 @@ import {
   countersignLicense,
   getLicense,
   RIGHTS_LABEL,
+  VEILCORE_FEE_PCT,
+  FEE_NOTE,
   type LicenseTerms,
 } from '../../veilcore/licenses';
 import { fingerprintText } from '../../veilcore/commitment';
@@ -99,7 +101,8 @@ export const Step4License: React.FC<{
           <Stack spacing={1}>
             <Row k="Licensee" v={license.terms.licensee} />
             <Row k="Rights" v={RIGHTS_LABEL[license.terms.rights]} />
-            <Row k="Royalty" v={royaltyText(license.terms)} />
+            <Row k="Royalty (your cut)" v={royaltyText(license.terms)} />
+            <Row k={`Veilcore fee (${VEILCORE_FEE_PCT}% of deal value)`} v="calculated, not collected" />
             <Row k="Term" v={`${license.terms.startDate} → ${license.terms.endDate}`} />
             <Row k="Exclusivity" v={license.terms.exclusive ? 'Exclusive' : 'Non-exclusive'} />
           </Stack>
@@ -110,7 +113,7 @@ export const Step4License: React.FC<{
             Manage this license
           </Button>
           <Button variant="contained" onClick={() => onDone(license.id)}>
-            Continue — prove ownership
+            Finish
           </Button>
         </Stack>
       </Stack>
@@ -163,6 +166,10 @@ export const Step4License: React.FC<{
       </Box>
 
       <LicenseTermsFields terms={t} set={set} />
+
+      <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+        {FEE_NOTE}
+      </Typography>
 
       <Divider />
       <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>

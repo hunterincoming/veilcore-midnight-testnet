@@ -86,10 +86,11 @@ export const Step4ProveOwnership: React.FC<{ onBack: () => void; onRestart: () =
           />
           <Alert severity="success" variant="outlined">
             <Typography variant="subtitle2">
-              You own <b>{proof.strain}</b>.
+              Ownership proven. Now you can license it.
             </Typography>
             <Typography variant="body2" sx={{ mt: 0.5, color: 'text.secondary' }}>
-              This is evidence a licensee — or your attorney — can rely on, even against someone who never signed.
+              You hold <b>{proof.strain}</b>. A licensee can verify this proof before they sign — and it holds even
+              against someone who never did.
             </Typography>
           </Alert>
           <Box>
@@ -114,7 +115,7 @@ export const Step4ProveOwnership: React.FC<{ onBack: () => void; onRestart: () =
           </Button>
         ) : onDone ? (
           <Button variant="contained" onClick={onDone}>
-            Finish
+            Continue — license your genetics
           </Button>
         ) : (
           <Button variant="contained" onClick={onRestart}>

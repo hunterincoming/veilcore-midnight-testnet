@@ -30,7 +30,7 @@ export const AppHeader: React.FC = () => {
         </Stack>
         {loc.pathname !== '/new' && (
           <Button component={RouterLink} to="/new" size="small" variant="outlined" startIcon={<AddIcon />}>
-            New strain
+            New cultivar
           </Button>
         )}
         {loc.pathname !== '/licenses' && (

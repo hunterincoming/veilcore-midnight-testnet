@@ -51,7 +51,7 @@ export const RecordDetail: React.FC = () => {
             Record not found
           </Typography>
           <Button component={RouterLink} to="/" startIcon={<ArrowBackIcon />}>
-            Back to your strains
+            Back to your cultivars
           </Button>
         </Paper>
       </Box>
@@ -66,7 +66,7 @@ export const RecordDetail: React.FC = () => {
       <AppHeader />
 
       <Button component={RouterLink} to="/" size="small" startIcon={<ArrowBackIcon />} sx={{ mb: 2 }}>
-        All strains
+        All cultivars
       </Button>
 
       <Stack direction="row" sx={{ alignItems: 'baseline', justifyContent: 'space-between', flexWrap: 'wrap', mb: 1 }}>
@@ -190,7 +190,7 @@ export const RecordDetail: React.FC = () => {
               Prove ownership
             </Button>
             <Button variant="contained" startIcon={<GavelIcon />} onClick={() => navigate(`/record/${record.id}/license`)}>
-              License this strain
+              License this cultivar
             </Button>
           </Stack>
         </Stack>

@@ -6,6 +6,7 @@ import React, { useRef, useState } from 'react';
 import { Box, Button, Paper, Snackbar, Stack, Typography } from '@mui/material';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import AddIcon from '@mui/icons-material/Add';
+import GavelIcon from '@mui/icons-material/GavelOutlined';
 import DownloadIcon from '@mui/icons-material/DownloadOutlined';
 import UploadIcon from '@mui/icons-material/UploadFileOutlined';
 import RestartAltIcon from '@mui/icons-material/RestartAltOutlined';
@@ -58,11 +59,11 @@ export const Dashboard: React.FC = () => {
             </Box>
           </Typography>
           <Typography variant="body1" color="text.secondary" sx={{ maxWidth: 560, mx: 'auto', mb: 4 }}>
-            Un-forgeable proof of who bred a strain first — bound to the DNA itself, with license terms that travel with
+            Un-forgeable proof of who bred a cultivar first — bound to the DNA itself, with license terms that travel with
             the plant. Everything is hashed on your device; your genetics never leave it.
           </Typography>
           <Button component={RouterLink} to="/new" variant="contained" size="large" startIcon={<AddIcon />}>
-            Log your first strain
+            Log your first cultivar
           </Button>
           <Box sx={{ mt: 6, textAlign: 'left' }}>
             <TrustPanel />
@@ -74,10 +75,10 @@ export const Dashboard: React.FC = () => {
             direction="row"
             sx={{ alignItems: 'center', justifyContent: 'space-between', mb: 2.5, flexWrap: 'wrap', gap: 1 }}
           >
-            <Typography variant="h4">Your strains</Typography>
+            <Typography variant="h4">Your cultivars</Typography>
             <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap' }}>
               <Button component={RouterLink} to="/new" variant="contained" startIcon={<AddIcon />}>
-                New strain
+                New cultivar
               </Button>
               <Button variant="text" startIcon={<DownloadIcon />} onClick={exportRecords}>
                 Export
@@ -126,7 +127,20 @@ export const Dashboard: React.FC = () => {
                       <StatusChain record={r} licenseCount={activeLicenseCount(r.id)} dense />
                     </Box>
                   </Box>
-                  <EastIcon sx={{ color: 'text.secondary' }} />
+                  <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      startIcon={<GavelIcon />}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigate(`/record/${r.id}/license`);
+                      }}
+                    >
+                      License
+                    </Button>
+                    <EastIcon sx={{ color: 'text.secondary' }} />
+                  </Stack>
                 </Stack>
               </MPaper>
             ))}

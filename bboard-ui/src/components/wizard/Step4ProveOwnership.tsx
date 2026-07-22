@@ -12,7 +12,11 @@ import { findByDnaFingerprint } from '../../veilcore/records';
 import { Dropzone } from './Dropzone';
 import { FingerprintReveal } from './FingerprintReveal';
 
-export const Step4ProveOwnership: React.FC<{ onBack: () => void; onRestart: () => void }> = ({ onBack, onRestart }) => {
+export const Step4ProveOwnership: React.FC<{ onBack: () => void; onRestart: () => void; onDone?: () => void }> = ({
+  onBack,
+  onRestart,
+  onDone,
+}) => {
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [proof, setProof] = useState<{ ok: boolean; strain?: string; fingerprint?: string }>();
@@ -53,7 +57,7 @@ export const Step4ProveOwnership: React.FC<{ onBack: () => void; onRestart: () =
       {!proof?.ok && (
         <>
           <Typography variant="body2" color="text.secondary">
-            Re-drop the same DNA report to prove you hold this strain. It&apos;s fingerprinted locally and matched —
+            Re-drop the same DNA report to prove you hold this cultivar. It&apos;s fingerprinted locally and matched —
             nothing about the genetics is revealed or uploaded.
           </Typography>
           <Dropzone
@@ -69,7 +73,7 @@ export const Step4ProveOwnership: React.FC<{ onBack: () => void; onRestart: () =
 
       {proof && !proof.ok && (
         <Alert icon={<GppBadIcon />} severity="error" variant="outlined">
-          No record matches this report. Log and pair the strain first, then come back to prove it.
+          No record matches this report. Log and pair the cultivar first, then come back to prove it.
         </Alert>
       )}
 
@@ -78,7 +82,7 @@ export const Step4ProveOwnership: React.FC<{ onBack: () => void; onRestart: () =
           <FingerprintReveal
             fingerprint={proof.fingerprint ?? ''}
             headline="Ownership proven — and nothing was revealed."
-            sub="You demonstrated you hold this strain by matching its fingerprint locally. No genetics, no details — zero bytes left your device."
+            sub="You demonstrated you hold this cultivar by matching its fingerprint locally. No genetics, no details — zero bytes left your device."
           />
           <Alert severity="success" variant="outlined">
             <Typography variant="subtitle2">
@@ -108,9 +112,13 @@ export const Step4ProveOwnership: React.FC<{ onBack: () => void; onRestart: () =
           >
             {busy ? 'Proving locally…' : 'Prove I own it'}
           </Button>
+        ) : onDone ? (
+          <Button variant="contained" onClick={onDone}>
+            Finish
+          </Button>
         ) : (
           <Button variant="contained" onClick={onRestart}>
-            Log another strain
+            Log another cultivar
           </Button>
         )}
       </Stack>

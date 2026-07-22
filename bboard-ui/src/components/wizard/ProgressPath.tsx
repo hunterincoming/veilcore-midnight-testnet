@@ -6,17 +6,17 @@ import { Box, Stack, Typography } from '@mui/material';
 import CheckIcon from '@mui/icons-material/Check';
 import { TEAL } from '../../config/theme';
 
-export const STEP_LABELS = ['Log your strain', 'Pair DNA report', 'Your certificate', 'Prove ownership'];
+export const STEP_LABELS = ['Log cultivar', 'Pair DNA', 'Evidence', 'License', 'Prove'];
 
 export const ProgressPath: React.FC<{ current: number }> = ({ current }) => (
-  <Stack direction="row" sx={{ alignItems: 'flex-start', width: '100%', maxWidth: 640, mx: 'auto' }}>
+  <Stack direction="row" sx={{ alignItems: 'flex-start', width: '100%', maxWidth: 720, mx: 'auto' }}>
     {STEP_LABELS.map((label, i) => {
       const n = i + 1;
       const done = n < current;
       const active = n === current;
       return (
         <React.Fragment key={label}>
-          <Stack sx={{ alignItems: 'center', flex: '0 0 auto', width: 96 }}>
+          <Stack sx={{ alignItems: 'center', flex: '0 0 auto', width: 84 }}>
             <Box
               sx={{
                 width: 34,
@@ -48,6 +48,7 @@ export const ProgressPath: React.FC<{ current: number }> = ({ current }) => (
             <Box
               sx={{
                 flex: 1,
+                minWidth: 12,
                 height: 2,
                 mt: '16px',
                 background: done ? TEAL : 'rgba(255,255,255,0.12)',

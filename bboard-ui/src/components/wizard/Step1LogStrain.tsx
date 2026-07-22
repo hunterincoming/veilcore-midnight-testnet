@@ -117,17 +117,17 @@ export const Step1LogStrain: React.FC<{ onDone: (recordId: string) => void }> = 
     <Stack spacing={2.5}>
       <Box>
         <Typography variant="h5" sx={{ mb: 0.5 }}>
-          Log your strain — proof you made it first
+          Log your cultivar — proof you made it first
         </Typography>
         <Typography variant="body2" color="text.secondary">
-          Lock in dated, tamper-proof proof you created this strain — before anyone can claim it.
+          Lock in dated, tamper-proof proof you created this cultivar — before anyone can claim it.
         </Typography>
       </Box>
 
       <TextField
-        label="Strain name"
+        label="Cultivar name"
         placeholder="e.g. Blue Lotus #4"
-        helperText="What you call this strain or cut — your working name is fine."
+        helperText="The name you know it by — what most people call the strain."
         value={strainName}
         onChange={(e) => setStrainName(e.target.value)}
         fullWidth
@@ -151,8 +151,8 @@ export const Step1LogStrain: React.FC<{ onDone: (recordId: string) => void }> = 
         renderInput={(params) => (
           <TextField
             {...params}
-            label="Parent strains / lineage"
-            helperText="What did you cross to make this? Pick from strains you've already logged, or type them in."
+            label="Parent cultivars / lineage"
+            helperText="What did you cross to make this? Pick from cultivars you've already logged, or type them in."
           />
         )}
       />
@@ -160,7 +160,7 @@ export const Step1LogStrain: React.FC<{ onDone: (recordId: string) => void }> = 
       <TextField
         select
         label="Breeding method"
-        helperText="How this strain was produced."
+        helperText="How this cultivar was produced."
         value={breedingMethod}
         onChange={(e) => setBreedingMethod(e.target.value)}
         fullWidth

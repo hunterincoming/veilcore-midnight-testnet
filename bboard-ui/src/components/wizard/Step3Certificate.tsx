@@ -117,7 +117,7 @@ export const Step3Certificate: React.FC<{ recordId: string; onDone: () => void; 
 
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={3}>
           <Stack spacing={2} sx={{ flex: 1 }}>
-            <Field label="Strain">{record.strainName}</Field>
+            <Field label="Cultivar">{record.strainName}</Field>
             <Field label="Bred by">{record.bredBy}</Field>
             <Field label="Stated creation date (breeder's claim)">{record.dateCreated}</Field>
             <Field label="Sealed with Veilcore">{fmtStamp(record.loggedAt)}</Field>
@@ -176,7 +176,7 @@ export const Step3Certificate: React.FC<{ recordId: string; onDone: () => void; 
           Download data (JSON)
         </Button>
         <Button variant="contained" onClick={onDone}>
-          Continue — prove ownership
+          Continue — license your genetics
         </Button>
       </Stack>
 

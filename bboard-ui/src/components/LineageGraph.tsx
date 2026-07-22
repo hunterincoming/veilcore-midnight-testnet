@@ -26,7 +26,7 @@ export const LineageGraph: React.FC<{ record: StrainRecord }> = ({ record }) => 
   if (parents.length === 0 && kids.length === 0) {
     return (
       <Typography variant="body2" color="text.secondary">
-        No lineage recorded yet. Add parent strains when logging to build the family tree.
+        No lineage recorded yet. Add parent cultivars when logging to build the family tree.
       </Typography>
     );
   }

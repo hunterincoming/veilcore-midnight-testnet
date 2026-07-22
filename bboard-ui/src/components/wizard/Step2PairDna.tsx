@@ -106,7 +106,7 @@ export const Step2PairDna: React.FC<{ recordId: string; onDone: () => void; onBa
           Pair your DNA report
         </Typography>
         <Typography variant="body2" color="text.secondary">
-          Got your DNA test back from the lab? Pair it to prove what your strain genetically is.
+          Got your DNA test back from the lab? Pair it to prove what your cultivar genetically is.
         </Typography>
         {record && (
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
@@ -140,7 +140,7 @@ export const Step2PairDna: React.FC<{ recordId: string; onDone: () => void; onBa
           startIcon={busy ? <CircularProgress size={18} color="inherit" /> : undefined}
           onClick={onPair}
         >
-          {busy ? 'Fingerprinting locally…' : 'Pair to my strain'}
+          {busy ? 'Fingerprinting locally…' : 'Pair to my cultivar'}
         </Button>
       </Stack>
     </Stack>

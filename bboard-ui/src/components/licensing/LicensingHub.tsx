@@ -25,16 +25,16 @@ export const LicensingHub: React.FC = () => {
         Licensing hub
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-        Every license you&apos;ve issued, across all your strains — your licensing portfolio.
+        Every license you&apos;ve issued, across all your cultivars — your licensing portfolio.
       </Typography>
 
       {licenses.length === 0 ? (
         <Paper sx={{ p: 4, textAlign: 'center', borderStyle: 'dashed' }}>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-            No licenses yet. Open a strain and choose “License this strain” to draft one.
+            No licenses yet. Open a cultivar and choose “License this cultivar” to draft one.
           </Typography>
           <RouterLink to="/" style={{ color: '#2ff0cf' }}>
-            Go to your strains
+            Go to your cultivars
           </RouterLink>
         </Paper>
       ) : (

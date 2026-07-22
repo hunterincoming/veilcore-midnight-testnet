@@ -13,7 +13,7 @@ export const WalletBadge: React.FC<{ network: string; demo: boolean }> = ({ netw
       icon={<ScienceIcon />}
       color={demo ? 'default' : 'primary'}
       variant={demo ? 'outlined' : 'filled'}
-      label={demo ? 'Demo mode' : 'On-chain'}
+      label={demo ? 'Demo · simulated settlement' : 'Live'}
     />
     <Chip size="small" icon={<BoltIcon />} variant="outlined" label={network} sx={{ textTransform: 'capitalize' }} />
   </Stack>

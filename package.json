@@ -29,7 +29,7 @@
     "@midnight-ntwrk/midnight-js-types": "4.1.1",
     "@midnight-ntwrk/midnight-js-utils": "4.1.1",
     "@midnight-ntwrk/testkit-js": "4.1.1",
-    "@midnight-ntwrk/wallet-sdk": "1.0.0",
+    "@midnight-ntwrk/wallet-sdk": "1.2.0",
     "axios": "^1.17.0",
     "buffer": "^6.0.3",
     "fp-ts": "^2.16.11",
@@ -39,6 +39,9 @@
     "semver": "^7.8.4",
     "testcontainers": "^12.0.1",
     "ws": "^8.21.0"
+  },
+  "overrides": {
+    "@midnight-ntwrk/wallet-sdk-utilities": "1.2.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.2",

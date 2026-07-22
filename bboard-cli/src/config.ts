@@ -39,7 +39,7 @@ export class StandaloneConfig implements Config {
   }
   privateStateStoreName = 'bboard-private-state';
   logDir = path.resolve(currentDir, '..', 'logs', 'standalone', `${new Date().toISOString()}.log`);
-  zkConfigPath = path.resolve(currentDir, '..', '..', 'contract', 'src', 'managed', 'bboard');
+  zkConfigPath = path.resolve(currentDir, '..', '..', 'contract', 'src', 'managed', 'veilcore');
   generateDust = false;
 }
 
@@ -50,7 +50,7 @@ export class PreviewRemoteConfig implements Config {
   }
   privateStateStoreName = 'bboard-private-state';
   logDir = path.resolve(currentDir, '..', 'logs', 'preview-remote', `${new Date().toISOString()}.log`);
-  zkConfigPath = path.resolve(currentDir, '..', '..', 'contract', 'src', 'managed', 'bboard');
+  zkConfigPath = path.resolve(currentDir, '..', '..', 'contract', 'src', 'managed', 'veilcore');
   generateDust = true;
 }
 
@@ -61,7 +61,7 @@ export class PreprodRemoteConfig implements Config {
   }
   privateStateStoreName = 'bboard-private-state';
   logDir = path.resolve(currentDir, '..', 'logs', 'preprod-remote', `${new Date().toISOString()}.log`);
-  zkConfigPath = path.resolve(currentDir, '..', '..', 'contract', 'src', 'managed', 'bboard');
+  zkConfigPath = path.resolve(currentDir, '..', '..', 'contract', 'src', 'managed', 'veilcore');
   generateDust = true;
 }
 

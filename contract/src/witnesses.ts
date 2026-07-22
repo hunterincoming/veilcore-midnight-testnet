@@ -19,6 +19,7 @@
  */
 
 import { Ledger } from "./managed/bboard/contract/index.js";
+import { Ledger as VeilcoreLedger } from "./managed/veilcore/contract/index.js";
 import { WitnessContext } from "@midnight-ntwrk/midnight-js-protocol/compact-runtime";
 
 /* **********************************************************************
@@ -71,4 +72,29 @@ export const witnesses = {
     BBoardPrivateState,
     Uint8Array,
   ] => [privateState, privateState.secretKey],
+};
+
+/* **********************************************************************
+ * Veilcore private state: the caller's genetic preimage. Only its
+ * commitment (a hash) is ever recorded on-chain; the preimage below is
+ * a private witness that never leaves the client.
+ */
+
+export type VeilcorePrivateState = {
+  readonly geneticSecret: Uint8Array;
+};
+
+export const createVeilcorePrivateState = (
+  geneticSecret: Uint8Array,
+): VeilcorePrivateState => ({
+  geneticSecret,
+});
+
+export const veilcoreWitnesses = {
+  localGeneticSecret: ({
+    privateState,
+  }: WitnessContext<VeilcoreLedger, VeilcorePrivateState>): [
+    VeilcorePrivateState,
+    Uint8Array,
+  ] => [privateState, privateState.geneticSecret],
 };

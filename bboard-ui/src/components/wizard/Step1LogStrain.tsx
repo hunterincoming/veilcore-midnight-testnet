@@ -106,7 +106,7 @@ export const Step1LogStrain: React.FC<{ onDone: (recordId: string) => void }> = 
         </Alert>
         <Box>
           <Button variant="contained" size="large" onClick={() => onDone(record.id)}>
-            Continue — pair your DNA report
+            Continue — send it to a lab
           </Button>
         </Box>
       </Stack>

@@ -176,7 +176,7 @@ export const Step3Certificate: React.FC<{ recordId: string; onDone: () => void; 
           Download data (JSON)
         </Button>
         <Button variant="contained" onClick={onDone}>
-          Continue — prove ownership
+          Continue — prove what you choose
         </Button>
       </Stack>
 

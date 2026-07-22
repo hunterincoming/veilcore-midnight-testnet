@@ -143,7 +143,13 @@ export const emptyTerms = (): LicenseTerms => {
 export const emptyTermsFor = (type: AgreementType): LicenseTerms => {
   const base = emptyTerms();
   if (type === 'lab-transfer') {
-    return { ...base, labPurpose: 'tissue-culture', noPropagationBeyondPurpose: true, onCompletion: 'return', confidentiality: true };
+    return {
+      ...base,
+      labPurpose: 'tissue-culture',
+      noPropagationBeyondPurpose: true,
+      onCompletion: 'return',
+      confidentiality: true,
+    };
   }
   if (type === 'breeder-share') {
     return { ...base, mayBreed: true, mayDistribute: false, attributionRequired: true, offspringRoyaltyPct: '' };
@@ -215,7 +221,9 @@ export const LabTransferFields: React.FC<{ terms: LicenseTerms; set: SetTerm }> 
         label="No propagation beyond the stated purpose"
       />
       <FormControlLabel
-        control={<Switch checked={t.confidentiality ?? true} onChange={(e) => set('confidentiality', e.target.checked)} />}
+        control={
+          <Switch checked={t.confidentiality ?? true} onChange={(e) => set('confidentiality', e.target.checked)} />
+        }
         label="Confidentiality required"
       />
     </Stack>
@@ -252,7 +260,10 @@ export const BreederShareFields: React.FC<{ terms: LicenseTerms; set: SetTerm }>
       />
       <FormControlLabel
         control={
-          <Switch checked={t.attributionRequired ?? true} onChange={(e) => set('attributionRequired', e.target.checked)} />
+          <Switch
+            checked={t.attributionRequired ?? true}
+            onChange={(e) => set('attributionRequired', e.target.checked)}
+          />
         }
         label="Attribution / credit required"
       />

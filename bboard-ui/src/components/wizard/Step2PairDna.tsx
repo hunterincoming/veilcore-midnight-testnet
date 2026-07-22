@@ -15,11 +15,12 @@ import { Dropzone } from './Dropzone';
 
 const MChip = motion(Chip);
 
-export const Step2PairDna: React.FC<{ recordId: string; onDone: () => void; onBack: () => void }> = ({
-  recordId,
-  onDone,
-  onBack,
-}) => {
+export const Step2PairDna: React.FC<{
+  recordId: string;
+  onDone: () => void;
+  onBack: () => void;
+  onSkip?: () => void;
+}> = ({ recordId, onDone, onBack, onSkip }) => {
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [paired, setPaired] = useState<StrainRecord>();
@@ -127,9 +128,13 @@ export const Step2PairDna: React.FC<{ recordId: string; onDone: () => void; onBa
         hint="The report file your testing lab returned — read locally, never uploaded."
       />
 
-      {error && <Alert severity="error" variant="outlined">{error}</Alert>}
+      {error && (
+        <Alert severity="error" variant="outlined">
+          {error}
+        </Alert>
+      )}
 
-      <Stack direction="row" spacing={1.5}>
+      <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
         <Button variant="text" onClick={onBack}>
           Back
         </Button>
@@ -142,6 +147,11 @@ export const Step2PairDna: React.FC<{ recordId: string; onDone: () => void; onBa
         >
           {busy ? 'Fingerprinting locally…' : 'Pair to my cultivar'}
         </Button>
+        {onSkip && (
+          <Button variant="text" color="inherit" onClick={onSkip}>
+            Don&apos;t have the report back yet — skip
+          </Button>
+        )}
       </Stack>
     </Stack>
   );

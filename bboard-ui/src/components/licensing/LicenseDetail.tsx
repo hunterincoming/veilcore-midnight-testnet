@@ -149,8 +149,11 @@ export const LicenseDetail: React.FC = () => {
 
         {/* lifecycle actions */}
         <Paper sx={{ p: { xs: 2.5, md: 3 } }}>
-          <Typography variant="overline" sx={{ display: 'block', mb: 1.5 }}>
+          <Typography variant="overline" sx={{ display: 'block', mb: 0.5 }}>
             Status &amp; actions
+          </Typography>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.75 }}>
+            Demo — signatures and settlement are simulated locally; nothing is recorded on a live network yet.
           </Typography>
 
           {state === 'draft' && (

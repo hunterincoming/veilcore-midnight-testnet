@@ -85,11 +85,11 @@ export const Step4ProveOwnership: React.FC<{ onBack: () => void; onRestart: () =
               You own <b>{proof.strain}</b>.
             </Typography>
             <Typography variant="body2" sx={{ mt: 0.5, color: 'text.secondary' }}>
-              This is the proof a licensee — or a court — can rely on, even if they never signed a thing.
+              This is evidence a licensee — or your attorney — can rely on, even against someone who never signed.
             </Typography>
           </Alert>
           <Box>
-            <Chip color="primary" variant="outlined" label="This is what anchors a licensing deal." />
+            <Chip color="primary" variant="outlined" label="This is what makes a licensing deal enforceable." />
           </Box>
         </Stack>
       )}

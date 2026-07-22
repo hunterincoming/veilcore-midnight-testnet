@@ -114,6 +114,10 @@ export const CounterSignPage: React.FC = () => {
             {effectiveState(license) === 'revoked' && (
               <Alert severity="error" variant="outlined">This license was revoked — {license.revokedReason}.</Alert>
             )}
+
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 2.5 }}>
+              Demo — signing and settlement are simulated locally.
+            </Typography>
           </Paper>
         )}
       </Container>

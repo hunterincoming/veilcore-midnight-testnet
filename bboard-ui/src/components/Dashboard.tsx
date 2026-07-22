@@ -3,10 +3,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import React, { useRef, useState } from 'react';
-import { Box, Button, Paper, Snackbar, Stack, Typography } from '@mui/material';
+import { Box, Button, ListItemIcon, Menu, MenuItem, Paper, Snackbar, Stack, Typography } from '@mui/material';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import AddIcon from '@mui/icons-material/Add';
 import GavelIcon from '@mui/icons-material/GavelOutlined';
+import ScienceIcon from '@mui/icons-material/ScienceOutlined';
+import ShareIcon from '@mui/icons-material/ShareOutlined';
+import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown';
 import DownloadIcon from '@mui/icons-material/DownloadOutlined';
 import UploadIcon from '@mui/icons-material/UploadFileOutlined';
 import RestartAltIcon from '@mui/icons-material/RestartAltOutlined';
@@ -28,6 +31,20 @@ export const Dashboard: React.FC = () => {
   const navigate = useNavigate();
   const importRef = useRef<HTMLInputElement>(null);
   const [toast, setToast] = useState<string>();
+  // Per-card "start an agreement" menu — tracks which cultivar it was opened for.
+  const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
+  const [menuRecordId, setMenuRecordId] = useState<string>();
+
+  const openAgreementMenu = (e: React.MouseEvent<HTMLElement>, recordId: string) => {
+    e.stopPropagation();
+    setMenuAnchor(e.currentTarget);
+    setMenuRecordId(recordId);
+  };
+  const closeAgreementMenu = () => setMenuAnchor(null);
+  const startAgreement = (type: string) => {
+    if (menuRecordId) navigate(`/record/${menuRecordId}/license?type=${type}`);
+    closeAgreementMenu();
+  };
 
   const onImport = async (file: File | null | undefined) => {
     if (!file) return;
@@ -132,12 +149,10 @@ export const Dashboard: React.FC = () => {
                       size="small"
                       variant="outlined"
                       startIcon={<GavelIcon />}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        navigate(`/record/${r.id}/license`);
-                      }}
+                      endIcon={<ArrowDropDownIcon />}
+                      onClick={(e) => openAgreementMenu(e, r.id)}
                     >
-                      License
+                      Agreement
                     </Button>
                     <EastIcon sx={{ color: 'text.secondary' }} />
                   </Stack>
@@ -150,6 +165,27 @@ export const Dashboard: React.FC = () => {
           </Box>
         </>
       )}
+
+      <Menu anchorEl={menuAnchor} open={!!menuAnchor} onClose={closeAgreementMenu}>
+        <MenuItem onClick={() => startAgreement('license')}>
+          <ListItemIcon>
+            <GavelIcon fontSize="small" />
+          </ListItemIcon>
+          License
+        </MenuItem>
+        <MenuItem onClick={() => startAgreement('lab-transfer')}>
+          <ListItemIcon>
+            <ScienceIcon fontSize="small" />
+          </ListItemIcon>
+          Send to a lab
+        </MenuItem>
+        <MenuItem onClick={() => startAgreement('breeder-share')}>
+          <ListItemIcon>
+            <ShareIcon fontSize="small" />
+          </ListItemIcon>
+          Share with a breeder
+        </MenuItem>
+      </Menu>
 
       <Snackbar
         open={!!toast}

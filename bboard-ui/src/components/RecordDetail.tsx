@@ -11,12 +11,14 @@ import ScienceIcon from '@mui/icons-material/ScienceOutlined';
 import DescriptionIcon from '@mui/icons-material/DescriptionOutlined';
 import VerifiedIcon from '@mui/icons-material/VerifiedOutlined';
 import GavelIcon from '@mui/icons-material/GavelOutlined';
+import ShareIcon from '@mui/icons-material/ShareOutlined';
 import { useRecords, getRecord, attestRecord } from '../veilcore/records';
-import { useLicenses, licensesForRecord, activeLicenseCount } from '../veilcore/licenses';
+import { useLicenses, licensesForRecord, activeLicenseCount, agreementType } from '../veilcore/licenses';
 import { shortFingerprint } from '../veilcore/commitment';
 import { StatusChain } from './StatusChain';
 import { LineageGraph } from './LineageGraph';
 import { LicenseStateChip } from './licensing/LicenseStateChip';
+import { AgreementTypeChip } from './licensing/AgreementTypeChip';
 import { AppHeader } from './AppHeader';
 import { Step2PairDna } from './wizard/Step2PairDna';
 import { Step3Certificate } from './wizard/Step3Certificate';
@@ -150,7 +152,7 @@ export const RecordDetail: React.FC = () => {
           {licenses.length > 0 && (
             <Paper sx={{ p: { xs: 2.5, md: 3 } }}>
               <Typography variant="overline" sx={{ display: 'block', mb: 1.5 }}>
-                Licenses
+                Agreements
               </Typography>
               <Stack spacing={1}>
                 {licenses.map((l) => (
@@ -162,15 +164,19 @@ export const RecordDetail: React.FC = () => {
                       justifyContent: 'space-between',
                       alignItems: 'center',
                       cursor: 'pointer',
+                      gap: 1,
                       p: 1,
                       borderRadius: 1,
                       '&:hover': { background: 'rgba(255,255,255,0.03)' },
                     }}
                   >
-                    <Typography variant="body2">
-                      {l.terms.licensee || 'unnamed licensee'} · {l.id}
+                    <Typography variant="body2" sx={{ minWidth: 0 }} noWrap>
+                      {l.terms.licensee || 'unnamed counterparty'} · {l.id}
                     </Typography>
-                    <LicenseStateChip license={l} />
+                    <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
+                      <AgreementTypeChip type={agreementType(l)} />
+                      <LicenseStateChip license={l} />
+                    </Stack>
                   </Stack>
                 ))}
               </Stack>
@@ -189,10 +195,36 @@ export const RecordDetail: React.FC = () => {
             <Button variant="outlined" startIcon={<VerifiedIcon />} onClick={() => setMode('prove')}>
               Prove ownership
             </Button>
-            <Button variant="contained" startIcon={<GavelIcon />} onClick={() => navigate(`/record/${record.id}/license`)}>
-              License this cultivar
-            </Button>
           </Stack>
+
+          <Box>
+            <Typography variant="overline" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+              Start an agreement — terms bound to the genetics
+            </Typography>
+            <Stack direction="row" spacing={1.5} sx={{ flexWrap: 'wrap' }}>
+              <Button
+                variant="contained"
+                startIcon={<GavelIcon />}
+                onClick={() => navigate(`/record/${record.id}/license?type=license`)}
+              >
+                License
+              </Button>
+              <Button
+                variant="outlined"
+                startIcon={<ScienceIcon />}
+                onClick={() => navigate(`/record/${record.id}/license?type=lab-transfer`)}
+              >
+                Send to a lab
+              </Button>
+              <Button
+                variant="outlined"
+                startIcon={<ShareIcon />}
+                onClick={() => navigate(`/record/${record.id}/license?type=breeder-share`)}
+              >
+                Share with a breeder
+              </Button>
+            </Stack>
+          </Box>
         </Stack>
       )}
 

@@ -6,10 +6,11 @@ import { Box, Paper, Stack, Typography } from '@mui/material';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import EastIcon from '@mui/icons-material/East';
 import { motion } from 'framer-motion';
-import { useLicenses, allLicenses, FEE_NOTE } from '../../veilcore/licenses';
+import { useLicenses, allLicenses, agreementType } from '../../veilcore/licenses';
 import { getRecord } from '../../veilcore/records';
 import { AppHeader } from '../AppHeader';
 import { LicenseStateChip } from './LicenseStateChip';
+import { AgreementTypeChip } from './AgreementTypeChip';
 
 const MPaper = motion(Paper);
 
@@ -25,16 +26,17 @@ export const LicensingHub: React.FC = () => {
         Licensing hub
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
-        Every license you&apos;ve issued, across all your cultivars — your licensing portfolio.
+        Every agreement you&apos;ve issued — licenses, lab transfers, and breeder shares — across all your cultivars.
       </Typography>
       <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 3 }}>
-        {FEE_NOTE}
+        Commercial licenses carry the Veilcore fee (3% of deal value) — calculated, not collected. Lab transfers and
+        breeder shares don&apos;t.
       </Typography>
 
       {licenses.length === 0 ? (
         <Paper sx={{ p: 4, textAlign: 'center', borderStyle: 'dashed' }}>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-            No licenses yet. Open a cultivar and choose “License this cultivar” to draft one.
+            No agreements yet. Open a cultivar and choose License, Send to a lab, or Share with a breeder to draft one.
           </Typography>
           <RouterLink to="/" style={{ color: '#2ff0cf' }}>
             Go to your cultivars
@@ -55,13 +57,14 @@ export const LicensingHub: React.FC = () => {
                 <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between', gap: 1.5, flexWrap: 'wrap' }}>
                   <Box sx={{ minWidth: 0 }}>
                     <Typography variant="h6" noWrap>
-                      {record?.strainName ?? l.recordId} → {l.terms.licensee || 'unnamed licensee'}
+                      {record?.strainName ?? l.recordId} → {l.terms.licensee || 'unnamed counterparty'}
                     </Typography>
                     <Typography variant="caption" color="text.secondary">
                       {l.id} · {l.terms.startDate} → {l.terms.endDate}
                     </Typography>
                   </Box>
-                  <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center' }}>
+                  <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
+                    <AgreementTypeChip type={agreementType(l)} />
                     <LicenseStateChip license={l} />
                     <EastIcon sx={{ color: 'text.secondary' }} />
                   </Stack>

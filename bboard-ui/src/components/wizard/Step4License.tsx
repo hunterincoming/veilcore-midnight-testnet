@@ -55,6 +55,7 @@ export const Step4License: React.FC<{
     try {
       const agreementFingerprint = await fingerprintText(JSON.stringify({ terms: t, record: record.recordFingerprint }));
       const lic = createLicense({
+        type: 'license',
         recordId: record.id,
         recordFingerprint: record.recordFingerprint,
         dnaFingerprint: record.dnaFingerprint,

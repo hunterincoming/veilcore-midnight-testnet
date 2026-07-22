@@ -7,7 +7,15 @@ import React, { useState } from 'react';
 import { Alert, Box, Button, Chip, Container, Divider, Paper, Stack, Typography } from '@mui/material';
 import { useParams } from 'react-router-dom';
 import VerifiedIcon from '@mui/icons-material/VerifiedOutlined';
-import { useLicenses, getLicense, countersignLicense, effectiveState, RIGHTS_LABEL } from '../../veilcore/licenses';
+import {
+  useLicenses,
+  getLicense,
+  countersignLicense,
+  effectiveState,
+  agreementType,
+  agreementRows,
+  AGREEMENT_LABEL,
+} from '../../veilcore/licenses';
 import { TEAL } from '../../config/theme';
 
 const Line: React.FC<{ k: string; v: string }> = ({ k, v }) => (
@@ -43,30 +51,26 @@ export const CounterSignPage: React.FC = () => {
           </Paper>
         ) : (
           <Paper sx={{ p: { xs: 3, md: 4 } }}>
-            <Typography variant="h5" sx={{ mb: 0.5 }}>
-              You&apos;ve been sent a license to review
-            </Typography>
+            <Stack direction="row" spacing={1.25} sx={{ alignItems: 'center', mb: 0.5, flexWrap: 'wrap' }}>
+              <Typography variant="h5">You&apos;ve been sent an agreement to review</Typography>
+              <Chip size="small" variant="outlined" label={AGREEMENT_LABEL[agreementType(license)]} />
+            </Stack>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2.5 }}>
               Read the terms below. It only becomes binding when you counter-sign.
             </Typography>
 
             <Stack spacing={1}>
-              <Line k="Licensee" v={license.terms.licensee} />
-              <Line k="Rights" v={RIGHTS_LABEL[license.terms.rights]} />
-              <Line k="Territory" v={license.terms.territory || '—'} />
-              <Line k="Term" v={`${license.terms.startDate} → ${license.terms.endDate}`} />
-              <Line
-                k="Royalty"
-                v={
-                  license.terms.royaltyType === 'percent'
-                    ? `${license.terms.royaltyAmount}% · ${license.terms.unitBasis}`
-                    : `$${license.terms.royaltyAmount} · ${license.terms.unitBasis}`
-                }
-              />
-              <Line k="Exclusivity" v={license.terms.exclusive ? 'Exclusive' : 'Non-exclusive'} />
-              <Line k="Sublicensing" v={license.terms.sublicensable ? 'Allowed' : 'Not allowed'} />
-              {license.terms.extraTerms && <Line k="Additional terms" v={license.terms.extraTerms} />}
+              {agreementRows(license).map((r) => (
+                <Line key={r.k} k={r.k} v={r.v} />
+              ))}
             </Stack>
+
+            {agreementType(license) === 'breeder-share' && license.terms.mayBreed && (
+              <Alert severity="info" variant="outlined" sx={{ mt: 2 }}>
+                You may breed with this cut — but any cultivar you log with it as a parent stays traceable through the
+                lineage graph, linking the offspring back to this agreement.
+              </Alert>
+            )}
 
             <Divider sx={{ my: 2.5 }} />
 

@@ -15,38 +15,29 @@ import {
   revokeLicense,
   addRoyalty,
   effectiveState,
-  RIGHTS_LABEL,
+  agreementType,
+  agreementRows,
+  hasVeilcoreFee,
+  AGREEMENT_LABEL,
   VEILCORE_FEE_PCT,
   FEE_NOTE,
   veilcoreFee,
   dealValueOf,
   type License,
 } from '../../veilcore/licenses';
-import { getRecord } from '../../veilcore/records';
+import { getRecord, childrenOf } from '../../veilcore/records';
 import { shortFingerprint } from '../../veilcore/commitment';
 import { AppHeader } from '../AppHeader';
 import { LicenseStateChip } from './LicenseStateChip';
+import { AgreementTypeChip } from './AgreementTypeChip';
 
 const money = (n: number) => `$${n.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
 
 const TermsSummary: React.FC<{ l: License }> = ({ l }) => (
   <Stack spacing={1}>
-    <Row k="Licensee" v={l.terms.licensee} />
-    <Row k="Rights" v={RIGHTS_LABEL[l.terms.rights]} />
-    <Row k="Territory" v={l.terms.territory || '—'} />
-    <Row k="Term" v={`${l.terms.startDate} → ${l.terms.endDate}`} />
-    <Row
-      k="Royalty"
-      v={
-        l.terms.royaltyType === 'percent'
-          ? `${l.terms.royaltyAmount}% ${l.terms.unitBasis}`
-          : `${money(Number(l.terms.royaltyAmount) || 0)} ${l.terms.unitBasis}`
-      }
-    />
-    <Row k={`Veilcore fee (${VEILCORE_FEE_PCT}% of deal value)`} v="calculated, not collected" />
-    <Row k="Exclusivity" v={l.terms.exclusive ? 'Exclusive' : 'Non-exclusive'} />
-    <Row k="Sublicensing" v={l.terms.sublicensable ? 'Allowed' : 'Not allowed'} />
-    {l.terms.extraTerms && <Row k="Additional terms" v={l.terms.extraTerms} />}
+    {agreementRows(l).map((r) => (
+      <Row key={r.k} k={r.k} v={r.v} />
+    ))}
   </Stack>
 );
 
@@ -85,8 +76,13 @@ export const LicenseDetail: React.FC = () => {
   }
 
   const state = effectiveState(license);
+  const type = agreementType(license);
   const record = getRecord(license.recordId);
   const signLink = `${window.location.origin}/license/${license.id}/sign`;
+  // Breeder-share enforcement: if the counterparty may breed with the cut, any cultivar
+  // they later log with this one as a parent is exposed through the lineage graph.
+  const showLineageNote = type === 'breeder-share' && license.terms.mayBreed;
+  const knownDerivatives = showLineageNote ? childrenOf(license.recordId).length : 0;
 
   const copy = async (text: string, msg: string) => {
     await navigator.clipboard.writeText(text);
@@ -130,9 +126,12 @@ export const LicenseDetail: React.FC = () => {
 
       <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1, mb: 2 }}>
         <Box>
-          <Typography variant="h4">
-            License · {record?.strainName ?? license.recordId}
-          </Typography>
+          <Stack direction="row" spacing={1.25} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
+            <Typography variant="h4">
+              {AGREEMENT_LABEL[type]} · {record?.strainName ?? license.recordId}
+            </Typography>
+            <AgreementTypeChip type={type} />
+          </Stack>
           <Typography variant="caption" color="text.secondary">
             {license.id} {license.supersedesId ? `· amends ${license.supersedesId}` : ''}
           </Typography>
@@ -152,6 +151,16 @@ export const LicenseDetail: React.FC = () => {
             {license.dnaFingerprint ? ` (${shortFingerprint(license.dnaFingerprint)})` : ''}. Anyone who tests this plant
             can trace it back to this agreement — including someone who never signed it.
           </Alert>
+          {showLineageNote && (
+            <Alert severity="info" variant="outlined" sx={{ mt: 1.5 }}>
+              Derivative rights are enforced through lineage: any cultivar later logged with {record?.strainName ?? 'this cultivar'} as
+              a parent is traceable through the lineage graph — so offspring bred from this shared cut stay linked to
+              this agreement.
+              {knownDerivatives > 0
+                ? ` ${knownDerivatives} cultivar${knownDerivatives === 1 ? '' : 's'} already logged descend${knownDerivatives === 1 ? 's' : ''} from it.`
+                : ''}
+            </Alert>
+          )}
         </Paper>
 
         {/* lifecycle actions */}
@@ -232,8 +241,8 @@ export const LicenseDetail: React.FC = () => {
           )}
         </Paper>
 
-        {/* royalty ledger */}
-        {(state === 'active' || license.royaltyLog.length > 0) && (
+        {/* royalty ledger — commercial licenses only (lab transfers & breeder shares carry no Veilcore fee) */}
+        {hasVeilcoreFee(type) && (state === 'active' || license.royaltyLog.length > 0) && (
           <Paper sx={{ p: { xs: 2.5, md: 3 } }}>
             <Typography variant="overline" sx={{ display: 'block', mb: 0.5 }}>
               Royalty obligations

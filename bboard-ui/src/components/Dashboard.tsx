@@ -12,7 +12,9 @@ import RestartAltIcon from '@mui/icons-material/RestartAltOutlined';
 import EastIcon from '@mui/icons-material/East';
 import { motion } from 'framer-motion';
 import { useRecords, exportRecords, importRecords, resetDemo } from '../veilcore/records';
+import { useLicenses, activeLicenseCount } from '../veilcore/licenses';
 import { StatusChain } from './StatusChain';
+import { TrustPanel } from './TrustPanel';
 import { AppHeader } from './AppHeader';
 import { TEAL } from '../config/theme';
 
@@ -21,6 +23,7 @@ const fmt = (ms: number) => new Date(ms).toLocaleDateString();
 
 export const Dashboard: React.FC = () => {
   const records = useRecords();
+  useLicenses();
   const navigate = useNavigate();
   const importRef = useRef<HTMLInputElement>(null);
   const [toast, setToast] = useState<string>();
@@ -61,6 +64,9 @@ export const Dashboard: React.FC = () => {
           <Button component={RouterLink} to="/new" variant="contained" size="large" startIcon={<AddIcon />}>
             Log your first strain
           </Button>
+          <Box sx={{ mt: 6, textAlign: 'left' }}>
+            <TrustPanel />
+          </Box>
         </Box>
       ) : (
         <>
@@ -117,7 +123,7 @@ export const Dashboard: React.FC = () => {
                       bred by {r.bredBy} · sealed {fmt(r.loggedAt)} · {r.id}
                     </Typography>
                     <Box sx={{ mt: 1 }}>
-                      <StatusChain record={r} dense />
+                      <StatusChain record={r} licenseCount={activeLicenseCount(r.id)} dense />
                     </Box>
                   </Box>
                   <EastIcon sx={{ color: 'text.secondary' }} />
@@ -125,6 +131,9 @@ export const Dashboard: React.FC = () => {
               </MPaper>
             ))}
           </Stack>
+          <Box sx={{ mt: 5 }}>
+            <TrustPanel />
+          </Box>
         </>
       )}
 

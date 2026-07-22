@@ -10,6 +10,7 @@ import VerifiedIcon from '@mui/icons-material/VerifiedOutlined';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CancelIcon from '@mui/icons-material/CancelOutlined';
 import { useRecords, getRecord } from '../veilcore/records';
+import { useLicenses, activeLicenseCount } from '../veilcore/licenses';
 import { shortFingerprint } from '../veilcore/commitment';
 import { TEAL } from '../config/theme';
 
@@ -30,8 +31,10 @@ const Fact: React.FC<{ ok: boolean; children: React.ReactNode }> = ({ ok, childr
 
 export const VerifyPage: React.FC = () => {
   useRecords(); // re-render on store changes
+  useLicenses();
   const { id = '' } = useParams();
   const record = getRecord(id);
+  const activeLic = record ? activeLicenseCount(record.id) : 0;
 
   return (
     <Box sx={{ minHeight: '100vh', background: '#04070a' }}>
@@ -78,6 +81,9 @@ export const VerifyPage: React.FC = () => {
               </Fact>
               <Fact ok={!!record.attestation}>
                 {record.attestation ? `Attested by ${record.attestation.lab}` : 'No lab attestation yet'}
+              </Fact>
+              <Fact ok={activeLic > 0}>
+                {activeLic > 0 ? `${activeLic} active license${activeLic === 1 ? '' : 's'} on record` : 'No active license'}
               </Fact>
             </Stack>
 

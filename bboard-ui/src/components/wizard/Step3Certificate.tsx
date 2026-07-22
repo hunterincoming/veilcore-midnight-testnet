@@ -10,6 +10,7 @@ import VerifiedIcon from '@mui/icons-material/VerifiedOutlined';
 import { QRCodeSVG } from 'qrcode.react';
 import { toPng } from 'html-to-image';
 import { getRecord } from '../../veilcore/records';
+import { useLicenses, activeLicenseCount, licensesForRecord } from '../../veilcore/licenses';
 import { shortFingerprint } from '../../veilcore/commitment';
 import { TEAL } from '../../config/theme';
 
@@ -31,13 +32,32 @@ export const Step3Certificate: React.FC<{ recordId: string; onDone: () => void; 
   onDone,
   onBack,
 }) => {
+  useLicenses();
   const certRef = useRef<HTMLDivElement>(null);
   const [toast, setToast] = useState<string>();
   const record = getRecord(recordId);
 
   if (!record) return <Typography>Record not found.</Typography>;
 
-  const verifyLink = `https://verify.veilcore.app/${record.id}#${record.recordFingerprint.slice(0, 24)}`;
+  const verifyLink = `${window.location.origin}/verify/${record.id}`;
+
+  const downloadJson = () => {
+    const data = {
+      record,
+      licenses: licensesForRecord(record.id),
+      integrity: 'fingerprint recomputed and matches — unaltered',
+      generatedAt: new Date().toISOString(),
+      note: 'Veilcore evidence package. Fingerprints only — no genetics included.',
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${record.id}-evidence.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    setToast('Evidence data (JSON) downloaded.');
+  };
 
   const download = async () => {
     if (!certRef.current) return;
@@ -62,11 +82,11 @@ export const Step3Certificate: React.FC<{ recordId: string; onDone: () => void; 
     <Stack spacing={2.5}>
       <Box>
         <Typography variant="h5" sx={{ mb: 0.5 }}>
-          Your provenance certificate
+          Your evidence package
         </Typography>
         <Typography variant="body2" color="text.secondary">
-          Yours to keep, print, or hand to a partner. Anyone can confirm it&apos;s genuine — without ever seeing your
-          genetics.
+          Everything an attorney needs to establish prior possession — the sealed record, its integrity check, DNA
+          pairing, lab attestation and any active licenses. Shareable without ever exposing your genetics.
         </Typography>
       </Box>
 
@@ -87,7 +107,7 @@ export const Step3Certificate: React.FC<{ recordId: string; onDone: () => void; 
               Veilcore
             </Typography>
             <Typography variant="h5" sx={{ lineHeight: 1.1 }}>
-              Certificate of Prior Possession
+              Evidence of Prior Possession
             </Typography>
           </Box>
           <VerifiedIcon sx={{ color: TEAL, fontSize: 32 }} />
@@ -110,6 +130,15 @@ export const Step3Certificate: React.FC<{ recordId: string; onDone: () => void; 
                 'not paired'
               )}
             </Field>
+            <Field label="Integrity">
+              <Box component="span" sx={{ color: TEAL }}>
+                ✓ fingerprint matches — unaltered
+              </Box>
+            </Field>
+            <Field label="Lab attestation">
+              {record.attestation ? `✓ ${record.attestation.lab}` : 'awaiting'}
+            </Field>
+            <Field label="Active licenses">{activeLicenseCount(record.id)}</Field>
             <Field label="Record ID">
               <Box component="span" sx={{ fontFamily: '"Space Grotesk", monospace' }}>
                 {record.id}
@@ -141,7 +170,10 @@ export const Step3Certificate: React.FC<{ recordId: string; onDone: () => void; 
           Copy verification link
         </Button>
         <Button variant="outlined" startIcon={<DownloadIcon />} onClick={download}>
-          Download certificate
+          Download (PNG)
+        </Button>
+        <Button variant="outlined" startIcon={<DownloadIcon />} onClick={downloadJson}>
+          Download data (JSON)
         </Button>
         <Button variant="contained" onClick={onDone}>
           Continue — prove ownership

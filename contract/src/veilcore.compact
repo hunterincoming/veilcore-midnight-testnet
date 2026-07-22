@@ -1,0 +1,43 @@
+// Veilcore: on-chain anchoring of genetics commitments with ZK ownership proofs.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Only a commitment (a domain-separated hash) is ever stored on-chain. The genetic
+// preimage behind it is a private witness and never touches the ledger.
+
+pragma language_version 0.23;
+
+import CompactStandardLibrary;
+
+// Anchored strains: commitment hash -> logical timestamp (the anchor sequence number).
+export ledger anchors: Map<Bytes<32>, Field>;
+
+// Monotonic counter that supplies the logical timestamp / ordering for each anchor.
+export ledger anchorSeq: Counter;
+
+// The caller's private genetic preimage, supplied by the wallet's private state.
+// Never disclosed to the ledger.
+witness localGeneticSecret(): Bytes<32>;
+
+// Domain-separated commitment to a genetic preimage.
+export circuit commit(secret: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<2, Bytes<32>>>([pad(32, "veilcore:commit"), secret]);
+}
+
+// Anchor a strain: record its genetics commitment + a logical timestamp on-chain.
+// Proves in ZK that the caller holds the genetic preimage behind `commitment`,
+// without revealing the preimage (only the commitment hash is disclosed).
+export circuit anchor(commitment: Bytes<32>): [] {
+  assert(commitment == commit(localGeneticSecret()), "Commitment does not match your genetic secret");
+  const c = disclose(commitment);
+  assert(!anchors.member(c), "Strain already anchored");
+  anchorSeq.increment(1);
+  anchors.insert(c, anchorSeq as Field);
+}
+
+// Prove ownership of a previously-anchored strain by demonstrating knowledge of the
+// secret preimage WITHOUT revealing it. Only the public commitment is disclosed, for
+// the on-chain membership lookup; `secret` itself is never disclosed.
+export circuit proveOwnership(secret: Bytes<32>): [] {
+  const c = commit(secret);
+  assert(anchors.member(disclose(c)), "No anchored commitment matches this secret");
+}

@@ -1,13 +1,27 @@
 // Step 1 — Log your strain. Proof you made it first: an un-forgeable, timestamped
-// record sealed the moment you log it. The genetics never leave the device.
+// record sealed the moment you log it. All fields (incl. photos) are hashed locally;
+// nothing leaves the device.
 // SPDX-License-Identifier: Apache-2.0
 
-import React, { useState } from 'react';
-import { Alert, Box, Button, CircularProgress, Divider, Stack, TextField, Typography } from '@mui/material';
+import React, { useRef, useState } from 'react';
+import {
+  Alert,
+  Autocomplete,
+  Box,
+  Button,
+  Chip,
+  CircularProgress,
+  Divider,
+  MenuItem,
+  Stack,
+  TextField,
+  Typography,
+} from '@mui/material';
 import ShieldIcon from '@mui/icons-material/GppGoodOutlined';
+import PhotoIcon from '@mui/icons-material/AddPhotoAlternateOutlined';
 import { motion } from 'framer-motion';
-import { fingerprintRecord } from '../../veilcore/commitment';
-import { createRecord, type StrainRecord } from '../../veilcore/records';
+import { fingerprintRecord, fingerprintFile } from '../../veilcore/commitment';
+import { createRecord, allRecords, type StrainRecord, type ParentRef } from '../../veilcore/records';
 import { FingerprintReveal } from './FingerprintReveal';
 import { TEAL } from '../../config/theme';
 
@@ -15,15 +29,33 @@ const MBox = motion(Box);
 const today = () => new Date().toISOString().slice(0, 10);
 const fmtStamp = (ms: number) => new Date(ms).toLocaleString();
 
+const BREEDING_METHODS = [
+  'Seed — F1',
+  'Seed — F2',
+  'Seed — S1 (selfed)',
+  'Seed — backcross',
+  'Clone / cutting',
+  'Tissue culture',
+  'Pheno selection',
+  'Landrace / heirloom',
+  'Other',
+];
+
 export const Step1LogStrain: React.FC<{ onDone: (recordId: string) => void }> = ({ onDone }) => {
   const [strainName, setStrainName] = useState('');
   const [bredBy, setBredBy] = useState('');
   const [dateCreated, setDateCreated] = useState(today());
   const [notes, setNotes] = useState('');
+  const [parents, setParents] = useState<ParentRef[]>([]);
+  const [breedingMethod, setBreedingMethod] = useState('');
+  const [photos, setPhotos] = useState<File[]>([]);
+  const [refId, setRefId] = useState('');
   const [busy, setBusy] = useState(false);
   const [record, setRecord] = useState<StrainRecord>();
   const [error, setError] = useState<string>();
+  const photoRef = useRef<HTMLInputElement>(null);
 
+  const parentOptions: ParentRef[] = allRecords().map((r) => ({ recordId: r.id, name: r.strainName }));
   const canSubmit = strainName.trim() && bredBy.trim();
 
   const onSubmit = async () => {
@@ -32,10 +64,20 @@ export const Step1LogStrain: React.FC<{ onDone: (recordId: string) => void }> = 
     setError(undefined);
     try {
       const loggedAt = Date.now();
-      const fields = { strainName: strainName.trim(), bredBy: bredBy.trim(), dateCreated, notes: notes.trim(), loggedAt };
+      const photoFingerprints = await Promise.all(photos.map((f) => fingerprintFile(f)));
+      const fields = {
+        strainName: strainName.trim(),
+        bredBy: bredBy.trim(),
+        dateCreated,
+        notes: notes.trim(),
+        loggedAt,
+        parents,
+        breedingMethod,
+        photoFingerprints,
+        refId: refId.trim(),
+      };
       const recordFingerprint = await fingerprintRecord(fields);
-      const rec = createRecord({ ...fields, recordFingerprint });
-      setRecord(rec);
+      setRecord(createRecord({ ...fields, recordFingerprint }));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -49,7 +91,7 @@ export const Step1LogStrain: React.FC<{ onDone: (recordId: string) => void }> = 
         <FingerprintReveal
           fingerprint={record.recordFingerprint}
           headline="Zero bytes left your device."
-          sub="Your record was sealed and timestamped right here in your browser — only this tamper-proof fingerprint was saved, never your details."
+          sub="Your record — every field and photo — was sealed and timestamped right here in your browser. Only this tamper-proof fingerprint was saved."
         />
         <Alert icon={<ShieldIcon />} severity="success" variant="outlined">
           <Typography variant="subtitle2">Proof created — you were first to log it.</Typography>
@@ -98,15 +140,72 @@ export const Step1LogStrain: React.FC<{ onDone: (recordId: string) => void }> = 
         onChange={(e) => setBredBy(e.target.value)}
         fullWidth
       />
-      <TextField
-        label="Date created"
-        type="date"
-        helperText="Your own note of when you made it. Veilcore's tamper-proof timestamp is the moment you log it."
-        value={dateCreated}
-        onChange={(e) => setDateCreated(e.target.value)}
-        fullWidth
-        slotProps={{ inputLabel: { shrink: true } }}
+
+      <Autocomplete<ParentRef, true, false, true>
+        multiple
+        freeSolo
+        options={parentOptions}
+        getOptionLabel={(o) => (typeof o === 'string' ? o : o.name)}
+        value={parents}
+        onChange={(_, val) => setParents(val.map((v) => (typeof v === 'string' ? { name: v } : v)))}
+        renderInput={(params) => (
+          <TextField
+            {...params}
+            label="Parent strains / lineage"
+            helperText="What did you cross to make this? Pick from strains you've already logged, or type them in."
+          />
+        )}
       />
+
+      <TextField
+        select
+        label="Breeding method"
+        helperText="How this strain was produced."
+        value={breedingMethod}
+        onChange={(e) => setBreedingMethod(e.target.value)}
+        fullWidth
+      >
+        {BREEDING_METHODS.map((m) => (
+          <MenuItem key={m} value={m}>
+            {m}
+          </MenuItem>
+        ))}
+      </TextField>
+
+      <Box>
+        <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
+          <Button variant="outlined" startIcon={<PhotoIcon />} onClick={() => photoRef.current?.click()}>
+            Add photos
+          </Button>
+          {photos.length > 0 && (
+            <Chip label={`${photos.length} photo${photos.length === 1 ? '' : 's'} · hashed locally`} color="primary" variant="outlined" />
+          )}
+          <input
+            ref={photoRef}
+            type="file"
+            accept="image/*"
+            multiple
+            hidden
+            onChange={(e) => {
+              setPhotos((p) => [...p, ...Array.from(e.target.files ?? [])]);
+              e.target.value = '';
+            }}
+          />
+        </Stack>
+        <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+          Optional. Photos are fingerprinted on your device and never uploaded.
+        </Typography>
+      </Box>
+
+      <TextField
+        label="Your reference / lot ID (optional)"
+        placeholder="e.g. lot 2231"
+        helperText="Your own internal reference, if you use one."
+        value={refId}
+        onChange={(e) => setRefId(e.target.value)}
+        fullWidth
+      />
+
       <TextField
         label="Notes (optional)"
         placeholder="The cross, the pheno, the story…"

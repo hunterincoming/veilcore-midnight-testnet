@@ -7,6 +7,9 @@ import { useSyncExternalStore } from 'react';
 
 export type Attestation = { readonly lab: string; readonly attestedAt: number };
 
+/** A parent strain: linked to a logged record (recordId set) or free-typed (name only). */
+export type ParentRef = { readonly recordId?: string; readonly name: string };
+
 export type StrainRecord = {
   readonly id: string; // VEIL-XXXX
   readonly strainName: string;
@@ -15,6 +18,10 @@ export type StrainRecord = {
   readonly notes: string;
   readonly loggedAt: number; // sealed timestamp — the un-forgeable moment of logging
   readonly recordFingerprint: string;
+  readonly parents?: ParentRef[];
+  readonly breedingMethod?: string;
+  readonly photoFingerprints?: string[]; // photos hashed locally, never uploaded
+  readonly refId?: string; // breeder's own reference / lot ID
   readonly dnaFingerprint?: string;
   readonly dnaFileName?: string;
   readonly dnaPairedAt?: number;
@@ -29,7 +36,15 @@ export type NewRecordInput = {
   notes: string;
   loggedAt: number;
   recordFingerprint: string;
+  parents?: ParentRef[];
+  breedingMethod?: string;
+  photoFingerprints?: string[];
+  refId?: string;
 };
+
+/** Records whose id is referenced as a parent by the given record (its children). */
+export const childrenOf = (id: string): StrainRecord[] =>
+  records.filter((r) => (r.parents ?? []).some((p) => p.recordId === id));
 
 const KEY = 'veilcore.records.v1';
 

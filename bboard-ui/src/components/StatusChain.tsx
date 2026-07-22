@@ -10,16 +10,20 @@ import type { StrainRecord } from '../veilcore/records';
 
 type Seg = { label: string; done: boolean };
 
-export const chainOf = (r: StrainRecord): Seg[] => [
+export const chainOf = (r: StrainRecord, licenseCount = 0): Seg[] => [
   { label: 'Logged', done: true },
   { label: 'DNA paired', done: !!r.dnaFingerprint },
   { label: 'Lab attested', done: !!r.attestation },
-  { label: `Licensed${r.licenseIds && r.licenseIds.length ? ` (${r.licenseIds.length})` : ''}`, done: !!(r.licenseIds && r.licenseIds.length) },
+  { label: `Licensed${licenseCount ? ` (${licenseCount})` : ''}`, done: licenseCount > 0 },
 ];
 
-export const StatusChain: React.FC<{ record: StrainRecord; dense?: boolean }> = ({ record, dense }) => (
+export const StatusChain: React.FC<{ record: StrainRecord; licenseCount?: number; dense?: boolean }> = ({
+  record,
+  licenseCount = 0,
+  dense,
+}) => (
   <Stack direction="row" sx={{ alignItems: 'center', flexWrap: 'wrap', gap: dense ? 0.5 : 1 }}>
-    {chainOf(record).map((s, i) => (
+    {chainOf(record, licenseCount).map((s, i) => (
       <React.Fragment key={s.label}>
         <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center' }}>
           {s.done ? (

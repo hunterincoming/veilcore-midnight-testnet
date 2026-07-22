@@ -1,5 +1,5 @@
 // Veilcore — the enforcement layer for cannabis genetics. Routed app: records
-// dashboard, the guided wizard, per-strain detail, and a public verification view.
+// dashboard, guided wizard, per-strain detail, licensing, and public verification.
 // SPDX-License-Identifier: Apache-2.0
 
 import React from 'react';
@@ -9,6 +9,10 @@ import { Dashboard } from './components/Dashboard';
 import { WizardShell } from './components/wizard/WizardShell';
 import { RecordDetail } from './components/RecordDetail';
 import { VerifyPage } from './pages/VerifyPage';
+import { TermsBuilder } from './components/licensing/TermsBuilder';
+import { LicenseDetail } from './components/licensing/LicenseDetail';
+import { CounterSignPage } from './components/licensing/CounterSignPage';
+import { LicensingHub } from './components/licensing/LicensingHub';
 
 const AppLayout: React.FC<React.PropsWithChildren> = ({ children }) => (
   <Box
@@ -25,32 +29,17 @@ const AppLayout: React.FC<React.PropsWithChildren> = ({ children }) => (
   </Box>
 );
 
+const withLayout = (el: React.ReactNode) => <AppLayout>{el}</AppLayout>;
+
 const App: React.FC = () => (
   <Routes>
-    <Route
-      path="/"
-      element={
-        <AppLayout>
-          <Dashboard />
-        </AppLayout>
-      }
-    />
-    <Route
-      path="/new"
-      element={
-        <AppLayout>
-          <WizardShell />
-        </AppLayout>
-      }
-    />
-    <Route
-      path="/record/:id"
-      element={
-        <AppLayout>
-          <RecordDetail />
-        </AppLayout>
-      }
-    />
+    <Route path="/" element={withLayout(<Dashboard />)} />
+    <Route path="/new" element={withLayout(<WizardShell />)} />
+    <Route path="/record/:id" element={withLayout(<RecordDetail />)} />
+    <Route path="/record/:id/license" element={withLayout(<TermsBuilder />)} />
+    <Route path="/licenses" element={withLayout(<LicensingHub />)} />
+    <Route path="/license/:id" element={withLayout(<LicenseDetail />)} />
+    <Route path="/license/:id/sign" element={<CounterSignPage />} />
     <Route path="/verify/:id" element={<VerifyPage />} />
   </Routes>
 );

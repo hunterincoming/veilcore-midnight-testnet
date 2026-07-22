@@ -33,6 +33,11 @@ export const AppHeader: React.FC = () => {
             New strain
           </Button>
         )}
+        {loc.pathname !== '/licenses' && (
+          <Button component={RouterLink} to="/licenses" size="small" variant="text">
+            Licenses
+          </Button>
+        )}
       </Stack>
       <WalletBadge network={network} demo={demoMode} />
     </Stack>

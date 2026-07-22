@@ -5,15 +5,18 @@
 
 import React, { useState } from 'react';
 import { Alert, Box, Button, Chip, Divider, Paper, Stack, Typography } from '@mui/material';
-import { Link as RouterLink, useParams } from 'react-router-dom';
+import { Link as RouterLink, useParams, useNavigate } from 'react-router-dom';
 import ArrowBackIcon from '@mui/icons-material/ArrowBackOutlined';
 import ScienceIcon from '@mui/icons-material/ScienceOutlined';
 import DescriptionIcon from '@mui/icons-material/DescriptionOutlined';
 import VerifiedIcon from '@mui/icons-material/VerifiedOutlined';
+import GavelIcon from '@mui/icons-material/GavelOutlined';
 import { useRecords, getRecord, attestRecord } from '../veilcore/records';
+import { useLicenses, licensesForRecord, activeLicenseCount } from '../veilcore/licenses';
 import { shortFingerprint } from '../veilcore/commitment';
 import { StatusChain } from './StatusChain';
 import { LineageGraph } from './LineageGraph';
+import { LicenseStateChip } from './licensing/LicenseStateChip';
 import { AppHeader } from './AppHeader';
 import { Step2PairDna } from './wizard/Step2PairDna';
 import { Step3Certificate } from './wizard/Step3Certificate';
@@ -33,7 +36,9 @@ const Field: React.FC<{ label: string; children: React.ReactNode }> = ({ label, 
 
 export const RecordDetail: React.FC = () => {
   useRecords();
+  useLicenses();
   const { id = '' } = useParams();
+  const navigate = useNavigate();
   const [mode, setMode] = useState<Mode>('overview');
   const record = getRecord(id);
 
@@ -54,6 +59,7 @@ export const RecordDetail: React.FC = () => {
   }
 
   const back = () => setMode('overview');
+  const licenses = licensesForRecord(record.id);
 
   return (
     <Box>
@@ -70,7 +76,7 @@ export const RecordDetail: React.FC = () => {
         </Typography>
       </Stack>
       <Box sx={{ mb: 2.5 }}>
-        <StatusChain record={record} />
+        <StatusChain record={record} licenseCount={activeLicenseCount(record.id)} />
       </Box>
 
       {mode === 'overview' && (
@@ -141,6 +147,36 @@ export const RecordDetail: React.FC = () => {
             <LineageGraph record={record} />
           </Paper>
 
+          {licenses.length > 0 && (
+            <Paper sx={{ p: { xs: 2.5, md: 3 } }}>
+              <Typography variant="overline" sx={{ display: 'block', mb: 1.5 }}>
+                Licenses
+              </Typography>
+              <Stack spacing={1}>
+                {licenses.map((l) => (
+                  <Stack
+                    key={l.id}
+                    direction="row"
+                    onClick={() => navigate(`/license/${l.id}`)}
+                    sx={{
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      cursor: 'pointer',
+                      p: 1,
+                      borderRadius: 1,
+                      '&:hover': { background: 'rgba(255,255,255,0.03)' },
+                    }}
+                  >
+                    <Typography variant="body2">
+                      {l.terms.licensee || 'unnamed licensee'} · {l.id}
+                    </Typography>
+                    <LicenseStateChip license={l} />
+                  </Stack>
+                ))}
+              </Stack>
+            </Paper>
+          )}
+
           <Stack direction="row" spacing={1.5} sx={{ flexWrap: 'wrap' }}>
             {!record.dnaFingerprint && (
               <Button variant="contained" startIcon={<ScienceIcon />} onClick={() => setMode('pair')}>
@@ -152,6 +188,9 @@ export const RecordDetail: React.FC = () => {
             </Button>
             <Button variant="outlined" startIcon={<VerifiedIcon />} onClick={() => setMode('prove')}>
               Prove ownership
+            </Button>
+            <Button variant="contained" startIcon={<GavelIcon />} onClick={() => navigate(`/record/${record.id}/license`)}>
+              License this strain
             </Button>
           </Stack>
         </Stack>

@@ -106,7 +106,7 @@ export const TermsBuilder: React.FC = () => {
 
       <AgreementTermsFields type={type} terms={t} set={set} />
 
-      {hasVeilcoreFee(type) && (
+      {hasVeilcoreFee(type, t) && (
         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1.5 }}>
           {FEE_NOTE}
         </Typography>

@@ -204,7 +204,7 @@ export const Step6ShareOrLicense: React.FC<{
 
         <AgreementTermsFields type={type} terms={t} set={set} />
 
-        {hasVeilcoreFee(type) && (
+        {hasVeilcoreFee(type, t) && (
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
             {FEE_NOTE}
           </Typography>

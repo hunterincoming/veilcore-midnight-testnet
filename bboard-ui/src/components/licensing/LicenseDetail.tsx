@@ -17,7 +17,6 @@ import {
   effectiveState,
   agreementType,
   agreementRows,
-  hasVeilcoreFee,
   AGREEMENT_LABEL,
   VEILCORE_FEE_PCT,
   FEE_NOTE,
@@ -241,8 +240,10 @@ export const LicenseDetail: React.FC = () => {
           )}
         </Paper>
 
-        {/* royalty ledger — commercial licenses only (lab transfers & breeder shares carry no Veilcore fee) */}
-        {hasVeilcoreFee(type) && (state === 'active' || license.royaltyLog.length > 0) && (
+        {/* royalty ledger — license agreements only; its per-sale/unit mechanics don't apply to
+            lab transfers or breeder shares (a breeder share's offspring-royalty fee shows in the
+            terms summary above, not as a sales ledger). */}
+        {type === 'license' && (state === 'active' || license.royaltyLog.length > 0) && (
           <Paper sx={{ p: { xs: 2.5, md: 3 } }}>
             <Typography variant="overline" sx={{ display: 'block', mb: 0.5 }}>
               Royalty obligations

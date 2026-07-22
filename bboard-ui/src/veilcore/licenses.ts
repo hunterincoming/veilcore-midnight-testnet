@@ -198,8 +198,16 @@ export const STATE_LABEL: Record<LicenseState, string> = {
 // ---- agreement types ----
 export const agreementType = (l: License): AgreementType => l.type ?? 'license';
 
-/** Only commercial licenses carry a royalty ledger and the Veilcore fee. */
-export const hasVeilcoreFee = (type: AgreementType): boolean => type === 'license';
+/**
+ * Whether the Veilcore fee applies. A license is always commercial. A breeder share is
+ * commercial only when it sets an offspring royalty (> 0) — otherwise it's a free share.
+ * A lab transfer is custody, never commerce.
+ */
+export const hasVeilcoreFee = (type: AgreementType, terms?: LicenseTerms): boolean => {
+  if (type === 'license') return true;
+  if (type === 'breeder-share') return (Number(terms?.offspringRoyaltyPct) || 0) > 0;
+  return false;
+};
 
 export const AGREEMENT_LABEL: Record<AgreementType, string> = {
   license: 'License agreement',
@@ -270,13 +278,18 @@ export const agreementRows = (l: License): { k: string; v: string }[] => {
       { k: 'Term', v: `${t.startDate} → ${t.endDate}` },
     );
   } else {
+    const offspringRoyalty = Number(t.offspringRoyaltyPct) || 0;
     rows.push(
       { k: 'May breed with it', v: yesNo(t.mayBreed) },
       { k: 'May distribute or sell', v: yesNo(t.mayDistribute) },
       { k: 'Attribution / credit required', v: yesNo(t.attributionRequired) },
-      { k: 'Royalty on offspring', v: t.offspringRoyaltyPct ? `${t.offspringRoyaltyPct}%` : 'None' },
-      { k: 'Term', v: `${t.startDate} → ${t.endDate}` },
+      { k: 'Royalty on offspring', v: offspringRoyalty > 0 ? `${t.offspringRoyaltyPct}%` : 'None' },
     );
+    // An offspring royalty makes it a commercial deal — the fee applies, same as a license.
+    if (offspringRoyalty > 0) {
+      rows.push({ k: `Veilcore fee (${VEILCORE_FEE_PCT}% of deal value)`, v: 'calculated, not collected' });
+    }
+    rows.push({ k: 'Term', v: `${t.startDate} → ${t.endDate}` });
   }
 
   if (t.extraTerms) rows.push({ k: 'Additional terms', v: t.extraTerms });

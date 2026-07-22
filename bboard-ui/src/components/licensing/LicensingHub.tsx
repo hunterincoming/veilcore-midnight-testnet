@@ -29,8 +29,8 @@ export const LicensingHub: React.FC = () => {
         Every agreement you&apos;ve issued — licenses, lab transfers, and breeder shares — across all your cultivars.
       </Typography>
       <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 3 }}>
-        Commercial licenses carry the Veilcore fee (3% of deal value) — calculated, not collected. Lab transfers and
-        breeder shares don&apos;t.
+        Commercial deals — licenses, and breeder shares that set an offspring royalty — carry the Veilcore fee (3% of
+        deal value), calculated, not collected. Lab transfers and free shares don&apos;t.
       </Typography>
 
       {licenses.length === 0 ? (

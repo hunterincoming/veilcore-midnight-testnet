@@ -2,6 +2,8 @@
 
 **Zero-knowledge provenance and licensing for cannabis genetics — built on the [Midnight Network](https://midnight.network/).**
 
+**Live demo → https://veilcore.vercel.app** — runs entirely in your browser; no wallet, faucet, or install required.
+
 Breeders have no working way to prove they created a strain first. Federal IP protection is effectively closed to them, and written licensing agreements have a documented flaw: **contracts bind signatures, not genetics** — if material reaches someone who never signed, the contract does nothing.
 
 Veilcore is the enforcement layer. It gives a breeder:
@@ -22,7 +24,11 @@ bboard-cli/   # CLI used to sync a wallet and deploy to testnet
 bboard-ui/    # The Veilcore web app (the product) — React + Vite
 ```
 
+> Veilcore is built on Midnight's `example-bboard` scaffold, so some naming is inherited from it — most visibly the `bboard-` directory prefixes and stray `bboard` references in tooling. The product itself is Veilcore.
+
 ## Run the demo locally
+
+The [live demo](https://veilcore.vercel.app) is the hosted version of exactly this. To run it yourself:
 
 Requires **Node 24** (`.nvmrc` pins `24.11.1`). The demo needs no wallet, faucet, or Docker.
 
@@ -36,9 +42,10 @@ The full flow works out of the box: log a strain, pair a DNA report, view the ev
 
 ## Current status
 
-- **Contract compiles.** `veilcore.compact` builds with the Compact compiler `0.31.1` (language `0.23`, runtime `0.16`). Provenance circuits (`anchor`, `proveOwnership`) are on `main`; the licensing circuits (`pairDna`, `issueLicense`, `countersignLicense`, `revokeLicense`, `proveLicense`, `licenseStatus`) are on the `veilcore-contract-licensing` branch — **compiled and typechecked, not yet deployed.**
-- **Demo runs on real local crypto with simulated settlement.** The commitment hashing is genuine and runs in-browser; the on-chain settlement is simulated in demo mode and auto-upgrades to the live contract once it's deployed and a wallet is wired.
-- **Testnet deploy pending.** A full Preprod wallet sync now completes with bounded memory (see the CLI in `bboard-cli/`); Preview deployment is the next step.
+- **Provenance is deployed.** The provenance circuits (`anchor`, `proveOwnership`) are deployed on Midnight **Preview** at contract address `4a457e6d046928e0faa971d80701b8cd48c3a1283713039444b47fedd0a1f3c7`.
+- **Licensing is built, not yet deployed.** The licensing circuits (`pairDna`, `issueLicense`, `countersignLicense`, `revokeLicense`, `proveLicense`, `licenseStatus`) compile clean but are not yet deployed. The full 9-circuit `veilcore.compact` lives on `main`, built with the Compact compiler `0.31.1` (language `0.23`, runtime `0.16`).
+- **The web UI currently runs real local hashing with simulated settlement.** Commitment hashing is genuine and runs in-browser; on-chain settlement in the UI is still simulated and will move to the deployed contract once a wallet is wired in.
+- A full Preprod wallet sync now completes with bounded memory (see the CLI in `bboard-cli/`).
 
 ## What Veilcore does *not* claim
 

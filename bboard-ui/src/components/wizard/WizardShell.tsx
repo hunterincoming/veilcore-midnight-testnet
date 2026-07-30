@@ -190,7 +190,7 @@ export const WizardShell: React.FC = () => {
 
       <Box sx={{ textAlign: 'center', mb: { xs: 4, md: 6 } }}>
         <Typography variant="h2" sx={{ fontSize: { xs: '2rem', md: '2.9rem' }, mb: 1.5 }}>
-          Prove you made it{' '}
+          Prove you had it{' '}
           <Box component="span" sx={{ color: TEAL }}>
             first.
           </Box>

@@ -70,7 +70,7 @@ export const Dashboard: React.FC = () => {
       {records.length === 0 ? (
         <Box sx={{ textAlign: 'center', py: { xs: 6, md: 10 } }}>
           <Typography variant="h2" sx={{ fontSize: { xs: '2rem', md: '2.9rem' }, mb: 2 }}>
-            Prove you made it{' '}
+            Prove you had it{' '}
             <Box component="span" sx={{ color: TEAL }}>
               first.
             </Box>

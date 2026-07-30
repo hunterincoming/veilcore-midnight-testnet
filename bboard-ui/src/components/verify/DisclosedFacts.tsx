@@ -47,14 +47,14 @@ export const DisclosedFacts: React.FC<{ record: StrainRecord; disclosure: Disclo
         </Typography>
       )}
 
-      {disclosure.own && <Fact>Ownership proven — held by the breeder, not merely claimed.</Fact>}
+      {disclosure.own && <Fact>Prior possession proven — sealed to this breeder on this date.</Fact>}
       {disclosure.dna && (
         <Fact ok={!!record.dnaFingerprint}>
           {record.dnaFingerprint ? 'DNA-verified — bound to the paired lab report.' : 'DNA report not yet paired.'}
         </Fact>
       )}
       {disclosure.lineage && <Fact>Lineage intact — unbroken chain back to the sealed record.</Fact>}
-      {disclosure.sealed && <Fact>Sealed {fmtDate(record.loggedAt)} — the un-forgeable moment it was logged.</Fact>}
+      {disclosure.sealed && <Fact>Sealed {fmtDate(record.loggedAt)} — the moment it was logged.</Fact>}
 
       {disclosure.parents && (
         <Fact ok={parents.length > 0}>

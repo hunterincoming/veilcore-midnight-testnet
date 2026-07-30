@@ -172,6 +172,10 @@ export const useLicenses = (): License[] => useSyncExternalStore(subscribe, () =
 // Single source of truth — change this one constant to change the fee everywhere.
 export const VEILCORE_FEE_PCT = 3;
 
+/** Whether to surface Veilcore's fee in the UI. Off — the revenue model is a
+ flat fee and lives in the investor deck, not the product. */
+export const SHOW_VEILCORE_FEE = false;
+
 /** Veilcore's fee for a given deal value (a calculated obligation, never a charge). */
 export const veilcoreFee = (dealValue: number): number => (dealValue * VEILCORE_FEE_PCT) / 100;
 
@@ -225,7 +229,7 @@ export const AGREEMENT_ACTION: Record<AgreementType, string> = {
 export const AGREEMENT_TAGLINE: Record<AgreementType, string> = {
   license: 'A commercial licensing deal — rights, territory, royalty, and exclusivity, bound to the genetics.',
   'lab-transfer':
-    'Sending your genetics to a lab? Bind the terms to the genetics themselves — so they hold even if the material ends up with someone who never signed.',
+    'Sending your genetics to a lab? Bind the terms to the record and its DNA fingerprint before it leaves your hands.',
   'breeder-share':
     "Sharing a cut with another breeder? Handshakes are how cuts get renamed and sold as someone else's work. Put terms on it.",
 };
@@ -265,7 +269,9 @@ export const agreementRows = (l: License): { k: string; v: string }[] => {
             ? `${t.royaltyAmount || '—'}% ${t.unitBasis}`
             : `${money(Number(t.royaltyAmount) || 0)} ${t.unitBasis}`,
       },
-      { k: `Veilcore fee (${VEILCORE_FEE_PCT}% of deal value)`, v: 'calculated, not collected' },
+      ...(SHOW_VEILCORE_FEE
+        ? [{ k: `Veilcore fee (${VEILCORE_FEE_PCT}% of deal value)`, v: 'calculated, not collected' }]
+        : []),
       { k: 'Exclusivity', v: t.exclusive ? 'Exclusive' : 'Non-exclusive' },
       { k: 'Sublicensing', v: t.sublicensable ? 'Allowed' : 'Not allowed' },
     );
@@ -286,7 +292,7 @@ export const agreementRows = (l: License): { k: string; v: string }[] => {
       { k: 'Royalty on offspring', v: offspringRoyalty > 0 ? `${t.offspringRoyaltyPct}%` : 'None' },
     );
     // An offspring royalty makes it a commercial deal — the fee applies, same as a license.
-    if (offspringRoyalty > 0) {
+    if (offspringRoyalty > 0 && SHOW_VEILCORE_FEE) {
       rows.push({ k: `Veilcore fee (${VEILCORE_FEE_PCT}% of deal value)`, v: 'calculated, not collected' });
     }
     rows.push({ k: 'Term', v: `${t.startDate} → ${t.endDate}` });

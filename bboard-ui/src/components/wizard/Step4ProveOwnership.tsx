@@ -50,8 +50,8 @@ export const Step4ProveOwnership: React.FC<{ onBack: () => void; onRestart: () =
       </Box>
 
       <Alert icon={<HandshakeIcon />} severity="info" variant="outlined">
-        A signed contract only helps if the other side signed it. Veilcore proof holds up even against someone who
-        never did — because it&apos;s tied to the genetics themselves, not a piece of paper.
+        A contract binds whoever signed it. This is the evidence you bring to it — what you held, and when,
+        established before any dispute.
       </Alert>
 
       {!proof?.ok && (
@@ -81,16 +81,15 @@ export const Step4ProveOwnership: React.FC<{ onBack: () => void; onRestart: () =
         <Stack spacing={2}>
           <FingerprintReveal
             fingerprint={proof.fingerprint ?? ''}
-            headline="Ownership proven — and nothing was revealed."
+            headline="Prior possession proven — and nothing was revealed."
             sub="You demonstrated you hold this cultivar by matching its fingerprint locally. No genetics, no details — zero bytes left your device."
           />
           <Alert severity="success" variant="outlined">
             <Typography variant="subtitle2">
-              Ownership proven. Now you can license it.
+              Prior possession proven. Now you can license it.
             </Typography>
             <Typography variant="body2" sx={{ mt: 0.5, color: 'text.secondary' }}>
-              You hold <b>{proof.strain}</b>. A licensee can verify this proof before they sign — and it holds even
-              against someone who never did.
+              You hold <b>{proof.strain}</b>. A licensee can verify this proof before they sign.
             </Typography>
           </Alert>
           <Box>

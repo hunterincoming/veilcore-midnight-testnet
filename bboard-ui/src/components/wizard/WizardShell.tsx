@@ -98,7 +98,7 @@ export const WizardShell: React.FC = () => {
             recordId && (
               <Alert severity="info" variant="outlined" sx={{ textAlign: 'left' }}>
                 You didn’t share or license it yet. When you’re ready, open the cultivar and choose License, Send to a
-                lab, or Share with a breeder — the terms travel with the genetics.
+                lab, or Share with a breeder — the terms are bound to the record and its DNA fingerprint.
               </Alert>
             )
           )}
@@ -197,7 +197,7 @@ export const WizardShell: React.FC = () => {
         </Typography>
         <Typography variant="body1" color="text.secondary" sx={{ maxWidth: 640, mx: 'auto' }}>
           Log it, send it to a lab, pair the report, prove exactly what you choose, then share or license it — terms
-          bound to the genetics that travel with the plant, even to someone who never signed a contract.
+          bound to the sealed record and its DNA fingerprint.
         </Typography>
       </Box>
 

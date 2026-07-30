@@ -22,6 +22,7 @@ import {
   getLicense,
   agreementRows,
   hasVeilcoreFee,
+  SHOW_VEILCORE_FEE,
   AGREEMENT_LABEL,
   FEE_NOTE,
   type AgreementType,
@@ -120,7 +121,7 @@ export const Step6ShareOrLicense: React.FC<{
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 480, mx: 'auto', mt: 1 }}>
             Both parties signed. The agreement is active — and its terms are bound to {record.strainName}&apos;s
-            genetics, so they travel with the plant even to someone who never signed.
+            sealed record and its DNA fingerprint.
           </Typography>
         </MBox>
 
@@ -204,7 +205,7 @@ export const Step6ShareOrLicense: React.FC<{
 
         <AgreementTermsFields type={type} terms={t} set={set} />
 
-        {hasVeilcoreFee(type, t) && (
+        {SHOW_VEILCORE_FEE && hasVeilcoreFee(type, t) && (
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
             {FEE_NOTE}
           </Typography>
@@ -248,7 +249,7 @@ export const Step6ShareOrLicense: React.FC<{
             <GavelIcon sx={{ color: TEAL }} />
             <Typography variant="h6">A company</Typography>
             <Typography variant="body2" color="text.secondary">
-              License agreement — rights, territory, royalty, exclusivity. Carries the Veilcore 3% fee.
+              License agreement — rights, territory, royalty, exclusivity.{SHOW_VEILCORE_FEE ? ' Carries the Veilcore 3% fee.' : ''}
             </Typography>
           </Stack>
         </Paper>
@@ -260,7 +261,7 @@ export const Step6ShareOrLicense: React.FC<{
             <ShareIcon sx={{ color: TEAL }} />
             <Typography variant="h6">Another breeder</Typography>
             <Typography variant="body2" color="text.secondary">
-              Breeder share — breeding/distribution rights, attribution, offspring royalty. No Veilcore fee; lineage
+              Breeder share — breeding/distribution rights, attribution, offspring royalty. No fee; lineage
               keeps derivatives traceable.
             </Typography>
           </Stack>

@@ -14,7 +14,7 @@ const POINTS = [
   {
     icon: <ScheduleIcon />,
     title: 'First to log it wins',
-    body: 'Priority goes to whoever sealed the record first. Logging someone else’s strain later puts you behind their record, not ahead of it.',
+    body: 'Priority goes to whoever sealed the record first. Logging someone else’s cultivar later puts you behind their record, not ahead of it.',
   },
   {
     icon: <ScienceIcon />,
@@ -29,14 +29,14 @@ const POINTS = [
   {
     icon: <AccountTreeIcon />,
     title: 'Lineage exposes renaming',
-    body: 'Because parents and offspring are linked, a “new” strain whose fingerprint traces to someone else’s lineage stands out.',
+    body: 'Because parents and offspring are linked, a “new” cultivar whose fingerprint traces to someone else’s lineage stands out.',
   },
 ];
 
 export const TrustPanel: React.FC = () => (
   <Paper sx={{ p: { xs: 2.5, md: 3.5 } }}>
     <Typography variant="h6" sx={{ mb: 0.5 }}>
-      “What stops me from logging <Box component="span" sx={{ color: TEAL }}>your</Box> strain?”
+      “What stops me from logging <Box component="span" sx={{ color: TEAL }}>your</Box> cultivar?”
     </Typography>
     <Typography variant="body2" color="text.secondary" sx={{ mb: 2.5 }}>
       Fair question — it’s the whole point. Four things make Veilcore an enforcement layer, not a fancy notepad:

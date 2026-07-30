@@ -60,8 +60,8 @@ export const Step2LabTransfer: React.FC<{
       </Box>
 
       <Alert icon={<ScienceIcon />} severity="info" variant="outlined">
-        This binds the transfer terms to {record.strainName}&apos;s genetics — so they hold even if the material ends up
-        with someone who never signed. It&apos;s custody, not a sale: no royalty, no Veilcore fee.
+        This puts the transfer terms on the record before the material leaves your hands. It&apos;s custody, not a
+        sale: no royalty, no fee.
       </Alert>
 
       <AgreementTermsFields type="lab-transfer" terms={t} set={set} />

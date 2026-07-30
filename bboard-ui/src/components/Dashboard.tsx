@@ -76,8 +76,8 @@ export const Dashboard: React.FC = () => {
             </Box>
           </Typography>
           <Typography variant="body1" color="text.secondary" sx={{ maxWidth: 560, mx: 'auto', mb: 4 }}>
-            Un-forgeable proof of who bred a cultivar first — bound to the DNA itself, with license terms that travel with
-            the plant. Everything is hashed on your device; your genetics never leave it.
+            A tamper-evident record of when you logged a cultivar and what it is — bound to its DNA fingerprint.
+            Everything is hashed on your device; your genetics never leave it.
           </Typography>
           <Button component={RouterLink} to="/new" variant="contained" size="large" startIcon={<AddIcon />}>
             Log your first cultivar

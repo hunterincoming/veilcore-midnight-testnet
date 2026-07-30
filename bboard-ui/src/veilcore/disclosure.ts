@@ -9,7 +9,7 @@ export type Disclosure = Record<DisclosureKey, boolean>;
 
 /** The togglable fields, in display order, with their default on/off state. */
 export const DISCLOSURE_FIELDS: { key: DisclosureKey; label: string; def: boolean }[] = [
-  { key: 'own', label: 'I own this cultivar (proven, not claimed)', def: true },
+  { key: 'own', label: 'Prior possession (proven, not claimed)', def: true },
   { key: 'dna', label: 'DNA-verified', def: true },
   { key: 'lineage', label: 'Lineage intact', def: true },
   { key: 'sealed', label: 'Sealed date', def: true },

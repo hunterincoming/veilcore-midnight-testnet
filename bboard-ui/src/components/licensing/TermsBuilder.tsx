@@ -14,6 +14,7 @@ import {
   getLicense,
   FEE_NOTE,
   hasVeilcoreFee,
+  SHOW_VEILCORE_FEE,
   AGREEMENT_LABEL,
   AGREEMENT_TAGLINE,
   type AgreementType,
@@ -101,12 +102,12 @@ export const TermsBuilder: React.FC = () => {
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
         Set the terms in plain language. When you save, the agreement is sealed and bound to {record.strainName} and its
-        genetics — so the terms travel with the plant.
+        DNA fingerprint.
       </Typography>
 
       <AgreementTermsFields type={type} terms={t} set={set} />
 
-      {hasVeilcoreFee(type, t) && (
+      {SHOW_VEILCORE_FEE && hasVeilcoreFee(type, t) && (
         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1.5 }}>
           {FEE_NOTE}
         </Typography>

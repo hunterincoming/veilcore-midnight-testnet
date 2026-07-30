@@ -19,6 +19,7 @@ import {
   agreementRows,
   AGREEMENT_LABEL,
   VEILCORE_FEE_PCT,
+  SHOW_VEILCORE_FEE,
   FEE_NOTE,
   veilcoreFee,
   dealValueOf,
@@ -146,9 +147,8 @@ export const LicenseDetail: React.FC = () => {
           <TermsSummary l={license} />
           <Divider sx={{ my: 2 }} />
           <Alert severity="info" variant="outlined">
-            These terms travel with the genetics — bound to {record?.strainName ?? 'the strain'} and its DNA fingerprint
-            {license.dnaFingerprint ? ` (${shortFingerprint(license.dnaFingerprint)})` : ''}. Anyone who tests this plant
-            can trace it back to this agreement — including someone who never signed it.
+            These terms are bound to the sealed record and its paired DNA fingerprint
+            {license.dnaFingerprint ? ` (${shortFingerprint(license.dnaFingerprint)})` : ''}.
           </Alert>
           {showLineageNote && (
             <Alert severity="info" variant="outlined" sx={{ mt: 1.5 }}>
@@ -284,7 +284,7 @@ export const LicenseDetail: React.FC = () => {
                       </Typography>
                       <Row k="Deal value" v={money(dv)} />
                       <Row k="Your royalty" v={money(e.amountOwed)} />
-                      <Row k={`Veilcore fee (${VEILCORE_FEE_PCT}%)`} v={money(veilcoreFee(dv))} />
+                      {SHOW_VEILCORE_FEE && <Row k={`Veilcore fee (${VEILCORE_FEE_PCT}%)`} v={money(veilcoreFee(dv))} />}
                     </Box>
                   );
                 })}
@@ -299,19 +299,23 @@ export const LicenseDetail: React.FC = () => {
                   </Typography>
                   <Typography variant="body2">{money(totalOwed)}</Typography>
                 </Stack>
-                <Stack direction="row" sx={{ justifyContent: 'space-between' }}>
-                  <Typography variant="body2" color="text.secondary">
-                    Veilcore fee ({VEILCORE_FEE_PCT}%)
+                {SHOW_VEILCORE_FEE && (
+                  <Stack direction="row" sx={{ justifyContent: 'space-between' }}>
+                    <Typography variant="body2" color="text.secondary">
+                      Veilcore fee ({VEILCORE_FEE_PCT}%)
+                    </Typography>
+                    <Typography variant="body2">{money(totalFee)}</Typography>
+                  </Stack>
+                )}
+                {SHOW_VEILCORE_FEE && (
+                  <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>
+                    {FEE_NOTE}
                   </Typography>
-                  <Typography variant="body2">{money(totalFee)}</Typography>
-                </Stack>
-                <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>
-                  {FEE_NOTE}
-                </Typography>
+                )}
               </Stack>
             ) : (
               <Typography variant="body2" color="text.secondary">
-                No obligations recorded yet. {FEE_NOTE}
+                No obligations recorded yet.{SHOW_VEILCORE_FEE ? ` ${FEE_NOTE}` : ''}
               </Typography>
             )}
           </Paper>

@@ -99,7 +99,7 @@ export const Step1LogStrain: React.FC<{ onDone: (recordId: string) => void }> = 
             <b>{record.strainName}</b> · bred by {record.bredBy}
           </Typography>
           <Typography variant="body2" sx={{ mt: 0.5, color: 'text.secondary' }}>
-            Sealed {fmtStamp(record.loggedAt)}. This is an un-forgeable, timestamped record from the moment you logged
+            Sealed {fmtStamp(record.loggedAt)}. This is a timestamped record from the moment you logged
             it — first to log it, first in line. Your stated creation date ({record.dateCreated}) is recorded as your
             own claim.
           </Typography>
@@ -117,10 +117,10 @@ export const Step1LogStrain: React.FC<{ onDone: (recordId: string) => void }> = 
     <Stack spacing={2.5}>
       <Box>
         <Typography variant="h5" sx={{ mb: 0.5 }}>
-          Log your cultivar — proof you made it first
+          Log your cultivar — a sealed record of what you hold, and when
         </Typography>
         <Typography variant="body2" color="text.secondary">
-          Lock in dated, tamper-proof proof you created this cultivar — before anyone can claim it.
+          A tamper-evident, timestamped record of this cultivar in your hands — sealed before anyone else can claim it.
         </Typography>
       </Box>
 

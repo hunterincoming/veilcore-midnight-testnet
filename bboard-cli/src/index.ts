@@ -127,15 +127,11 @@ const displayLedgerState = async (
     logger.info(`There is no Veilcore contract deployed at ${contractAddress}`);
     return;
   }
-  logger.info(`Total strains anchored: ${ledgerState.anchorSeq}`);
-  let any = false;
-  for (const [commitment, timestamp] of ledgerState.anchors) {
-    any = true;
-    logger.info(`  anchor #${timestamp}: commitment ${toHex(commitment)}`);
-  }
-  if (!any) {
-    logger.info('  (no strains anchored yet)');
-  }
+  // V2: anchoring writes no per-record ledger state. Anchors live in transaction
+  // history; the ledger holds only counters and the most recent commitment.
+  logger.info(`Total anchors: ${ledgerState.anchorSeq}`);
+  logger.info(`Total possession proofs: ${ledgerState.proofSeq}`);
+  logger.info(`Most recent commitment: ${toHex(ledgerState.lastAnchor)}`);
 };
 
 /* **********************************************************************
@@ -223,7 +219,7 @@ const mainLoop = async (providers: VeilcoreProviders, rli: Interface, logger: Lo
               logger.error('No secret available to prove ownership.');
               break;
             }
-            await veilcoreApi.proveOwnership(secret);
+            await veilcoreApi.proveOwnership();
             logger.info('Ownership proof accepted: the secret matches an anchored commitment.');
             break;
           }

@@ -1,64 +1,51 @@
+
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/settings.json
+!.vscode/tasks.json
+.claude
+.DS_Store
+.env
+.eslintcache
+.idea/
+.midnight-expert.vercel/
+.node_repl_history
+.npm
+.vercel/
+.vscode/*
+.yarn-integrity
+*.log
+*.njsproj
+*.ntvs*
+*.sln
+*.suo
+*.tgz
+*.tsbuildinfo
+**/reports
+# Compact
+# Dependency directories
+# dotenv environment variables file
+# IDEs and editors
+# Logs
+# MacOS
 # Node.js
-node_modules/
-dist/
+# Optional eslint cache
+# Optional npm cache directory
+# Optional REPL history
+# Output of 'npm pack'
+# Test reports
+# TypeScript
+# VSCode
+# Yarn Integrity file
 build/
+coverage
+dist/
+jspm_packages/
+logs
+logs/*.log
+managed/
+midnight-level-db
+node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-
-# TypeScript
-*.tsbuildinfo
-
-# Logs
-logs
-*.log
-logs/*.log
-midnight-level-db
-coverage
-
-# Test reports
-**/reports
-
-# Dependency directories
-jspm_packages/
-
-# Optional npm cache directory
-.npm
-
-# Optional eslint cache
-.eslintcache
-
-# Optional REPL history
-.node_repl_history
-
-# Output of 'npm pack'
-*.tgz
-
-# Yarn Integrity file
-.yarn-integrity
-
-# dotenv environment variables file
-.env
-
-# MacOS
-.DS_Store
-
-# VSCode
-.vscode/*
-!.vscode/settings.json
-!.vscode/tasks.json
-!.vscode/launch.json
-!.vscode/extensions.json
-
-# IDEs and editors
-.idea/
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-
-# Compact
-managed/
-
-.claude
-.midnight-expert.vercel/

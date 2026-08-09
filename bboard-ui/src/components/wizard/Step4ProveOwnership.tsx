@@ -42,10 +42,10 @@ export const Step4ProveOwnership: React.FC<{ onBack: () => void; onRestart: () =
     <Stack spacing={2.5}>
       <Box>
         <Typography variant="h5" sx={{ mb: 0.5 }}>
-          Prove ownership
+          Prove prior possession
         </Typography>
         <Typography variant="body2" color="text.secondary">
-          Licensing your genetics? Prove you own them — and reveal nothing.
+          Licensing your genetics? Prove you had it first — and reveal nothing.
         </Typography>
       </Box>
 

@@ -193,7 +193,7 @@ export const RecordDetail: React.FC = () => {
               Evidence package
             </Button>
             <Button variant="outlined" startIcon={<VerifiedIcon />} onClick={() => setMode('prove')}>
-              Prove ownership
+              Prove prior possession
             </Button>
           </Stack>
 

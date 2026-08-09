@@ -4,6 +4,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useSyncExternalStore } from 'react';
+import { store } from './store';
 
 export type Attestation = { readonly lab: string; readonly attestedAt: number };
 
@@ -48,26 +49,21 @@ export const childrenOf = (id: string): StrainRecord[] =>
 
 const KEY = 'veilcore.records.v1';
 
-const load = (): StrainRecord[] => {
-  try {
-    const raw = localStorage.getItem(KEY);
-    const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-};
-
-let records: StrainRecord[] = load();
+let records: StrainRecord[] = [];
 const listeners = new Set<() => void>();
 
+const notify = () => listeners.forEach((l) => l());
+
+/** Hydrate from the backing store on boot. */
+const hydrate = async (): Promise<void> => {
+  records = await store.load<StrainRecord>(KEY);
+  notify();
+};
+void hydrate();
+
 const persist = () => {
-  try {
-    localStorage.setItem(KEY, JSON.stringify(records));
-  } catch {
-    /* ignore quota/availability errors — demo still works in-memory */
-  }
-  listeners.forEach((l) => l());
+  void store.save(KEY, records);
+  notify();
 };
 
 const genId = (): string =>

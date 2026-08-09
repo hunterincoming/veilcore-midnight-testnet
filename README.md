@@ -60,3 +60,39 @@ The product is deliberately honest, and so is this README:
 ## License
 
 Apache-2.0. Built on the Midnight Network.
+
+## Building from a fresh clone
+
+`contract/src/managed/` is gitignored, so a fresh clone has no compiled contract.
+You need the Compact toolchain and you must build in order.
+
+```bash
+# 1. Install the Compact toolchain
+curl --proto '=https' --tlsv1.2 -LsSf \
+  https://github.com/midnightntwrk/compact/releases/latest/download/compact-installer.sh | sh
+# open a new terminal, then:
+compact update
+
+# 2. Compile the contracts (generates contract/src/managed/)
+cd contract && npm run compact
+
+# 3. Build in order — contract, then api, then ui
+cd contract && npm run build
+cd ../api && npm run build
+cd ../bboard-ui && npm run build
+```
+
+### Deploying
+
+Always use `--prebuilt`. Never run bare `vercel --prod` — it builds from source
+and has broken production before.
+
+```bash
+cd ~/Desktop/veilcore
+mkdir -p .vercel/output/static
+cp -r bboard-ui/dist/* .vercel/output/static/
+echo '{"version":3,"routes":[{"handle":"filesystem"},{"src":"/.*","dest":"/index.html"}]}' \
+  > .vercel/output/config.json
+npx vercel deploy --prebuilt          # preview
+npx vercel deploy --prebuilt --prod   # production
+```

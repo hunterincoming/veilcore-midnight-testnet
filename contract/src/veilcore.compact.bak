@@ -1,13 +1,8 @@
-// Veilcore: on-chain provenance + licensing for plant genetics.
+// Veilcore: on-chain provenance + licensing for cannabis genetics.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Only commitments (domain-separated hashes) are ever stored on-chain. Genetic
 // preimages, license terms, and counterparties stay off-chain as private witnesses.
-//
-// STATE MODEL: bounded by design. Anchoring writes no growable state — the
-// commitment lives in the transaction, and the chain already retains transaction
-// history. Licensing holds only LIVE agreements; terminal licenses are removed,
-// so the map is bounded by open business rather than by total usage.
 
 pragma language_version 0.23;
 
@@ -16,12 +11,16 @@ import CompactStandardLibrary;
 // Lifecycle status for a license commitment.
 export enum LicenseState { NONE, PENDING, ACTIVE, REVOKED }
 
-// Fixed single-slot fields. No growable container.
+// Anchored strains: commitment -> logical timestamp (anchor sequence number).
+export ledger anchors: Map<Bytes<32>, Field>;
 export ledger anchorSeq: Counter;
-export ledger lastAnchor: Bytes<32>;
-export ledger proofSeq: Counter;
 
-// Live licenses only. Removed on revocation, so bounded by open agreements.
+// DNA report paired to a strain: recordCommitment -> dnaCommitment.
+export ledger dnaOf: Map<Bytes<32>, Bytes<32>>;
+
+// License status by license commitment, and the strain each license belongs to.
+// licenseRecordOf also serves as the issuer authorization: it equals the strain's
+// commitment, which only the strain owner (holder of the genetic secret) can produce.
 export ledger licenseStatusOf: Map<Bytes<32>, LicenseState>;
 export ledger licenseRecordOf: Map<Bytes<32>, Bytes<32>>;
 
@@ -33,45 +32,42 @@ export circuit commit(secret: Bytes<32>): Bytes<32> {
   return persistentHash<Vector<2, Bytes<32>>>([pad(32, "veilcore:commit"), secret]);
 }
 
-// Anchor a record. The caller proves they hold the preimage; the commitment is
-// disclosed into the transaction. No per-record state is written.
+// Anchor a strain: record its genetics commitment + a logical timestamp, proving the
+// caller holds the preimage without revealing it.
 export circuit anchor(commitment: Bytes<32>): [] {
   assert(commitment == commit(localGeneticSecret()), "Commitment does not match your genetic secret");
   const c = disclose(commitment);
+  assert(!anchors.member(c), "Strain already anchored");
   anchorSeq.increment(1);
-  lastAnchor = c;
+  anchors.insert(c, anchorSeq as Field);
 }
 
-// Prove prior possession. Discloses the commitment in a dated transaction that
-// only the holder of the preimage could produce. A verifier checks this proof
-// against the earlier anchor transaction off-chain; the interval between them is
-// the evidence. No per-record state is written.
-export circuit proveOwnership(): [] {
-  const c = disclose(commit(localGeneticSecret()));
-  proofSeq.increment(1);
+// Prove ownership of a previously-anchored strain without revealing the secret.
+export circuit proveOwnership(secret: Bytes<32>): [] {
+  const c = commit(secret);
+  assert(anchors.member(disclose(c)), "No anchored commitment matches this secret");
 }
 
-// Bind a DNA report fingerprint to a record you own. The binding is the
-// transaction; no state is written.
+// Pair a DNA report fingerprint to an anchored strain. Only the strain owner may pair.
 export circuit pairDna(recordCommitment: Bytes<32>, dnaCommitment: Bytes<32>): [] {
-  assert(recordCommitment == commit(localGeneticSecret()), "Only the record owner can pair DNA");
+  assert(recordCommitment == commit(localGeneticSecret()), "Only the strain owner can pair DNA");
   const rc = disclose(recordCommitment);
-  const dc = disclose(dnaCommitment);
-  anchorSeq.increment(1);
-  lastAnchor = dc;
+  assert(anchors.member(rc), "Strain is not anchored");
+  dnaOf.insert(rc, disclose(dnaCommitment));
 }
 
-// Issue a license against a record the caller owns. Starts PENDING (issuer signed).
+// Issue a license against a strain the caller owns. Starts PENDING (issuer signed).
 export circuit issueLicense(recordCommitment: Bytes<32>, licenseCommitment: Bytes<32>): [] {
-  assert(recordCommitment == commit(localGeneticSecret()), "Only the record owner can issue a license");
+  assert(recordCommitment == commit(localGeneticSecret()), "Only the strain owner can issue a license");
   const rc = disclose(recordCommitment);
+  assert(anchors.member(rc), "Strain is not anchored");
   const lc = disclose(licenseCommitment);
   assert(!licenseStatusOf.member(lc), "License already exists");
   licenseStatusOf.insert(lc, LicenseState.PENDING);
   licenseRecordOf.insert(lc, rc);
 }
 
-// The licensee's counter-signature activates a pending license.
+// The licensee's counter-signature activates a pending license. Active requires both.
 export circuit countersignLicense(licenseCommitment: Bytes<32>): [] {
   const lc = disclose(licenseCommitment);
   assert(licenseStatusOf.member(lc), "No such license");
@@ -79,27 +75,26 @@ export circuit countersignLicense(licenseCommitment: Bytes<32>): [] {
   licenseStatusOf.insert(lc, LicenseState.ACTIVE);
 }
 
-// Only the issuing record owner can revoke. Revocation is disclosed into the
-// transaction and the live entry is removed, keeping state bounded.
+// Only the issuing strain owner can revoke.
 export circuit revokeLicense(licenseCommitment: Bytes<32>): [] {
   const lc = disclose(licenseCommitment);
   assert(licenseStatusOf.member(lc), "No such license");
   assert(licenseRecordOf.lookup(lc) == commit(localGeneticSecret()), "Only the issuer can revoke");
-  licenseStatusOf.remove(lc);
-  licenseRecordOf.remove(lc);
+  licenseStatusOf.insert(lc, LicenseState.REVOKED);
 }
 
-// A licensee proves they hold a valid, ACTIVE license without revealing the
-// secret, the terms, the counterparty, or the genetics.
+// A licensee proves they hold a valid, ACTIVE license without revealing the secret,
+// the terms, the counterparty, or the genetics.
 export circuit proveLicense(secret: Bytes<32>): [] {
   const dlc = disclose(commit(secret));
   assert(licenseStatusOf.member(dlc), "No such license");
   assert(licenseStatusOf.lookup(dlc) == LicenseState.ACTIVE, "License is not active");
 }
 
-// Public, privacy-safe status lookup for a live license.
+// Public, privacy-safe status lookup — exists / pending / active / revoked, with no
+// exposure of terms or counterparty.
 export circuit licenseStatus(licenseCommitment: Bytes<32>): LicenseState {
   const lc = disclose(licenseCommitment);
-  assert(licenseStatusOf.member(lc), "No such live license");
+  assert(licenseStatusOf.member(lc), "No such license");
   return licenseStatusOf.lookup(lc);
 }

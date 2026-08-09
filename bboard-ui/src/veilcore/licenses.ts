@@ -4,6 +4,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useSyncExternalStore } from 'react';
+import { store } from './store';
 
 export type LicenseState = 'draft' | 'sent' | 'active' | 'expired' | 'revoked';
 
@@ -63,27 +64,23 @@ export type License = {
 
 const KEY = 'veilcore.licenses.v1';
 
-const load = (): License[] => {
-  try {
-    const raw = localStorage.getItem(KEY);
-    const parsed = raw ? JSON.parse(raw) : [];
-    if (!Array.isArray(parsed)) return [];
-    // Back-compat: agreements saved before types existed are license agreements.
-    return parsed.map((l: License) => ({ ...l, type: l.type ?? 'license' }));
-  } catch {
-    return [];
-  }
-};
-
-let licenses: License[] = load();
+let licenses: License[] = [];
 const listeners = new Set<() => void>();
+
+const notify = () => listeners.forEach((l) => l());
+
+/** Hydrate from the backing store on boot. */
+const hydrate = async (): Promise<void> => {
+  const loaded = await store.load<License>(KEY);
+  // Back-compat: agreements saved before types existed are license agreements.
+  licenses = loaded.map((l: License) => ({ ...l, type: l.type ?? 'license' }));
+  notify();
+};
+void hydrate();
+
 const persist = () => {
-  try {
-    localStorage.setItem(KEY, JSON.stringify(licenses));
-  } catch {
-    /* ignore */
-  }
-  listeners.forEach((l) => l());
+  void store.save(KEY, licenses);
+  notify();
 };
 
 const genId = (): string =>

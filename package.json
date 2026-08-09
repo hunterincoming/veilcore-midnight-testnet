@@ -64,5 +64,8 @@
     "vite": "^8.0.14",
     "vite-plugin-top-level-await": "^1.6.0",
     "vite-plugin-wasm": "^3.6.0"
+  },
+  "scripts": {
+    "deploy:prod": "cd bboard-ui && VITE_API_BASE=https://veilcore-api-production.up.railway.app VITE_HOLDER_TOKEN=d6f35d94e69033390673253645b3bd4b6527f3225b04aafd npm run build && cd .. && rm -rf .vercel/output && mkdir -p .vercel/output/static && cp -r bboard-ui/dist/* .vercel/output/static/ && echo '{\"version\":3,\"routes\":[{\"handle\":\"filesystem\"},{\"src\":\"/.*\",\"dest\":\"/index.html\"}]}' > .vercel/output/config.json && npx vercel deploy --prebuilt --prod"
   }
 }

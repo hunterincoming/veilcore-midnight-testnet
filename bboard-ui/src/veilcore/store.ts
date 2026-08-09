@@ -27,4 +27,5 @@ export const localStore: Store = {
   },
 };
 
-export const store: Store = localStore;
+import { apiStore } from './api-store';
+export const store: Store = apiStore;

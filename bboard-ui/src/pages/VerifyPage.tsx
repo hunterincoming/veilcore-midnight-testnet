@@ -58,8 +58,8 @@ export const VerifyPage: React.FC = () => {
               No record found for {id || 'this ID'}
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              This verification link doesn&apos;t match a record on this device. (In demo mode, verification reads local
-              records; the deployed version checks the public network.)
+              This verification link doesn&apos;t match any record in the registry. (Records are looked up by ID; check the
+              link is complete and unmodified.)
             </Typography>
           </Paper>
         ) : (
@@ -109,7 +109,7 @@ export const VerifyPage: React.FC = () => {
             )}
 
             <Box sx={{ mt: 2, textAlign: 'right' }}>
-              <Chip size="small" variant="outlined" label="Demo · reads local records" />
+              <Chip size="small" variant="outlined" label="Verified against the registry" />
             </Box>
           </Paper>
         )}

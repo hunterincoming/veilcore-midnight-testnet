@@ -61,4 +61,4 @@ jspm_packages/
 managed/
 
 .claude
-.midnight-expert
+.midnight-expert.vercel/

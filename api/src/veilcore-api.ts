@@ -46,15 +46,13 @@ export class VeilcoreAPI implements DeployedVeilcoreAPI {
       ],
       (ledgerState, privateState) => {
         const myCommitment = Veilcore.pureCircuits.commit(privateState.geneticSecret);
-        const anchors: AnchoredStrain[] = [];
-        for (const [commitment, timestamp] of ledgerState.anchors) {
-          anchors.push({ commitment: toHex(commitment), timestamp });
-        }
+        // V2: anchoring writes no per-record ledger state. The anchor lives in the
+        // transaction; existence is resolved from transaction history off-chain.
         return {
           anchorCount: ledgerState.anchorSeq,
-          anchors,
+          anchors: [] as AnchoredStrain[],
           myCommitment: toHex(myCommitment),
-          iOwnAnchor: ledgerState.anchors.member(myCommitment),
+          iOwnAnchor: toHex(ledgerState.lastAnchor) === toHex(myCommitment),
         };
       },
     );
@@ -84,9 +82,9 @@ export class VeilcoreAPI implements DeployedVeilcoreAPI {
    * Proves ownership of a previously-anchored strain by demonstrating knowledge of
    * its secret preimage WITHOUT revealing it. Only the public commitment is disclosed.
    */
-  async proveOwnership(secret: Uint8Array): Promise<void> {
-    this.logger?.info('proving ownership (zk)');
-    const txData = await this.deployedContract.callTx.proveOwnership(secret);
+  async proveOwnership(): Promise<void> {
+    this.logger?.info('proving prior possession (zk)');
+    const txData = await this.deployedContract.callTx.proveOwnership();
     this.logger?.trace({
       transactionAdded: {
         circuit: 'proveOwnership',

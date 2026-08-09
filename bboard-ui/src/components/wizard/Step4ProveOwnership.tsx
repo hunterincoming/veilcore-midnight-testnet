@@ -63,7 +63,7 @@ export const Step4ProveOwnership: React.FC<{ onBack: () => void; onRestart: () =
           <Dropzone
             file={file}
             onFile={setFile}
-            title="Drag the DNA report here to prove ownership"
+            title="Drag the DNA report here to prove prior possession"
             hint="The same report file — read locally, never uploaded."
           />
         </>

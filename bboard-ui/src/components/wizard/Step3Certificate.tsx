@@ -158,7 +158,7 @@ export const Step3Certificate: React.FC<{ recordId: string; onDone: () => void; 
 
         <Divider sx={{ my: 2.5 }} />
         <Typography variant="caption" color="text.secondary">
-          Tamper-proof · genetics never disclosed · fingerprint {shortFingerprint(record.recordFingerprint)}
+          Tamper-evident · genetics never disclosed · fingerprint {shortFingerprint(record.recordFingerprint)}
         </Typography>
       </Box>
 

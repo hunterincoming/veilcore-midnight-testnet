@@ -91,7 +91,7 @@ export const Step1LogStrain: React.FC<{ onDone: (recordId: string) => void }> = 
         <FingerprintReveal
           fingerprint={record.recordFingerprint}
           headline="Zero bytes left your device."
-          sub="Your record — every field and photo — was sealed and timestamped right here in your browser. Only this tamper-proof fingerprint was saved."
+          sub="Your record — every field and photo — was sealed and timestamped right here in your browser. Only this tamper-evident fingerprint was saved."
         />
         <Alert icon={<ShieldIcon />} severity="success" variant="outlined">
           <Typography variant="subtitle2">Proof created — you were first to log it.</Typography>

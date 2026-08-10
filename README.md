@@ -96,3 +96,16 @@ echo '{"version":3,"routes":[{"handle":"filesystem"},{"src":"/.*","dest":"/index
 npx vercel deploy --prebuilt          # preview
 npx vercel deploy --prebuilt --prod   # production
 ```
+
+## Deployed contracts
+
+**Midnight Preview**
+
+- Veilcore V2 — `dc18e54d2f8031dda0eca1970bb1b1639c1686a14303fe057bb46f07bd0a233b`
+  Deployed 10 Aug 2026. Bounded-by-design state: anchoring writes no per-record
+  ledger state, live licences only. Exercised end to end — anchor, prove prior
+  possession, issue, countersign, prove, revoke.
+
+- Veilcore V1 — `4a457e6d046928e0faa971d80701b8cd48c3a1283713039444b47fedd0a1f3c7`
+  Deployed 22 Jul 2026. Superseded: growable maps, would score 3 on the
+  state-space rubric. Retained as history.

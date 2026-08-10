@@ -172,9 +172,13 @@ You can do one of the following:
   1. Anchor your strain (record its genetics commitment on-chain)
   2. Prove ownership of an anchored strain (zero-knowledge)
   3. Display the current ledger state (known by everyone)
-  4. Display the current private state (known only to this DApp instance)
-  5. Display the current derived state (known only to this DApp instance)
-  6. Exit
+  4. Issue a licence against your record
+  5. Countersign a licence (as the licensee)
+  6. Revoke a licence you issued
+  7. Prove you hold an active licence
+  8. Display the current private state (known only to this DApp instance)
+  9. Display the current derived state (known only to this DApp instance)
+  10. Exit
 Which would you like to do? `;
 
 const mainLoop = async (providers: VeilcoreProviders, rli: Interface, logger: Logger): Promise<void> => {
@@ -208,31 +212,74 @@ const mainLoop = async (providers: VeilcoreProviders, rli: Interface, logger: Lo
           case '2': {
             // Prove knowledge of the secret behind an anchored commitment, without
             // revealing it. Blank input uses this wallet's own genetic secret.
-            const entered = (await rli.question('Enter the strain secret in hex (blank = your wallet genetic secret): ')).trim();
-            let secret: Uint8Array | null;
-            if (entered === '') {
-              secret = await getGeneticSecret(providers);
-            } else {
-              secret = hexToBytes(entered);
-            }
-            if (secret === null) {
-              logger.error('No secret available to prove ownership.');
-              break;
-            }
+            // V2: the circuit proves knowledge of the wallet's own genetic secret and
+            // discloses the commitment in a dated transaction. A verifier compares it
+            // against the earlier anchor off-chain.
             await veilcoreApi.proveOwnership();
-            logger.info('Ownership proof accepted: the secret matches an anchored commitment.');
+            logger.info('Prior-possession proof submitted. Compare it to the anchor transaction to date the claim.');
             break;
           }
           case '3':
             await displayLedgerState(providers, veilcoreApi.deployedContract, logger);
             break;
-          case '4':
+          case '4': {
+            const geneticSecret = await getGeneticSecret(providers);
+            if (geneticSecret === null) {
+              logger.error('No genetic secret in private state; cannot issue.');
+              break;
+            }
+            const licSecret = (await rli.question('Enter a licence secret in hex (the licensee will hold this): ')).trim();
+            const lic = hexToBytes(licSecret);
+            if (lic === null) {
+              logger.error('Invalid licence secret.');
+              break;
+            }
+            const recordCommitment = pureCircuits.commit(geneticSecret);
+            const licenseCommitment = pureCircuits.commit(lic);
+            await veilcoreApi.issueLicense(recordCommitment, licenseCommitment);
+            logger.info(`Licence issued (PENDING): ${toHex(licenseCommitment)}`);
+            break;
+          }
+          case '5': {
+            const entered = (await rli.question('Enter the licence commitment in hex: ')).trim();
+            const lc = hexToBytes(entered);
+            if (lc === null) {
+              logger.error('Invalid licence commitment.');
+              break;
+            }
+            await veilcoreApi.countersignLicense(lc);
+            logger.info('Licence countersigned — now ACTIVE.');
+            break;
+          }
+          case '6': {
+            const entered = (await rli.question('Enter the licence commitment to revoke: ')).trim();
+            const lc = hexToBytes(entered);
+            if (lc === null) {
+              logger.error('Invalid licence commitment.');
+              break;
+            }
+            await veilcoreApi.revokeLicense(lc);
+            logger.info('Licence revoked and cleared from live state.');
+            break;
+          }
+          case '7': {
+            const entered = (await rli.question('Enter your licence secret in hex: ')).trim();
+            const sec = hexToBytes(entered);
+            if (sec === null) {
+              logger.error('Invalid licence secret.');
+              break;
+            }
+            await veilcoreApi.proveLicense(sec);
+            logger.info('Licence proof accepted — you hold an active licence.');
+            break;
+          }
+          case '8':
             await displayPrivateState(providers, logger);
             break;
-          case '5':
+          case '9':
             displayDerivedState(currentState, logger);
             break;
-          case '6':
+          case '10':
             logger.info('Exiting...');
             return;
           default:

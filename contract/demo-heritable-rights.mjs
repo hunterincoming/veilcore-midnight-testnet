@@ -5,35 +5,44 @@
 // every one of them. A licence agreement cannot bind a plant that does not exist
 // yet. This can.
 //
-// Runs the contract's real circuits off-chain, so every hash and every proof check
-// is the same code the chain executes.
+// Two mechanisms, and both are necessary:
+//   the Merkle proof shows a claimed ancestor carries no obligation
+//   the descent graph shows the claimed ancestor is the real one
 //
+// Runs the contract's real circuits, so every hash is what the chain computes.
 // SPDX-License-Identifier: Apache-2.0
 
 import { ObligationTree, EMPTY_ROOT } from './src/tree.mjs';
+import { DescentGraph } from './src/descent.mjs';
 import { pureCircuits as C } from './src/managed/lineage/contract/index.js';
 
 const hex = (u) => Buffer.from(u).toString('hex');
 const short = (u) => hex(u).slice(0, 16) + '…';
-const secret = (label) => {
-  const a = new Uint8Array(32);
-  for (let i = 0; i < label.length && i < 32; i++) a[i] = label.charCodeAt(i);
-  a[31] = label.length;
-  return a;
-};
+const secret = (s) => { const a = new Uint8Array(32); for (let i=0;i<s.length&&i<32;i++) a[i]=s.charCodeAt(i); a[31]=s.length; return a; };
 const line = (s = '') => console.log(s);
-const rule = () => line('─'.repeat(72));
+const rule = () => line('─'.repeat(74));
 
-// The registry's obligation tree. On chain only its root is stored.
 const tree = new ObligationTree();
+const graph = new DescentGraph();
 
-// Verifies a clean-descent claim exactly as the circuit does: fold the null leaf
-// up the supplied path and compare to the root the chain holds.
-const provesClean = (recordCommitment) => {
-  const dirs = C.slotBits(recordCommitment);
-  const folded = C.merkleRoot(new Uint8Array(32), tree.siblingsFor(dirs), dirs);
-  return hex(folded) === hex(tree.root());
+const merkleClean = (rec) => {
+  const d = C.slotBits(rec);
+  return hex(C.merkleRoot(new Uint8Array(32), tree.siblingsFor(d), d)) === hex(tree.root());
 };
+
+/** A full verification: the chain must be genuine AND every link unencumbered. */
+const verify = (record, claimedChain) => {
+  const genuine = graph.verifyChain(record, claimedChain);
+  if (!genuine.ok) return { ok: false, why: `ancestry rejected — ${genuine.reason}` };
+  if (claimedChain.length < graph.requiredChainLength(record))
+    return { ok: false, why: 'ancestry incomplete — a generation was omitted' };
+  if (!merkleClean(record)) return { ok: false, why: 'this record carries an unmet obligation' };
+  for (const a of claimedChain)
+    if (!merkleClean(a)) return { ok: false, why: 'an ancestor carries an unmet obligation' };
+  return { ok: true };
+};
+
+const report = (label, r) => line(`   ${label.padEnd(34)} ${r.ok ? 'ACCEPTED' : 'REJECTED — ' + r.why}`);
 
 rule();
 line('VEILCORE — HERITABLE RIGHTS');
@@ -41,70 +50,62 @@ line('Obligations that inherit through descent, proven without revealing lineage
 rule();
 line();
 
-// ── Act 1 ──────────────────────────────────────────────────────────────────
-line('1. A breeder holds a cultivar.');
-const motherSecret = secret('mother-gelato-41');
-const mother = C.commit(motherSecret);
-line(`   Mother record   ${short(mother)}`);
-line(`   Registry root   ${short(tree.root())}  (empty — no obligations outstanding)`);
-line(`   Proves clean?   ${provesClean(mother) ? 'yes' : 'no'}`);
-line();
-
-// ── Act 2 ──────────────────────────────────────────────────────────────────
-line('2. The breeder licenses it to a lab, with a royalty owed on offspring.');
+line('1. A breeder holds a cultivar and licenses it with a royalty on offspring.');
+const mother = C.commit(secret('mother-gelato-41'));
+const daughter = C.commit(secret('daughter-tc-batch-114'));
+const stranger = C.commit(secret('unrelated-clean-record'));
 const royalty = C.commit(secret('royalty-8pct-to-breeder'));
+
+line(`   Mother     ${short(mother)}`);
+line(`   Daughter   ${short(daughter)}`);
+line(`   Registry   ${short(tree.root())}  (empty)`);
+line();
+
+line('2. The lab propagates. The parent link is declared on chain.');
+graph.observe(daughter, mother);
+line(`   Descent edge  ${short(C.descentEdge(daughter, mother))}  (public, permanent)`);
+line();
+
+line('3. The royalty is attached to the mother.');
 const e = tree.encumber(mother, royalty);
-line(`   Obligation      ${short(royalty)}`);
-line(`   Root before     ${short(e.oldRoot)}`);
-line(`   Root after      ${short(e.newRoot)}`);
-line(`   Mother clean?   ${provesClean(mother) ? 'yes' : 'NO — an obligation is outstanding'}`);
+line(`   Root  ${short(e.oldRoot)}  →  ${short(e.newRoot)}`);
 line();
 
-// ── Act 3 ──────────────────────────────────────────────────────────────────
-line('3. The lab propagates. A daughter cultivar is created and its parent declared.');
-const daughterSecret = secret('daughter-tc-batch-114');
-const daughter = C.commit(daughterSecret);
-const edge = C.descentEdge(daughter, mother);
-line(`   Daughter record ${short(daughter)}`);
-line(`   Descent edge    ${short(edge)}  (disclosed into the transaction, not stored)`);
-line();
-
-// ── Act 4 ──────────────────────────────────────────────────────────────────
 line('4. A buyer asks the daughter to prove clean descent.');
 line();
-line('   The daughter\'s own slot is untouched, so a naive check passes:');
-line(`     daughter slot clean?  ${provesClean(daughter) ? 'yes' : 'no'}`);
-line();
-line('   But clean descent requires every ancestor to be clean too. The prover');
-line('   supplies one proof per generation, each against the same registry root:');
-line(`     generation 1 (mother)  ${provesClean(mother) ? 'clean' : 'BLOCKED — unmet obligation'}`);
-line();
-line('   Result: the sale cannot complete on a clean-descent basis.');
-line('   The buyer learns only that. Not who the ancestor is, not what is owed.');
+report('honest claim', verify(daughter, [mother]));
+line('   The obligation upstream blocks the sale, three words of information.');
 line();
 
-// ── Act 5 ──────────────────────────────────────────────────────────────────
-line('5. The royalty is paid. The breeder discharges the obligation.');
+line('5. The seller tries to route around it by naming a clean stranger as parent.');
+report('spoofed ancestry', verify(daughter, [stranger]));
+line('   The Merkle proof for the stranger would have verified — the descent graph');
+line('   is what catches this. Neither mechanism is sufficient alone.');
+line();
+
+line('6. The seller tries omitting the ancestry entirely.');
+report('empty claim', verify(daughter, []));
+line();
+
+line('7. The royalty is paid and the obligation discharged.');
 const d = tree.discharge(mother, royalty);
-line(`   Root before     ${short(d.oldRoot)}`);
-line(`   Root after      ${short(d.newRoot)}`);
-line(`   Back to empty?  ${hex(d.newRoot) === hex(EMPTY_ROOT) ? 'yes' : 'no'}`);
+line(`   Root  ${short(d.oldRoot)}  →  ${short(d.newRoot)}`);
+line(`   Back to empty: ${hex(d.newRoot) === hex(EMPTY_ROOT) ? 'yes' : 'no'}`);
 line();
-
-// ── Act 6 ──────────────────────────────────────────────────────────────────
-line('6. The daughter proves clean descent and the sale completes.');
-line(`     generation 1 (mother)  ${provesClean(mother) ? 'clean' : 'BLOCKED'}`);
-line(`     daughter               ${provesClean(daughter) ? 'clean' : 'BLOCKED'}`);
+report('honest claim, obligation cleared', verify(daughter, [mother]));
 line();
 
 rule();
+line('WHAT THE BUYER LEARNED');
+line('  accepted or rejected, and nothing else');
+line();
 line('WHAT WAS NEVER DISCLOSED');
 line('  · the genetics — no sequence data exists anywhere in this system');
-line('  · the ancestry — the buyer never learns which cultivar the mother was');
-line('  · the terms — the royalty percentage is a commitment, never a value');
+line('  · which ancestor was checked, or what it was');
+line('  · the terms — the royalty is a commitment, never a value');
 line('  · the depth — every proof costs the same regardless of generations');
 line();
 line('WHAT THE CHAIN HOLDS');
 line('  · four counters and one 32-byte root — state does not grow with usage');
-line(`  · current root: ${hex(tree.root()).slice(0, 32)}…`);
+line(`  · current root  ${hex(tree.root()).slice(0, 32)}…`);
 rule();

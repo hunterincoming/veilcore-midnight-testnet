@@ -250,3 +250,5 @@ export * from './common-types.js';
 
 export * from './veilcore-types.js';
 export * from './veilcore-api.js';
+export * from './lineage-types.js';
+export * from './lineage-api.js';

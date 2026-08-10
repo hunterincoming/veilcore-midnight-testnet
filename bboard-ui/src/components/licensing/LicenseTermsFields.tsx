@@ -98,6 +98,15 @@ export const LicenseTermsFields: React.FC<{ terms: LicenseTerms; set: SetTerm }>
         <MenuItem value="per-unit-sold">Per unit sold</MenuItem>
       </TextField>
     </Stack>
+    <Stack direction="row" spacing={2} sx={{ flexWrap: 'wrap' }}>
+      <TextField
+        label="Royalty on offspring (%)"
+        helperText="Follows the genetics, not the sale. Binds anything bred from this cultivar — including cuttings the licensee passes on. Leave blank if none."
+        value={t.offspringRoyaltyPct ?? ''}
+        onChange={(e) => set('offspringRoyaltyPct', e.target.value)}
+        sx={{ minWidth: 260 }}
+      />
+    </Stack>
     <Stack direction="row" spacing={3} sx={{ flexWrap: 'wrap' }}>
       <FormControlLabel
         control={<Switch checked={t.sublicensable} onChange={(e) => set('sublicensable', e.target.checked)} />}
@@ -133,6 +142,7 @@ export const emptyTerms = (): LicenseTerms => {
     royaltyType: 'percent',
     royaltyAmount: '',
     unitBasis: 'per-unit-sold',
+    offspringRoyaltyPct: '',
     sublicensable: false,
     exclusive: false,
     extraTerms: '',

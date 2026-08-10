@@ -4,6 +4,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useSyncExternalStore } from 'react';
+import { encumber as encumberRecord, discharge as dischargeRecord } from './lineage';
+import { getRecord } from './records';
 import { store } from './store';
 
 export type LicenseState = 'draft' | 'sent' | 'active' | 'expired' | 'revoked';
@@ -123,16 +125,37 @@ const update = (id: string, patch: (l: License) => License): License | undefined
 export const issueLicense = (id: string): License | undefined =>
   update(id, (l) => ({ ...l, state: 'sent', breederSignedAt: Date.now() }));
 
-/** Licensee counter-signs → Active only when both signatures exist. */
-export const countersignLicense = (id: string): License | undefined =>
-  update(id, (l) => ({
+/**
+ * Licensee counter-signs → Active only when both signatures exist.
+ *
+ * An agreement carrying an offspring royalty creates a heritable obligation at this
+ * moment, using the agreement fingerprint as the commitment. The obligation is a
+ * consequence of the agreement rather than a separate thing to remember — nobody
+ * should have to attach one by hand.
+ */
+export const countersignLicense = (id: string): License | undefined => {
+  const out = update(id, (l) => ({
     ...l,
     licenseeSignedAt: Date.now(),
     state: l.breederSignedAt ? 'active' : l.state,
   }));
+  if (out && out.state === 'active' && createsHeritableObligation(out.type, out.terms)) {
+    const rec = getRecord(out.recordId);
+    if (rec) void encumberRecord(rec.recordFingerprint, out.agreementFingerprint);
+  }
+  return out;
+};
 
-export const revokeLicense = (id: string, reason: string): License | undefined =>
-  update(id, (l) => ({ ...l, state: 'revoked', revokedAt: Date.now(), revokedReason: reason }));
+/** Revoking an agreement discharges the obligation it created. */
+export const revokeLicense = (id: string, reason: string): License | undefined => {
+  const before = licenses.find((l) => l.id === id);
+  const out = update(id, (l) => ({ ...l, state: 'revoked', revokedAt: Date.now(), revokedReason: reason }));
+  if (before && createsHeritableObligation(before.type, before.terms)) {
+    const rec = getRecord(before.recordId);
+    if (rec) void dischargeRecord(rec.recordFingerprint, before.agreementFingerprint);
+  }
+  return out;
+};
 
 /** Renewal/amendment: supersede rather than mutate a signed license. */
 export const renewLicense = (id: string, terms: LicenseTerms, agreementFingerprint: string): License | undefined => {
@@ -204,6 +227,17 @@ export const agreementType = (l: License): AgreementType => l.type ?? 'license';
  * commercial only when it sets an offspring royalty (> 0) — otherwise it's a free share.
  * A lab transfer is custody, never commerce.
  */
+/**
+ * Whether an agreement creates an obligation that descendants inherit.
+ *
+ * Not the same question as hasVeilcoreFee. A licence with no offspring royalty is
+ * commercial but binds only the signatories — nothing rides down the lineage. An
+ * obligation is heritable exactly when it attaches to offspring, whatever the
+ * agreement is called.
+ */
+export const createsHeritableObligation = (type: AgreementType, terms?: LicenseTerms): boolean =>
+  (Number(terms?.offspringRoyaltyPct) || 0) > 0;
+
 export const hasVeilcoreFee = (type: AgreementType, terms?: LicenseTerms): boolean => {
   if (type === 'license') return true;
   if (type === 'breeder-share') return (Number(terms?.offspringRoyaltyPct) || 0) > 0;
@@ -269,6 +303,14 @@ export const agreementRows = (l: License): { k: string; v: string }[] => {
       ...(SHOW_VEILCORE_FEE
         ? [{ k: `Veilcore fee (${VEILCORE_FEE_PCT}% of deal value)`, v: 'calculated, not collected' }]
         : []),
+      // Shown explicitly because it is the one term that binds beyond the signatories:
+      // it follows the genetics into every descendant, so a counter-signer has to see it.
+      {
+        k: 'Royalty on offspring',
+        v: (Number(t.offspringRoyaltyPct) || 0) > 0
+          ? `${t.offspringRoyaltyPct}% — binds anything bred from this cultivar`
+          : 'None',
+      },
       { k: 'Exclusivity', v: t.exclusive ? 'Exclusive' : 'Non-exclusive' },
       { k: 'Sublicensing', v: t.sublicensable ? 'Allowed' : 'Not allowed' },
     );

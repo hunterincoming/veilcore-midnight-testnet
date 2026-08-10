@@ -17,6 +17,7 @@ import { useLicenses, licensesForRecord, activeLicenseCount, agreementType } fro
 import { shortFingerprint } from '../veilcore/commitment';
 import { StatusChain } from './StatusChain';
 import { LineageGraph } from './LineageGraph';
+import { HeritableRights } from './HeritableRights';
 import { LicenseStateChip } from './licensing/LicenseStateChip';
 import { AgreementTypeChip } from './licensing/AgreementTypeChip';
 import { AppHeader } from './AppHeader';
@@ -147,6 +148,10 @@ export const RecordDetail: React.FC = () => {
               Lineage
             </Typography>
             <LineageGraph record={record} />
+          </Paper>
+
+          <Paper sx={{ p: { xs: 2.5, md: 3 } }}>
+            <HeritableRights record={record} />
           </Paper>
 
           {licenses.length > 0 && (

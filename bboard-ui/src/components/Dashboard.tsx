@@ -75,9 +75,14 @@ export const Dashboard: React.FC = () => {
               first.
             </Box>
           </Typography>
-          <Typography variant="body1" color="text.secondary" sx={{ maxWidth: 560, mx: 'auto', mb: 4 }}>
+          <Typography variant="body1" color="text.secondary" sx={{ maxWidth: 560, mx: 'auto', mb: 2 }}>
             A tamper-evident record of when you logged a cultivar and what it is — bound to its DNA fingerprint.
             Everything is hashed on your device; your genetics never leave it.
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 560, mx: 'auto', mb: 4 }}>
+            Built for breeders and the labs that hold their material. Anyone you send a record to can
+            verify it — free, no account, forever. Terms you attach follow the genetics into every
+            descendant.
           </Typography>
           <Button component={RouterLink} to="/new" variant="contained" size="large" startIcon={<AddIcon />}>
             Log your first cultivar

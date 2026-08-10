@@ -3,6 +3,7 @@
 
 import React from 'react';
 import { Box, Button, Stack, Typography } from '@mui/material';
+import { HolderKeyPanel } from './HolderKeyPanel';
 import { Link as RouterLink, useLocation } from 'react-router-dom';
 import AddIcon from '@mui/icons-material/Add';
 import { WalletBadge } from './veilcore/WalletBadge';
@@ -38,6 +39,7 @@ export const AppHeader: React.FC = () => {
             Licenses
           </Button>
         )}
+        <HolderKeyPanel />
       </Stack>
       <WalletBadge network={network} demo={demoMode} />
     </Stack>

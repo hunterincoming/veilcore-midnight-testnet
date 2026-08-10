@@ -26,7 +26,12 @@ export interface DeployedVeilcoreAPI {
   readonly state$: Observable<VeilcoreDerivedState>;
 
   anchor: (commitment: Uint8Array) => Promise<void>;
-  proveOwnership: (secret: Uint8Array) => Promise<void>;
+  proveOwnership: () => Promise<void>;
+  pairDna: (recordCommitment: Uint8Array, dnaCommitment: Uint8Array) => Promise<void>;
+  issueLicense: (recordCommitment: Uint8Array, licenseCommitment: Uint8Array) => Promise<void>;
+  countersignLicense: (licenseCommitment: Uint8Array) => Promise<void>;
+  revokeLicense: (licenseCommitment: Uint8Array) => Promise<void>;
+  proveLicense: (secret: Uint8Array) => Promise<void>;
 }
 
 export class VeilcoreAPI implements DeployedVeilcoreAPI {
@@ -91,6 +96,51 @@ export class VeilcoreAPI implements DeployedVeilcoreAPI {
         txHash: txData.public.txHash,
         blockHeight: txData.public.blockHeight,
       },
+    });
+  }
+
+  /** Binds a DNA report fingerprint to a record the caller owns. */
+  async pairDna(recordCommitment: Uint8Array, dnaCommitment: Uint8Array): Promise<void> {
+    this.logger?.info('pairing DNA fingerprint');
+    const txData = await this.deployedContract.callTx.pairDna(recordCommitment, dnaCommitment);
+    this.logger?.trace({
+      transactionAdded: { circuit: 'pairDna', txHash: txData.public.txHash, blockHeight: txData.public.blockHeight },
+    });
+  }
+
+  /** Issues a licence against a record the caller owns. Starts PENDING. */
+  async issueLicense(recordCommitment: Uint8Array, licenseCommitment: Uint8Array): Promise<void> {
+    this.logger?.info('issuing licence');
+    const txData = await this.deployedContract.callTx.issueLicense(recordCommitment, licenseCommitment);
+    this.logger?.trace({
+      transactionAdded: { circuit: 'issueLicense', txHash: txData.public.txHash, blockHeight: txData.public.blockHeight },
+    });
+  }
+
+  /** The licensee's counter-signature activates a pending licence. */
+  async countersignLicense(licenseCommitment: Uint8Array): Promise<void> {
+    this.logger?.info('countersigning licence');
+    const txData = await this.deployedContract.callTx.countersignLicense(licenseCommitment);
+    this.logger?.trace({
+      transactionAdded: { circuit: 'countersignLicense', txHash: txData.public.txHash, blockHeight: txData.public.blockHeight },
+    });
+  }
+
+  /** Only the issuing record owner can revoke. Clears the live entry. */
+  async revokeLicense(licenseCommitment: Uint8Array): Promise<void> {
+    this.logger?.info('revoking licence');
+    const txData = await this.deployedContract.callTx.revokeLicense(licenseCommitment);
+    this.logger?.trace({
+      transactionAdded: { circuit: 'revokeLicense', txHash: txData.public.txHash, blockHeight: txData.public.blockHeight },
+    });
+  }
+
+  /** A licensee proves they hold an ACTIVE licence without revealing terms or genetics. */
+  async proveLicense(secret: Uint8Array): Promise<void> {
+    this.logger?.info('proving licence (zk)');
+    const txData = await this.deployedContract.callTx.proveLicense(secret);
+    this.logger?.trace({
+      transactionAdded: { circuit: 'proveLicense', txHash: txData.public.txHash, blockHeight: txData.public.blockHeight },
     });
   }
 

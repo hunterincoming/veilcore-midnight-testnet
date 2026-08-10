@@ -39,7 +39,7 @@ export const TrustPanel: React.FC = () => (
       “What stops me from logging <Box component="span" sx={{ color: TEAL }}>your</Box> cultivar?”
     </Typography>
     <Typography variant="body2" color="text.secondary" sx={{ mb: 2.5 }}>
-      Fair question — it’s the whole point. Four things make Veilcore an enforcement layer, not a fancy notepad:
+      Fair question — it’s the whole point. Four things make a VeilCore record hard to fake, rather than just easy to write:
     </Typography>
     <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }}>
       {POINTS.map((p) => (

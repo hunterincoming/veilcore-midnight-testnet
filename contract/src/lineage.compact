@@ -1,70 +1,124 @@
 // Veilcore Lineage — heritable rights for self-replicating assets.
 // SPDX-License-Identifier: Apache-2.0
 //
-// Existing IP registries record objects: a patent, a work, a variety. Biological
-// IP is not an object, it is a lineage — a cut becomes a mother becomes ten
-// thousand clones, and every descendant carries a fractional claim from upstream.
-// Nothing records rights that inherit.
+// Every IP registry on earth records objects: a patent, a work, a variety.
+// Biological IP is not an object, it is a lineage — a cut becomes a mother becomes
+// ten thousand clones, and every descendant carries a fractional claim from
+// upstream. Nothing records rights that inherit.
 //
-// This contract does. It sits above the record commitments in veilcore.compact
-// and references them by hash; it does not fork or replace that contract.
+// This contract does. It sits above the record commitments in veilcore.compact and
+// references them by hash; it does not fork or replace that contract.
 //
-// STATE MODEL: bounded by design. Parentage is disclosed into the transaction and
-// never written to a map — the graph is reconstructed from transaction history,
-// exactly as anchors are. The only retained state is the encumbered set, which
-// shrinks as obligations are discharged, so it is bounded by outstanding
-// obligations rather than by cumulative usage.
+// STATE MODEL: bounded by design. Every ledger field is a fixed single slot. The
+// set of encumbered records is held as a Merkle accumulator root rather than a
+// map, for two reasons: state cannot grow with usage, and membership can later be
+// proven without disclosing which record was checked.
+//
+// SOUNDNESS: the new root is never supplied by the caller. It is derived inside the
+// circuit from the current root plus a Merkle path given as a private witness. A
+// forged path fails verification against the existing root, so a caller cannot
+// rewrite the accumulator to erase their own obligations.
 
 pragma language_version 0.23;
 
 import CompactStandardLibrary;
 
-// Fixed single-slot fields.
+// Fixed single-slot fields. No growable container anywhere in this contract.
 export ledger descentSeq: Counter;
 export ledger lastDescent: Bytes<32>;
+export ledger encumberSeq: Counter;
 
-// Records carrying an unmet obligation. Entries are removed on discharge, so the
-// set is bounded by open obligations, not by how many records exist.
-export ledger encumbered: Map<Bytes<32>, Bytes<32>>;
+// Merkle root over the set of encumbered record commitments, depth 4 (16 slots).
+export ledger encumberedRoot: Bytes<32>;
 
-// The caller's private genetic secret, supplied by the wallet's private state.
+// The caller's private genetic secret, from the wallet's private state.
 witness localGeneticSecret(): Bytes<32>;
+
+// The sibling hashes along the path from a leaf to the root, bottom-up.
+witness merkleSiblings(): Vector<4, Bytes<32>>;
+
+// Which side each sibling sits on at each level: false = sibling right, true = left.
+witness merkleDirections(): Vector<4, Boolean>;
+
+// The leaf value currently occupying the caller's slot.
+witness currentLeaf(): Bytes<32>;
 
 // Domain-separated commitment, matching veilcore.compact so hashes are comparable.
 export circuit commit(secret: Bytes<32>): Bytes<32> {
   return persistentHash<Vector<2, Bytes<32>>>([pad(32, "veilcore:commit"), secret]);
 }
 
+// A descent edge, identified by the hash of (child, parent).
+export circuit descentEdge(child: Bytes<32>, parent: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<3, Bytes<32>>>([pad(32, "veilcore:descent"), child, parent]);
+}
+
+// One level of the Merkle fold. Ordering is fixed by the direction bit so the same
+// pair always hashes to the same parent.
+export circuit merkleStep(node: Bytes<32>, sibling: Bytes<32>, siblingIsLeft: Boolean): Bytes<32> {
+  const left = siblingIsLeft ? sibling : node;
+  const right = siblingIsLeft ? node : sibling;
+  return persistentHash<Vector<3, Bytes<32>>>([pad(32, "veilcore:node"), left, right]);
+}
+
+// Fold a leaf up to a root through four levels. Unrolled — Compact has no loops.
+export circuit merkleRoot(
+  leaf: Bytes<32>,
+  siblings: Vector<4, Bytes<32>>,
+  dirs: Vector<4, Boolean>,
+): Bytes<32> {
+  const l1 = merkleStep(leaf, siblings[0], dirs[0]);
+  const l2 = merkleStep(l1, siblings[1], dirs[1]);
+  const l3 = merkleStep(l2, siblings[2], dirs[2]);
+  return merkleStep(l3, siblings[3], dirs[3]);
+}
+
 // Declare that a record descends from a parent. The caller proves they hold the
-// child's preimage; both commitments are disclosed into the transaction. No state
-// is written — the edge lives in transaction history.
+// child's preimage. The edge is disclosed into the transaction; no state grows.
 export circuit declareParent(childCommitment: Bytes<32>, parentCommitment: Bytes<32>): [] {
   assert(childCommitment == commit(localGeneticSecret()), "Only the record holder can declare its parentage");
   const c = disclose(childCommitment);
   const p = disclose(parentCommitment);
   descentSeq.increment(1);
-  lastDescent = c;
+  lastDescent = descentEdge(c, p);
 }
 
-// Attach an obligation to a record the caller owns — a breeder share, a royalty,
-// a condition. The obligation itself stays off-chain; only its commitment is held.
+// Attach an obligation to a record the caller owns.
+//
+// The caller proves their slot currently holds `currentLeaf` by folding it to the
+// existing root. Only then is the new root recomputed with the obligation in place.
+// A caller who invents a path cannot match the existing root, so the accumulator
+// cannot be rewritten to erase obligations.
 export circuit encumber(recordCommitment: Bytes<32>, obligationCommitment: Bytes<32>): [] {
   assert(recordCommitment == commit(localGeneticSecret()), "Only the record holder can encumber it");
+
+  const siblings = merkleSiblings();
+  const dirs = merkleDirections();
+  const oldLeaf = currentLeaf();
+
+  assert(disclose(merkleRoot(oldLeaf, siblings, dirs)) == encumberedRoot, "Merkle path does not match the current root");
+
   const rc = disclose(recordCommitment);
-  assert(!encumbered.member(rc), "Record is already encumbered");
-  encumbered.insert(rc, disclose(obligationCommitment));
+  const oc = disclose(obligationCommitment);
+  const newLeaf = persistentHash<Vector<3, Bytes<32>>>([pad(32, "veilcore:encumber"), rc, oc]);
+
+  encumberSeq.increment(1);
+  encumberedRoot = disclose(merkleRoot(newLeaf, siblings, dirs));
 }
 
-// Discharge an obligation. Only the party who attached it can release it, and the
-// entry is removed so the set stays bounded.
+// Discharge an obligation. The same path proof applies, and the slot is cleared.
 export circuit discharge(recordCommitment: Bytes<32>): [] {
   assert(recordCommitment == commit(localGeneticSecret()), "Only the holder can discharge");
-  const rc = disclose(recordCommitment);
-  assert(encumbered.member(rc), "Record is not encumbered");
-  encumbered.remove(rc);
-}
 
-// Public, privacy-safe check: is this record carrying an unmet obligation?
-export circuit isEncumbered(recordCommitment: Bytes<32>): Boolean {
-  return encumbered.member(disclose(recordCommitment));
+  const siblings = merkleSiblings();
+  const dirs = merkleDirections();
+  const oldLeaf = currentLeaf();
+
+  assert(disclose(merkleRoot(oldLeaf, siblings, dirs)) == encumberedRoot, "Merkle path does not match the current root");
+
+  const rc = disclose(recordCommitment);
+  const emptyLeaf = persistentHash<Vector<2, Bytes<32>>>([pad(32, "veilcore:empty"), rc]);
+
+  encumberSeq.increment(1);
+  encumberedRoot = disclose(merkleRoot(emptyLeaf, siblings, dirs));
 }

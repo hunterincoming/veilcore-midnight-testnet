@@ -9,15 +9,27 @@
 // This contract does. It sits above the record commitments in veilcore.compact and
 // references them by hash; it does not fork or replace that contract.
 //
-// STATE MODEL: bounded by design. Every ledger field is a fixed single slot. The
-// set of encumbered records is held as a Merkle accumulator root rather than a
-// map, for two reasons: state cannot grow with usage, and membership can later be
-// proven without disclosing which record was checked.
+// STATE MODEL
+// Bounded by design. Every ledger field is a fixed single slot. Obligations live in
+// a sparse Merkle tree represented only by its root; the tree itself is
+// reconstructed off-chain from transaction history, as the descent graph is.
 //
-// SOUNDNESS: the new root is never supplied by the caller. It is derived inside the
-// circuit from the current root plus a Merkle path given as a private witness. A
-// forged path fails verification against the existing root, so a caller cannot
-// rewrite the accumulator to erase their own obligations.
+// SPARSE TREE
+// Every record has a deterministic slot derived from its own commitment, so no
+// assignment or registry is needed and an unwritten slot is clean by default. The
+// null leaf is all-zero. A record is clean when its slot holds the null leaf; it is
+// encumbered when the slot holds an obligation leaf.
+//
+// SOUNDNESS
+// A new root is never supplied by the caller. It is derived in-circuit from the
+// current root plus a Merkle path given as a private witness. A forged path fails
+// against the existing root, so no caller can rewrite the accumulator to erase
+// their own obligations.
+//
+// KNOWN LIMITATION
+// Depth 4 gives 16 slots, so distinct records can collide. A collision means one
+// record cannot prove clean while the other is encumbered. The fix is depth, not
+// cleverness; the fold is written per-level so depth can grow without redesign.
 
 pragma language_version 0.23;
 
@@ -27,21 +39,22 @@ import CompactStandardLibrary;
 export ledger descentSeq: Counter;
 export ledger lastDescent: Bytes<32>;
 export ledger encumberSeq: Counter;
+export ledger cleanProofSeq: Counter;
 
-// Merkle root over the set of encumbered record commitments, depth 4 (16 slots).
+// Root of the sparse obligation tree. Initialised to the empty-tree root.
 export ledger encumberedRoot: Bytes<32>;
 
 // The caller's private genetic secret, from the wallet's private state.
 witness localGeneticSecret(): Bytes<32>;
 
-// The sibling hashes along the path from a leaf to the root, bottom-up.
+// Merkle path for the caller's own slot.
 witness merkleSiblings(): Vector<4, Bytes<32>>;
-
-// Which side each sibling sits on at each level: false = sibling right, true = left.
 witness merkleDirections(): Vector<4, Boolean>;
 
-// The leaf value currently occupying the caller's slot.
-witness currentLeaf(): Bytes<32>;
+// The caller's ancestry, innermost first, plus a path per ancestor.
+witness ancestryChain(): Vector<4, Bytes<32>>;
+witness ancestrySiblings(): Vector<4, Vector<4, Bytes<32>>>;
+witness ancestryDirections(): Vector<4, Vector<4, Boolean>>;
 
 // Domain-separated commitment, matching veilcore.compact so hashes are comparable.
 export circuit commit(secret: Bytes<32>): Bytes<32> {
@@ -53,15 +66,20 @@ export circuit descentEdge(child: Bytes<32>, parent: Bytes<32>): Bytes<32> {
   return persistentHash<Vector<3, Bytes<32>>>([pad(32, "veilcore:descent"), child, parent]);
 }
 
-// One level of the Merkle fold. Ordering is fixed by the direction bit so the same
-// pair always hashes to the same parent.
+// The leaf written when a record carries an obligation.
+export circuit obligationLeaf(recordCommitment: Bytes<32>, obligationCommitment: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<3, Bytes<32>>>([pad(32, "veilcore:obligation"), recordCommitment, obligationCommitment]);
+}
+
+// One level of the Merkle fold. The direction bit fixes ordering so the same pair
+// always hashes to the same parent.
 export circuit merkleStep(node: Bytes<32>, sibling: Bytes<32>, siblingIsLeft: Boolean): Bytes<32> {
   const left = siblingIsLeft ? sibling : node;
   const right = siblingIsLeft ? node : sibling;
   return persistentHash<Vector<3, Bytes<32>>>([pad(32, "veilcore:node"), left, right]);
 }
 
-// Fold a leaf up to a root through four levels. Unrolled — Compact has no loops.
+// Fold a leaf to a root through four levels. Unrolled — Compact has no loops.
 export circuit merkleRoot(
   leaf: Bytes<32>,
   siblings: Vector<4, Bytes<32>>,
@@ -71,6 +89,33 @@ export circuit merkleRoot(
   const l2 = merkleStep(l1, siblings[1], dirs[1]);
   const l3 = merkleStep(l2, siblings[2], dirs[2]);
   return merkleStep(l3, siblings[3], dirs[3]);
+}
+
+// Which slot a record occupies, derived from its own commitment. No assignment and
+// no registry: every possible record already has a deterministic position, so an
+// untouched slot is clean by default.
+//
+// One byte per level, high bit taken. Hash output is uniform, so slots distribute
+// evenly across the tree.
+export circuit slotBits(recordCommitment: Bytes<32>): Vector<4, Boolean> {
+  return [
+    (recordCommitment[0] as Uint<8>) > 127,
+    (recordCommitment[1] as Uint<8>) > 127,
+    (recordCommitment[2] as Uint<8>) > 127,
+    (recordCommitment[3] as Uint<8>) > 127,
+  ];
+}
+
+// A Merkle path's direction bits are the slot position: a node that is the right
+// child has its sibling on the left. Checking the supplied directions against the
+// derived bits is what binds a path to one specific record — without it, any clean
+// slot's path would satisfy any record's proof.
+export circuit assertPathBelongsTo(recordCommitment: Bytes<32>, dirs: Vector<4, Boolean>): [] {
+  const bits = slotBits(recordCommitment);
+  assert(disclose(dirs[0] == bits[0]), "Merkle path does not belong to this record");
+  assert(disclose(dirs[1] == bits[1]), "Merkle path does not belong to this record");
+  assert(disclose(dirs[2] == bits[2]), "Merkle path does not belong to this record");
+  assert(disclose(dirs[3] == bits[3]), "Merkle path does not belong to this record");
 }
 
 // Declare that a record descends from a parent. The caller proves they hold the
@@ -83,42 +128,86 @@ export circuit declareParent(childCommitment: Bytes<32>, parentCommitment: Bytes
   lastDescent = descentEdge(c, p);
 }
 
-// Attach an obligation to a record the caller owns.
-//
-// The caller proves their slot currently holds `currentLeaf` by folding it to the
-// existing root. Only then is the new root recomputed with the obligation in place.
-// A caller who invents a path cannot match the existing root, so the accumulator
-// cannot be rewritten to erase obligations.
+// Attach an obligation. The caller proves their slot currently holds the null leaf
+// by folding it to the existing root, then the new root is recomputed with the
+// obligation leaf in place. A caller who invents a path cannot match the current
+// root, so the tree cannot be rewritten.
 export circuit encumber(recordCommitment: Bytes<32>, obligationCommitment: Bytes<32>): [] {
   assert(recordCommitment == commit(localGeneticSecret()), "Only the record holder can encumber it");
 
   const siblings = merkleSiblings();
   const dirs = merkleDirections();
-  const oldLeaf = currentLeaf();
+  const nullLeaf = default<Bytes<32>>;
 
-  assert(disclose(merkleRoot(oldLeaf, siblings, dirs)) == encumberedRoot, "Merkle path does not match the current root");
+  assertPathBelongsTo(recordCommitment, dirs);
+  assert(disclose(merkleRoot(nullLeaf, siblings, dirs)) == encumberedRoot,
+         "Slot is not clean, or the Merkle path is invalid");
 
   const rc = disclose(recordCommitment);
   const oc = disclose(obligationCommitment);
-  const newLeaf = persistentHash<Vector<3, Bytes<32>>>([pad(32, "veilcore:encumber"), rc, oc]);
 
   encumberSeq.increment(1);
-  encumberedRoot = disclose(merkleRoot(newLeaf, siblings, dirs));
+  encumberedRoot = disclose(merkleRoot(obligationLeaf(rc, oc), siblings, dirs));
 }
 
-// Discharge an obligation. The same path proof applies, and the slot is cleared.
-export circuit discharge(recordCommitment: Bytes<32>): [] {
+// Discharge an obligation. The caller proves the slot holds their obligation leaf,
+// then it is returned to null.
+export circuit discharge(recordCommitment: Bytes<32>, obligationCommitment: Bytes<32>): [] {
   assert(recordCommitment == commit(localGeneticSecret()), "Only the holder can discharge");
 
   const siblings = merkleSiblings();
   const dirs = merkleDirections();
-  const oldLeaf = currentLeaf();
-
-  assert(disclose(merkleRoot(oldLeaf, siblings, dirs)) == encumberedRoot, "Merkle path does not match the current root");
-
   const rc = disclose(recordCommitment);
-  const emptyLeaf = persistentHash<Vector<2, Bytes<32>>>([pad(32, "veilcore:empty"), rc]);
+  const oc = disclose(obligationCommitment);
 
+  assertPathBelongsTo(recordCommitment, dirs);
+  assert(disclose(merkleRoot(obligationLeaf(rc, oc), siblings, dirs)) == encumberedRoot,
+         "No such obligation at this slot, or the Merkle path is invalid");
+
+  const nullLeaf = default<Bytes<32>>;
   encumberSeq.increment(1);
-  encumberedRoot = disclose(merkleRoot(emptyLeaf, siblings, dirs));
+  encumberedRoot = disclose(merkleRoot(nullLeaf, siblings, dirs));
+}
+
+// Prove this record is not downstream of anything carrying an unmet obligation.
+//
+// The caller supplies their ancestry and a Merkle path per ancestor, all privately.
+// Each must fold the null leaf to the root already on chain — meaning that slot is
+// clean. A forged path fails; a concealed obligation fails.
+//
+// Only the record making the claim is disclosed. No ancestor is revealed, and the
+// depth of the lineage is not revealed either: unused slots carry the zero
+// commitment, whose slot is clean like any other.
+export circuit proveCleanDescent(): [] {
+  const self = commit(localGeneticSecret());
+  const nullLeaf = default<Bytes<32>>;
+
+  const selfSibs = merkleSiblings();
+  const selfDirs = merkleDirections();
+  assert(disclose(merkleRoot(nullLeaf, selfSibs, selfDirs)) == encumberedRoot,
+         "This record carries an unmet obligation");
+
+  const chain = ancestryChain();
+  const sibs = ancestrySiblings();
+  const dirs = ancestryDirections();
+
+  // Each path is bound to its ancestor before it is checked, so a caller cannot
+  // substitute the path of some unrelated clean slot.
+  assertPathBelongsTo(self, selfDirs);
+
+  assertPathBelongsTo(chain[0], dirs[0]);
+  assert(disclose(merkleRoot(nullLeaf, sibs[0], dirs[0])) == encumberedRoot,
+         "An ancestor carries an unmet obligation");
+  assertPathBelongsTo(chain[1], dirs[1]);
+  assert(disclose(merkleRoot(nullLeaf, sibs[1], dirs[1])) == encumberedRoot,
+         "An ancestor carries an unmet obligation");
+  assertPathBelongsTo(chain[2], dirs[2]);
+  assert(disclose(merkleRoot(nullLeaf, sibs[2], dirs[2])) == encumberedRoot,
+         "An ancestor carries an unmet obligation");
+  assertPathBelongsTo(chain[3], dirs[3]);
+  assert(disclose(merkleRoot(nullLeaf, sibs[3], dirs[3])) == encumberedRoot,
+         "An ancestor carries an unmet obligation");
+
+  cleanProofSeq.increment(1);
+  lastDescent = disclose(self);
 }

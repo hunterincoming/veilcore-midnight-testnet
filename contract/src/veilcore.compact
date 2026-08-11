@@ -22,6 +22,9 @@ export ledger lastAnchor: Bytes<32>;
 export ledger proofSeq: Counter;
 export ledger batchSeq: Counter;
 export ledger lastBatchRoot: Bytes<32>;
+export ledger transferSeq: Counter;
+/** Transfers proposed but not yet approved. Cleared on approval or withdrawal. */
+export ledger pendingTransferOf: Map<Bytes<32>, Bytes<32>>;
 
 // Live licenses only. Removed on revocation, so bounded by open agreements.
 export ledger licenseStatusOf: Map<Bytes<32>, LicenseState>;
@@ -103,6 +106,54 @@ export circuit countersignLicense(licenseCommitment: Bytes<32>): [] {
 
 // Only the issuing record owner can revoke. Revocation is disclosed into the
 // transaction and the live entry is removed, keeping state bounded.
+/**
+ * Propose transferring a licence to a new holder.
+ *
+ * A licence is not a bearer instrument. The USDA's own plant variety licence template
+ * grants a "nontransferable" licence, and permits sublicensing only "subject to the
+ * prior submission to and approval by USDA of the proposed sublicense". A freely
+ * transferable token would be a cleaner object and the wrong one — it would let a
+ * licensee hand rights to a party the breeder never agreed to.
+ *
+ * So transfer is a two-party act, the same shape as countersigning: the holder proposes
+ * and the issuer approves. Until both happen, nothing moves.
+ */
+export circuit proposeTransfer(licenseCommitment: Bytes<32>, newHolderCommitment: Bytes<32>): [] {
+  const lc = disclose(licenseCommitment);
+  assert(licenseStatusOf.member(lc), "No such license");
+  assert(licenseStatusOf.lookup(lc) == LicenseState.ACTIVE, "Only an active license can be transferred");
+  transferSeq.increment(1);
+  pendingTransferOf.insert(lc, disclose(newHolderCommitment));
+}
+
+/**
+ * The issuer approves a proposed transfer.
+ *
+ * Only the party who issued the licence can approve. This is the approval gate that
+ * makes the licence permissioned rather than a bearer token, and it is what stops a
+ * licensee routing rights to someone the breeder would have refused.
+ */
+export circuit approveTransfer(licenseCommitment: Bytes<32>, recordCommitment: Bytes<32>): [] {
+  const lc = disclose(licenseCommitment);
+  assert(pendingTransferOf.member(lc), "No transfer proposed for this license");
+  assert(recordCommitment == commit(localGeneticSecret()), "Only the issuing record holder can approve");
+  assert(licenseRecordOf.lookup(lc) == disclose(recordCommitment), "This license was not issued against your record");
+
+  // The new holder is disclosed into the transaction; the pending entry is cleared, so
+  // state stays bounded by transfers actually in flight rather than by history.
+  const newHolder = pendingTransferOf.lookup(lc);
+  pendingTransferOf.remove(lc);
+  transferSeq.increment(1);
+}
+
+/** Withdraw a proposed transfer. Either the proposal expires or it is retracted. */
+export circuit withdrawTransfer(licenseCommitment: Bytes<32>): [] {
+  const lc = disclose(licenseCommitment);
+  assert(pendingTransferOf.member(lc), "No transfer proposed for this license");
+  pendingTransferOf.remove(lc);
+  transferSeq.increment(1);
+}
+
 export circuit revokeLicense(licenseCommitment: Bytes<32>): [] {
   const lc = disclose(licenseCommitment);
   assert(licenseStatusOf.member(lc), "No such license");

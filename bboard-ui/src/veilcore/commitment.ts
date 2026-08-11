@@ -26,39 +26,22 @@ export const fingerprintFile = async (file: File): Promise<string> =>
   fingerprintOf(await sha256(new Uint8Array(await file.arrayBuffer())));
 
 /**
- * Canonical serialisation, so two implementations hash the same record identically.
+ * Canonicalisation and the commitment algorithm come from @veilcore/records.
  *
- * Object keys sorted by code point, absent optionals omitted rather than serialised as
- * null, UTF-8 NFC normalised, no insignificant whitespace. Array order is preserved —
- * parent order is meaningful in some domains, so it is never sorted.
+ * Deliberately not reimplemented here. Two implementations that must agree are two
+ * implementations that will eventually disagree — and a commitment computed differently
+ * by the app and by an outside verifier is the one failure the format cannot survive.
  */
-const canonicalise = (value: unknown): string => {
-  if (value === null || value === undefined) return 'null';
-  if (typeof value === 'string') return JSON.stringify(value.normalize('NFC'));
-  if (typeof value === 'number' || typeof value === 'boolean') return JSON.stringify(value);
-  if (Array.isArray(value)) return `[${value.map(canonicalise).join(',')}]`;
-  const obj = value as Record<string, unknown>;
-  const keys = Object.keys(obj)
-    .filter((k) => obj[k] !== undefined)
-    .sort();
-  return `{${keys.map((k) => `${JSON.stringify(k)}:${canonicalise(obj[k])}`).join(',')}}`;
-};
-
-/** A 32-byte nonce, hex. Committed with the record so the commitment is hiding as well as binding. */
-export const newNonce = (): string =>
-  toHex(crypto.getRandomValues(new Uint8Array(32)));
+export { canonicalise, newNonce, COMMITMENT_ALGORITHM } from '@veilcore/records';
 
 /**
  * The record commitment.
  *
- * Plain SHA-256 over the canonical serialisation, with no chain dependency: any
- * implementation in any language can compute this without the Compact toolchain. That
- * is what lets a registry we do not operate issue records in this format.
+ * Plain SHA-256 over the canonical serialisation, no chain dependency: any
+ * implementation in any language can reproduce this without the Compact toolchain.
+ * Binding it to a chain happens at anchoring time, not here.
  *
- * Binding the commitment to a chain is a separate step — `commit()` from the contract
- * is applied to this value at anchoring time, not here.
- *
- * The nonce matters: cultivar name, breeder and date are guessable, so without one an
+ * The nonce matters — cultivar name, breeder and date are guessable, so without one an
  * observer could compute candidate commitments and confirm a guess against the chain.
  */
 export const fingerprintRecord = async (r: {
@@ -73,6 +56,7 @@ export const fingerprintRecord = async (r: {
   refId?: string;
   nonce: string;
 }): Promise<string> => {
+  const { canonicalise: canon } = await import('@veilcore/records');
   const committed = {
     breedingMethod: r.breedingMethod ?? '',
     bredBy: r.bredBy,
@@ -85,11 +69,9 @@ export const fingerprintRecord = async (r: {
     refId: r.refId ?? '',
     strainName: r.strainName,
   };
-  return toHex(await sha256(new TextEncoder().encode(canonicalise(committed))));
+  return toHex(await sha256(new TextEncoder().encode(canon(committed))));
 };
 
-/** Commitment algorithm identifier, named so it can change without breaking old records. */
-export const COMMITMENT_ALGORITHM = 'sha256/canonical-json/v1';
 
 /** Short display form of a fingerprint. */
 export const shortFingerprint = (hex: string): string =>

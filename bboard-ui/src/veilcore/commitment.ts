@@ -32,7 +32,7 @@ export const fingerprintFile = async (file: File): Promise<string> =>
  * implementations that will eventually disagree — and a commitment computed differently
  * by the app and by an outside verifier is the one failure the format cannot survive.
  */
-export { canonicalise, newNonce, COMMITMENT_ALGORITHM } from '@veilcore/records';
+export { canonicalise, newNonce, COMMITMENT_ALGORITHM } from 'veilcore-records';
 
 /**
  * The record commitment.
@@ -56,7 +56,7 @@ export const fingerprintRecord = async (r: {
   refId?: string;
   nonce: string;
 }): Promise<string> => {
-  const { canonicalise: canon } = await import('@veilcore/records');
+  const { canonicalise: canon } = await import('veilcore-records');
   const committed = {
     breedingMethod: r.breedingMethod ?? '',
     bredBy: r.bredBy,

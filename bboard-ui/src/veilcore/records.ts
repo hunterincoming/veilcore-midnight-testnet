@@ -5,7 +5,7 @@
 
 import { useSyncExternalStore } from 'react';
 import { store } from './store';
-import { toEnvelope } from './envelope';
+import { sealEnvelope } from './envelope';
 import { holderKey } from './holder';
 
 export type Attestation = { readonly lab: string; readonly attestedAt: number };
@@ -123,10 +123,10 @@ export const conflictsFor = (dnaFingerprint: string, exceptId: string): StrainRe
  * separate on purpose: the internal model can change freely, the wire format changes
  * only by version.
  */
-export const exportEnvelope = (id: string): void => {
+export const exportEnvelope = async (id: string): Promise<void> => {
   const r = getRecord(id);
   if (!r) return;
-  const env = toEnvelope(r, holderKey().slice(0, 16));
+  const env = await sealEnvelope(r, holderKey().slice(0, 16));
   const blob = new Blob([JSON.stringify(env, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');

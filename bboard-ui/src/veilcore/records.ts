@@ -9,7 +9,22 @@ import { sealEnvelope } from './envelope';
 import { holderKey } from './holder';
 import { newNonce, fingerprintRecord } from './commitment';
 
-export type Attestation = { readonly lab: string; readonly attestedAt: number };
+/**
+ * A second party confirming they received this material.
+ *
+ * Written by the registry when a recipient claims a transfer — never set by the holder,
+ * because a confirmation you give yourself is not evidence. The identity is the
+ * recipient's own handle and key, so the claim points at someone.
+ */
+export type Attestation = {
+  readonly attesterHandle?: string;
+  readonly attesterKey?: string;
+  readonly type?: string;
+  readonly transferId?: string;
+  readonly attestedAt: number;
+  /** Legacy, from before an attestation had to be earned. */
+  readonly lab?: string;
+};
 
 /** A parent strain: linked to a logged record (recordId set) or free-typed (name only). */
 export type ParentRef = { readonly recordId?: string; readonly name: string };

@@ -129,7 +129,7 @@ export const RecordDetail: React.FC = () => {
             </Typography>
             {record.attestation ? (
               <Alert severity="success" variant="outlined">
-                Attested by {record.attestation.lab} · {new Date(record.attestation.attestedAt).toLocaleDateString()} —
+                Attested by {record.attestation.attesterHandle ?? record.attestation.lab ?? 'a second party'} · {new Date(record.attestation.attestedAt).toLocaleDateString()} —
                 a second party has confirmed this sample.
               </Alert>
             ) : (

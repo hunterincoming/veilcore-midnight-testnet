@@ -19,6 +19,7 @@ import { shortFingerprint } from '../veilcore/commitment';
 import { StatusChain } from './StatusChain';
 import { LineageGraph } from './LineageGraph';
 import { HeritableRights } from './HeritableRights';
+import { NextStep } from './NextStep';
 import { LicenseStateChip } from './licensing/LicenseStateChip';
 import { AgreementTypeChip } from './licensing/AgreementTypeChip';
 import { AppHeader } from './AppHeader';
@@ -85,6 +86,13 @@ export const RecordDetail: React.FC = () => {
 
       {mode === 'overview' && (
         <Stack spacing={2.5}>
+          <NextStep
+            record={record}
+            onPairDna={() => setMode('pair')}
+            onAttest={() => setMode('cert')}
+            onAgreement={() => navigate(`/record/${record.id}/license?type=license`)}
+          />
+
           <Paper sx={{ p: { xs: 2.5, md: 3 } }}>
             <Stack spacing={2}>
               <Field label="Bred by">{record.bredBy}</Field>
@@ -144,16 +152,24 @@ export const RecordDetail: React.FC = () => {
             )}
           </Paper>
 
-          <Paper sx={{ p: { xs: 2.5, md: 3 } }}>
-            <Typography variant="overline" sx={{ display: 'block', mb: 1.5 }}>
-              Lineage
-            </Typography>
-            <LineageGraph record={record} />
-          </Paper>
+          {/* Only rendered when there is lineage. An empty panel saying "no lineage
+              recorded" is a row the reader has to process to learn nothing. */}
+          {(record.parents?.length ?? 0) > 0 && (
+            <Paper sx={{ p: { xs: 2.5, md: 3 } }}>
+              <Typography variant="overline" sx={{ display: 'block', mb: 1.5 }}>
+                Lineage · {record.parents?.length} parent{record.parents?.length === 1 ? '' : 's'}
+              </Typography>
+              <LineageGraph record={record} />
+            </Paper>
+          )}
 
-          <Paper sx={{ p: { xs: 2.5, md: 3 } }}>
-            <HeritableRights record={record} />
-          </Paper>
+          {/* Only when an agreement exists that could carry an obligation. Otherwise
+              this is a panel explaining a feature nobody has used yet. */}
+          {licenses.length > 0 && (
+            <Paper sx={{ p: { xs: 2.5, md: 3 } }}>
+              <HeritableRights record={record} />
+            </Paper>
+          )}
 
           {licenses.length > 0 && (
             <Paper sx={{ p: { xs: 2.5, md: 3 } }}>

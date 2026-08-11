@@ -18,6 +18,8 @@ import { motion } from 'framer-motion';
 import { useRecords, exportRecords, importRecords, resetDemo } from '../veilcore/records';
 import { useLicenses, activeLicenseCount } from '../veilcore/licenses';
 import { StatusChain } from './StatusChain';
+import { AttentionBar } from './AttentionBar';
+import { groupByAttention, attentionSummary, attentionOf, GROUPING_THRESHOLD, type AttentionState } from '../veilcore/attention';
 import { TrustPanel } from './TrustPanel';
 import { AppHeader } from './AppHeader';
 import { TEAL } from '../config/theme';
@@ -34,6 +36,8 @@ export const Dashboard: React.FC = () => {
   // Per-card "start an agreement" menu — tracks which cultivar it was opened for.
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
   const [menuRecordId, setMenuRecordId] = useState<string>();
+  // Which attention state the list is filtered to, or null for everything.
+  const [filter, setFilter] = useState<AttentionState | null>(null);
 
   const openAgreementMenu = (e: React.MouseEvent<HTMLElement>, recordId: string) => {
     e.stopPropagation();
@@ -124,8 +128,19 @@ export const Dashboard: React.FC = () => {
             </Stack>
           </Stack>
 
+          {records.length >= GROUPING_THRESHOLD && (
+            <AttentionBar
+              summary={attentionSummary(groupByAttention(records))}
+              active={filter}
+              onSelect={setFilter}
+              total={records.length}
+            />
+          )}
+
           <Stack spacing={1.5}>
-            {records.map((r) => (
+            {records
+              .filter((r) => (filter === null ? true : attentionOf(r) === filter))
+              .map((r) => (
               <MPaper
                 key={r.id}
                 initial={{ opacity: 0, y: 8 }}

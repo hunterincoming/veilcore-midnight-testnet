@@ -68,6 +68,16 @@ export const hydrate = async (): Promise<void> => {
 };
 void hydrate();
 
+// Records change on the server without this browser doing anything — an attestation
+// lands when a recipient confirms receipt, which happens on someone else's machine.
+// Polling is the honest simple answer; a socket would be better and is not worth the
+// complexity until someone is actually waiting on it.
+if (typeof window !== 'undefined') {
+  setInterval(() => { void hydrate(); }, 20000);
+  // Also on tab focus — the common case is a breeder switching back to check.
+  window.addEventListener('focus', () => { void hydrate(); });
+}
+
 const persist = () => {
   void store.save(KEY, records);
   notify();

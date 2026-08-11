@@ -20,6 +20,8 @@ export enum LicenseState { NONE, PENDING, ACTIVE, REVOKED }
 export ledger anchorSeq: Counter;
 export ledger lastAnchor: Bytes<32>;
 export ledger proofSeq: Counter;
+export ledger batchSeq: Counter;
+export ledger lastBatchRoot: Bytes<32>;
 
 // Live licenses only. Removed on revocation, so bounded by open agreements.
 export ledger licenseStatusOf: Map<Bytes<32>, LicenseState>;
@@ -46,6 +48,26 @@ export circuit anchor(commitment: Bytes<32>): [] {
 // only the holder of the preimage could produce. A verifier checks this proof
 // against the earlier anchor transaction off-chain; the interval between them is
 // the evidence. No per-record state is written.
+/**
+ * Anchor a batch root.
+ *
+ * A batch root aggregates many record commitments, so one transaction timestamps
+ * thousands of records and no holder needs a wallet of their own.
+ *
+ * Unlike `anchor`, there is no preimage to prove: a root is a public value derived from
+ * commitments the registry already holds, and nobody knows a secret behind it. The
+ * privacy that matters was already applied when each record was committed — the root
+ * reveals nothing about what it contains.
+ *
+ * State stays bounded: the root is disclosed into the transaction and only a counter
+ * and one slot are written, the same pattern as `anchor`.
+ */
+export circuit anchorBatch(root: Bytes<32>): [] {
+  const r = disclose(root);
+  batchSeq.increment(1);
+  lastBatchRoot = r;
+}
+
 export circuit proveOwnership(): [] {
   const c = disclose(commit(localGeneticSecret()));
   proofSeq.increment(1);

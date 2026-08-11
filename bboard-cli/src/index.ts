@@ -178,7 +178,8 @@ You can do one of the following:
   7. Prove you hold an active licence
   8. Display the current private state (known only to this DApp instance)
   9. Display the current derived state (known only to this DApp instance)
-  10. Exit
+  10. Anchor a batch root (one transaction covers every record in the batch)
+  11. Exit
 Which would you like to do? `;
 
 const mainLoop = async (providers: VeilcoreProviders, rli: Interface, logger: Logger): Promise<void> => {
@@ -279,7 +280,21 @@ const mainLoop = async (providers: VeilcoreProviders, rli: Interface, logger: Lo
           case '9':
             displayDerivedState(currentState, logger);
             break;
-          case '10':
+          case '10': {
+            // A batch root aggregates many record commitments. Anchoring it timestamps
+            // every record in the batch in a single transaction, which is what lets a
+            // holder settle on chain without running a wallet.
+            const entered = (await rli.question('Enter the batch root in hex: ')).trim();
+            const root = hexToBytes(entered);
+            if (root === null) {
+              logger.error('Invalid root.');
+              break;
+            }
+            await veilcoreApi.anchorBatch(root);
+            logger.info('Batch root anchored. Every record in that batch is now timestamped.');
+            break;
+          }
+          case '11':
             logger.info('Exiting...');
             return;
           default:

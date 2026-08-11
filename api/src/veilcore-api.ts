@@ -27,6 +27,7 @@ export interface DeployedVeilcoreAPI {
 
   anchor: (commitment: Uint8Array) => Promise<void>;
   proveOwnership: () => Promise<void>;
+  anchorBatch: (root: Uint8Array) => Promise<void>;
   pairDna: (recordCommitment: Uint8Array, dnaCommitment: Uint8Array) => Promise<void>;
   issueLicense: (recordCommitment: Uint8Array, licenseCommitment: Uint8Array) => Promise<void>;
   countersignLicense: (licenseCommitment: Uint8Array) => Promise<void>;
@@ -96,6 +97,21 @@ export class VeilcoreAPI implements DeployedVeilcoreAPI {
         txHash: txData.public.txHash,
         blockHeight: txData.public.blockHeight,
       },
+    });
+  }
+
+  /**
+   * Anchor a batch root.
+   *
+   * One transaction timestamps every record in the batch, so no holder needs a wallet.
+   * Unlike anchor(), there is no preimage to prove — a root is a public value derived
+   * from commitments, and the privacy was applied when each record was committed.
+   */
+  async anchorBatch(root: Uint8Array): Promise<void> {
+    this.logger?.info(`anchoring batch root: ${toHex(root)}`);
+    const txData = await this.deployedContract.callTx.anchorBatch(root);
+    this.logger?.trace({
+      transactionAdded: { circuit: 'anchorBatch', txHash: txData.public.txHash, blockHeight: txData.public.blockHeight },
     });
   }
 

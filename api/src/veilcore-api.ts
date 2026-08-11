@@ -27,7 +27,7 @@ export interface DeployedVeilcoreAPI {
 
   anchor: (commitment: Uint8Array) => Promise<void>;
   proveOwnership: () => Promise<void>;
-  anchorBatch: (root: Uint8Array) => Promise<void>;
+  anchorBatch: (root: Uint8Array) => Promise<{ txHash: string; blockHeight: number }>;
   pairDna: (recordCommitment: Uint8Array, dnaCommitment: Uint8Array) => Promise<void>;
   issueLicense: (recordCommitment: Uint8Array, licenseCommitment: Uint8Array) => Promise<void>;
   countersignLicense: (licenseCommitment: Uint8Array) => Promise<void>;
@@ -107,12 +107,15 @@ export class VeilcoreAPI implements DeployedVeilcoreAPI {
    * Unlike anchor(), there is no preimage to prove — a root is a public value derived
    * from commitments, and the privacy was applied when each record was committed.
    */
-  async anchorBatch(root: Uint8Array): Promise<void> {
+  async anchorBatch(root: Uint8Array): Promise<{ txHash: string; blockHeight: number }> {
     this.logger?.info(`anchoring batch root: ${toHex(root)}`);
     const txData = await this.deployedContract.callTx.anchorBatch(root);
     this.logger?.trace({
       transactionAdded: { circuit: 'anchorBatch', txHash: txData.public.txHash, blockHeight: txData.public.blockHeight },
     });
+    // Returned rather than only logged: a proof that names an anchor nobody can look up
+    // is not independently checkable, which is the whole point of the proof.
+    return { txHash: txData.public.txHash, blockHeight: txData.public.blockHeight };
   }
 
   /** Binds a DNA report fingerprint to a record the caller owns. */

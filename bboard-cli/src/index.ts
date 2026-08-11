@@ -290,8 +290,11 @@ const mainLoop = async (providers: VeilcoreProviders, rli: Interface, logger: Lo
               logger.error('Invalid root.');
               break;
             }
-            await veilcoreApi.anchorBatch(root);
+            const anchored = await veilcoreApi.anchorBatch(root);
             logger.info('Batch root anchored. Every record in that batch is now timestamped.');
+            logger.info(`txHash: ${anchored.txHash}`);
+            logger.info(`blockHeight: ${anchored.blockHeight}`);
+            logger.info('Record this against the batch so proofs reference a transaction anyone can look up.');
             break;
           }
           case '11':

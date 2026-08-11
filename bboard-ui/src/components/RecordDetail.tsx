@@ -20,6 +20,7 @@ import { StatusChain } from './StatusChain';
 import { LineageGraph } from './LineageGraph';
 import { HeritableRights } from './HeritableRights';
 import { NextStep } from './NextStep';
+import { SettlementStatus } from './SettlementStatus';
 import { SendToLab } from './SendToLab';
 import { LicenseStateChip } from './licensing/LicenseStateChip';
 import { AgreementTypeChip } from './licensing/AgreementTypeChip';
@@ -148,6 +149,10 @@ export const RecordDetail: React.FC = () => {
                 </Typography>
               </Stack>
             )}
+          </Paper>
+
+          <Paper sx={{ p: { xs: 2.5, md: 3 } }}>
+            <SettlementStatus record={record} />
           </Paper>
 
           {/* Only rendered when there is lineage. An empty panel saying "no lineage

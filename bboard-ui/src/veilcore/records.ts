@@ -93,16 +93,12 @@ export const pairDna = (id: string, dnaFingerprint: string, dnaFileName: string)
 };
 
 /** Phase 2.4 — record a second-party (lab) attestation. */
-export const attestRecord = (id: string, lab: string): StrainRecord | undefined => {
-  let updated: StrainRecord | undefined;
-  records = records.map((r) => {
-    if (r.id !== id) return r;
-    updated = { ...r, attestation: { lab, attestedAt: Date.now() } };
-    return updated;
-  });
-  if (updated) persist();
-  return updated;
-};
+// attestRecord removed deliberately.
+//
+// An attestation is a second party confirming they received material. It is created
+// when a lab claims a transfer, recorded against their key. A client-side function that
+// sets one is a way to manufacture the exact evidence this system exists to produce —
+// a back door whether or not anything calls it.
 
 export const getRecord = (id: string): StrainRecord | undefined => records.find((r) => r.id === id);
 

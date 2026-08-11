@@ -13,7 +13,7 @@ import VerifiedIcon from '@mui/icons-material/VerifiedOutlined';
 import CodeIcon from '@mui/icons-material/DataObjectOutlined';
 import GavelIcon from '@mui/icons-material/GavelOutlined';
 import ShareIcon from '@mui/icons-material/ShareOutlined';
-import { useRecords, getRecord, attestRecord, exportEnvelope } from '../veilcore/records';
+import { useRecords, getRecord, exportEnvelope } from '../veilcore/records';
 import { useLicenses, licensesForRecord, activeLicenseCount, agreementType } from '../veilcore/licenses';
 import { shortFingerprint } from '../veilcore/commitment';
 import { StatusChain } from './StatusChain';
@@ -138,16 +138,14 @@ export const RecordDetail: React.FC = () => {
                   A second party confirming they received this sample makes your record far stronger evidence than one
                   you signed alone.
                 </Typography>
-                <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
-                  <Button
-                    variant="outlined"
-                    startIcon={<ScienceIcon />}
-                    onClick={() => attestRecord(record.id, 'Demo Genetics Lab')}
-                  >
-                    Simulate lab attestation
-                  </Button>
-                  <Chip size="small" variant="outlined" label="Demo action" />
-                </Stack>
+                {/* An attestation is earned, not pressed. It happens when a lab claims
+                    a transfer — a second party confirming receipt with their own key.
+                    A button that manufactures one would fabricate the evidence this
+                    system exists to produce. */}
+                <Typography variant="body2" color="text.secondary">
+                  Send this cultivar to a lab. When they confirm receipt, the attestation
+                  is recorded against their key — not something you can set yourself.
+                </Typography>
               </Stack>
             )}
           </Paper>

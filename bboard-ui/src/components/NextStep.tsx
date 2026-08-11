@@ -15,9 +15,12 @@ import ScienceIcon from '@mui/icons-material/ScienceOutlined';
 import VerifiedIcon from '@mui/icons-material/VerifiedOutlined';
 import SendIcon from '@mui/icons-material/SendOutlined';
 import type { StrainRecord } from '../veilcore/records';
+import { SendToLab } from './SendToLab';
 import { TEAL } from '../config/theme';
 
 type Step = {
+  /** Some steps render their own control rather than a plain button. */
+  custom?: React.ReactNode;
   title: string;
   /** What this gets them. Never a description of the state they can already see. */
   why: string;
@@ -29,9 +32,8 @@ type Step = {
 export const NextStep: React.FC<{
   record: StrainRecord;
   onPairDna: () => void;
-  onAttest: () => void;
   onAgreement: () => void;
-}> = ({ record, onPairDna, onAttest, onAgreement }) => {
+}> = ({ record, onPairDna, onAgreement }) => {
   let step: Step;
 
   if (!record.dnaFingerprint) {
@@ -45,10 +47,12 @@ export const NextStep: React.FC<{
   } else if (!record.attestation) {
     step = {
       title: 'Get a second party to confirm it',
-      why: 'A record you signed alone is weaker evidence than one a lab confirms they received. Send them the evidence package and ask them to confirm receipt.',
-      action: 'Evidence package',
+      why: 'A record you signed alone is weaker evidence than one a lab confirms they received. Send them the cultivar — when they confirm receipt, the attestation is recorded against their key.',
+      action: 'Send to a lab',
       icon: <VerifiedIcon />,
-      onClick: onAttest,
+      // Rendered as its own control below — the send dialog owns this interaction.
+      onClick: () => {},
+      custom: <SendToLab record={record} />,
     };
   } else {
     step = {
@@ -74,9 +78,13 @@ export const NextStep: React.FC<{
             {step.why}
           </Typography>
         </Box>
-        <Button variant="contained" startIcon={step.icon} onClick={step.onClick} sx={{ flexShrink: 0 }}>
-          {step.action}
-        </Button>
+        <Box sx={{ flexShrink: 0 }}>
+          {step.custom ?? (
+            <Button variant="contained" startIcon={step.icon} onClick={step.onClick}>
+              {step.action}
+            </Button>
+          )}
+        </Box>
       </Stack>
     </Paper>
   );

@@ -20,6 +20,7 @@ import { StatusChain } from './StatusChain';
 import { LineageGraph } from './LineageGraph';
 import { HeritableRights } from './HeritableRights';
 import { NextStep } from './NextStep';
+import { SendToLab } from './SendToLab';
 import { LicenseStateChip } from './licensing/LicenseStateChip';
 import { AgreementTypeChip } from './licensing/AgreementTypeChip';
 import { AppHeader } from './AppHeader';
@@ -89,7 +90,6 @@ export const RecordDetail: React.FC = () => {
           <NextStep
             record={record}
             onPairDna={() => setMode('pair')}
-            onAttest={() => setMode('cert')}
             onAgreement={() => navigate(`/record/${record.id}/license?type=license`)}
           />
 
@@ -215,6 +215,7 @@ export const RecordDetail: React.FC = () => {
             <Button variant="outlined" startIcon={<VerifiedIcon />} onClick={() => setMode('prove')}>
               Prove prior possession
             </Button>
+            <SendToLab record={record} />
             {/* The wire format. Any implementation can read this and recompute the
                 commitment without our code, our chain, or our permission. */}
             <Button variant="text" startIcon={<CodeIcon />} onClick={() => exportEnvelope(record.id)}>

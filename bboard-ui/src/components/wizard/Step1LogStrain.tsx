@@ -20,7 +20,7 @@ import {
 import ShieldIcon from '@mui/icons-material/GppGoodOutlined';
 import PhotoIcon from '@mui/icons-material/AddPhotoAlternateOutlined';
 import { motion } from 'framer-motion';
-import { fingerprintRecord, fingerprintFile } from '../../veilcore/commitment';
+import { fingerprintRecord, fingerprintFile, newNonce } from '../../veilcore/commitment';
 import { createRecord, allRecords, type StrainRecord, type ParentRef } from '../../veilcore/records';
 import { FingerprintReveal } from './FingerprintReveal';
 import { TEAL } from '../../config/theme';
@@ -65,7 +65,12 @@ export const Step1LogStrain: React.FC<{ onDone: (recordId: string) => void }> = 
     try {
       const loggedAt = Date.now();
       const photoFingerprints = await Promise.all(photos.map((f) => fingerprintFile(f)));
+      // The nonce is committed with the record and stored on it. Without storing it
+      // nobody could ever recompute the commitment, so the record would be
+      // unverifiable by anyone including us.
+      const nonce = newNonce();
       const fields = {
+        nonce,
         strainName: strainName.trim(),
         bredBy: bredBy.trim(),
         dateCreated,

@@ -25,8 +25,43 @@ export const fingerprintText = async (text: string): Promise<string> =>
 export const fingerprintFile = async (file: File): Promise<string> =>
   fingerprintOf(await sha256(new Uint8Array(await file.arrayBuffer())));
 
-/** Stable fingerprint of a strain record's logged fields (all of it is sealed). */
-export const fingerprintRecord = (r: {
+/**
+ * Canonical serialisation, so two implementations hash the same record identically.
+ *
+ * Object keys sorted by code point, absent optionals omitted rather than serialised as
+ * null, UTF-8 NFC normalised, no insignificant whitespace. Array order is preserved —
+ * parent order is meaningful in some domains, so it is never sorted.
+ */
+const canonicalise = (value: unknown): string => {
+  if (value === null || value === undefined) return 'null';
+  if (typeof value === 'string') return JSON.stringify(value.normalize('NFC'));
+  if (typeof value === 'number' || typeof value === 'boolean') return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(canonicalise).join(',')}]`;
+  const obj = value as Record<string, unknown>;
+  const keys = Object.keys(obj)
+    .filter((k) => obj[k] !== undefined)
+    .sort();
+  return `{${keys.map((k) => `${JSON.stringify(k)}:${canonicalise(obj[k])}`).join(',')}}`;
+};
+
+/** A 32-byte nonce, hex. Committed with the record so the commitment is hiding as well as binding. */
+export const newNonce = (): string =>
+  toHex(crypto.getRandomValues(new Uint8Array(32)));
+
+/**
+ * The record commitment.
+ *
+ * Plain SHA-256 over the canonical serialisation, with no chain dependency: any
+ * implementation in any language can compute this without the Compact toolchain. That
+ * is what lets a registry we do not operate issue records in this format.
+ *
+ * Binding the commitment to a chain is a separate step — `commit()` from the contract
+ * is applied to this value at anchoring time, not here.
+ *
+ * The nonce matters: cultivar name, breeder and date are guessable, so without one an
+ * observer could compute candidate commitments and confirm a guess against the chain.
+ */
+export const fingerprintRecord = async (r: {
   strainName: string;
   bredBy: string;
   dateCreated: string;
@@ -36,20 +71,25 @@ export const fingerprintRecord = (r: {
   breedingMethod?: string;
   photoFingerprints?: string[];
   refId?: string;
-}): Promise<string> =>
-  fingerprintText(
-    JSON.stringify({
-      strainName: r.strainName,
-      bredBy: r.bredBy,
-      dateCreated: r.dateCreated,
-      notes: r.notes,
-      loggedAt: r.loggedAt,
-      parents: r.parents ?? [],
-      breedingMethod: r.breedingMethod ?? '',
-      photoFingerprints: r.photoFingerprints ?? [],
-      refId: r.refId ?? '',
-    }),
-  );
+  nonce: string;
+}): Promise<string> => {
+  const committed = {
+    breedingMethod: r.breedingMethod ?? '',
+    bredBy: r.bredBy,
+    dateCreated: r.dateCreated,
+    loggedAt: r.loggedAt,
+    nonce: r.nonce,
+    notes: r.notes,
+    parents: r.parents ?? [],
+    photoFingerprints: r.photoFingerprints ?? [],
+    refId: r.refId ?? '',
+    strainName: r.strainName,
+  };
+  return toHex(await sha256(new TextEncoder().encode(canonicalise(committed))));
+};
+
+/** Commitment algorithm identifier, named so it can change without breaking old records. */
+export const COMMITMENT_ALGORITHM = 'sha256/canonical-json/v1';
 
 /** Short display form of a fingerprint. */
 export const shortFingerprint = (hex: string): string =>

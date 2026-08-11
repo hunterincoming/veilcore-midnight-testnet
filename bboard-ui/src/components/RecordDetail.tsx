@@ -10,9 +10,10 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBackOutlined';
 import ScienceIcon from '@mui/icons-material/ScienceOutlined';
 import DescriptionIcon from '@mui/icons-material/DescriptionOutlined';
 import VerifiedIcon from '@mui/icons-material/VerifiedOutlined';
+import CodeIcon from '@mui/icons-material/DataObjectOutlined';
 import GavelIcon from '@mui/icons-material/GavelOutlined';
 import ShareIcon from '@mui/icons-material/ShareOutlined';
-import { useRecords, getRecord, attestRecord } from '../veilcore/records';
+import { useRecords, getRecord, attestRecord, exportEnvelope } from '../veilcore/records';
 import { useLicenses, licensesForRecord, activeLicenseCount, agreementType } from '../veilcore/licenses';
 import { shortFingerprint } from '../veilcore/commitment';
 import { StatusChain } from './StatusChain';
@@ -199,6 +200,11 @@ export const RecordDetail: React.FC = () => {
             </Button>
             <Button variant="outlined" startIcon={<VerifiedIcon />} onClick={() => setMode('prove')}>
               Prove prior possession
+            </Button>
+            {/* The wire format. Any implementation can read this and recompute the
+                commitment without our code, our chain, or our permission. */}
+            <Button variant="text" startIcon={<CodeIcon />} onClick={() => exportEnvelope(record.id)}>
+              Export record
             </Button>
           </Stack>
 

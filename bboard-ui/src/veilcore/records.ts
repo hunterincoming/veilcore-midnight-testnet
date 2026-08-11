@@ -5,6 +5,8 @@
 
 import { useSyncExternalStore } from 'react';
 import { store } from './store';
+import { toEnvelope } from './envelope';
+import { holderKey } from './holder';
 
 export type Attestation = { readonly lab: string; readonly attestedAt: number };
 
@@ -13,6 +15,8 @@ export type ParentRef = { readonly recordId?: string; readonly name: string };
 
 export type StrainRecord = {
   readonly id: string; // VEIL-XXXX
+  /** Committed with the record and stored so the commitment can be recomputed. */
+  readonly nonce?: string;
   readonly strainName: string;
   readonly bredBy: string;
   readonly dateCreated: string; // breeder's self-asserted claim (not cryptographically proven)
@@ -31,6 +35,7 @@ export type StrainRecord = {
 };
 
 export type NewRecordInput = {
+  nonce?: string;
   strainName: string;
   bredBy: string;
   dateCreated: string;
@@ -110,6 +115,26 @@ export const findByDnaFingerprint = (dnaFingerprint: string): StrainRecord | und
 /** Conflict detection (Phase 2.3): other records already paired to this same fingerprint. */
 export const conflictsFor = (dnaFingerprint: string, exceptId: string): StrainRecord[] =>
   records.filter((r) => r.id !== exceptId && r.dnaFingerprint === dnaFingerprint);
+
+/**
+ * Export a record in envelope form — the wire format other implementations read.
+ *
+ * The internal shape is convenient for this app; the envelope is what leaves it. Kept
+ * separate on purpose: the internal model can change freely, the wire format changes
+ * only by version.
+ */
+export const exportEnvelope = (id: string): void => {
+  const r = getRecord(id);
+  if (!r) return;
+  const env = toEnvelope(r, holderKey().slice(0, 16));
+  const blob = new Blob([JSON.stringify(env, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${r.id}.veilcore.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+};
 
 // ---- demo data portability ----
 

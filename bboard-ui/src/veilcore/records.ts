@@ -60,7 +60,8 @@ const listeners = new Set<() => void>();
 const notify = () => listeners.forEach((l) => l());
 
 /** Hydrate from the backing store on boot. */
-const hydrate = async (): Promise<void> => {
+/** Re-fetch from the registry. Used after a claim, when the server created a record. */
+export const hydrate = async (): Promise<void> => {
   records = await store.load<StrainRecord>(KEY);
   notify();
 };

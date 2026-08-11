@@ -4,6 +4,7 @@
 import React from 'react';
 import { Box, Button, Stack, Typography } from '@mui/material';
 import { HolderKeyPanel } from './HolderKeyPanel';
+import { ClaimTransfer } from './ClaimTransfer';
 import { Link as RouterLink, useLocation } from 'react-router-dom';
 import AddIcon from '@mui/icons-material/Add';
 import { WalletBadge } from './veilcore/WalletBadge';
@@ -39,6 +40,9 @@ export const AppHeader: React.FC = () => {
             Licenses
           </Button>
         )}
+        {/* A recipient may have no records at all — receiving has to be reachable
+            from anywhere, not buried inside a cultivar they do not own yet. */}
+        <ClaimTransfer />
         <HolderKeyPanel />
       </Stack>
       <WalletBadge network={network} demo={demoMode} />

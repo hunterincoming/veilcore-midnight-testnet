@@ -7,6 +7,7 @@ import { useSyncExternalStore } from 'react';
 import { store } from './store';
 import { sealEnvelope } from './envelope';
 import { holderKey } from './holder';
+import { newNonce, fingerprintRecord } from './commitment';
 
 export type Attestation = { readonly lab: string; readonly attestedAt: number };
 
@@ -164,3 +165,21 @@ const subscribe = (l: () => void): (() => void) => {
 };
 
 export const useRecords = (): StrainRecord[] => useSyncExternalStore(subscribe, () => records);
+
+/**
+ * Seal a record received through a transfer.
+ *
+ * The recipient did not produce the sender's evidence and cannot claim it, so a
+ * received record arrives with no commitment. This creates theirs: a commitment over
+ * what they actually received — the material, the quantity, the date, the source.
+ */
+export const sealReceived = async (id: string): Promise<StrainRecord | undefined> => {
+  const r = getRecord(id);
+  if (!r || r.recordFingerprint) return r;
+  const nonce = newNonce();
+  const recordFingerprint = await fingerprintRecord({ ...r, nonce });
+  records = records.map((x) => (x.id === id ? { ...x, nonce, recordFingerprint } : x));
+  persist();
+  notify();
+  return getRecord(id);
+};

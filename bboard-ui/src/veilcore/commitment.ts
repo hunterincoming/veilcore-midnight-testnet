@@ -74,5 +74,10 @@ export const fingerprintRecord = async (r: {
 
 
 /** Short display form of a fingerprint. */
-export const shortFingerprint = (hex: string): string =>
-  hex.length > 24 ? `${hex.slice(0, 14)}…${hex.slice(-8)}` : hex;
+/**
+ * A received record has no commitment until its holder seals it — they did not produce
+ * the sender's evidence and cannot claim it. So this has to handle an unsealed record
+ * rather than assuming every record has been committed.
+ */
+export const shortFingerprint = (hex?: string): string =>
+  !hex ? 'not sealed yet' : hex.length > 24 ? `${hex.slice(0, 14)}…${hex.slice(-8)}` : hex;

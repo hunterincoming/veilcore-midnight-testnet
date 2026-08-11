@@ -14,7 +14,7 @@ import {
 import InboxIcon from '@mui/icons-material/MoveToInboxOutlined';
 import { useNavigate } from 'react-router-dom';
 import { claimTransfer } from '../veilcore/transfers';
-import { hydrate } from '../veilcore/records';
+import { hydrate, getRecord, sealReceived } from '../veilcore/records';
 
 export const ClaimTransfer: React.FC<{ variant?: 'button' | 'text' }> = ({ variant = 'text' }) => {
   const [open, setOpen] = useState(false);
@@ -35,6 +35,10 @@ export const ClaimTransfer: React.FC<{ variant?: 'button' | 'text' }> = ({ varia
       return;
     }
     await hydrate();
+    // Seal the received record with the recipient's own commitment. They are not
+    // copying the sender's evidence — they are committing to what they received:
+    // this material, this quantity, this date, from this source.
+    await sealReceived(res.recordId);
     setBusy(false);
     setOpen(false);
     setCode('');

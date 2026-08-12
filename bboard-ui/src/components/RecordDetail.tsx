@@ -21,6 +21,7 @@ import { LineageGraph } from './LineageGraph';
 import { HeritableRights } from './HeritableRights';
 import { NextStep } from './NextStep';
 import { SettlementStatus } from './SettlementStatus';
+import { AttestationPanel } from './AttestationPanel';
 import { SendToLab } from './SendToLab';
 import { LicenseStateChip } from './licensing/LicenseStateChip';
 import { AgreementTypeChip } from './licensing/AgreementTypeChip';
@@ -124,31 +125,9 @@ export const RecordDetail: React.FC = () => {
             </Stack>
           </Paper>
 
+
           <Paper sx={{ p: { xs: 2.5, md: 3 } }}>
-            <Typography variant="overline" sx={{ display: 'block', mb: 1.25 }}>
-              Lab attestation
-            </Typography>
-            {record.attestation ? (
-              <Alert severity="success" variant="outlined">
-                Attested by {record.attestation.attesterHandle ?? record.attestation.lab ?? 'a second party'} · {new Date(record.attestation.attestedAt).toLocaleDateString()} —
-                a second party has confirmed this sample.
-              </Alert>
-            ) : (
-              <Stack spacing={1.5}>
-                <Typography variant="body2" color="text.secondary">
-                  A second party confirming they received this sample makes your record far stronger evidence than one
-                  you signed alone.
-                </Typography>
-                {/* An attestation is earned, not pressed. It happens when a lab claims
-                    a transfer — a second party confirming receipt with their own key.
-                    A button that manufactures one would fabricate the evidence this
-                    system exists to produce. */}
-                <Typography variant="body2" color="text.secondary">
-                  Send this cultivar to a lab. When they confirm receipt, the attestation
-                  is recorded against their key — not something you can set yourself.
-                </Typography>
-              </Stack>
-            )}
+            <AttestationPanel record={record} />
           </Paper>
 
           <Paper sx={{ p: { xs: 2.5, md: 3 } }}>

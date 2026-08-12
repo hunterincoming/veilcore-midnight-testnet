@@ -25,6 +25,12 @@ export ledger lastBatchRoot: Bytes<32>;
 export ledger transferSeq: Counter;
 /** Transfers proposed but not yet approved. Cleared on approval or withdrawal. */
 export ledger pendingTransferOf: Map<Bytes<32>, Bytes<32>>;
+/**
+ * Who currently holds each live licence. Cleared on revocation with the other licence
+ * maps, so state stays bounded by live agreements. Without it a licence can be proven
+ * and revoked but not attributed, which makes transfer meaningless.
+ */
+export ledger licenseHolderOf: Map<Bytes<32>, Bytes<32>>;
 
 // Live licenses only. Removed on revocation, so bounded by open agreements.
 export ledger licenseStatusOf: Map<Bytes<32>, LicenseState>;
@@ -93,6 +99,8 @@ export circuit issueLicense(recordCommitment: Bytes<32>, licenseCommitment: Byte
   const lc = disclose(licenseCommitment);
   assert(!licenseStatusOf.member(lc), "License already exists");
   licenseStatusOf.insert(lc, LicenseState.PENDING);
+  licenseHolderOf.insert(lc, disclose(recordCommitment));
+  // The issuer holds it until it is countersigned and possibly transferred.
   licenseRecordOf.insert(lc, rc);
 }
 
@@ -139,9 +147,10 @@ export circuit approveTransfer(licenseCommitment: Bytes<32>, recordCommitment: B
   assert(recordCommitment == commit(localGeneticSecret()), "Only the issuing record holder can approve");
   assert(licenseRecordOf.lookup(lc) == disclose(recordCommitment), "This license was not issued against your record");
 
-  // The new holder is disclosed into the transaction; the pending entry is cleared, so
-  // state stays bounded by transfers actually in flight rather than by history.
+  // Move the licence. Reassigning the holder is the whole point of the transfer —
+  // clearing the proposal without it would leave the licence exactly where it was.
   const newHolder = pendingTransferOf.lookup(lc);
+  licenseHolderOf.insert(lc, newHolder);
   pendingTransferOf.remove(lc);
   transferSeq.increment(1);
 }
@@ -159,6 +168,7 @@ export circuit revokeLicense(licenseCommitment: Bytes<32>): [] {
   assert(licenseStatusOf.member(lc), "No such license");
   assert(licenseRecordOf.lookup(lc) == commit(localGeneticSecret()), "Only the issuer can revoke");
   licenseStatusOf.remove(lc);
+  licenseHolderOf.remove(lc);
   licenseRecordOf.remove(lc);
 }
 

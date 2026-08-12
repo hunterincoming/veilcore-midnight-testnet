@@ -51,6 +51,18 @@ export type StrainRecord = {
   // Set by the registry when a record arrives through a transfer. The recipient holds
   // material descended from the source, not a copy of the source's evidence.
   /** The source record's id. */
+  /** Set on a correcting record: the record it supersedes, and how severely. */
+  readonly supersedes?: {
+    recordId: string;
+    reason: string;
+    descentSeverity: 'cosmetic' | 'material';
+    termsSeverity: 'cosmetic' | 'material';
+    effectiveAt: string;
+    changedFields: string[];
+  };
+  /** Set on a superseded record: the correction that replaced it. */
+  readonly supersededBy?: string;
+
   readonly receivedFrom?: string;
   /** The source record's commitment — what an attestation about the source points at. */
   readonly receivedFromCommitment?: string;
@@ -217,4 +229,61 @@ export const sealReceived = async (id: string): Promise<StrainRecord | undefined
   persist();
   notify();
   return getRecord(id);
+};
+
+
+/**
+ * Issue a correction.
+ *
+ * The original is not edited and not deleted \u2014 it is marked as superseded and stays on
+ * file. A record that can be quietly changed is not evidence, and a record that can be
+ * deleted is worse.
+ *
+ * Severity comes from the SDK, classified by which field changed. It is not a parameter
+ * here, deliberately: a caller who could set it would set it to cosmetic.
+ */
+export const issueCorrection = async (
+  originalId: string,
+  edits: Partial<StrainRecord>,
+  reason: string,
+): Promise<StrainRecord | undefined> => {
+  const before = getRecord(originalId);
+  if (!before) return undefined;
+
+  const { supersedesFor } = await import('veilcore-records');
+  const { toEnvelope, sealEnvelope } = await import('./envelope');
+
+  const nonce = newNonce();
+  // The draft is not sealed yet, so it has no commitment. Typed loosely here for that
+  // reason; the sealed record below has one.
+  const draft = {
+    ...before,
+    ...edits,
+    id: `${before.id}-C${Date.now().toString(36).slice(-4).toUpperCase()}`,
+    nonce,
+    loggedAt: Date.now(),
+    supersededBy: undefined,
+  } as StrainRecord;
+
+  const holder = holderKey().slice(0, 16);
+  const supersedes = supersedesFor(
+    toEnvelope(before, holder),
+    await sealEnvelope(draft, holder),
+    reason,
+    'holder',
+  );
+
+  const corrected: StrainRecord = {
+    ...draft,
+    recordFingerprint: await fingerprintRecord({ ...draft, nonce }),
+    supersedes,
+  };
+
+  records = [
+    corrected,
+    ...records.map((r) => (r.id === originalId ? { ...r, supersededBy: corrected.id } : r)),
+  ];
+  persist();
+  notify();
+  return corrected;
 };

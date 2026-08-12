@@ -4,7 +4,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import React, { useState } from 'react';
-import { Alert, Box, Button, Chip, Divider, Paper, Stack, Typography } from '@mui/material';
+import { Alert, Box, Button, Chip, Divider, Link, Paper, Stack, Typography } from '@mui/material';
 import { Link as RouterLink, useParams, useNavigate } from 'react-router-dom';
 import ArrowBackIcon from '@mui/icons-material/ArrowBackOutlined';
 import ScienceIcon from '@mui/icons-material/ScienceOutlined';
@@ -23,6 +23,7 @@ import { NextStep } from './NextStep';
 import { SettlementStatus } from './SettlementStatus';
 import { AttestationPanel } from './AttestationPanel';
 import { SendToLab } from './SendToLab';
+import { CorrectRecord } from './CorrectRecord';
 import { LicenseStateChip } from './licensing/LicenseStateChip';
 import { AgreementTypeChip } from './licensing/AgreementTypeChip';
 import { AppHeader } from './AppHeader';
@@ -89,6 +90,28 @@ export const RecordDetail: React.FC = () => {
 
       {mode === 'overview' && (
         <Stack spacing={2.5}>
+          {/* A superseded record must say so. Someone opening it years later needs to
+              know a correction exists, and a correcting record needs to point back. */}
+          {record.supersededBy && (
+            <Alert severity="info" variant="outlined">
+              This record was corrected. It remains on file unchanged \u2014 nothing is ever deleted \u2014
+              but a later record supersedes it.{' '}
+              <Link component={RouterLink} to={`/record/${record.supersededBy}`}>
+                See the correction
+              </Link>
+            </Alert>
+          )}
+
+          {record.supersedes && (
+            <Alert severity="info" variant="outlined">
+              This corrects an earlier record. Changed:{' '}
+              {record.supersedes.changedFields.join(', ')}. Reason given: {record.supersedes.reason}.{' '}
+              <Link component={RouterLink} to={`/record/${record.supersedes.recordId}`}>
+                See what it replaced
+              </Link>
+            </Alert>
+          )}
+
           <NextStep
             record={record}
             onPairDna={() => setMode('pair')}
@@ -200,6 +223,8 @@ export const RecordDetail: React.FC = () => {
               Prove prior possession
             </Button>
             <SendToLab record={record} />
+            {/* A holder who mistypes something needs a path that is not deletion. */}
+            <CorrectRecord record={record} />
             {/* The wire format. Any implementation can read this and recompute the
                 commitment without our code, our chain, or our permission. */}
             <Button variant="text" startIcon={<CodeIcon />} onClick={() => exportEnvelope(record.id)}>

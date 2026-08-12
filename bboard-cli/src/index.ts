@@ -179,7 +179,10 @@ You can do one of the following:
   8. Display the current private state (known only to this DApp instance)
   9. Display the current derived state (known only to this DApp instance)
   10. Anchor a batch root (one transaction covers every record in the batch)
-  11. Exit
+  11. Propose transferring a licence to a new holder
+  12. Approve a proposed transfer (as the issuer)
+  13. Withdraw a proposed transfer
+  14. Exit
 Which would you like to do? `;
 
 const mainLoop = async (providers: VeilcoreProviders, rli: Interface, logger: Logger): Promise<void> => {
@@ -297,7 +300,38 @@ const mainLoop = async (providers: VeilcoreProviders, rli: Interface, logger: Lo
             logger.info('Record this against the batch so proofs reference a transaction anyone can look up.');
             break;
           }
-          case '11':
+          case '11': {
+            // A licence is not a bearer instrument. Proposing is only half the act —
+            // the issuer must approve, which is what makes it permissioned rather than
+            // freely transferable.
+            const lcHex = (await rli.question('Licence commitment to transfer: ')).trim();
+            const nhHex = (await rli.question('New holder commitment: ')).trim();
+            const lc = hexToBytes(lcHex);
+            const nh = hexToBytes(nhHex);
+            if (lc === null || nh === null) { logger.error('Invalid input.'); break; }
+            await veilcoreApi.proposeTransfer(lc, nh);
+            logger.info('Transfer proposed. Nothing moves until the issuer approves.');
+            break;
+          }
+          case '12': {
+            const lcHex = (await rli.question('Licence commitment: ')).trim();
+            const lc = hexToBytes(lcHex);
+            if (lc === null) { logger.error('Invalid licence commitment.'); break; }
+            const geneticSecret = await getGeneticSecret(providers);
+            if (geneticSecret === null) { logger.error('No genetic secret in private state.'); break; }
+            await veilcoreApi.approveTransfer(lc, pureCircuits.commit(geneticSecret));
+            logger.info('Transfer approved. The licence now belongs to the new holder.');
+            break;
+          }
+          case '13': {
+            const lcHex = (await rli.question('Licence commitment: ')).trim();
+            const lc = hexToBytes(lcHex);
+            if (lc === null) { logger.error('Invalid licence commitment.'); break; }
+            await veilcoreApi.withdrawTransfer(lc);
+            logger.info('Transfer proposal withdrawn.');
+            break;
+          }
+          case '14':
             logger.info('Exiting...');
             return;
           default:

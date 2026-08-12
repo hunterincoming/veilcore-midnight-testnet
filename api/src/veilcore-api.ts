@@ -33,6 +33,9 @@ export interface DeployedVeilcoreAPI {
   countersignLicense: (licenseCommitment: Uint8Array) => Promise<void>;
   revokeLicense: (licenseCommitment: Uint8Array) => Promise<void>;
   proveLicense: (secret: Uint8Array) => Promise<void>;
+  proposeTransfer: (licenseCommitment: Uint8Array, newHolderCommitment: Uint8Array) => Promise<void>;
+  approveTransfer: (licenseCommitment: Uint8Array, recordCommitment: Uint8Array) => Promise<void>;
+  withdrawTransfer: (licenseCommitment: Uint8Array) => Promise<void>;
 }
 
 export class VeilcoreAPI implements DeployedVeilcoreAPI {
@@ -160,6 +163,39 @@ export class VeilcoreAPI implements DeployedVeilcoreAPI {
     const txData = await this.deployedContract.callTx.proveLicense(secret);
     this.logger?.trace({
       transactionAdded: { circuit: 'proveLicense', txHash: txData.public.txHash, blockHeight: txData.public.blockHeight },
+    });
+  }
+
+  /**
+   * Propose transferring a licence to a new holder.
+   *
+   * A licence is not a bearer instrument. The USDA's own plant variety licence template
+   * grants a nontransferable licence and permits sublicensing only with the grantor's
+   * prior approval — so transfer is a two-party act, and this is only the first half.
+   */
+  async proposeTransfer(licenseCommitment: Uint8Array, newHolderCommitment: Uint8Array): Promise<void> {
+    this.logger?.info('proposing licence transfer');
+    const txData = await this.deployedContract.callTx.proposeTransfer(licenseCommitment, newHolderCommitment);
+    this.logger?.trace({
+      transactionAdded: { circuit: 'proposeTransfer', txHash: txData.public.txHash, blockHeight: txData.public.blockHeight },
+    });
+  }
+
+  /** The issuer approves, and the licence moves. Only they can. */
+  async approveTransfer(licenseCommitment: Uint8Array, recordCommitment: Uint8Array): Promise<void> {
+    this.logger?.info('approving licence transfer');
+    const txData = await this.deployedContract.callTx.approveTransfer(licenseCommitment, recordCommitment);
+    this.logger?.trace({
+      transactionAdded: { circuit: 'approveTransfer', txHash: txData.public.txHash, blockHeight: txData.public.blockHeight },
+    });
+  }
+
+  /** Withdraw a proposal that was never approved. */
+  async withdrawTransfer(licenseCommitment: Uint8Array): Promise<void> {
+    this.logger?.info('withdrawing licence transfer');
+    const txData = await this.deployedContract.callTx.withdrawTransfer(licenseCommitment);
+    this.logger?.trace({
+      transactionAdded: { circuit: 'withdrawTransfer', txHash: txData.public.txHash, blockHeight: txData.public.blockHeight },
     });
   }
 

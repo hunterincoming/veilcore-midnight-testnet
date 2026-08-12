@@ -29,6 +29,7 @@ import { getRecord, childrenOf } from '../../veilcore/records';
 import { shortFingerprint } from '../../veilcore/commitment';
 import { AppHeader } from '../AppHeader';
 import { LicenseStateChip } from './LicenseStateChip';
+import { ShareLicense } from './ShareLicense';
 import { AgreementTypeChip } from './AgreementTypeChip';
 
 const money = (n: number) => `$${n.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
@@ -214,6 +215,7 @@ export const LicenseDetail: React.FC = () => {
                 Active — both parties signed. Effective {new Date(license.licenseeSignedAt ?? license.createdAt).toLocaleDateString()}.
               </Alert>
               <Stack direction="row" spacing={1.5} sx={{ flexWrap: 'wrap' }}>
+                <ShareLicense license={license} />
                 <Button variant="outlined" onClick={() => navigate(`/record/${license.recordId}/license?supersede=${license.id}`)}>
                   Renew / amend
                 </Button>

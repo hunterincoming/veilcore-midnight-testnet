@@ -15,6 +15,7 @@ import InboxIcon from '@mui/icons-material/MoveToInboxOutlined';
 import { useNavigate } from 'react-router-dom';
 import { claimTransfer } from '../veilcore/transfers';
 import { hydrate, getRecord, sealReceived } from '../veilcore/records';
+import { loadAttester, attestRecord } from '../veilcore/attester-keys';
 
 export const ClaimTransfer: React.FC<{ variant?: 'button' | 'text' }> = ({ variant = 'text' }) => {
   const [open, setOpen] = useState(false);
@@ -38,7 +39,20 @@ export const ClaimTransfer: React.FC<{ variant?: 'button' | 'text' }> = ({ varia
     // Seal the received record with the recipient's own commitment. They are not
     // copying the sender's evidence — they are committing to what they received:
     // this material, this quantity, this date, from this source.
-    await sealReceived(res.recordId);
+    const sealed = await sealReceived(res.recordId);
+
+    // If this recipient has an attester identity, sign the confirmation. That turns it
+    // from something the registry recorded on their behalf into their own statement,
+    // which is the difference between a note and evidence.
+    const attester = loadAttester();
+    if (attester && sealed?.receivedFromCommitment) {
+      await attestRecord(
+        attester,
+        sealed.receivedFromCommitment,
+        sealed.recordFingerprint ?? sealed.receivedFromCommitment,
+        'chain-of-custody',
+      );
+    }
     setBusy(false);
     setOpen(false);
     setCode('');

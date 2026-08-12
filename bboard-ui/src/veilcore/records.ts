@@ -47,6 +47,16 @@ export type StrainRecord = {
   readonly dnaFileName?: string;
   readonly dnaPairedAt?: number;
   readonly attestation?: Attestation; // Phase 2.4
+
+  // Set by the registry when a record arrives through a transfer. The recipient holds
+  // material descended from the source, not a copy of the source's evidence.
+  /** The source record's id. */
+  readonly receivedFrom?: string;
+  /** The source record's commitment — what an attestation about the source points at. */
+  readonly receivedFromCommitment?: string;
+  readonly receivedAt?: number;
+  readonly transferId?: string;
+  readonly quantity?: string;
   readonly licenseIds?: string[]; // Phase 3
 };
 

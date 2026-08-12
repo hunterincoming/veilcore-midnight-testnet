@@ -148,6 +148,13 @@ export const Step2PairDna: React.FC<{
           {busy ? 'Fingerprinting locally…' : 'Pair to my cultivar'}
         </Button>
         {onSkip && (
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+            If you sent the sample through VeilCore, the lab&apos;s report arrives here signed by
+            them — you don&apos;t need to do anything. Upload one yourself only if your lab
+            doesn&apos;t use VeilCore.
+          </Typography>
+        )}
+        {onSkip && (
           <Button variant="text" color="inherit" onClick={onSkip}>
             Don&apos;t have the report back yet — skip
           </Button>

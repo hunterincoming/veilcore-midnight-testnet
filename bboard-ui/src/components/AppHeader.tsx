@@ -6,6 +6,7 @@ import { Box, Button, Stack, Typography } from '@mui/material';
 import { HolderKeyPanel } from './HolderKeyPanel';
 import { ClaimTransfer } from './ClaimTransfer';
 import { AttesterSetup } from './AttesterSetup';
+import { getRole, isLab } from '../veilcore/role';
 import { Link as RouterLink, useLocation } from 'react-router-dom';
 import AddIcon from '@mui/icons-material/Add';
 import { WalletBadge } from './veilcore/WalletBadge';
@@ -43,8 +44,14 @@ export const AppHeader: React.FC = () => {
         )}
         {/* A recipient may have no records at all — receiving has to be reachable
             from anywhere, not buried inside a cultivar they do not own yet. */}
-        <ClaimTransfer />
-        <AttesterSetup />
+        {/* Receiving and attesting are a lab's job. Showing them to a breeder is
+            offering controls for work they will never do. */}
+        {isLab(getRole()) && (
+          <>
+            <ClaimTransfer />
+            <AttesterSetup />
+          </>
+        )}
         <HolderKeyPanel />
       </Stack>
       <WalletBadge network={network} demo={demoMode} />

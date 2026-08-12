@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import React from 'react';
+import { RolePicker } from './components/RolePicker';
 import { Box, Container } from '@mui/material';
 import { Routes, Route } from 'react-router-dom';
 import { Dashboard } from './components/Dashboard';
@@ -23,6 +24,9 @@ const AppLayout: React.FC<React.PropsWithChildren> = ({ children }) => (
                    #04070a`,
     }}
   >
+    {/* Asked once, on first use. Without it the app has to guess who is reading,
+        which is how a lab was told to send its own sample to a lab. */}
+    <RolePicker />
     <Container maxWidth="md" sx={{ py: { xs: 3, md: 6 } }}>
       {children}
     </Container>

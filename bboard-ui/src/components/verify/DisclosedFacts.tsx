@@ -47,31 +47,31 @@ export const DisclosedFacts: React.FC<{ record: StrainRecord; disclosure: Disclo
         </Typography>
       )}
 
-      {disclosure.own && <Fact>Prior possession proven — sealed to this breeder on this date.</Fact>}
-      {disclosure.dna && (
+      {disclosure['existence'] && <Fact>Prior possession proven — sealed to this breeder on this date.</Fact>}
+      {disclosure['attestation-status'] && (
         <Fact ok={!!record.dnaFingerprint}>
           {record.dnaFingerprint ? 'DNA-verified — bound to the paired lab report.' : 'DNA report not yet paired.'}
         </Fact>
       )}
-      {disclosure.lineage && <Fact>Lineage intact — unbroken chain back to the sealed record.</Fact>}
-      {disclosure.sealed && <Fact>Sealed {fmtDate(record.loggedAt)} — the moment it was logged.</Fact>}
+      {disclosure['descent-clean'] && <Fact>Lineage intact — unbroken chain back to the sealed record.</Fact>}
+      {disclosure['sealed-at'] && <Fact>Sealed {fmtDate(record.loggedAt)} — the moment it was logged.</Fact>}
 
-      {disclosure.parents && (
+      {disclosure['parent-names'] && (
         <Fact ok={parents.length > 0}>
           {parents.length > 0 ? `Parents: ${parents.join('  ×  ')}` : 'No parent cultivars recorded.'}
         </Fact>
       )}
-      {disclosure.method && (
+      {disclosure['breeding-method'] && (
         <Fact ok={!!record.breedingMethod}>Breeding method: {record.breedingMethod || 'not recorded'}.</Fact>
       )}
-      {disclosure.others && (
+      {disclosure['holder-portfolio'] && (
         <Fact ok={otherRecords.length > 0}>
           {otherRecords.length > 0
             ? `My other cultivars: ${otherRecords.map((r) => r.strainName).join(', ')}.`
             : 'No other cultivars logged.'}
         </Fact>
       )}
-      {disclosure.agreementTerms && (
+      {disclosure['terms-full'] && (
         <Fact ok={otherAgreements.length > 0}>
           {otherAgreements.length > 0
             ? `My other agreements: ${otherAgreements

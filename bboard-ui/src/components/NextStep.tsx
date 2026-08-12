@@ -16,6 +16,7 @@ import VerifiedIcon from '@mui/icons-material/VerifiedOutlined';
 import SendIcon from '@mui/icons-material/SendOutlined';
 import type { StrainRecord } from '../veilcore/records';
 import { SendToLab } from './SendToLab';
+import { AttachReport } from './AttachReport';
 import { TEAL } from '../config/theme';
 
 type Step = {
@@ -36,28 +37,42 @@ export const NextStep: React.FC<{
 }> = ({ record, onPairDna, onAgreement }) => {
   let step: Step;
 
-  if (!record.dnaFingerprint) {
+  // A record that arrived through a transfer belongs to the recipient. Telling them to
+  // "send it to a lab for confirmation" is telling the lab to send it to a lab — the
+  // page has to know which side of the transfer the reader is on.
+  const isReceived = Boolean(record.receivedFrom);
+
+  if (isReceived && !record.attestation) {
     step = {
-      title: 'Pair a DNA report',
-      why: 'Right now this record is a name you typed. Pairing a lab report ties it to the actual genetics, so a claim becomes something anyone can test.',
-      action: 'Pair DNA report',
+      title: 'Confirm what you received',
+      why: 'You hold this material now. Attaching your report is what turns the sender\u2019s record into evidence — signed by you, not recorded on your behalf.',
+      action: 'Attach a report',
       icon: <ScienceIcon />,
-      onClick: onPairDna,
+      onClick: () => {},
+      // The lab's report belongs on the sender's record, not their own.
+      custom: <AttachReport record={record} />,
     };
-  } else if (!record.attestation) {
+  } else if (isReceived) {
     step = {
-      title: 'Get a second party to confirm it',
-      why: 'A record you signed alone is weaker evidence than one a lab confirms they received. Send them the cultivar — when they confirm receipt, the attestation is recorded against their key.',
+      title: 'Received and confirmed',
+      why: 'Your confirmation is on the sender\u2019s record. You can send this material onward, or license what you produce from it.',
+      action: 'Start an agreement',
+      icon: <SendIcon />,
+      onClick: onAgreement,
+    };
+  } else if (!record.dnaFingerprint && !record.attestation) {
+    step = {
+      title: 'Send a sample to a lab',
+      why: 'Right now this record is your own account of the cultivar. A lab confirming receipt and returning a report is what makes it evidence someone else can rely on — and they produce the report, so this is the step that starts it.',
       action: 'Send to a lab',
       icon: <VerifiedIcon />,
-      // Rendered as its own control below — the send dialog owns this interaction.
       onClick: () => {},
       custom: <SendToLab record={record} />,
     };
   } else {
     step = {
       title: 'This record is ready to use',
-      why: 'DNA paired and confirmed by a second party. You can send it to a lab or license it with terms that follow the genetics into every descendant.',
+      why: 'Confirmed by a second party. You can send material onward or license it with terms that follow the genetics into every descendant.',
       action: 'Start an agreement',
       icon: <SendIcon />,
       onClick: onAgreement,

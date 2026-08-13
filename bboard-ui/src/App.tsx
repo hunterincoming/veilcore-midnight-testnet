@@ -4,6 +4,7 @@
 
 import React from 'react';
 import { Landing } from './components/Landing';
+import { DocPage } from './components/DocPage';
 import { RolePicker } from './components/RolePicker';
 import { Box, Container } from '@mui/material';
 import { Routes, Route } from 'react-router-dom';
@@ -42,6 +43,8 @@ const App: React.FC = () => (
         somewhere to understand what this is. The dashboard assumes you already do. */}
     <Route path="/" element={withLayout(<Landing />)} />
     <Route path="/records" element={withLayout(<Dashboard />)} />
+    {/* Documents read here rather than in a code repository. */}
+    <Route path="/docs/:doc" element={withLayout(<DocPage />)} />
     <Route path="/new" element={withLayout(<WizardShell />)} />
     <Route path="/record/:id" element={withLayout(<RecordDetail />)} />
     <Route path="/record/:id/license" element={withLayout(<TermsBuilder />)} />

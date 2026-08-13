@@ -20,8 +20,8 @@ const MONO = '"SFMono-Regular", ui-monospace, Menlo, monospace';
 
 /** The live commitment. Real SDK, real hash, computed in the visitor browser. */
 const Hero: React.FC = () => {
-  const [name, setName] = useState('Gelato 41');
-  const [bred, setBred] = useState('Sherbinski');
+  const [name, setName] = useState('Harbour Mist');
+  const [bred, setBred] = useState('Your name here');
   const [hash, setHash] = useState('');
   const [nonce] = useState(() => newNonce());
 
@@ -221,8 +221,7 @@ export const Landing: React.FC = () => (
       <Audience
         who="Laboratories"
         line="Keep your LIMS and your own sample numbers. Add a commitment to records you already create, and sign the reports you already issue. A day of intakes anchors in one transaction."
-        to="https://github.com/hunterincoming/veilcore-sdk/blob/main/INTEGRATING.md"
-        label="Integration guide" external
+        to="/docs/integrate" label="Integration guide"
       />
       <Audience
         who="Breeders and growers"
@@ -232,20 +231,17 @@ export const Landing: React.FC = () => (
       <Audience
         who="Registries and rights bodies"
         line="Run your own registry under your own domain. Define a profile for your own domain of material. Nobody grants permission and nothing routes through us."
-        to="https://github.com/hunterincoming/veilcore-sdk/blob/main/SPEC.md"
-        label="Read the specification" external
+        to="/docs/spec" label="Read the specification"
       />
       <Audience
         who="Counsel"
         line="How a record is authenticated, what hearsay questions it raises, which jurisdictions attach a presumption, and — set out at length — what it does not prove."
-        to="https://github.com/hunterincoming/veilcore-sdk/blob/main/EVIDENCE.md"
-        label="Evidence note" external
+        to="/docs/evidence" label="Evidence note"
       />
       <Audience
         who="Anyone checking a record"
         line="Verification is free, needs no account, and always will. If we disappear, records already issued keep verifying against the ledger using open-source software."
-        to="https://github.com/hunterincoming/veilcore-sdk"
-        label="The package" external
+        to="/docs/integrate" label="How verification works"
       />
     </Section>
 

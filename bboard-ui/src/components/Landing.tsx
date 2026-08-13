@@ -74,7 +74,7 @@ const Hero: React.FC = () => {
 
         {/* The collapse. Everything above reduces to the line below. */}
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 2.5 }}>
-          <Box sx={{ width: 1, height: 34, background: `linear-gradient(180deg, ${TEAL}00, ${TEAL}88)` }} />
+          <Box sx={{ width: '1px', height: 34, background: `linear-gradient(180deg, ${TEAL}00, ${TEAL}88)` }} />
         </Box>
 
         <Box
@@ -122,8 +122,8 @@ const Stage: React.FC<{
     {!last && (
       <Box
         sx={{
-          position: 'absolute', left: { xs: 7, md: 15 }, top: 26, bottom: 0, width: 1,
-          background: 'linear-gradient(180deg, rgba(47,240,207,0.3), rgba(47,240,207,0.3))',
+          position: 'absolute', left: { xs: 7, md: 15 }, top: 26, bottom: 0, width: '1px',
+          background: 'rgba(47,240,207,0.3)',
         }}
       />
     )}

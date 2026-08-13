@@ -159,7 +159,7 @@ export const RecordDetail: React.FC = () => {
           </Paper>
 
           {/* Every other panel answers "what is true now". A dispute asks "what happened,
-              and in what order" \u2014 a different question the app could not answer. */}
+              and in what order" — a different question the app could not answer. */}
           <Paper sx={{ p: { xs: 2.5, md: 3 } }}>
             <RecordHistory record={record} />
           </Paper>

@@ -49,7 +49,7 @@ export const RecordHistory: React.FC<{ record: StrainRecord }> = ({ record }) =>
           out.push({
             at: new Date(a.retraction.retractedAt).getTime(),
             title: 'Attestation retracted',
-            detail: `The attester withdrew it. Reason: ${a.retraction.reason}. The attestation remains on record \u2014 retraction is not deletion.`,
+            detail: `The attester withdrew it. Reason: ${a.retraction.reason}. The attestation remains on record — retraction is not deletion.`,
           });
         }
       }
@@ -59,7 +59,7 @@ export const RecordHistory: React.FC<{ record: StrainRecord }> = ({ record }) =>
         out.push({
           at: new Date(proof.proof.anchor.anchoredAt).getTime(),
           title: 'Anchored',
-          detail: `Included in batch ${proof.proof.batchId}, whose root was published on ${proof.proof.anchor.chain}. From this point the sealing date does not rest on anyone\u2019s word.`,
+          detail: `Included in batch ${proof.proof.batchId}, whose root was published on ${proof.proof.anchor.chain}. From this point the sealing date does not rest on anyone’s word.`,
           strong: true,
         });
       }

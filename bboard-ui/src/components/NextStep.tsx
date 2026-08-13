@@ -45,7 +45,7 @@ export const NextStep: React.FC<{
   if (isReceived && !record.attestation) {
     step = {
       title: 'Confirm what you received',
-      why: 'You hold this material now. Attaching your report is what turns the sender\u2019s record into evidence — signed by you, not recorded on your behalf.',
+      why: 'You hold this material now. Attaching your report is what turns the sender’s record into evidence — signed by you, not recorded on your behalf.',
       action: 'Attach a report',
       icon: <ScienceIcon />,
       onClick: () => {},
@@ -55,7 +55,7 @@ export const NextStep: React.FC<{
   } else if (isReceived) {
     step = {
       title: 'Received and confirmed',
-      why: 'Your confirmation is on the sender\u2019s record. You can send this material onward, or license what you produce from it.',
+      why: 'Your confirmation is on the sender’s record. You can send this material onward, or license what you produce from it.',
       action: 'Start an agreement',
       icon: <SendIcon />,
       onClick: onAgreement,

@@ -110,41 +110,22 @@ const Hero: React.FC = () => {
 /* --------------------------------------------------------------- spine ---- */
 
 /**
- * A stage in a record's life, attached to the spine.
+ * A stage in a record's life.
  *
- * Numbered because these genuinely are a sequence: nothing can be confirmed before it is
- * sealed, and nothing can be licensed before it exists.
+ * No connecting line and no numbered bubbles. Those are the decoration that appears on
+ * every landing page regardless of what it is selling, and they were doing nothing here
+ * that the reading order did not already do. What remains is the sequence stated in
+ * words, which is how a person would actually explain it.
  */
 const Stage: React.FC<{
-  n: string; head: string; body: string; limit: string; last?: boolean;
-}> = ({ n, head, body, limit, last }) => (
-  <Box sx={{ position: 'relative', pl: { xs: 4, md: 7 }, pb: last ? 0 : { xs: 5, md: 7 } }}>
-    {!last && (
-      <Box
-        sx={{
-          position: 'absolute', left: { xs: 7, md: 15 }, top: 26, bottom: 0, width: '1px',
-          background: 'rgba(47,240,207,0.3)',
-        }}
-      />
-    )}
-    <Box
-      sx={{
-        position: 'absolute', left: 0, top: 2, width: { xs: 15, md: 31 }, height: { xs: 15, md: 31 },
-        borderRadius: '50%', border: '1px solid', borderColor: TEAL_DIM,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontFamily: MONO, fontSize: { xs: 8, md: 11 },
-        // The final stage is filled: the chain ends there rather than trailing off.
-        color: last ? '#04070a' : TEAL,
-        background: last ? TEAL : 'transparent',
-      }}
-    >
-      {n}
-    </Box>
-    <Typography variant="h5" sx={{ mb: 1.25, fontSize: { xs: 19, md: 22 } }}>{head}</Typography>
-    <Typography variant="body1" color="text.secondary" sx={{ mb: 1.25, maxWidth: 620, lineHeight: 1.7 }}>
+  head: string; body: string; limit: string;
+}> = ({ head, body, limit }) => (
+  <Box sx={{ py: { xs: 3.5, md: 4.5 }, maxWidth: 660 }}>
+    <Typography variant="h5" sx={{ mb: 1.5, fontSize: { xs: 20, md: 24 } }}>{head}</Typography>
+    <Typography variant="body1" color="text.secondary" sx={{ mb: 1.5, lineHeight: 1.75 }}>
       {body}
     </Typography>
-    <Typography variant="body2" sx={{ color: TEAL_DIM, maxWidth: 620 }}>{limit}</Typography>
+    <Typography variant="body2" sx={{ color: TEAL_DIM, lineHeight: 1.7 }}>{limit}</Typography>
   </Box>
 );
 
@@ -202,29 +183,24 @@ export const Landing: React.FC = () => (
     <Rule eyebrow="What a record accumulates" title="From your notebook to a licence, without showing anyone the genetics." />
     <Box sx={{ pt: 1 }}>
       <Stage
-        n="01"
         head="Log what you bred"
         body="Write down the cultivar, its parents, when you selected it. It is sealed on your own device and only a hash of it is published — so from that moment you can prove to anyone that this description existed on this date, without showing them a word of it. You can even prove you hold the material without producing the description at all."
         limit="It fixes what you wrote and when. It does not prove what you wrote is true — that is what the next stages are for."
       />
       <Stage
-        n="02"
         head="Send a sample for testing"
         body="Give a lab a transfer code with the sample. When they confirm it arrived, that confirmation is signed with their key and lands on your record. The material they hold is now traceable back to yours, and any royalty you attached travels with it — including into cuttings that do not exist yet."
         limit="It cannot see material nobody declares. It bites when that material surfaces commercially."
       />
       <Stage
-        n="03"
         head="Their report becomes your evidence"
         body="The lab attaches the DNA report they produced, signed by them. Your record is now tied to actual genetics rather than a name anyone could reuse — and it carries a statement from someone other than you. Only that lab can withdraw it. Nobody, including us, can forge one."
         limit="We record which accreditation a lab claims, and who accredited them. We never vouch for it — you check that with the accreditor."
       />
       <Stage
-        n="04"
         head="License it, and get paid on what grows from it"
         body="Set terms, including a royalty on offspring, and both parties sign. The terms bind to the record and to the DNA report rather than to a memory of a conversation. If a licensee stops holding up their end, you revoke — which does not stop their grow, but does stop them showing clean title to the next buyer, the next lab, or any programme that asks for a record."
         limit="We record what is owed. We never take payments and never hold your money."
-        last
       />
     </Box>
 

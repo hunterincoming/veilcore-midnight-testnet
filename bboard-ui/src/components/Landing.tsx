@@ -238,7 +238,7 @@ export const Landing: React.FC = () => (
       <Audience
         who="Counsel"
         line="How a record is authenticated, what hearsay questions it raises, which jurisdictions attach a presumption, and — set out at length — what it does not prove."
-        to="https://github.com/hunterincoming/veilcore-sdk"
+        to="https://github.com/hunterincoming/veilcore-sdk/blob/main/EVIDENCE.md"
         label="Evidence note" external
       />
       <Audience

@@ -22,6 +22,7 @@ import { HeritableRights } from './HeritableRights';
 import { NextStep } from './NextStep';
 import { SettlementStatus } from './SettlementStatus';
 import { AttestationPanel } from './AttestationPanel';
+import { RecordHistory } from './RecordHistory';
 import { SendToLab } from './SendToLab';
 import { CorrectRecord } from './CorrectRecord';
 import { LicenseStateChip } from './licensing/LicenseStateChip';
@@ -155,6 +156,12 @@ export const RecordDetail: React.FC = () => {
 
           <Paper sx={{ p: { xs: 2.5, md: 3 } }}>
             <SettlementStatus record={record} />
+          </Paper>
+
+          {/* Every other panel answers "what is true now". A dispute asks "what happened,
+              and in what order" \u2014 a different question the app could not answer. */}
+          <Paper sx={{ p: { xs: 2.5, md: 3 } }}>
+            <RecordHistory record={record} />
           </Paper>
 
           {/* Only rendered when there is lineage. An empty panel saying "no lineage

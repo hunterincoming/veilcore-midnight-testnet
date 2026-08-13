@@ -132,7 +132,10 @@ const Stage: React.FC<{
         position: 'absolute', left: 0, top: 2, width: { xs: 15, md: 31 }, height: { xs: 15, md: 31 },
         borderRadius: '50%', border: '1px solid', borderColor: TEAL_DIM,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontFamily: MONO, fontSize: { xs: 8, md: 11 }, color: TEAL,
+        fontFamily: MONO, fontSize: { xs: 8, md: 11 },
+        // The final stage is filled: the chain ends there rather than trailing off.
+        color: last ? '#04070a' : TEAL,
+        background: last ? TEAL : 'transparent',
       }}
     >
       {n}
@@ -196,31 +199,31 @@ export const Landing: React.FC = () => (
       </Typography>
     </Stack>
 
-    <Rule eyebrow="What a record accumulates" title="Four stages, none of which require showing the material." />
+    <Rule eyebrow="What a record accumulates" title="From your notebook to a licence, without showing anyone the genetics." />
     <Box sx={{ pt: 1 }}>
       <Stage
         n="01"
-        head="Sealed"
-        body="Your description is hashed on your own device and only the hash is published. Later you produce the description and anyone can confirm it is the one you committed to. You can also prove you hold the material without producing the description at all."
-        limit="It does not prove the description is true. That comes from the next stage."
+        head="Log what you bred"
+        body="Write down the cultivar, its parents, when you selected it. It is sealed on your own device and only a hash of it is published \u2014 so from that moment you can prove to anyone that this description existed on this date, without showing them a word of it. You can even prove you hold the material without producing the description at all."
+        limit="It fixes what you wrote and when. It does not prove what you wrote is true \u2014 that is what the next stages are for."
       />
       <Stage
         n="02"
-        head="Sent"
-        body="Material moves to a laboratory or another breeder. The recipient receives a record descended from yours — not a copy — and an obligation on offspring travels with it, into cuttings that do not exist yet."
-        limit="It does not detect propagation nobody declares. It bites when material surfaces commercially."
+        head="Send a sample for testing"
+        body="Give a lab a transfer code with the sample. When they confirm it arrived, that confirmation is signed with their key and lands on your record. The material they hold is now traceable back to yours, and any royalty you attached travels with it \u2014 including into cuttings that do not exist yet."
+        limit="It cannot see material nobody declares. It bites when that material surfaces commercially."
       />
       <Stage
         n="03"
-        head="Confirmed"
-        body="A laboratory signs with a key only they hold. They can withdraw what they issued and nobody else can. Where they list an external accreditation, it is recorded and named, so you can check it with the accreditor yourself."
-        limit="We record who vouched. We never vouch."
+        head="Their report becomes your evidence"
+        body="The lab attaches the DNA report they produced, signed by them. Your record is now tied to actual genetics rather than a name anyone could reuse \u2014 and it carries a statement from someone other than you. Only that lab can withdraw it. Nobody, including us, can forge one."
+        limit="We record which accreditation a lab claims, and who accredited them. We never vouch for it \u2014 you check that with the accreditor."
       />
       <Stage
         n="04"
-        head="Licensed"
-        body="Both parties sign. Terms bind to the record and to the DNA report, not to a memory of a conversation. Revoking does not stop a grow — it stops a licensee showing clean title to the next buyer, the next lab, or any scheme that requires a record."
-        limit="Obligations are recorded. Payments are not processed and funds are never held."
+        head="License it, and get paid on what grows from it"
+        body="Set terms, including a royalty on offspring, and both parties sign. The terms bind to the record and to the DNA report rather than to a memory of a conversation. If a licensee stops holding up their end, you revoke \u2014 which does not stop their grow, but does stop them showing clean title to the next buyer, the next lab, or any programme that asks for a record."
+        limit="We record what is owed. We never take payments and never hold your money."
         last
       />
     </Box>

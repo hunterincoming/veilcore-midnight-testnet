@@ -19,6 +19,7 @@ import { useRecords, exportRecords, importRecords, resetDemo } from '../veilcore
 import { useLicenses, activeLicenseCount } from '../veilcore/licenses';
 import { StatusChain } from './StatusChain';
 import { AttentionBar } from './AttentionBar';
+import { RecordFinder, matchesQuery, sortRecords, type SortKey } from './RecordFinder';
 import { groupByAttention, attentionSummary, attentionOf, GROUPING_THRESHOLD, type AttentionState } from '../veilcore/attention';
 import { TrustPanel } from './TrustPanel';
 import { AppHeader } from './AppHeader';
@@ -38,6 +39,17 @@ export const Dashboard: React.FC = () => {
   const [menuRecordId, setMenuRecordId] = useState<string>();
   // Which attention state the list is filtered to, or null for everything.
   const [filter, setFilter] = useState<AttentionState | null>(null);
+  // Finding a record is a different question from what needs doing, so it is a
+  // different control. Both appear only when there is enough to warrant them.
+  const [query, setQuery] = useState('');
+  const [sort, setSort] = useState<SortKey>('recent');
+
+  const visible = sortRecords(
+    records
+      .filter((r) => (filter === null ? true : attentionOf(r) === filter))
+      .filter((r) => matchesQuery(r, query)),
+    sort,
+  );
 
   const openAgreementMenu = (e: React.MouseEvent<HTMLElement>, recordId: string) => {
     e.stopPropagation();
@@ -137,10 +149,18 @@ export const Dashboard: React.FC = () => {
             />
           )}
 
+          {records.length >= 5 && (
+            <RecordFinder
+              query={query} onQuery={setQuery}
+              sort={sort} onSort={setSort}
+              showSearch={records.length >= GROUPING_THRESHOLD}
+              matched={visible.length}
+              total={records.length}
+            />
+          )}
+
           <Stack spacing={1.5}>
-            {records
-              .filter((r) => (filter === null ? true : attentionOf(r) === filter))
-              .map((r) => (
+            {visible.map((r) => (
               <MPaper
                 key={r.id}
                 initial={{ opacity: 0, y: 8 }}

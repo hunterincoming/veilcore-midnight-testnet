@@ -119,12 +119,14 @@ const Stage: React.FC<{
   n: string; head: string; body: string; limit: string; last?: boolean;
 }> = ({ n, head, body, limit, last }) => (
   <Box sx={{ position: 'relative', pl: { xs: 4, md: 7 }, pb: last ? 0 : { xs: 5, md: 7 } }}>
-    <Box
-      sx={{
-        position: 'absolute', left: { xs: 7, md: 15 }, top: 26, bottom: 0, width: 1,
-        background: last ? 'none' : 'linear-gradient(180deg, rgba(47,240,207,0.35), rgba(47,240,207,0.06))',
-      }}
-    />
+    {!last && (
+      <Box
+        sx={{
+          position: 'absolute', left: { xs: 7, md: 15 }, top: 26, bottom: 0, width: 1,
+          background: 'linear-gradient(180deg, rgba(47,240,207,0.3), rgba(47,240,207,0.3))',
+        }}
+      />
+    )}
     <Box
       sx={{
         position: 'absolute', left: 0, top: 2, width: { xs: 15, md: 31 }, height: { xs: 15, md: 31 },

@@ -100,6 +100,15 @@ const Hero: React.FC = () => {
           record. Change a single character above and it changes completely.
         </Typography>
       </Box>
+
+      <Stack direction="row" spacing={2} sx={{ mt: 4, flexWrap: 'wrap', gap: 2 }}>
+        <Button variant="contained" size="large" component={RouterLink} to="/new">
+          Log a cultivar
+        </Button>
+        <Button variant="outlined" size="large" component={RouterLink} to="/records">
+          My records
+        </Button>
+      </Stack>
     </Box>
   );
 };
@@ -229,7 +238,7 @@ export const Landing: React.FC = () => (
       <Audience
         who="Counsel"
         line="How a record is authenticated, what hearsay questions it raises, which jurisdictions attach a presumption, and — set out at length — what it does not prove."
-        to="https://github.com/hunterincoming/veilcore-sdk/blob/main/EVIDENCE.md"
+        to="https://github.com/hunterincoming/veilcore-sdk"
         label="Evidence note" external
       />
       <Audience
@@ -240,40 +249,16 @@ export const Landing: React.FC = () => (
       />
     </Section>
 
-    <Section eyebrow="Where it stands" title="Stated plainly, including the parts that are not finished.">
-      <Stack spacing={1.5} sx={{ maxWidth: 720 }}>
-        <Typography variant="body2" color="text.secondary">
-          <b>Working:</b> the format, published with a conformance suite. Three independent
-          implementations in three languages passing the same tests. Records anchored in batches on
-          Midnight, each holder keeping a proof they can verify offline. Signed attestations with
-          cryptographic retraction. Corrections that supersede rather than overwrite.
-        </Typography>
-        <Typography variant="body2" color="text.secondary">
-          <b>Not yet:</b> anchoring runs on a test network, not a production chain. No independent
-          security audit has been completed. And the format has been used by its authors and by
-          nobody else — anyone adopting it now would be the first.
-        </Typography>
-        <Typography variant="body2" sx={{ color: TEAL_DIM }}>
-          We would rather say that here than have you discover it.
-        </Typography>
-      </Stack>
-    </Section>
-
     <Box sx={{ py: { xs: 6, md: 9 }, borderTop: '1px solid', borderColor: 'divider' }}>
-      <Typography variant="h4" sx={{ mb: 2, maxWidth: 620 }}>
-        Try it with something you actually bred.
+      <Typography variant="overline" sx={{ color: TEAL, display: 'block', mb: 1.5 }}>
+        Where this is
       </Typography>
-      <Typography variant="body1" color="text.secondary" sx={{ maxWidth: 620, mb: 3 }}>
-        Nothing you type leaves your device until you choose to send it somewhere.
+      <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 700 }}>
+        The format is published with a conformance suite, and three independent implementations in
+        three languages pass the same tests. Records anchor in batches on Midnight, currently on a
+        test network. No independent security audit has been completed yet. We would rather say
+        that here than have you find it out.
       </Typography>
-      <Stack direction="row" spacing={2} sx={{ flexWrap: 'wrap', gap: 2 }}>
-        <Button variant="contained" size="large" component={RouterLink} to="/new">
-          Log a cultivar
-        </Button>
-        <Button variant="outlined" size="large" href="https://github.com/hunterincoming/veilcore-sdk" target="_blank" rel="noopener">
-          Read the spec
-        </Button>
-      </Stack>
     </Box>
   </Container>
 );

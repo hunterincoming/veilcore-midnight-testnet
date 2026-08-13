@@ -55,6 +55,7 @@ export const AppFooter: React.FC = () => (
 
           <Stack spacing={1}>
             <Typography variant="overline" sx={{ fontSize: 10 }}>Source</Typography>
+            <Item to="/implementations">All three implementations</Item>
             <Item to="https://github.com/hunterincoming/veilcore-sdk" external>Reference implementation</Item>
             <Item to="https://github.com/hunterincoming/veilcore-rs" external>Rust implementation</Item>
             <Item to="https://www.npmjs.com/package/veilcore-records" external>veilcore-records</Item>

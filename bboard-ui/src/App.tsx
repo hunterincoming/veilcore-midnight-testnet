@@ -5,6 +5,7 @@
 import React from 'react';
 import { Landing } from './components/Landing';
 import { DocPage } from './components/DocPage';
+import { Implementations } from './components/Implementations';
 import { AppFooter } from './components/AppFooter';
 import { RolePicker } from './components/RolePicker';
 import { Box, Container } from '@mui/material';
@@ -49,6 +50,7 @@ const App: React.FC = () => (
     <Route path="/records" element={withLayout(<Dashboard />)} />
     {/* Documents read here rather than in a code repository. */}
     <Route path="/docs/:doc" element={withLayout(<DocPage />)} />
+    <Route path="/implementations" element={withLayout(<Implementations />)} />
     <Route path="/new" element={withLayout(<WizardShell />)} />
     <Route path="/record/:id" element={withLayout(<RecordDetail />)} />
     <Route path="/record/:id/license" element={withLayout(<TermsBuilder />)} />

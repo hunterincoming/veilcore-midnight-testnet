@@ -75,6 +75,29 @@ export const toEnvelope = (r: StrainRecord, holderId: string, anchor?: Partial<A
     },
     sealedAt: rfc3339(r.loggedAt),
     holder: { id: holderId },
+
+    // What every subject has, whatever domain it comes from. These moved out of
+    // profileData and into the envelope so that a herd book or a culture collection
+    // adopting this format does not have to redefine them.
+    subject: {
+      name: r.strainName,
+      originator: r.bredBy || undefined,
+      taxon: 'Cannabis sativa',
+      internalDesignation: r.refId || undefined,
+      // The holder's own claim about when it came into existence, distinct from
+      // sealedAt. The field a prior-possession argument turns on.
+      claimedCreationDate: r.dateCreated || undefined,
+    },
+
+    // Committed, never published. This is what lets a holder show identification data
+    // to one recipient and prove afterwards that it is what was sealed.
+    identification: r.dnaFingerprint
+      ? {
+          method: 'molecular-marker' as const,
+          reportHash: r.dnaFingerprint,
+          performedOn: r.dnaPairedAt ? rfc3339(r.dnaPairedAt) : undefined,
+        }
+      : undefined,
     parents: (r.parents ?? []).map((p) => ({
       parentRecordId: p.recordId,
       name: p.name,
@@ -82,14 +105,10 @@ export const toEnvelope = (r: StrainRecord, holderId: string, anchor?: Partial<A
       verified: false,
     })),
     attestations,
+    // What is specific to this domain, and nothing more. Everything universal moved
+    // to the envelope above.
     profileData: {
-      cultivarName: r.strainName,
-      breederName: r.bredBy || undefined,
       breedingMethod: r.breedingMethod || undefined,
-      // The breeder's own claim about when the cultivar came into existence, distinct
-      // from sealedAt. This is the field a prior-possession argument turns on.
-      claimedCreationDate: r.dateCreated || undefined,
-      internalReference: r.refId || undefined,
       notes: r.notes || undefined,
       nonce: r.nonce,
     },

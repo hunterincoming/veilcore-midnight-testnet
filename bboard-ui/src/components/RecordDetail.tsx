@@ -94,7 +94,7 @@ export const RecordDetail: React.FC = () => {
               know a correction exists, and a correcting record needs to point back. */}
           {record.supersededBy && (
             <Alert severity="info" variant="outlined">
-              This record was corrected. It remains on file unchanged \u2014 nothing is ever deleted \u2014
+              This record was corrected. It remains on file unchanged — nothing is ever deleted —
               but a later record supersedes it.{' '}
               <Link component={RouterLink} to={`/record/${record.supersededBy}`}>
                 See the correction

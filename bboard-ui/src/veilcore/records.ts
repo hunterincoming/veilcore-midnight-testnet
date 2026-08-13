@@ -235,7 +235,7 @@ export const sealReceived = async (id: string): Promise<StrainRecord | undefined
 /**
  * Issue a correction.
  *
- * The original is not edited and not deleted \u2014 it is marked as superseded and stays on
+ * The original is not edited and not deleted — it is marked as superseded and stays on
  * file. A record that can be quietly changed is not evidence, and a record that can be
  * deleted is worse.
  *

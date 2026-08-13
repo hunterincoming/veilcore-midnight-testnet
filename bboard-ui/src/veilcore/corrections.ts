@@ -27,7 +27,7 @@ const CONSEQUENCE: Record<string, string> = {
   'cosmetic|cosmetic':
     'Nothing downstream is affected. Descendants keep their clean-descent proofs and any agreements stand.',
   'cosmetic|material':
-    'Descendants are unaffected \u2014 the material did not change. But anyone holding an agreement against this record needs to know, because the terms may refer to what you changed.',
+    'Descendants are unaffected — the material did not change. But anyone holding an agreement against this record needs to know, because the terms may refer to what you changed.',
   'material|cosmetic':
     'Anyone relying on descent from this record needs to re-check. Existing agreements are unaffected.',
   'material|material':

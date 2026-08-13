@@ -83,7 +83,7 @@ export const CorrectRecord: React.FC<{ record: StrainRecord }> = ({ record }) =>
           <Stack spacing={2} sx={{ pt: 1 }}>
             <Typography variant="body2" color="text.secondary">
               This record stays exactly as it is. A correction creates a new record that supersedes
-              it, and both remain on file. Nothing is overwritten and nothing is deleted \u2014 that is
+              it, and both remain on file. Nothing is overwritten and nothing is deleted — that is
               what keeps the original usable as evidence.
             </Typography>
 
@@ -107,7 +107,7 @@ export const CorrectRecord: React.FC<{ record: StrainRecord }> = ({ record }) =>
                 </Typography>
                 <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
                   This is worked out from which fields you changed. It is not something you or we
-                  can set \u2014 otherwise every correction would look harmless.
+                  can set — otherwise every correction would look harmless.
                 </Typography>
               </Box>
             )}

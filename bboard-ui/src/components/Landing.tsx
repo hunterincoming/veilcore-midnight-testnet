@@ -204,25 +204,25 @@ export const Landing: React.FC = () => (
       <Stage
         n="01"
         head="Log what you bred"
-        body="Write down the cultivar, its parents, when you selected it. It is sealed on your own device and only a hash of it is published \u2014 so from that moment you can prove to anyone that this description existed on this date, without showing them a word of it. You can even prove you hold the material without producing the description at all."
-        limit="It fixes what you wrote and when. It does not prove what you wrote is true \u2014 that is what the next stages are for."
+        body="Write down the cultivar, its parents, when you selected it. It is sealed on your own device and only a hash of it is published — so from that moment you can prove to anyone that this description existed on this date, without showing them a word of it. You can even prove you hold the material without producing the description at all."
+        limit="It fixes what you wrote and when. It does not prove what you wrote is true — that is what the next stages are for."
       />
       <Stage
         n="02"
         head="Send a sample for testing"
-        body="Give a lab a transfer code with the sample. When they confirm it arrived, that confirmation is signed with their key and lands on your record. The material they hold is now traceable back to yours, and any royalty you attached travels with it \u2014 including into cuttings that do not exist yet."
+        body="Give a lab a transfer code with the sample. When they confirm it arrived, that confirmation is signed with their key and lands on your record. The material they hold is now traceable back to yours, and any royalty you attached travels with it — including into cuttings that do not exist yet."
         limit="It cannot see material nobody declares. It bites when that material surfaces commercially."
       />
       <Stage
         n="03"
         head="Their report becomes your evidence"
-        body="The lab attaches the DNA report they produced, signed by them. Your record is now tied to actual genetics rather than a name anyone could reuse \u2014 and it carries a statement from someone other than you. Only that lab can withdraw it. Nobody, including us, can forge one."
-        limit="We record which accreditation a lab claims, and who accredited them. We never vouch for it \u2014 you check that with the accreditor."
+        body="The lab attaches the DNA report they produced, signed by them. Your record is now tied to actual genetics rather than a name anyone could reuse — and it carries a statement from someone other than you. Only that lab can withdraw it. Nobody, including us, can forge one."
+        limit="We record which accreditation a lab claims, and who accredited them. We never vouch for it — you check that with the accreditor."
       />
       <Stage
         n="04"
         head="License it, and get paid on what grows from it"
-        body="Set terms, including a royalty on offspring, and both parties sign. The terms bind to the record and to the DNA report rather than to a memory of a conversation. If a licensee stops holding up their end, you revoke \u2014 which does not stop their grow, but does stop them showing clean title to the next buyer, the next lab, or any programme that asks for a record."
+        body="Set terms, including a royalty on offspring, and both parties sign. The terms bind to the record and to the DNA report rather than to a memory of a conversation. If a licensee stops holding up their end, you revoke — which does not stop their grow, but does stop them showing clean title to the next buyer, the next lab, or any programme that asks for a record."
         limit="We record what is owed. We never take payments and never hold your money."
         last
       />

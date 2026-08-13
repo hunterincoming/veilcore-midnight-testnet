@@ -115,7 +115,7 @@ export const WizardShell: React.FC = () => {
                 </Button>
               )
             )}
-            <Button variant={license ? 'contained' : 'outlined'} onClick={() => navigate('/')}>
+            <Button variant={license ? 'contained' : 'outlined'} onClick={() => navigate('/records')}>
               All cultivars
             </Button>
             <Button variant="text" onClick={restart}>
@@ -220,7 +220,7 @@ export const WizardShell: React.FC = () => {
       </Paper>
 
       <Box sx={{ textAlign: 'center', mt: 2 }}>
-        <Button component={RouterLink} to="/" size="small" variant="text" color="inherit">
+        <Button component={RouterLink} to="/records" size="small" variant="text" color="inherit">
           Save &amp; exit to dashboard
         </Button>
       </Box>

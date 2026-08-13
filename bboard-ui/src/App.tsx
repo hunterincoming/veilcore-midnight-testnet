@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import React from 'react';
+import { Landing } from './components/Landing';
 import { RolePicker } from './components/RolePicker';
 import { Box, Container } from '@mui/material';
 import { Routes, Route } from 'react-router-dom';
@@ -37,7 +38,10 @@ const withLayout = (el: React.ReactNode) => <AppLayout>{el}</AppLayout>;
 
 const App: React.FC = () => (
   <Routes>
-    <Route path="/" element={withLayout(<Dashboard />)} />
+    {/* A stranger arriving from a specification or a government submission needs
+        somewhere to understand what this is. The dashboard assumes you already do. */}
+    <Route path="/" element={withLayout(<Landing />)} />
+    <Route path="/records" element={withLayout(<Dashboard />)} />
     <Route path="/new" element={withLayout(<WizardShell />)} />
     <Route path="/record/:id" element={withLayout(<RecordDetail />)} />
     <Route path="/record/:id/license" element={withLayout(<TermsBuilder />)} />

@@ -60,7 +60,7 @@ export const RecordDetail: React.FC = () => {
           <Typography variant="h6" sx={{ mb: 1 }}>
             Record not found
           </Typography>
-          <Button component={RouterLink} to="/" startIcon={<ArrowBackIcon />}>
+          <Button component={RouterLink} to="/records" startIcon={<ArrowBackIcon />}>
             Back to your cultivars
           </Button>
         </Paper>
@@ -75,7 +75,7 @@ export const RecordDetail: React.FC = () => {
     <Box>
       <AppHeader />
 
-      <Button component={RouterLink} to="/" size="small" startIcon={<ArrowBackIcon />} sx={{ mb: 2 }}>
+      <Button component={RouterLink} to="/records" size="small" startIcon={<ArrowBackIcon />} sx={{ mb: 2 }}>
         All cultivars
       </Button>
 

@@ -22,7 +22,7 @@ export const AppHeader: React.FC = () => {
       <Stack direction="row" spacing={3} sx={{ alignItems: 'center' }}>
         <Stack
           component={RouterLink}
-          to="/"
+          to="/records"
           direction="row"
           spacing={1.25}
           sx={{ alignItems: 'center', textDecoration: 'none' }}

@@ -34,7 +34,7 @@ export const LicensingHub: React.FC = () => {
           <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
             No agreements yet. Open a cultivar and choose License, Send to a lab, or Share with a breeder to draft one.
           </Typography>
-          <RouterLink to="/" style={{ color: '#2ff0cf' }}>
+          <RouterLink to="/records" style={{ color: '#2ff0cf' }}>
             Go to your cultivars
           </RouterLink>
         </Paper>

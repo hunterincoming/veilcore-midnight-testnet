@@ -120,22 +120,37 @@ const Hero: React.FC = () => {
 const Stage: React.FC<{
   head: string; body: string; limit: string;
 }> = ({ head, body, limit }) => (
-  <Box sx={{ py: { xs: 3.5, md: 4.5 }, maxWidth: 660 }}>
-    <Typography variant="h5" sx={{ mb: 1.5, fontSize: { xs: 20, md: 24 } }}>{head}</Typography>
-    <Typography variant="body1" color="text.secondary" sx={{ mb: 1.5, lineHeight: 1.75 }}>
+  <Box
+    sx={{
+      py: { xs: 4, md: 5 },
+      maxWidth: 680,
+      borderTop: '1px solid',
+      borderColor: 'rgba(255,255,255,0.07)',
+      '&:first-of-type': { borderTop: 'none', pt: { xs: 1, md: 1.5 } },
+    }}
+  >
+    <Typography
+      variant="h5"
+      sx={{ mb: 1.75, fontSize: { xs: 21, md: 25 }, letterSpacing: '-0.01em' }}
+    >
+      {head}
+    </Typography>
+    <Typography variant="body1" color="text.secondary" sx={{ mb: 2, lineHeight: 1.8, fontSize: 16 }}>
       {body}
     </Typography>
-    <Typography variant="body2" sx={{ color: TEAL_DIM, lineHeight: 1.7 }}>{limit}</Typography>
+    <Typography variant="body2" sx={{ color: TEAL_DIM, lineHeight: 1.7, fontSize: 14.5 }}>
+      {limit}
+    </Typography>
   </Box>
 );
 
 const Rule: React.FC<{ eyebrow: string; title?: string }> = ({ eyebrow, title }) => (
-  <Box sx={{ pt: { xs: 7, md: 10 }, pb: title ? 4 : 0, borderTop: '1px solid', borderColor: 'divider' }}>
+  <Box sx={{ pt: { xs: 8, md: 12 }, pb: title ? 4.5 : 0, borderTop: '1px solid', borderColor: 'rgba(255,255,255,0.07)' }}>
     <Typography variant="overline" sx={{ color: TEAL, display: 'block', mb: title ? 1.5 : 0 }}>
       {eyebrow}
     </Typography>
     {title && (
-      <Typography variant="h3" sx={{ fontSize: { xs: 27, md: 36 }, maxWidth: 760, lineHeight: 1.2 }}>
+      <Typography variant="h3" sx={{ fontSize: { xs: 28, md: 38 }, maxWidth: 780, lineHeight: 1.15, letterSpacing: '-0.02em' }}>
         {title}
       </Typography>
     )}
@@ -145,7 +160,7 @@ const Rule: React.FC<{ eyebrow: string; title?: string }> = ({ eyebrow, title })
 const Audience: React.FC<{ who: string; line: string; to: string; label: string }> = ({
   who, line, to, label,
 }) => (
-  <Box sx={{ py: 3, borderTop: '1px solid', borderColor: 'divider' }}>
+  <Box sx={{ py: 3.5, borderTop: '1px solid', borderColor: 'rgba(255,255,255,0.07)' }}>
     <Stack direction={{ xs: 'column', md: 'row' }} spacing={{ xs: 1.5, md: 4 }}
            sx={{ alignItems: { md: 'baseline' } }}>
       <Typography variant="subtitle1" sx={{ minWidth: { md: 210 } }}>{who}</Typography>
@@ -167,13 +182,13 @@ export const Landing: React.FC = () => (
 
     <Rule eyebrow="Why this exists" title="Genetics replicate. Paper does not keep up." />
     <Stack spacing={2.5} sx={{ maxWidth: 700, pb: { xs: 2, md: 4 } }}>
-      <Typography variant="body1" color="text.secondary" sx={{ lineHeight: 1.7 }}>
+      <Typography variant="body1" color="text.secondary" sx={{ lineHeight: 1.8, fontSize: 16 }}>
         A cutting becomes a thousand cuttings. Whoever bred it is paid once, at the door, and only
         if someone chose to pay. When material turns up where it should not be, the breeder's
         evidence is their own dated notes — produced by the party relying on them, and creatable
         after the fact.
       </Typography>
-      <Typography variant="body1" color="text.secondary" sx={{ lineHeight: 1.7 }}>
+      <Typography variant="body1" color="text.secondary" sx={{ lineHeight: 1.8, fontSize: 16 }}>
         The usual remedies do not fit. Depositing a specimen needs storage that is impractical for
         anything grown from a cutting. Having a description notarised means handing it to a
         stranger — the one thing you cannot do with material that is valuable and unprotected.
@@ -206,12 +221,12 @@ export const Landing: React.FC = () => (
 
     <Rule eyebrow="Who decides what is seen" title="You do, recipient by recipient." />
     <Stack spacing={2} sx={{ maxWidth: 700, pb: { xs: 2, md: 4 } }}>
-      <Typography variant="body1" color="text.secondary" sx={{ lineHeight: 1.7 }}>
+      <Typography variant="body1" color="text.secondary" sx={{ lineHeight: 1.8, fontSize: 16 }}>
         A buyer might see only that a record exists, that it is clean, and that a lab confirmed it.
         A licensee sees the terms. A customs officer sees a date. Facts you do not grant are absent
         from what you send, not hidden inside it.
       </Typography>
-      <Typography variant="body1" sx={{ color: TEAL, lineHeight: 1.7 }}>
+      <Typography variant="body1" sx={{ color: TEAL, lineHeight: 1.8, fontSize: 16 }}>
         The genetics themselves are never disclosable. There is no setting that reveals them.
       </Typography>
     </Stack>

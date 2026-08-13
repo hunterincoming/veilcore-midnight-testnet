@@ -13,7 +13,11 @@ export const WalletBadge: React.FC<{ network: string; demo: boolean }> = ({ netw
       icon={<ScienceIcon />}
       color={demo ? 'default' : 'primary'}
       variant={demo ? 'outlined' : 'filled'}
-      label={demo ? 'Demo · simulated settlement' : 'Live'}
+      // Three states, not two. Records are batched and anchored on a public ledger,
+      // so "simulated settlement" understates it — but this is a test network, so
+      // "Live" would overstate it. Either error is the kind this product exists to
+      // avoid.
+      label={network === 'mainnet' ? 'Records anchored' : 'Records anchored · test network'}
     />
     <Chip size="small" icon={<BoltIcon />} variant="outlined" label={network} sx={{ textTransform: 'capitalize' }} />
   </Stack>

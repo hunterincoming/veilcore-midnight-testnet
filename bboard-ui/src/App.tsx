@@ -5,6 +5,7 @@
 import React from 'react';
 import { Landing } from './components/Landing';
 import { DocPage } from './components/DocPage';
+import { AppFooter } from './components/AppFooter';
 import { RolePicker } from './components/RolePicker';
 import { Box, Container } from '@mui/material';
 import { Routes, Route } from 'react-router-dom';
@@ -32,6 +33,9 @@ const AppLayout: React.FC<React.PropsWithChildren> = ({ children }) => (
     <Container maxWidth="md" sx={{ py: { xs: 3, md: 6 } }}>
       {children}
     </Container>
+    {/* Documents reachable from wherever someone happens to be, rather than only from
+        the page they landed on. */}
+    <AppFooter />
   </Box>
 );
 

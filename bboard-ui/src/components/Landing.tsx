@@ -96,11 +96,11 @@ const Hero: React.FC = () => {
       </Box>
 
       <Stack direction="row" spacing={2} sx={{ mt: 5, flexWrap: 'wrap', gap: 2 }}>
-        <Button variant="contained" size="large" component={RouterLink} to="/new">
-          Log a cultivar
+        <Button variant="contained" size="large" component={RouterLink} to="/docs/spec">
+          Read the specification
         </Button>
-        <Button variant="outlined" size="large" component={RouterLink} to="/records">
-          My records
+        <Button variant="outlined" size="large" component={RouterLink} to="/new">
+          Try the reference implementation
         </Button>
       </Stack>
     </Box>
@@ -250,9 +250,9 @@ export const Landing: React.FC = () => (
         to="/docs/integrate" label="Integration guide"
       />
       <Audience
-        who="Breeders and growers"
-        line="Log a cultivar, send a sample to a lab, and hold something you can show a buyer without showing them the genetics."
-        to="/new" label="Log a cultivar"
+        who="Anyone who wants to see it work"
+        line="A reference implementation, free and open. Log a variety, send a sample, watch a laboratory's signed report land on your record. It exists to show the format works and to give you something to check your own implementation against. It is not the product. The format is."
+        to="/new" label="Try it"
       />
       <Audience
         who="Registries and rights bodies"

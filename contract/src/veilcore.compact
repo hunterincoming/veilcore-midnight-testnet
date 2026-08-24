@@ -105,8 +105,13 @@ export circuit issueLicense(recordCommitment: Bytes<32>, licenseCommitment: Byte
 }
 
 // The licensee's counter-signature activates a pending license.
-export circuit countersignLicense(licenseCommitment: Bytes<32>): [] {
-  const lc = disclose(licenseCommitment);
+export circuit countersignLicense(secret: Bytes<32>): [] {
+  // The licence commitment is DERIVED from the licensee's secret, not accepted
+  // as an argument. It is disclosed by issueLicense and is a key in a public
+  // map, so anyone who has watched the chain could otherwise activate anyone's
+  // licence. Countersignature is what makes the licence bilateral; taking the
+  // commitment on trust removes that property rather than weakening it.
+  const lc = disclose(commit(secret));
   assert(licenseStatusOf.member(lc), "No such license");
   assert(licenseStatusOf.lookup(lc) == LicenseState.PENDING, "License is not pending");
   licenseStatusOf.insert(lc, LicenseState.ACTIVE);
@@ -126,10 +131,17 @@ export circuit countersignLicense(licenseCommitment: Bytes<32>): [] {
  * So transfer is a two-party act, the same shape as countersigning: the holder proposes
  * and the issuer approves. Until both happen, nothing moves.
  */
-export circuit proposeTransfer(licenseCommitment: Bytes<32>, newHolderCommitment: Bytes<32>): [] {
-  const lc = disclose(licenseCommitment);
+export circuit proposeTransfer(secret: Bytes<32>, newHolderCommitment: Bytes<32>): [] {
+  // Derived, not accepted. Only the holder of the licence secret may propose
+  // moving it. Taking the commitment as an argument let anyone write into the
+  // pending slot, and because insert overwrites, a stranger could replace a
+  // proposal the issuer had already agreed to out of band.
+  const lc = disclose(commit(secret));
   assert(licenseStatusOf.member(lc), "No such license");
   assert(licenseStatusOf.lookup(lc) == LicenseState.ACTIVE, "Only an active license can be transferred");
+  // One live proposal at a time. Replacing a standing proposal is a withdrawal
+  // followed by a new one, both of which the holder must authorise.
+  assert(!pendingTransferOf.member(lc), "A transfer is already proposed for this license");
   transferSeq.increment(1);
   pendingTransferOf.insert(lc, disclose(newHolderCommitment));
 }
@@ -141,23 +153,31 @@ export circuit proposeTransfer(licenseCommitment: Bytes<32>, newHolderCommitment
  * makes the licence permissioned rather than a bearer token, and it is what stops a
  * licensee routing rights to someone the breeder would have refused.
  */
-export circuit approveTransfer(licenseCommitment: Bytes<32>, recordCommitment: Bytes<32>): [] {
+export circuit approveTransfer(licenseCommitment: Bytes<32>, recordCommitment: Bytes<32>, expectedNewHolder: Bytes<32>): [] {
   const lc = disclose(licenseCommitment);
   assert(pendingTransferOf.member(lc), "No transfer proposed for this license");
   assert(recordCommitment == commit(localGeneticSecret()), "Only the issuing record holder can approve");
   assert(licenseRecordOf.lookup(lc) == disclose(recordCommitment), "This license was not issued against your record");
 
-  // Move the licence. Reassigning the holder is the whole point of the transfer —
-  // clearing the proposal without it would leave the licence exactly where it was.
+  // The issuer approves a PARTY, not a slot. Without this the approval lands on
+  // whatever is pending at execution time, so a proposal seen and agreed out of
+  // band can be replaced between agreement and approval, and the licence moves
+  // to someone the issuer never saw. Naming the recipient is what makes the
+  // approval gate above mean anything.
   const newHolder = pendingTransferOf.lookup(lc);
+  assert(newHolder == disclose(expectedNewHolder), "The pending recipient is not the one you approved");
   licenseHolderOf.insert(lc, newHolder);
   pendingTransferOf.remove(lc);
   transferSeq.increment(1);
 }
 
 /** Withdraw a proposed transfer. Either the proposal expires or it is retracted. */
-export circuit withdrawTransfer(licenseCommitment: Bytes<32>): [] {
-  const lc = disclose(licenseCommitment);
+export circuit withdrawTransfer(secret: Bytes<32>): [] {
+  // Derived, not accepted. Withdrawal is the holder cancelling their own
+  // proposal, so the caller proves they hold the licence secret. Taking the
+  // commitment as an argument let any observer cancel any pending transfer and
+  // block a licence from moving indefinitely.
+  const lc = disclose(commit(secret));
   assert(pendingTransferOf.member(lc), "No transfer proposed for this license");
   pendingTransferOf.remove(lc);
   transferSeq.increment(1);
@@ -170,6 +190,11 @@ export circuit revokeLicense(licenseCommitment: Bytes<32>): [] {
   licenseStatusOf.remove(lc);
   licenseHolderOf.remove(lc);
   licenseRecordOf.remove(lc);
+  // A revoked licence must leave nothing behind. Without this, the pending
+  // entry outlives the licence: state grows without bound, and a later
+  // approveTransfer passes the member check then fails inside the record
+  // lookup, so the error does not describe what happened.
+  if (pendingTransferOf.member(lc)) { pendingTransferOf.remove(lc); }
 }
 
 // A licensee proves they hold a valid, ACTIVE license without revealing the

@@ -19,7 +19,8 @@
     "lint": "eslint src",
     "prepack": "npm build",
     "test": "vitest",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test:contract": "node test-contract.mjs"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.5",

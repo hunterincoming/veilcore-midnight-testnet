@@ -25,14 +25,10 @@ export ledger lastBatchRoot: Bytes<32>;
 export ledger transferSeq: Counter;
 /** Transfers proposed but not yet approved. Cleared on approval or withdrawal. */
 export ledger pendingTransferOf: Map<Bytes<32>, Bytes<32>>;
-/**
- * Who currently holds each live licence. Cleared on revocation with the other licence
- * maps, so state stays bounded by live agreements. Without it a licence can be proven
- * and revoked but not attributed, which makes transfer meaningless.
- */
-export ledger licenseHolderOf: Map<Bytes<32>, Bytes<32>>;
-
-// Live licenses only. Removed on revocation, so bounded by open agreements.
+// Live licences only. Removed on revocation and on assignment, so bounded by open
+// agreements. The KEY IS THE HOLDER: only a party who knows the secret behind a
+// commitment can act on that licence, so no separate holder field is needed and none
+// can drift out of step with who actually controls it.
 export ledger licenseStatusOf: Map<Bytes<32>, LicenseState>;
 export ledger licenseRecordOf: Map<Bytes<32>, Bytes<32>>;
 
@@ -92,15 +88,21 @@ export circuit pairDna(recordCommitment: Bytes<32>, dnaCommitment: Bytes<32>): [
   lastAnchor = dc;
 }
 
-// Issue a license against a record the caller owns. Starts PENDING (issuer signed).
+/**
+ * Issue a licence against a record the caller owns. Starts PENDING (issuer signed).
+ *
+ * THE LICENSEE GENERATES THE LICENCE SECRET and gives the issuer only its commitment.
+ * The contract cannot check this, and it is what makes countersignature meaningful: an
+ * issuer who generates the secret themselves can also countersign, which is a licence
+ * issued to nobody. Stated here because it is a requirement on the parties rather than
+ * something a circuit can enforce.
+ */
 export circuit issueLicense(recordCommitment: Bytes<32>, licenseCommitment: Bytes<32>): [] {
   assert(recordCommitment == commit(localGeneticSecret()), "Only the record owner can issue a license");
   const rc = disclose(recordCommitment);
   const lc = disclose(licenseCommitment);
   assert(!licenseStatusOf.member(lc), "License already exists");
   licenseStatusOf.insert(lc, LicenseState.PENDING);
-  licenseHolderOf.insert(lc, disclose(recordCommitment));
-  // The issuer holds it until it is countersigned and possibly transferred.
   licenseRecordOf.insert(lc, rc);
 }
 
@@ -131,19 +133,25 @@ export circuit countersignLicense(secret: Bytes<32>): [] {
  * So transfer is a two-party act, the same shape as countersigning: the holder proposes
  * and the issuer approves. Until both happen, nothing moves.
  */
-export circuit proposeTransfer(secret: Bytes<32>, newHolderCommitment: Bytes<32>): [] {
+export circuit proposeTransfer(secret: Bytes<32>, newLicenseCommitment: Bytes<32>): [] {
   // Derived, not accepted. Only the holder of the licence secret may propose
-  // moving it. Taking the commitment as an argument let anyone write into the
-  // pending slot, and because insert overwrites, a stranger could replace a
+  // assigning it. Taking the commitment as an argument let anyone write into
+  // the pending slot, and because insert overwrites, a stranger could replace a
   // proposal the issuer had already agreed to out of band.
+  //
+  // The incoming party generates their OWN secret and hands over only its
+  // commitment. That is what makes the assignment real: after approval the
+  // licence lives under a key the outgoing party has never seen.
   const lc = disclose(commit(secret));
   assert(licenseStatusOf.member(lc), "No such license");
   assert(licenseStatusOf.lookup(lc) == LicenseState.ACTIVE, "Only an active license can be transferred");
   // One live proposal at a time. Replacing a standing proposal is a withdrawal
   // followed by a new one, both of which the holder must authorise.
   assert(!pendingTransferOf.member(lc), "A transfer is already proposed for this license");
+  const nlc = disclose(newLicenseCommitment);
+  assert(!licenseStatusOf.member(nlc), "That licence commitment is already in use");
   transferSeq.increment(1);
-  pendingTransferOf.insert(lc, disclose(newHolderCommitment));
+  pendingTransferOf.insert(lc, nlc);
 }
 
 /**
@@ -153,7 +161,7 @@ export circuit proposeTransfer(secret: Bytes<32>, newHolderCommitment: Bytes<32>
  * makes the licence permissioned rather than a bearer token, and it is what stops a
  * licensee routing rights to someone the breeder would have refused.
  */
-export circuit approveTransfer(licenseCommitment: Bytes<32>, recordCommitment: Bytes<32>, expectedNewHolder: Bytes<32>): [] {
+export circuit approveTransfer(licenseCommitment: Bytes<32>, recordCommitment: Bytes<32>, expectedNewLicense: Bytes<32>): [] {
   const lc = disclose(licenseCommitment);
   assert(pendingTransferOf.member(lc), "No transfer proposed for this license");
   assert(recordCommitment == commit(localGeneticSecret()), "Only the issuing record holder can approve");
@@ -164,10 +172,24 @@ export circuit approveTransfer(licenseCommitment: Bytes<32>, recordCommitment: B
   // band can be replaced between agreement and approval, and the licence moves
   // to someone the issuer never saw. Naming the recipient is what makes the
   // approval gate above mean anything.
-  const newHolder = pendingTransferOf.lookup(lc);
-  assert(newHolder == disclose(expectedNewHolder), "The pending recipient is not the one you approved");
-  licenseHolderOf.insert(lc, newHolder);
+  const nlc = pendingTransferOf.lookup(lc);
+  assert(nlc == disclose(expectedNewLicense), "The pending recipient is not the one you approved");
+
+  // The old licence ENDS and a new one BEGINS. Reassigning a holder field would
+  // move nothing: the outgoing party still knows the old secret, so they could
+  // still prove the licence and still propose further assignments, and the
+  // incoming party could do nothing at all. Removing the old key is what ends
+  // the outgoing party's rights, which is what "non-delegable" requires.
+  //
+  // The new licence starts ACTIVE rather than PENDING: it is not a fresh
+  // agreement awaiting countersignature but the same agreement continuing with
+  // a party the issuer has just consented to, and the incoming party
+  // demonstrated consent by generating the secret.
+  licenseStatusOf.remove(lc);
+  licenseRecordOf.remove(lc);
   pendingTransferOf.remove(lc);
+  licenseStatusOf.insert(nlc, LicenseState.ACTIVE);
+  licenseRecordOf.insert(nlc, disclose(recordCommitment));
   transferSeq.increment(1);
 }
 
@@ -188,7 +210,6 @@ export circuit revokeLicense(licenseCommitment: Bytes<32>): [] {
   assert(licenseStatusOf.member(lc), "No such license");
   assert(licenseRecordOf.lookup(lc) == commit(localGeneticSecret()), "Only the issuer can revoke");
   licenseStatusOf.remove(lc);
-  licenseHolderOf.remove(lc);
   licenseRecordOf.remove(lc);
   // A revoked licence must leave nothing behind. Without this, the pending
   // entry outlives the licence: state grows without bound, and a later

@@ -11,12 +11,7 @@
  * check prints OK or FAIL and the process exits non-zero if anything failed,
  * so this is CI-shaped rather than demo-shaped.
  *
- *   npm run test:contract
- *
- * Originally written by Max Weber (ODATANO / NIGHTGATE) while reviewing this
- * contract, and published with it. The four checks in part 2 are the findings
- * from issue #22, kept as regression tests: each one passed against the
- * contract as it stood, and each one must fail against it now.
+ *   node contract/test-local.mjs
  */
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
@@ -94,7 +89,6 @@ ok('pairDna: lastAnchor now carries the DNA commitment', same(state().lastAnchor
 
 run(breeder, 'issueLicense', RECORD, LICENSE);
 ok('issueLicense: starts PENDING', state().licenseStatusOf.lookup(LICENSE) === LicenseState.PENDING);
-ok('issueLicense: issuer holds it first', same(state().licenseHolderOf.lookup(LICENSE), RECORD));
 ok('issueLicense: only the record owner may issue',
     rejects(() => run(mallory, 'issueLicense', RECORD, LICENSE2)).includes('Only the record owner'));
 ok('issueLicense: no double issue',
@@ -108,13 +102,31 @@ ok('proveLicense: the secret holder passes', true);
 ok('proveLicense: a wrong secret fails',
     rejects(() => run(mallory, 'proveLicense', b32(0x77))).includes('No such license'));
 
-const NEW_HOLDER = commit(LICENSEE);
-run(licensee, 'proposeTransfer', LICENSE_SECRET, NEW_HOLDER);
+// Assignment. The incoming party generates their own secret and hands over only
+// its commitment, so after approval the licence lives under a key the outgoing
+// party has never seen.
+const ASSIGNEE_SECRET = b32(0x44);
+const ASSIGNEE_LICENSE = commit(ASSIGNEE_SECRET);
+run(licensee, 'proposeTransfer', LICENSE_SECRET, ASSIGNEE_LICENSE);
 ok('proposeTransfer: proposal recorded', state().pendingTransferOf.member(LICENSE));
 
-run(breeder, 'approveTransfer', LICENSE, RECORD, NEW_HOLDER);
-ok('approveTransfer: holder moved', same(state().licenseHolderOf.lookup(LICENSE), NEW_HOLDER));
+run(breeder, 'approveTransfer', LICENSE, RECORD, ASSIGNEE_LICENSE);
+ok('approveTransfer: the new licence is live and ACTIVE',
+    state().licenseStatusOf.lookup(ASSIGNEE_LICENSE) === LicenseState.ACTIVE);
+ok('approveTransfer: it is issued against the same record',
+    same(state().licenseRecordOf.lookup(ASSIGNEE_LICENSE), RECORD));
 ok('approveTransfer: proposal cleared', !state().pendingTransferOf.member(LICENSE));
+
+// The point of the whole mechanism. USDA's template calls the obligations
+// non-delegable and the identity of the parties material, so an assignment has
+// to END the outgoing party's rights rather than add a second holder.
+ok('approveTransfer: the OLD licence no longer exists', !state().licenseStatusOf.member(LICENSE));
+ok('approveTransfer: the outgoing party can no longer prove the licence',
+    rejects(() => run(licensee, 'proveLicense', LICENSE_SECRET)).includes('No such license'));
+ok('approveTransfer: the outgoing party can no longer propose another assignment',
+    rejects(() => run(licensee, 'proposeTransfer', LICENSE_SECRET, commit(b32(0x55)))) !== '');
+ok('approveTransfer: the incoming party can prove it',
+    rejects(() => run(licensee, 'proveLicense', ASSIGNEE_SECRET)) === '');
 
 console.log('\n== 2. the same flows, driven by an attacker ==\n');
 
@@ -137,25 +149,30 @@ const MALLORYS = commit(MALLORY);
 run(licensee, 'proposeTransfer', LICENSE2_SECRET, INTENDED);   // the licensee proposes
 rejects(() => run(mallory, 'proposeTransfer', b32(0xAA), MALLORYS));  // the sniper tries to overwrite
 run(breeder, 'approveTransfer', LICENSE2, RECORD, INTENDED);   // the breeder approves the party it saw
-const landedOn = state().licenseHolderOf.lookup(LICENSE2);
-ok('F2: approval lands on the recipient the issuer saw', same(landedOn, INTENDED),
-    same(landedOn, MALLORYS) ? 'it landed on the sniper instead' : 'it landed somewhere else');
+ok('F2: approval lands on the recipient the issuer saw',
+    state().licenseStatusOf.member(INTENDED) && !state().licenseStatusOf.member(MALLORYS),
+    state().licenseStatusOf.member(MALLORYS) ? 'it landed on the sniper instead' : 'it landed somewhere else');
 
-// F3: withdrawTransfer is unauthenticated too.
-run(licensee, 'proposeTransfer', LICENSE2_SECRET, INTENDED);
+// F3: withdrawTransfer is unauthenticated too. LICENSE2 was consumed by the
+// assignment above — an assignment ends the old licence — so this runs against
+// the licence that replaced it.
+const INTENDED_SECRET = LICENSEE;
+run(licensee, 'proposeTransfer', INTENDED_SECRET, commit(b32(0x56)));
 const f3 = rejects(() => run(mallory, 'withdrawTransfer', b32(0xAA)));
 ok('F3: a stranger CANNOT withdraw a proposal they did not make', f3 !== '',
     f3 === '' ? 'mallory cancelled it' : f3);
 
-// F4: revocation clears three maps and forgets the fourth, so a revoked licence
-// can leave a pendingTransferOf entry behind forever. The header comment
-// promises state bounded by live agreements.
-// The F3 proposal still stands, and one licence now holds one proposal at a
-// time, so the holder withdraws before proposing again.
-run(licensee, 'withdrawTransfer', LICENSE2_SECRET);
-run(licensee, 'proposeTransfer', LICENSE2_SECRET, INTENDED);
-run(breeder, 'revokeLicense', LICENSE2);
-ok('F4: revocation leaves no pending transfer behind', !state().pendingTransferOf.member(LICENSE2),
+// F4: revocation cleared the licence maps and forgot the pending transfer, so a
+// revoked licence could leave an entry behind forever, against the header's
+// promise of state bounded by live agreements.
+//
+// The F3 proposal still stands, and one licence holds one proposal at a time, so
+// the holder withdraws before proposing again. This runs against INTENDED, the
+// licence that replaced LICENSE2 when it was assigned.
+run(licensee, 'withdrawTransfer', INTENDED_SECRET);
+run(licensee, 'proposeTransfer', INTENDED_SECRET, commit(b32(0x57)));
+run(breeder, 'revokeLicense', INTENDED);
+ok('F4: revocation leaves no pending transfer behind', !state().pendingTransferOf.member(INTENDED),
     'pendingTransferOf still holds the revoked licence');
 
 console.log(`\n${failures === 0 ? 'all checks passed' : `${failures} check(s) failed`}\n`);

@@ -1,21 +1,21 @@
 {
   "name": "@midnight-ntwrk/bboard-contract",
   "type": "module",
-  "main": "./dist/index.js",
-  "module": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "main": "./dist/veilcore.js",
+  "module": "./dist/veilcore.js",
+  "types": "./dist/veilcore.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "require": "./dist/index.js",
-      "import": "./dist/index.js",
-      "default": "./dist/index.js"
+      "types": "./dist/veilcore.d.ts",
+      "require": "./dist/veilcore.js",
+      "import": "./dist/veilcore.js",
+      "default": "./dist/veilcore.js"
     }
   },
   "scripts": {
-    "build": "rm -rf dist && tsc --project tsconfig.build.json && cp -Rf ./src/managed ./dist/managed && cp ./src/bboard.compact ./dist && cp ./src/veilcore.compact ./dist && cp ./src/lineage.compact ./dist && cp ./src/tree.mjs ./src/descent.mjs ./dist",
+    "build": "rm -rf dist && tsc --project tsconfig.build.json && cp -Rf ./src/managed ./dist/managed && cp ./src/veilcore.compact ./dist && cp ./src/lineage.compact ./dist && cp ./src/tree.mjs ./src/descent.mjs ./dist",
     "ci": "npm run compact && npm run typecheck && npm run lint && npm run build && npm run test",
-    "compact": "compact compile src/bboard.compact ./src/managed/bboard && compact compile src/veilcore.compact ./src/managed/veilcore && compact compile src/lineage.compact ./src/managed/lineage",
+    "compact": "compact compile src/veilcore.compact ./src/managed/veilcore && compact compile src/lineage.compact ./src/managed/lineage",
     "lint": "eslint src",
     "prepack": "npm build",
     "test": "vitest",

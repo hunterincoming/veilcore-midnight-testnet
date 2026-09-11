@@ -41,7 +41,13 @@ const config = tseslint.config(
       parserOptions: {
         ecmaVersion: "latest",
         sourceType: "module",
-        projectService: true,
+        // tree.mjs and descent.mjs are plain JavaScript and are not part of the
+        // TypeScript program, so the project service refuses to parse them and the
+        // whole lint fails. Naming them here lets them be linted without being
+        // compiled.
+        projectService: {
+          allowDefaultProject: ["src/tree.mjs", "src/descent.mjs"],
+        },
         tsconfigRootDir: import.meta.dirname,
       },
     },

@@ -18,9 +18,8 @@
     "compact": "compact compile src/veilcore.compact ./src/managed/veilcore && compact compile src/lineage.compact ./src/managed/lineage",
     "lint": "eslint src",
     "prepack": "npm build",
-    "test": "vitest",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test:contract": "node test-contract.mjs"
+    "test": "node test-contract.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.5",

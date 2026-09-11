@@ -20,7 +20,6 @@ import { Ledger as VeilcoreLedger } from "./managed/veilcore/contract/index.js";
 import { Ledger as LineageLedger } from "./managed/lineage/contract/index.js";
 import { WitnessContext } from "@midnight-ntwrk/midnight-js-protocol/compact-runtime";
 
-
 /* **********************************************************************
  * Veilcore private state: the caller's genetic preimage. Only its
  * commitment (a hash) is ever recorded on-chain; the preimage below is
@@ -75,8 +74,10 @@ export type LineagePrivateState = {
 };
 
 const ZERO32 = (): Uint8Array => new Uint8Array(32);
-const emptyPath = (depth = 16): Uint8Array[] => Array.from({ length: depth }, ZERO32);
-const emptyDirs = (depth = 16): boolean[] => Array.from({ length: depth }, () => false);
+const emptyPath = (depth = 16): Uint8Array[] =>
+  Array.from({ length: depth }, ZERO32);
+const emptyDirs = (depth = 16): boolean[] =>
+  Array.from({ length: depth }, () => false);
 
 /** A private state with no obligations and no claimed ancestry. */
 export const createLineagePrivateState = (
@@ -103,30 +104,53 @@ export const withAncestry = (
   ancestry: Uint8Array[],
   ancestrySiblings: Uint8Array[][],
   ancestryDirections: boolean[][],
-): LineagePrivateState => ({ ...state, ancestry, ancestrySiblings, ancestryDirections });
+): LineagePrivateState => ({
+  ...state,
+  ancestry,
+  ancestrySiblings,
+  ancestryDirections,
+});
 
 export const lineageWitnesses = {
-  localGeneticSecret: ({ privateState }: WitnessContext<LineageLedger, LineagePrivateState>): [
-    LineagePrivateState, Uint8Array,
+  localGeneticSecret: ({
+    privateState,
+  }: WitnessContext<LineageLedger, LineagePrivateState>): [
+    LineagePrivateState,
+    Uint8Array,
   ] => [privateState, privateState.geneticSecret],
 
-  merkleSiblings: ({ privateState }: WitnessContext<LineageLedger, LineagePrivateState>): [
-    LineagePrivateState, Uint8Array[],
+  merkleSiblings: ({
+    privateState,
+  }: WitnessContext<LineageLedger, LineagePrivateState>): [
+    LineagePrivateState,
+    Uint8Array[],
   ] => [privateState, privateState.siblings],
 
-  merkleDirections: ({ privateState }: WitnessContext<LineageLedger, LineagePrivateState>): [
-    LineagePrivateState, boolean[],
+  merkleDirections: ({
+    privateState,
+  }: WitnessContext<LineageLedger, LineagePrivateState>): [
+    LineagePrivateState,
+    boolean[],
   ] => [privateState, privateState.directions],
 
-  ancestryChain: ({ privateState }: WitnessContext<LineageLedger, LineagePrivateState>): [
-    LineagePrivateState, Uint8Array[],
+  ancestryChain: ({
+    privateState,
+  }: WitnessContext<LineageLedger, LineagePrivateState>): [
+    LineagePrivateState,
+    Uint8Array[],
   ] => [privateState, privateState.ancestry],
 
-  ancestrySiblings: ({ privateState }: WitnessContext<LineageLedger, LineagePrivateState>): [
-    LineagePrivateState, Uint8Array[][],
+  ancestrySiblings: ({
+    privateState,
+  }: WitnessContext<LineageLedger, LineagePrivateState>): [
+    LineagePrivateState,
+    Uint8Array[][],
   ] => [privateState, privateState.ancestrySiblings],
 
-  ancestryDirections: ({ privateState }: WitnessContext<LineageLedger, LineagePrivateState>): [
-    LineagePrivateState, boolean[][],
+  ancestryDirections: ({
+    privateState,
+  }: WitnessContext<LineageLedger, LineagePrivateState>): [
+    LineagePrivateState,
+    boolean[][],
   ] => [privateState, privateState.ancestryDirections],
 };

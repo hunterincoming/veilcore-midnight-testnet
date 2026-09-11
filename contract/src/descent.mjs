@@ -8,9 +8,9 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-import { pureCircuits as C } from './managed/lineage/contract/index.js';
+import { pureCircuits as C } from "./managed/lineage/contract/index.js";
 
-const hex = (u) => Buffer.from(u).toString('hex');
+const hex = (u) => Buffer.from(u).toString("hex");
 
 export class DescentGraph {
   constructor() {
@@ -40,7 +40,10 @@ export class DescentGraph {
     let current = record;
     for (const ancestor of claimedAncestors) {
       if (!this.hasEdge(current, ancestor)) {
-        return { ok: false, reason: `no declared edge from ${hex(current).slice(0, 12)}… to ${hex(ancestor).slice(0, 12)}…` };
+        return {
+          ok: false,
+          reason: `no declared edge from ${hex(current).slice(0, 12)}… to ${hex(ancestor).slice(0, 12)}…`,
+        };
       }
       current = ancestor;
     }

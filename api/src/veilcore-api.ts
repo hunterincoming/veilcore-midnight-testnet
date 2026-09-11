@@ -34,7 +34,7 @@ export interface DeployedVeilcoreAPI {
   revokeLicense: (licenseCommitment: Uint8Array) => Promise<void>;
   proveLicense: (secret: Uint8Array) => Promise<void>;
   proposeTransfer: (licenseCommitment: Uint8Array, newHolderCommitment: Uint8Array) => Promise<void>;
-  approveTransfer: (licenseCommitment: Uint8Array, recordCommitment: Uint8Array) => Promise<void>;
+  approveTransfer: (licenseCommitment: Uint8Array, recordCommitment: Uint8Array, expectedNewLicense: Uint8Array) => Promise<void>;
   withdrawTransfer: (licenseCommitment: Uint8Array) => Promise<void>;
 }
 
@@ -181,10 +181,26 @@ export class VeilcoreAPI implements DeployedVeilcoreAPI {
     });
   }
 
-  /** The issuer approves, and the licence moves. Only they can. */
-  async approveTransfer(licenseCommitment: Uint8Array, recordCommitment: Uint8Array): Promise<void> {
+  /**
+   * The issuer approves, and the licence moves. Only they can.
+   *
+   * `expectedNewLicense` is the recipient the issuer actually agreed to, and it is not
+   * optional. The circuit compares it against whatever is pending at execution time, so
+   * an approval cannot land on a proposal that was replaced between the agreement and
+   * the approval. Reading the pending value back from the ledger to fill this in would
+   * defeat the check entirely: it has to be the commitment the issuer was shown.
+   */
+  async approveTransfer(
+    licenseCommitment: Uint8Array,
+    recordCommitment: Uint8Array,
+    expectedNewLicense: Uint8Array,
+  ): Promise<void> {
     this.logger?.info('approving licence transfer');
-    const txData = await this.deployedContract.callTx.approveTransfer(licenseCommitment, recordCommitment);
+    const txData = await this.deployedContract.callTx.approveTransfer(
+      licenseCommitment,
+      recordCommitment,
+      expectedNewLicense,
+    );
     this.logger?.trace({
       transactionAdded: { circuit: 'approveTransfer', txHash: txData.public.txHash, blockHeight: txData.public.blockHeight },
     });

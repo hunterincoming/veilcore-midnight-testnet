@@ -317,9 +317,17 @@ const mainLoop = async (providers: VeilcoreProviders, rli: Interface, logger: Lo
             const lcHex = (await rli.question('Licence commitment: ')).trim();
             const lc = hexToBytes(lcHex);
             if (lc === null) { logger.error('Invalid licence commitment.'); break; }
+            // The issuer names the recipient they agreed to. This is deliberately not
+            // read back from the ledger: the circuit compares it against what is
+            // pending, so an approval cannot land on a proposal that was swapped
+            // between the agreement and this call. Reading it here would approve
+            // whatever is pending, which is the thing the check exists to stop.
+            const enlHex = (await rli.question('New holder commitment you are approving: ')).trim();
+            const enl = hexToBytes(enlHex);
+            if (enl === null) { logger.error('Invalid new holder commitment.'); break; }
             const geneticSecret = await getGeneticSecret(providers);
             if (geneticSecret === null) { logger.error('No genetic secret in private state.'); break; }
-            await veilcoreApi.approveTransfer(lc, pureCircuits.commit(geneticSecret));
+            await veilcoreApi.approveTransfer(lc, pureCircuits.commit(geneticSecret), enl);
             logger.info('Transfer approved. The licence now belongs to the new holder.');
             break;
           }

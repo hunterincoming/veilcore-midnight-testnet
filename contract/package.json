@@ -1,5 +1,5 @@
 {
-  "name": "@midnight-ntwrk/bboard-contract",
+  "name": "@veilcore/contract",
   "type": "module",
   "main": "./dist/veilcore.js",
   "module": "./dist/veilcore.js",

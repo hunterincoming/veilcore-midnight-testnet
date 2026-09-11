@@ -2,7 +2,7 @@
 name: Feature request
 about: Submit a proposal for a new feature
 title: ""
-labels: example-bboard, public
+labels: veilcore
 assignees: ""
 ---
 

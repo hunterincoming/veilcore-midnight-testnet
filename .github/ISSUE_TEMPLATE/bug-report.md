@@ -2,7 +2,7 @@
 name: Bug report
 about: Submit a bug report
 title: ""
-labels: example-bboard, public
+labels: veilcore
 assignees: ""
 ---
 

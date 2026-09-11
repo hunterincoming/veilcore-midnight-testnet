@@ -2,7 +2,7 @@
 name: Documentation improvement
 about: Report a problem with the documentation
 title: ""
-labels: example-bboard, public
+labels: veilcore
 assignees: ""
 ---
 

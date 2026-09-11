@@ -42,10 +42,14 @@ export const sortRecords = (records: StrainRecord[], by: SortKey): StrainRecord[
   const name = (r: StrainRecord) => (r.strainName ?? '').toLowerCase();
   const breeder = (r: StrainRecord) => (r.bredBy ?? '').toLowerCase();
   switch (by) {
-    case 'oldest': return out.sort((a, b) => a.loggedAt - b.loggedAt);
-    case 'name': return out.sort((a, b) => name(a).localeCompare(name(b)));
-    case 'breeder': return out.sort((a, b) => breeder(a).localeCompare(breeder(b)) || name(a).localeCompare(name(b)));
-    default: return out.sort((a, b) => b.loggedAt - a.loggedAt);
+    case 'oldest':
+      return out.sort((a, b) => a.loggedAt - b.loggedAt);
+    case 'name':
+      return out.sort((a, b) => name(a).localeCompare(name(b)));
+    case 'breeder':
+      return out.sort((a, b) => breeder(a).localeCompare(breeder(b)) || name(a).localeCompare(name(b)));
+    default:
+      return out.sort((a, b) => b.loggedAt - a.loggedAt);
   }
 };
 
@@ -70,17 +74,26 @@ export const RecordFinder: React.FC<{
           slotProps={{
             input: {
               startAdornment: (
-                <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment>
+                <InputAdornment position="start">
+                  <SearchIcon fontSize="small" />
+                </InputAdornment>
               ),
             },
           }}
         />
       )}
       <TextField
-        select size="small" value={sort} onChange={(e) => onSort(e.target.value as SortKey)}
+        select
+        size="small"
+        value={sort}
+        onChange={(e) => onSort(e.target.value as SortKey)}
         sx={{ minWidth: 170 }}
       >
-        {SORTS.map((s) => <MenuItem key={s.key} value={s.key}>{s.label}</MenuItem>)}
+        {SORTS.map((s) => (
+          <MenuItem key={s.key} value={s.key}>
+            {s.label}
+          </MenuItem>
+        ))}
       </TextField>
     </Stack>
 

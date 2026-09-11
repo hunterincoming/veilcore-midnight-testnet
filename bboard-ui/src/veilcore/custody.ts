@@ -16,10 +16,10 @@ import type { StrainRecord } from './records';
 import type { ResolvedAttestation } from './attesters';
 
 export type CustodyStage =
-  | 'held'          // with the breeder, nothing sent
-  | 'in-transit'    // sent, not yet confirmed received
-  | 'received'      // lab confirmed receipt, testing
-  | 'reported';     // report returned
+  | 'held' // with the breeder, nothing sent
+  | 'in-transit' // sent, not yet confirmed received
+  | 'received' // lab confirmed receipt, testing
+  | 'reported'; // report returned
 
 export type CustodyState = {
   stage: CustodyStage;
@@ -61,7 +61,8 @@ export const custodyOf = (
     return {
       stage: 'in-transit',
       headline: 'Sent, awaiting confirmation',
-      detail: 'You have given a transfer code to the recipient. Nothing changes until they confirm receipt — until then the sample is in transit as far as this record is concerned.',
+      detail:
+        'You have given a transfer code to the recipient. Nothing changes until they confirm receipt — until then the sample is in transit as far as this record is concerned.',
       waitingOn: 'the lab',
     };
   }
@@ -69,7 +70,8 @@ export const custodyOf = (
   return {
     stage: 'held',
     headline: 'Held by you',
-    detail: 'This record is your own account of the cultivar. Sending a sample to a lab is what turns it into evidence a third party can rely on.',
+    detail:
+      'This record is your own account of the cultivar. Sending a sample to a lab is what turns it into evidence a third party can rely on.',
     waitingOn: 'you',
   };
 };

@@ -22,11 +22,5 @@ const COLOR: Record<AgreementType, 'primary' | 'info' | 'secondary'> = {
 };
 
 export const AgreementTypeChip: React.FC<{ type: AgreementType; size?: 'small' | 'medium' }> = ({ type, size }) => (
-  <Chip
-    size={size ?? 'small'}
-    variant="outlined"
-    color={COLOR[type]}
-    icon={ICON[type]}
-    label={AGREEMENT_LABEL[type]}
-  />
+  <Chip size={size ?? 'small'} variant="outlined" color={COLOR[type]} icon={ICON[type]} label={AGREEMENT_LABEL[type]} />
 );

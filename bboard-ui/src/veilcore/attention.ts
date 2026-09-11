@@ -13,11 +13,11 @@
 import type { StrainRecord } from './records';
 
 export type AttentionState =
-  | 'blocked'        // carries an unmet obligation
-  | 'needs-dna'      // no DNA report paired
+  | 'blocked' // carries an unmet obligation
+  | 'needs-dna' // no DNA report paired
   | 'needs-attester' // DNA paired, no second party has confirmed it
-  | 'in-transit'     // offered to someone, not yet claimed
-  | 'complete';      // nothing outstanding
+  | 'in-transit' // offered to someone, not yet claimed
+  | 'complete'; // nothing outstanding
 
 export type Group = {
   state: AttentionState;

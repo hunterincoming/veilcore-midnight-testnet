@@ -72,7 +72,7 @@ export const getVeilcoreLedgerState = async (
  */
 
 const getGeneticSecret = async (providers: VeilcoreProviders): Promise<Uint8Array | null> => {
-  const privateState = (await providers.privateStateProvider.get(veilcorePrivateStateKey)) as VeilcorePrivateState | null;
+  const privateState = await providers.privateStateProvider.get(veilcorePrivateStateKey);
   return privateState?.geneticSecret ?? null;
 };
 
@@ -89,7 +89,11 @@ You can do one of the following:
   3. Exit
 Which would you like to do? `;
 
-const deployOrJoin = async (providers: VeilcoreProviders, rli: Interface, logger: Logger): Promise<VeilcoreAPI | null> => {
+const deployOrJoin = async (
+  providers: VeilcoreProviders,
+  rli: Interface,
+  logger: Logger,
+): Promise<VeilcoreAPI | null> => {
   while (true) {
     const choice = await rli.question(DEPLOY_OR_JOIN_QUESTION);
     switch (choice) {
@@ -99,7 +103,11 @@ const deployOrJoin = async (providers: VeilcoreProviders, rli: Interface, logger
         return api;
       }
       case '2': {
-        const api = await VeilcoreAPI.join(providers, await rli.question('What is the contract address (in hex)? '), logger);
+        const api = await VeilcoreAPI.join(
+          providers,
+          await rli.question('What is the contract address (in hex)? '),
+          logger,
+        );
         logger.info(`Joined contract at address: ${api.deployedContractAddress}`);
         return api;
       }
@@ -232,7 +240,9 @@ const mainLoop = async (providers: VeilcoreProviders, rli: Interface, logger: Lo
               logger.error('No genetic secret in private state; cannot issue.');
               break;
             }
-            const licSecret = (await rli.question('Enter a licence secret in hex (the licensee will hold this): ')).trim();
+            const licSecret = (
+              await rli.question('Enter a licence secret in hex (the licensee will hold this): ')
+            ).trim();
             const lic = hexToBytes(licSecret);
             if (lic === null) {
               logger.error('Invalid licence secret.');
@@ -308,7 +318,10 @@ const mainLoop = async (providers: VeilcoreProviders, rli: Interface, logger: Lo
             const nhHex = (await rli.question('New holder commitment: ')).trim();
             const lc = hexToBytes(lcHex);
             const nh = hexToBytes(nhHex);
-            if (lc === null || nh === null) { logger.error('Invalid input.'); break; }
+            if (lc === null || nh === null) {
+              logger.error('Invalid input.');
+              break;
+            }
             await veilcoreApi.proposeTransfer(lc, nh);
             logger.info('Transfer proposed. Nothing moves until the issuer approves.');
             break;
@@ -316,7 +329,10 @@ const mainLoop = async (providers: VeilcoreProviders, rli: Interface, logger: Lo
           case '12': {
             const lcHex = (await rli.question('Licence commitment: ')).trim();
             const lc = hexToBytes(lcHex);
-            if (lc === null) { logger.error('Invalid licence commitment.'); break; }
+            if (lc === null) {
+              logger.error('Invalid licence commitment.');
+              break;
+            }
             // The issuer names the recipient they agreed to. This is deliberately not
             // read back from the ledger: the circuit compares it against what is
             // pending, so an approval cannot land on a proposal that was swapped
@@ -324,9 +340,15 @@ const mainLoop = async (providers: VeilcoreProviders, rli: Interface, logger: Lo
             // whatever is pending, which is the thing the check exists to stop.
             const enlHex = (await rli.question('New holder commitment you are approving: ')).trim();
             const enl = hexToBytes(enlHex);
-            if (enl === null) { logger.error('Invalid new holder commitment.'); break; }
+            if (enl === null) {
+              logger.error('Invalid new holder commitment.');
+              break;
+            }
             const geneticSecret = await getGeneticSecret(providers);
-            if (geneticSecret === null) { logger.error('No genetic secret in private state.'); break; }
+            if (geneticSecret === null) {
+              logger.error('No genetic secret in private state.');
+              break;
+            }
             await veilcoreApi.approveTransfer(lc, pureCircuits.commit(geneticSecret), enl);
             logger.info('Transfer approved. The licence now belongs to the new holder.');
             break;
@@ -334,7 +356,10 @@ const mainLoop = async (providers: VeilcoreProviders, rli: Interface, logger: Lo
           case '13': {
             const lcHex = (await rli.question('Licence commitment: ')).trim();
             const lc = hexToBytes(lcHex);
-            if (lc === null) { logger.error('Invalid licence commitment.'); break; }
+            if (lc === null) {
+              logger.error('Invalid licence commitment.');
+              break;
+            }
             await veilcoreApi.withdrawTransfer(lc);
             logger.info('Transfer proposal withdrawn.');
             break;

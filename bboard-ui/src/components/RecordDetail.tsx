@@ -95,8 +95,8 @@ export const RecordDetail: React.FC = () => {
               know a correction exists, and a correcting record needs to point back. */}
           {record.supersededBy && (
             <Alert severity="info" variant="outlined">
-              This record was corrected. It remains on file unchanged — nothing is ever deleted —
-              but a later record supersedes it.{' '}
+              This record was corrected. It remains on file unchanged — nothing is ever deleted — but a later record
+              supersedes it.{' '}
               <Link component={RouterLink} to={`/record/${record.supersededBy}`}>
                 See the correction
               </Link>
@@ -105,8 +105,8 @@ export const RecordDetail: React.FC = () => {
 
           {record.supersedes && (
             <Alert severity="info" variant="outlined">
-              This corrects an earlier record. Changed:{' '}
-              {record.supersedes.changedFields.join(', ')}. Reason given: {record.supersedes.reason}.{' '}
+              This corrects an earlier record. Changed: {record.supersedes.changedFields.join(', ')}. Reason given:{' '}
+              {record.supersedes.reason}.{' '}
               <Link component={RouterLink} to={`/record/${record.supersedes.recordId}`}>
                 See what it replaced
               </Link>
@@ -148,7 +148,6 @@ export const RecordDetail: React.FC = () => {
               </Field>
             </Stack>
           </Paper>
-
 
           <Paper sx={{ p: { xs: 2.5, md: 3 } }}>
             <AttestationPanel record={record} />

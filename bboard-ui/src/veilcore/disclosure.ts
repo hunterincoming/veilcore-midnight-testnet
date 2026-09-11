@@ -12,14 +12,14 @@
 // SPDX-License-Identifier: Apache-2.0
 
 export type DisclosureKey =
-  | 'existence'         // a sealed record exists, held by this party from this date
-  | 'attestation-status'// whether a second party has confirmed it
-  | 'descent-clean'     // free of unmet obligations through declared ancestry
-  | 'sealed-at'         // when it was sealed
-  | 'parent-names'      // the parent cultivar names
-  | 'breeding-method'   // how it was produced
-  | 'holder-portfolio'  // the holder's other records
-  | 'terms-full';       // the terms of the holder's other agreements
+  | 'existence' // a sealed record exists, held by this party from this date
+  | 'attestation-status' // whether a second party has confirmed it
+  | 'descent-clean' // free of unmet obligations through declared ancestry
+  | 'sealed-at' // when it was sealed
+  | 'parent-names' // the parent cultivar names
+  | 'breeding-method' // how it was produced
+  | 'holder-portfolio' // the holder's other records
+  | 'terms-full'; // the terms of the holder's other agreements
 
 export type Disclosure = Record<DisclosureKey, boolean>;
 
@@ -67,7 +67,10 @@ export const encodeDisclosure = (d: Disclosure): string =>
 export const decodeDisclosure = (s: string | null): Disclosure | null => {
   if (s === null) return null;
   const on = new Set(
-    s.split(',').filter(Boolean).map((k) => LEGACY[k] ?? k),
+    s
+      .split(',')
+      .filter(Boolean)
+      .map((k) => LEGACY[k] ?? k),
   );
   return DISCLOSURE_FIELDS.reduce((acc, f) => ({ ...acc, [f.key]: on.has(f.key) }), {} as Disclosure);
 };

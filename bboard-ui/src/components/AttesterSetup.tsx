@@ -11,8 +11,17 @@
 
 import React, { useState } from 'react';
 import {
-  Alert, Box, Button, Dialog, DialogActions, DialogContent, DialogTitle,
-  MenuItem, Stack, TextField, Typography,
+  Alert,
+  Box,
+  Button,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  MenuItem,
+  Stack,
+  TextField,
+  Typography,
 } from '@mui/material';
 import BadgeIcon from '@mui/icons-material/VerifiedUserOutlined';
 import DownloadIcon from '@mui/icons-material/FileDownloadOutlined';
@@ -34,13 +43,17 @@ export const AttesterSetup: React.FC = () => {
     if (!name.trim()) return;
     setBusy(true);
     setError(null);
-    const accreditation = accId.trim() && accreditor.trim()
-      ? { scheme, identifier: accId.trim(), accreditor: accreditor.trim() }
-      : undefined;
+    const accreditation =
+      accId.trim() && accreditor.trim()
+        ? { scheme, identifier: accId.trim(), accreditor: accreditor.trim() }
+        : undefined;
     const p = await createAttester(name.trim(), role, accreditation);
     const out = await publishAttester(p);
     setBusy(false);
-    if (out.error) { setError(out.error); return; }
+    if (out.error) {
+      setError(out.error);
+      return;
+    }
     setProfile({ ...p, registeredAt: Date.now() });
   };
 
@@ -71,15 +84,17 @@ export const AttesterSetup: React.FC = () => {
                 {profile.accreditation && ` · ${profile.accreditation.scheme} ${profile.accreditation.identifier}`}
               </Alert>
               <Box>
-                <Typography variant="overline" sx={{ display: 'block', color: TEAL }}>Public key</Typography>
+                <Typography variant="overline" sx={{ display: 'block', color: TEAL }}>
+                  Public key
+                </Typography>
                 <Typography sx={{ fontFamily: 'monospace', fontSize: 12, wordBreak: 'break-all' }}>
                   {profile.keypair.publicKey}
                 </Typography>
               </Box>
               <Alert severity="warning" variant="outlined">
-                Your private key is stored in this browser and nowhere else. If you lose it you cannot
-                sign new attestations — past ones stay valid and can still be retracted through the
-                registry. Back it up somewhere safe.
+                Your private key is stored in this browser and nowhere else. If you lose it you cannot sign new
+                attestations — past ones stay valid and can still be retracted through the registry. Back it up
+                somewhere safe.
               </Alert>
               <Button variant="outlined" startIcon={<DownloadIcon />} onClick={backup}>
                 Download key backup
@@ -88,13 +103,23 @@ export const AttesterSetup: React.FC = () => {
           ) : (
             <Stack spacing={2} sx={{ pt: 1 }}>
               <Typography variant="body2" color="text.secondary">
-                When you confirm you received material, that confirmation is signed with a key only
-                you hold. It becomes your statement rather than something we recorded on your
-                behalf — which is what makes it evidence.
+                When you confirm you received material, that confirmation is signed with a key only you hold. It becomes
+                your statement rather than something we recorded on your behalf — which is what makes it evidence.
               </Typography>
-              <TextField label="Name" value={name} onChange={(e) => setName(e.target.value)} fullWidth
-                helperText="How you'll appear to anyone verifying a record you attested to." />
-              <TextField select label="Role" value={role} onChange={(e) => setRole(e.target.value as AttesterProfile['role'])} fullWidth>
+              <TextField
+                label="Name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                fullWidth
+                helperText="How you'll appear to anyone verifying a record you attested to."
+              />
+              <TextField
+                select
+                label="Role"
+                value={role}
+                onChange={(e) => setRole(e.target.value as AttesterProfile['role'])}
+                fullWidth
+              >
                 <MenuItem value="laboratory">Laboratory</MenuItem>
                 <MenuItem value="inspector">Inspector</MenuItem>
                 <MenuItem value="registry">Registry</MenuItem>
@@ -102,10 +127,12 @@ export const AttesterSetup: React.FC = () => {
                 <MenuItem value="other">Other</MenuItem>
               </TextField>
 
-              <Typography variant="overline" sx={{ display: 'block' }}>Accreditation (optional)</Typography>
+              <Typography variant="overline" sx={{ display: 'block' }}>
+                Accreditation (optional)
+              </Typography>
               <Typography variant="caption" color="text.secondary" sx={{ mt: -1 }}>
-                We record this and never verify it. Whoever checks your attestation can confirm it
-                with the accreditor directly — that's the point of naming them.
+                We record this and never verify it. Whoever checks your attestation can confirm it with the accreditor
+                directly — that&apos;s the point of naming them.
               </Typography>
               <TextField select label="Scheme" value={scheme} onChange={(e) => setScheme(e.target.value)} fullWidth>
                 <MenuItem value="ISO/IEC 17025">ISO/IEC 17025</MenuItem>
@@ -113,11 +140,25 @@ export const AttesterSetup: React.FC = () => {
                 <MenuItem value="State licence">State licence</MenuItem>
                 <MenuItem value="Other">Other</MenuItem>
               </TextField>
-              <TextField label="Accreditation number" value={accId} onChange={(e) => setAccId(e.target.value)} fullWidth />
-              <TextField label="Accreditor" placeholder="e.g. A2LA, PJLA, state agency"
-                value={accreditor} onChange={(e) => setAccreditor(e.target.value)} fullWidth />
+              <TextField
+                label="Accreditation number"
+                value={accId}
+                onChange={(e) => setAccId(e.target.value)}
+                fullWidth
+              />
+              <TextField
+                label="Accreditor"
+                placeholder="e.g. A2LA, PJLA, state agency"
+                value={accreditor}
+                onChange={(e) => setAccreditor(e.target.value)}
+                fullWidth
+              />
 
-              {error && <Alert severity="warning" variant="outlined">{error}</Alert>}
+              {error && (
+                <Alert severity="warning" variant="outlined">
+                  {error}
+                </Alert>
+              )}
             </Stack>
           )}
         </DialogContent>

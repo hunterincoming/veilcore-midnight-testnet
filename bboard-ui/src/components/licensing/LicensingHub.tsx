@@ -50,7 +50,10 @@ export const LicensingHub: React.FC = () => {
                 onClick={() => navigate(`/license/${l.id}`)}
                 sx={{ p: 2.5, cursor: 'pointer', '&:hover': { borderColor: 'primary.main' } }}
               >
-                <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between', gap: 1.5, flexWrap: 'wrap' }}>
+                <Stack
+                  direction="row"
+                  sx={{ alignItems: 'center', justifyContent: 'space-between', gap: 1.5, flexWrap: 'wrap' }}
+                >
                   <Box sx={{ minWidth: 0 }}>
                     <Typography variant="h6" noWrap>
                       {record?.strainName ?? l.recordId} → {l.terms.licensee || 'unnamed counterparty'}

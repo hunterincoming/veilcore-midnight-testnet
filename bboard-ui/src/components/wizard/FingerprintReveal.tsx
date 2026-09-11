@@ -57,11 +57,7 @@ export const FingerprintReveal: React.FC<{
       </Typography>
     )}
 
-    <Stack
-      direction="row"
-      spacing={1}
-      sx={{ alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap' }}
-    >
+    <Stack direction="row" spacing={1} sx={{ alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap' }}>
       <Typography variant="caption" color="text.secondary" sx={{ letterSpacing: '0.18em' }}>
         SEALED FINGERPRINT
       </Typography>

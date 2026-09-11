@@ -25,8 +25,8 @@ export const RolePicker: React.FC<{ onChosen?: () => void }> = ({ onChosen }) =>
       <DialogTitle>Which of these is you?</DialogTitle>
       <DialogContent>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          This only decides what we put in front of you. You can change it any time, and it does not
-          restrict anything — what you can prove is decided by keys, not by this answer.
+          This only decides what we put in front of you. You can change it any time, and it does not restrict anything —
+          what you can prove is decided by keys, not by this answer.
         </Typography>
         <Stack spacing={1.5} sx={{ pb: 1 }}>
           {(['breeder', 'lab', 'both'] as Role[]).map((r) => (
@@ -34,13 +34,17 @@ export const RolePicker: React.FC<{ onChosen?: () => void }> = ({ onChosen }) =>
               key={r}
               onClick={() => choose(r)}
               sx={{
-                p: 2, borderRadius: 1, cursor: 'pointer',
+                p: 2,
+                borderRadius: 1,
+                cursor: 'pointer',
                 border: '1px solid rgba(255,255,255,0.12)',
                 '&:hover': { borderColor: TEAL },
               }}
             >
               <Typography variant="subtitle1">{ROLE_COPY[r].label}</Typography>
-              <Typography variant="caption" color="text.secondary">{ROLE_COPY[r].blurb}</Typography>
+              <Typography variant="caption" color="text.secondary">
+                {ROLE_COPY[r].blurb}
+              </Typography>
             </Box>
           ))}
         </Stack>

@@ -20,7 +20,13 @@ import { useLicenses, activeLicenseCount } from '../veilcore/licenses';
 import { StatusChain } from './StatusChain';
 import { AttentionBar } from './AttentionBar';
 import { RecordFinder, matchesQuery, sortRecords, type SortKey } from './RecordFinder';
-import { groupByAttention, attentionSummary, attentionOf, GROUPING_THRESHOLD, type AttentionState } from '../veilcore/attention';
+import {
+  groupByAttention,
+  attentionSummary,
+  attentionOf,
+  GROUPING_THRESHOLD,
+  type AttentionState,
+} from '../veilcore/attention';
 import { TrustPanel } from './TrustPanel';
 import { AppHeader } from './AppHeader';
 import { TEAL } from '../config/theme';
@@ -45,9 +51,7 @@ export const Dashboard: React.FC = () => {
   const [sort, setSort] = useState<SortKey>('recent');
 
   const visible = sortRecords(
-    records
-      .filter((r) => (filter === null ? true : attentionOf(r) === filter))
-      .filter((r) => matchesQuery(r, query)),
+    records.filter((r) => (filter === null ? true : attentionOf(r) === filter)).filter((r) => matchesQuery(r, query)),
     sort,
   );
 
@@ -96,9 +100,8 @@ export const Dashboard: React.FC = () => {
             Everything is hashed on your device; your genetics never leave it.
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 560, mx: 'auto', mb: 4 }}>
-            Built for breeders and the labs that hold their material. Anyone you send a record to can
-            verify it — free, no account, forever. Terms you attach follow the genetics into every
-            descendant.
+            Built for breeders and the labs that hold their material. Anyone you send a record to can verify it — free,
+            no account, forever. Terms you attach follow the genetics into every descendant.
           </Typography>
           <Button component={RouterLink} to="/new" variant="contained" size="large" startIcon={<AddIcon />}>
             Log your first cultivar
@@ -151,8 +154,10 @@ export const Dashboard: React.FC = () => {
 
           {records.length >= 5 && (
             <RecordFinder
-              query={query} onQuery={setQuery}
-              sort={sort} onSort={setSort}
+              query={query}
+              onQuery={setQuery}
+              sort={sort}
+              onSort={setSort}
               showSearch={records.length >= GROUPING_THRESHOLD}
               matched={visible.length}
               total={records.length}

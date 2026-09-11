@@ -149,9 +149,8 @@ export const Step2PairDna: React.FC<{
         </Button>
         {onSkip && (
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-            If you sent the sample through VeilCore, the lab&apos;s report arrives here signed by
-            them — you don&apos;t need to do anything. Upload one yourself only if your lab
-            doesn&apos;t use VeilCore.
+            If you sent the sample through VeilCore, the lab&apos;s report arrives here signed by them — you don&apos;t
+            need to do anything. Upload one yourself only if your lab doesn&apos;t use VeilCore.
           </Typography>
         )}
         {onSkip && (

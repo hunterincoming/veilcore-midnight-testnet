@@ -6,8 +6,16 @@
 
 import React, { useState } from 'react';
 import {
-  Alert, Box, Button, Dialog, DialogActions, DialogContent, DialogTitle,
-  Stack, TextField, Typography,
+  Alert,
+  Box,
+  Button,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Stack,
+  TextField,
+  Typography,
 } from '@mui/material';
 import KeyIcon from '@mui/icons-material/VpnKeyOutlined';
 import ContentCopyIcon from '@mui/icons-material/ContentCopyOutlined';
@@ -64,8 +72,8 @@ export const HolderKeyPanel: React.FC = () => {
         <DialogContent>
           <Stack spacing={2.5} sx={{ pt: 1 }}>
             <Alert severity="warning" variant="outlined">
-              This key is the only way to retrieve your records. We do not have a copy and cannot
-              reset it. Save it before you clear this browser.
+              This key is the only way to retrieve your records. We do not have a copy and cannot reset it. Save it
+              before you clear this browser.
             </Alert>
 
             <Box>
@@ -74,8 +82,14 @@ export const HolderKeyPanel: React.FC = () => {
               </Typography>
               <Box
                 sx={{
-                  mt: 0.5, p: 1.5, borderRadius: 1, background: 'rgba(255,255,255,0.04)',
-                  fontFamily: 'monospace', fontSize: 13, wordBreak: 'break-all', color: TEAL,
+                  mt: 0.5,
+                  p: 1.5,
+                  borderRadius: 1,
+                  background: 'rgba(255,255,255,0.04)',
+                  fontFamily: 'monospace',
+                  fontSize: 13,
+                  wordBreak: 'break-all',
+                  color: TEAL,
                 }}
               >
                 {key}
@@ -96,19 +110,19 @@ export const HolderKeyPanel: React.FC = () => {
                 Restore on this device
               </Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-                Paste a key saved from another browser to load those records here. This replaces the
-                key above — save it first if you still need it.
+                Paste a key saved from another browser to load those records here. This replaces the key above — save it
+                first if you still need it.
               </Typography>
               <Stack direction="row" spacing={1}>
                 <TextField
-                  size="small" fullWidth placeholder="64 hex characters"
-                  value={restoreValue} onChange={(e) => setRestoreValue(e.target.value)}
+                  size="small"
+                  fullWidth
+                  placeholder="64 hex characters"
+                  value={restoreValue}
+                  onChange={(e) => setRestoreValue(e.target.value)}
                   slotProps={{ htmlInput: { style: { fontFamily: 'monospace', fontSize: 13 } } }}
                 />
-                <Button
-                  variant="contained" onClick={restore}
-                  disabled={!/^[0-9a-f]{64}$/i.test(restoreValue.trim())}
-                >
+                <Button variant="contained" onClick={restore} disabled={!/^[0-9a-f]{64}$/i.test(restoreValue.trim())}>
                   Restore
                 </Button>
               </Stack>

@@ -74,32 +74,49 @@ export const RecordHistory: React.FC<{ record: StrainRecord }> = ({ record }) =>
 
       if (!cancelled) setEvents(out.sort((a, b) => a.at - b.at));
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [record]);
 
   if (!events || events.length <= 1) return null;
 
   return (
     <Stack spacing={0}>
-      <Typography variant="overline" sx={{ display: 'block', mb: 1.5 }}>History</Typography>
+      <Typography variant="overline" sx={{ display: 'block', mb: 1.5 }}>
+        History
+      </Typography>
       {events.map((e, i) => (
         <Box
           key={i}
           sx={{
-            position: 'relative', pl: 2.5, ml: 0.5,
+            position: 'relative',
+            pl: 2.5,
+            ml: 0.5,
             pb: i === events.length - 1 ? 0 : 2.5,
             borderLeft: i === events.length - 1 ? 'none' : '1px solid rgba(255,255,255,0.12)',
           }}
         >
-          <Box sx={{
-            position: 'absolute', left: -4.5, top: 4, width: 8, height: 8, borderRadius: '50%',
-            background: e.strong ? TEAL : 'rgba(255,255,255,0.3)',
-          }} />
-          <Typography variant="body2" sx={{ fontWeight: 500 }}>{e.title}</Typography>
+          <Box
+            sx={{
+              position: 'absolute',
+              left: -4.5,
+              top: 4,
+              width: 8,
+              height: 8,
+              borderRadius: '50%',
+              background: e.strong ? TEAL : 'rgba(255,255,255,0.3)',
+            }}
+          />
+          <Typography variant="body2" sx={{ fontWeight: 500 }}>
+            {e.title}
+          </Typography>
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
             {new Date(e.at).toLocaleString()}
           </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>{e.detail}</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+            {e.detail}
+          </Typography>
         </Box>
       ))}
     </Stack>

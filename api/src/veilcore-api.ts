@@ -34,7 +34,11 @@ export interface DeployedVeilcoreAPI {
   revokeLicense: (licenseCommitment: Uint8Array) => Promise<void>;
   proveLicense: (secret: Uint8Array) => Promise<void>;
   proposeTransfer: (licenseCommitment: Uint8Array, newHolderCommitment: Uint8Array) => Promise<void>;
-  approveTransfer: (licenseCommitment: Uint8Array, recordCommitment: Uint8Array, expectedNewLicense: Uint8Array) => Promise<void>;
+  approveTransfer: (
+    licenseCommitment: Uint8Array,
+    recordCommitment: Uint8Array,
+    expectedNewLicense: Uint8Array,
+  ) => Promise<void>;
   withdrawTransfer: (licenseCommitment: Uint8Array) => Promise<void>;
 }
 
@@ -48,9 +52,9 @@ export class VeilcoreAPI implements DeployedVeilcoreAPI {
     providers.privateStateProvider.setContractAddress(this.deployedContractAddress);
     this.state$ = combineLatest(
       [
-        providers.publicDataProvider.contractStateObservable(this.deployedContractAddress, { type: 'latest' }).pipe(
-          map((contractState) => Veilcore.ledger(contractState.data)),
-        ),
+        providers.publicDataProvider
+          .contractStateObservable(this.deployedContractAddress, { type: 'latest' })
+          .pipe(map((contractState) => Veilcore.ledger(contractState.data))),
         from(providers.privateStateProvider.get(veilcorePrivateStateKey) as Promise<VeilcorePrivateState>),
       ],
       (ledgerState, privateState) => {
@@ -114,7 +118,11 @@ export class VeilcoreAPI implements DeployedVeilcoreAPI {
     this.logger?.info(`anchoring batch root: ${toHex(root)}`);
     const txData = await this.deployedContract.callTx.anchorBatch(root);
     this.logger?.trace({
-      transactionAdded: { circuit: 'anchorBatch', txHash: txData.public.txHash, blockHeight: txData.public.blockHeight },
+      transactionAdded: {
+        circuit: 'anchorBatch',
+        txHash: txData.public.txHash,
+        blockHeight: txData.public.blockHeight,
+      },
     });
     // Returned rather than only logged: a proof that names an anchor nobody can look up
     // is not independently checkable, which is the whole point of the proof.
@@ -135,7 +143,11 @@ export class VeilcoreAPI implements DeployedVeilcoreAPI {
     this.logger?.info('issuing licence');
     const txData = await this.deployedContract.callTx.issueLicense(recordCommitment, licenseCommitment);
     this.logger?.trace({
-      transactionAdded: { circuit: 'issueLicense', txHash: txData.public.txHash, blockHeight: txData.public.blockHeight },
+      transactionAdded: {
+        circuit: 'issueLicense',
+        txHash: txData.public.txHash,
+        blockHeight: txData.public.blockHeight,
+      },
     });
   }
 
@@ -144,7 +156,11 @@ export class VeilcoreAPI implements DeployedVeilcoreAPI {
     this.logger?.info('countersigning licence');
     const txData = await this.deployedContract.callTx.countersignLicense(licenseCommitment);
     this.logger?.trace({
-      transactionAdded: { circuit: 'countersignLicense', txHash: txData.public.txHash, blockHeight: txData.public.blockHeight },
+      transactionAdded: {
+        circuit: 'countersignLicense',
+        txHash: txData.public.txHash,
+        blockHeight: txData.public.blockHeight,
+      },
     });
   }
 
@@ -153,7 +169,11 @@ export class VeilcoreAPI implements DeployedVeilcoreAPI {
     this.logger?.info('revoking licence');
     const txData = await this.deployedContract.callTx.revokeLicense(licenseCommitment);
     this.logger?.trace({
-      transactionAdded: { circuit: 'revokeLicense', txHash: txData.public.txHash, blockHeight: txData.public.blockHeight },
+      transactionAdded: {
+        circuit: 'revokeLicense',
+        txHash: txData.public.txHash,
+        blockHeight: txData.public.blockHeight,
+      },
     });
   }
 
@@ -162,7 +182,11 @@ export class VeilcoreAPI implements DeployedVeilcoreAPI {
     this.logger?.info('proving licence (zk)');
     const txData = await this.deployedContract.callTx.proveLicense(secret);
     this.logger?.trace({
-      transactionAdded: { circuit: 'proveLicense', txHash: txData.public.txHash, blockHeight: txData.public.blockHeight },
+      transactionAdded: {
+        circuit: 'proveLicense',
+        txHash: txData.public.txHash,
+        blockHeight: txData.public.blockHeight,
+      },
     });
   }
 
@@ -177,7 +201,11 @@ export class VeilcoreAPI implements DeployedVeilcoreAPI {
     this.logger?.info('proposing licence transfer');
     const txData = await this.deployedContract.callTx.proposeTransfer(licenseCommitment, newHolderCommitment);
     this.logger?.trace({
-      transactionAdded: { circuit: 'proposeTransfer', txHash: txData.public.txHash, blockHeight: txData.public.blockHeight },
+      transactionAdded: {
+        circuit: 'proposeTransfer',
+        txHash: txData.public.txHash,
+        blockHeight: txData.public.blockHeight,
+      },
     });
   }
 
@@ -202,7 +230,11 @@ export class VeilcoreAPI implements DeployedVeilcoreAPI {
       expectedNewLicense,
     );
     this.logger?.trace({
-      transactionAdded: { circuit: 'approveTransfer', txHash: txData.public.txHash, blockHeight: txData.public.blockHeight },
+      transactionAdded: {
+        circuit: 'approveTransfer',
+        txHash: txData.public.txHash,
+        blockHeight: txData.public.blockHeight,
+      },
     });
   }
 
@@ -211,7 +243,11 @@ export class VeilcoreAPI implements DeployedVeilcoreAPI {
     this.logger?.info('withdrawing licence transfer');
     const txData = await this.deployedContract.callTx.withdrawTransfer(licenseCommitment);
     this.logger?.trace({
-      transactionAdded: { circuit: 'withdrawTransfer', txHash: txData.public.txHash, blockHeight: txData.public.blockHeight },
+      transactionAdded: {
+        circuit: 'withdrawTransfer',
+        txHash: txData.public.txHash,
+        blockHeight: txData.public.blockHeight,
+      },
     });
   }
 
@@ -233,7 +269,11 @@ export class VeilcoreAPI implements DeployedVeilcoreAPI {
     return new VeilcoreAPI(deployedVeilcoreContract, providers, logger);
   }
 
-  static async join(providers: VeilcoreProviders, contractAddress: ContractAddress, logger?: Logger): Promise<VeilcoreAPI> {
+  static async join(
+    providers: VeilcoreProviders,
+    contractAddress: ContractAddress,
+    logger?: Logger,
+  ): Promise<VeilcoreAPI> {
     logger?.info({ joinContract: { contractAddress } });
 
     const deployedVeilcoreContract = await findDeployedContract<VeilcoreContract>(providers, {

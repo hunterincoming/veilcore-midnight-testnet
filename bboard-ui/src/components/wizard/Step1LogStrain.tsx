@@ -104,9 +104,8 @@ export const Step1LogStrain: React.FC<{ onDone: (recordId: string) => void }> = 
             <b>{record.strainName}</b> · bred by {record.bredBy}
           </Typography>
           <Typography variant="body2" sx={{ mt: 0.5, color: 'text.secondary' }}>
-            Sealed {fmtStamp(record.loggedAt)}. This is a timestamped record from the moment you logged
-            it — first to log it, first in line. Your stated creation date ({record.dateCreated}) is recorded as your
-            own claim.
+            Sealed {fmtStamp(record.loggedAt)}. This is a timestamped record from the moment you logged it — first to
+            log it, first in line. Your stated creation date ({record.dateCreated}) is recorded as your own claim.
           </Typography>
         </Alert>
         <Box>
@@ -183,7 +182,11 @@ export const Step1LogStrain: React.FC<{ onDone: (recordId: string) => void }> = 
             Add photos
           </Button>
           {photos.length > 0 && (
-            <Chip label={`${photos.length} photo${photos.length === 1 ? '' : 's'} · hashed locally`} color="primary" variant="outlined" />
+            <Chip
+              label={`${photos.length} photo${photos.length === 1 ? '' : 's'} · hashed locally`}
+              color="primary"
+              variant="outlined"
+            />
           )}
           <input
             ref={photoRef}
@@ -234,7 +237,11 @@ export const Step1LogStrain: React.FC<{ onDone: (recordId: string) => void }> = 
         </Typography>
       </MBox>
 
-      {error && <Alert severity="error" variant="outlined">{error}</Alert>}
+      {error && (
+        <Alert severity="error" variant="outlined">
+          {error}
+        </Alert>
+      )}
 
       <Box>
         <Button

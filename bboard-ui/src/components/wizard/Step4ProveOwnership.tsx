@@ -50,8 +50,8 @@ export const Step4ProveOwnership: React.FC<{ onBack: () => void; onRestart: () =
       </Box>
 
       <Alert icon={<HandshakeIcon />} severity="info" variant="outlined">
-        A contract binds whoever signed it. This is the evidence you bring to it — what you held, and when,
-        established before any dispute.
+        A contract binds whoever signed it. This is the evidence you bring to it — what you held, and when, established
+        before any dispute.
       </Alert>
 
       {!proof?.ok && (
@@ -69,7 +69,11 @@ export const Step4ProveOwnership: React.FC<{ onBack: () => void; onRestart: () =
         </>
       )}
 
-      {error && <Alert severity="error" variant="outlined">{error}</Alert>}
+      {error && (
+        <Alert severity="error" variant="outlined">
+          {error}
+        </Alert>
+      )}
 
       {proof && !proof.ok && (
         <Alert icon={<GppBadIcon />} severity="error" variant="outlined">
@@ -85,9 +89,7 @@ export const Step4ProveOwnership: React.FC<{ onBack: () => void; onRestart: () =
             sub="You demonstrated you hold this cultivar by matching its fingerprint locally. No genetics, no details — zero bytes left your device."
           />
           <Alert severity="success" variant="outlined">
-            <Typography variant="subtitle2">
-              Prior possession proven. Now you can license it.
-            </Typography>
+            <Typography variant="subtitle2">Prior possession proven. Now you can license it.</Typography>
             <Typography variant="body2" sx={{ mt: 0.5, color: 'text.secondary' }}>
               You hold <b>{proof.strain}</b>. A licensee can verify this proof before they sign.
             </Typography>

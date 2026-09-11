@@ -60,8 +60,8 @@ export const Step2LabTransfer: React.FC<{
       </Box>
 
       <Alert icon={<ScienceIcon />} severity="info" variant="outlined">
-        This puts the transfer terms on the record before the material leaves your hands. It&apos;s custody, not a
-        sale: no royalty, no fee.
+        This puts the transfer terms on the record before the material leaves your hands. It&apos;s custody, not a sale:
+        no royalty, no fee.
       </Alert>
 
       <AgreementTermsFields type="lab-transfer" terms={t} set={set} />

@@ -7,22 +7,24 @@
 
 import type { Store } from './store';
 import { holderKey } from './holder';
+import { readJson } from './json';
 
 const BASE = import.meta.env.VITE_API_BASE ?? '';
 
 /** Collection keys map to REST paths. */
-const pathFor = (key: string): string =>
-  key.includes('license') ? '/api/licenses' : '/api/records';
+const pathFor = (key: string): string => (key.includes('license') ? '/api/licenses' : '/api/records');
 
 export const apiStore: Store = {
-  async load<T>(key: string): Promise<T[]> {
+  async load<T>(key: string, isValid: (v: unknown) => v is T): Promise<T[]> {
     try {
       const res = await fetch(`${BASE}${pathFor(key)}`, {
         headers: { 'x-holder-key': holderKey() },
       });
       if (!res.ok) return [];
-      const parsed = await res.json();
-      return Array.isArray(parsed) ? parsed : [];
+      const parsed = await readJson(res);
+      // Malformed rows are dropped rather than failing the whole set: one bad row
+      // should not blank a holder's records, and the rest are still theirs.
+      return Array.isArray(parsed) ? parsed.filter(isValid) : [];
     } catch {
       return [];
     }

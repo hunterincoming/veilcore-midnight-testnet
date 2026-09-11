@@ -135,9 +135,7 @@ export const Step3Certificate: React.FC<{ recordId: string; onDone: () => void; 
                 ✓ fingerprint matches — unaltered
               </Box>
             </Field>
-            <Field label="Lab attestation">
-              {record.attestation ? `✓ ${record.attestation.lab}` : 'awaiting'}
-            </Field>
+            <Field label="Lab attestation">{record.attestation ? `✓ ${record.attestation.lab}` : 'awaiting'}</Field>
             <Field label="Active licenses">{activeLicenseCount(record.id)}</Field>
             <Field label="Record ID">
               <Box component="span" sx={{ fontFamily: '"Space Grotesk", monospace' }}>

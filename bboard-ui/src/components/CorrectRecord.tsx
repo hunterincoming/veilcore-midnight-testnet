@@ -12,8 +12,17 @@
 
 import React, { useState } from 'react';
 import {
-  Alert, Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle,
-  Stack, TextField, Typography,
+  Alert,
+  Box,
+  Button,
+  Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Stack,
+  TextField,
+  Typography,
 } from '@mui/material';
 import EditIcon from '@mui/icons-material/EditOutlined';
 import { useNavigate } from 'react-router-dom';
@@ -82,15 +91,49 @@ export const CorrectRecord: React.FC<{ record: StrainRecord }> = ({ record }) =>
         <DialogContent>
           <Stack spacing={2} sx={{ pt: 1 }}>
             <Typography variant="body2" color="text.secondary">
-              This record stays exactly as it is. A correction creates a new record that supersedes
-              it, and both remain on file. Nothing is overwritten and nothing is deleted — that is
-              what keeps the original usable as evidence.
+              This record stays exactly as it is. A correction creates a new record that supersedes it, and both remain
+              on file. Nothing is overwritten and nothing is deleted — that is what keeps the original usable as
+              evidence.
             </Typography>
 
-            <TextField label="Cultivar name" value={name} onChange={(e) => { setName(e.target.value); setPreview(null); }} fullWidth />
-            <TextField label="Bred by" value={bredBy} onChange={(e) => { setBredBy(e.target.value); setPreview(null); }} fullWidth />
-            <TextField label="Breeding method" value={method} onChange={(e) => { setMethod(e.target.value); setPreview(null); }} fullWidth />
-            <TextField label="Notes" value={notes} onChange={(e) => { setNotes(e.target.value); setPreview(null); }} fullWidth multiline minRows={2} />
+            <TextField
+              label="Cultivar name"
+              value={name}
+              onChange={(e) => {
+                setName(e.target.value);
+                setPreview(null);
+              }}
+              fullWidth
+            />
+            <TextField
+              label="Bred by"
+              value={bredBy}
+              onChange={(e) => {
+                setBredBy(e.target.value);
+                setPreview(null);
+              }}
+              fullWidth
+            />
+            <TextField
+              label="Breeding method"
+              value={method}
+              onChange={(e) => {
+                setMethod(e.target.value);
+                setPreview(null);
+              }}
+              fullWidth
+            />
+            <TextField
+              label="Notes"
+              value={notes}
+              onChange={(e) => {
+                setNotes(e.target.value);
+                setPreview(null);
+              }}
+              fullWidth
+              multiline
+              minRows={2}
+            />
 
             {preview && (
               <Box sx={{ p: 2, borderRadius: 1, border: `1px solid ${TEAL}` }}>
@@ -106,8 +149,8 @@ export const CorrectRecord: React.FC<{ record: StrainRecord }> = ({ record }) =>
                   {preview.consequence}
                 </Typography>
                 <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-                  This is worked out from which fields you changed. It is not something you or we
-                  can set — otherwise every correction would look harmless.
+                  This is worked out from which fields you changed. It is not something you or we can set — otherwise
+                  every correction would look harmless.
                 </Typography>
               </Box>
             )}

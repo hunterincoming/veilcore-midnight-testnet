@@ -46,7 +46,7 @@ export const AttentionBar: React.FC<{
           label={`${s.label} · ${s.count}`}
           onClick={() => onSelect(active === s.state ? null : s.state)}
           variant={active === s.state ? 'filled' : 'outlined'}
-          color={active === s.state ? 'primary' : COLOR[s.state] ?? 'default'}
+          color={active === s.state ? 'primary' : (COLOR[s.state] ?? 'default')}
         />
       ))}
     </Stack>

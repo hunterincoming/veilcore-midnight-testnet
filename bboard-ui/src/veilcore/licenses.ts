@@ -64,6 +64,31 @@ export type License = {
   royaltyLog: RoyaltyEntry[];
 };
 
+/**
+ * A stored agreement, checked on the way in.
+ *
+ * `type` is not required: agreements saved before the field existed are treated as
+ * licence agreements a few lines below, and demanding it here would delete them.
+ */
+const isLicense = (v: unknown): v is License => {
+  if (typeof v !== 'object' || v === null || Array.isArray(v)) return false;
+  const l = v as Record<string, unknown>;
+  if (typeof l.id !== 'string') return false;
+  const str = (x: unknown) => x === undefined || typeof x === 'string';
+  const num = (x: unknown) => x === undefined || typeof x === 'number';
+  return (
+    str(l.type) &&
+    str(l.recordId) &&
+    str(l.recordFingerprint) &&
+    str(l.agreementFingerprint) &&
+    str(l.state) &&
+    str(l.dnaFingerprint) &&
+    num(l.createdAt) &&
+    (l.terms === undefined || (typeof l.terms === 'object' && l.terms !== null)) &&
+    (l.royaltyLog === undefined || Array.isArray(l.royaltyLog))
+  );
+};
+
 const KEY = 'veilcore.licenses.v1';
 
 let licenses: License[] = [];
@@ -73,7 +98,7 @@ const notify = () => listeners.forEach((l) => l());
 
 /** Hydrate from the backing store on boot. */
 const hydrate = async (): Promise<void> => {
-  const loaded = await store.load<License>(KEY);
+  const loaded = await store.load(KEY, isLicense);
   // Back-compat: agreements saved before types existed are license agreements.
   licenses = loaded.map((l: License) => ({ ...l, type: l.type ?? 'license' }));
   notify();
@@ -86,7 +111,10 @@ const persist = () => {
 };
 
 const genId = (): string =>
-  'LIC-' + Array.from(crypto.getRandomValues(new Uint8Array(3)), (b) => b.toString(16).padStart(2, '0')).join('').toUpperCase();
+  'LIC-' +
+  Array.from(crypto.getRandomValues(new Uint8Array(3)), (b) => b.toString(16).padStart(2, '0'))
+    .join('')
+    .toUpperCase();
 
 /** The true, current status — computes expiry from the terms so state is never stale. */
 export const effectiveState = (l: License): LicenseState => {
@@ -307,9 +335,10 @@ export const agreementRows = (l: License): { k: string; v: string }[] => {
       // it follows the genetics into every descendant, so a counter-signer has to see it.
       {
         k: 'Royalty on offspring',
-        v: (Number(t.offspringRoyaltyPct) || 0) > 0
-          ? `${t.offspringRoyaltyPct}% — binds anything bred from this cultivar`
-          : 'None',
+        v:
+          (Number(t.offspringRoyaltyPct) || 0) > 0
+            ? `${t.offspringRoyaltyPct}% — binds anything bred from this cultivar`
+            : 'None',
       },
       { k: 'Exclusivity', v: t.exclusive ? 'Exclusive' : 'Non-exclusive' },
       { k: 'Sublicensing', v: t.sublicensable ? 'Allowed' : 'Not allowed' },

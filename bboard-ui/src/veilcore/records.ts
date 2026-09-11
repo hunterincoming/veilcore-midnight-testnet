@@ -72,6 +72,35 @@ export type StrainRecord = {
   readonly licenseIds?: string[]; // Phase 3
 };
 
+/**
+ * A stored record, checked on the way in.
+ *
+ * Deliberately loose about which fields must be present and strict about the type
+ * of any that are. A guard that demanded every field would silently drop a
+ * breeder's older records from their own set, and losing someone's evidence to a
+ * schema change is a worse failure than carrying a record with a missing note.
+ * The id has to be there, because everything else keys off it.
+ */
+export const isStrainRecord = (v: unknown): v is StrainRecord => {
+  if (typeof v !== 'object' || v === null || Array.isArray(v)) return false;
+  const r = v as Record<string, unknown>;
+  if (typeof r.id !== 'string') return false;
+  const str = (x: unknown) => x === undefined || typeof x === 'string';
+  const num = (x: unknown) => x === undefined || typeof x === 'number';
+  return (
+    str(r.strainName) &&
+    str(r.bredBy) &&
+    str(r.dateCreated) &&
+    str(r.notes) &&
+    str(r.recordFingerprint) &&
+    str(r.nonce) &&
+    str(r.dnaFingerprint) &&
+    num(r.loggedAt) &&
+    num(r.dnaPairedAt) &&
+    (r.parents === undefined || Array.isArray(r.parents))
+  );
+};
+
 export type NewRecordInput = {
   nonce?: string;
   strainName: string;
@@ -100,7 +129,7 @@ const notify = () => listeners.forEach((l) => l());
 /** Hydrate from the backing store on boot. */
 /** Re-fetch from the registry. Used after a claim, when the server created a record. */
 export const hydrate = async (): Promise<void> => {
-  records = await store.load<StrainRecord>(KEY);
+  records = await store.load(KEY, isStrainRecord);
   notify();
 };
 void hydrate();
@@ -110,9 +139,13 @@ void hydrate();
 // Polling is the honest simple answer; a socket would be better and is not worth the
 // complexity until someone is actually waiting on it.
 if (typeof window !== 'undefined') {
-  setInterval(() => { void hydrate(); }, 20000);
+  setInterval(() => {
+    void hydrate();
+  }, 20000);
   // Also on tab focus — the common case is a breeder switching back to check.
-  window.addEventListener('focus', () => { void hydrate(); });
+  window.addEventListener('focus', () => {
+    void hydrate();
+  });
 }
 
 const persist = () => {
@@ -121,7 +154,10 @@ const persist = () => {
 };
 
 const genId = (): string =>
-  'VEIL-' + Array.from(crypto.getRandomValues(new Uint8Array(3)), (b) => b.toString(16).padStart(2, '0')).join('').toUpperCase();
+  'VEIL-' +
+  Array.from(crypto.getRandomValues(new Uint8Array(3)), (b) => b.toString(16).padStart(2, '0'))
+    .join('')
+    .toUpperCase();
 
 export const createRecord = (input: NewRecordInput): StrainRecord => {
   const record: StrainRecord = { id: genId(), licenseIds: [], ...input };
@@ -194,9 +230,18 @@ export const exportRecords = (): void => {
 };
 
 export const importRecords = async (file: File): Promise<number> => {
-  const parsed = JSON.parse(await file.text());
+  const parsed: unknown = JSON.parse(await file.text());
   if (!Array.isArray(parsed)) throw new Error('That file is not a Veilcore records export.');
-  records = parsed;
+  const valid = parsed.filter(isStrainRecord);
+  // Refuse a file with unreadable entries rather than importing the rest. A partial
+  // import looks like a success and leaves the holder believing they restored
+  // records that are not there.
+  if (valid.length !== parsed.length) {
+    throw new Error(
+      `That file has ${String(parsed.length - valid.length)} entries this version cannot read. Nothing was imported.`,
+    );
+  }
+  records = valid;
   persist();
   return records.length;
 };
@@ -230,7 +275,6 @@ export const sealReceived = async (id: string): Promise<StrainRecord | undefined
   notify();
   return getRecord(id);
 };
-
 
 /**
  * Issue a correction.
@@ -266,12 +310,7 @@ export const issueCorrection = async (
   } as StrainRecord;
 
   const holder = holderKey().slice(0, 16);
-  const supersedes = supersedesFor(
-    toEnvelope(before, holder),
-    await sealEnvelope(draft, holder),
-    reason,
-    'holder',
-  );
+  const supersedes = supersedesFor(toEnvelope(before, holder), await sealEnvelope(draft, holder), reason, 'holder');
 
   const corrected: StrainRecord = {
     ...draft,
@@ -279,10 +318,7 @@ export const issueCorrection = async (
     supersedes,
   };
 
-  records = [
-    corrected,
-    ...records.map((r) => (r.id === originalId ? { ...r, supersededBy: corrected.id } : r)),
-  ];
+  records = [corrected, ...records.map((r) => (r.id === originalId ? { ...r, supersededBy: corrected.id } : r))];
   persist();
   notify();
   return corrected;

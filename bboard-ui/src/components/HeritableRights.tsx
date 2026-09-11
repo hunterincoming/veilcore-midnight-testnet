@@ -24,7 +24,9 @@ export const HeritableRights: React.FC<{ record: StrainRecord }> = ({ record }) 
   const [verdict, setVerdict] = useState<DescentVerdict | null>(null);
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => { lineageRoot().then(setRoot); }, []);
+  useEffect(() => {
+    lineageRoot().then(setRoot);
+  }, []);
 
   // Agreements on this record that put an obligation on its offspring.
   const heritable = allLicenses().filter(
@@ -46,12 +48,14 @@ export const HeritableRights: React.FC<{ record: StrainRecord }> = ({ record }) 
     <Stack spacing={2}>
       <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
         <GavelIcon sx={{ color: TEAL, fontSize: 20 }} />
-        <Typography variant="overline" sx={{ color: TEAL }}>Heritable rights</Typography>
+        <Typography variant="overline" sx={{ color: TEAL }}>
+          Heritable rights
+        </Typography>
       </Stack>
 
       <Typography variant="body2" color="text.secondary">
-        An agreement with an offspring royalty binds every descendant of this cultivar — including
-        cuttings that do not exist yet. Descendants cannot prove clean descent until it is discharged.
+        An agreement with an offspring royalty binds every descendant of this cultivar — including cuttings that do not
+        exist yet. Descendants cannot prove clean descent until it is discharged.
       </Typography>
 
       {heritable.length > 0 ? (
@@ -59,9 +63,7 @@ export const HeritableRights: React.FC<{ record: StrainRecord }> = ({ record }) 
           {heritable.map((l) => (
             <Stack key={l.id} direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
               <Chip size="small" variant="outlined" color="warning" label="Obligation outstanding" />
-              <Typography variant="body2">
-                {l.terms.offspringRoyaltyPct}% of offspring revenue
-              </Typography>
+              <Typography variant="body2">{l.terms.offspringRoyaltyPct}% of offspring revenue</Typography>
               <Button size="small" component={RouterLink} to={`/license/${l.id}`}>
                 {l.id}
               </Button>
@@ -73,8 +75,8 @@ export const HeritableRights: React.FC<{ record: StrainRecord }> = ({ record }) 
         </Stack>
       ) : (
         <Typography variant="body2" color="text.secondary">
-          No heritable obligation on this cultivar. An agreement with an offspring royalty creates one
-          when it is counter-signed.
+          No heritable obligation on this cultivar. An agreement with an offspring royalty creates one when it is
+          counter-signed.
         </Typography>
       )}
 

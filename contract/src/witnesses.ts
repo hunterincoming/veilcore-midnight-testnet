@@ -1,5 +1,4 @@
-// This file is part of midnightntwrk/example-bboard.
-// Copyright (C) Midnight Foundation
+// Copyright (C) VeilCore
 // SPDX-License-Identifier: Apache-2.0
 // Licensed under the Apache License, Version 2.0 (the "License");
 // You may not use this file except in compliance with the License.
@@ -14,66 +13,12 @@
 // limitations under the License.
 
 /*
- * This file defines the shape of the bulletin board's private state,
- * as well as the single witness function that accesses it.
+ * Private state and witness functions for the VeilCore and lineage contracts.
  */
 
-import { Ledger } from "./managed/bboard/contract/index.js";
 import { Ledger as VeilcoreLedger } from "./managed/veilcore/contract/index.js";
 import { Ledger as LineageLedger } from "./managed/lineage/contract/index.js";
 import { WitnessContext } from "@midnight-ntwrk/midnight-js-protocol/compact-runtime";
-
-/* **********************************************************************
- * The only hidden state needed by the bulletin board contract is
- * the user's secret key.  Some of the library code and
- * compiler-generated code is parameterized by the type of our
- * private state, so we define a type for it and a function to
- * make an object of that type.
- */
-
-export type BBoardPrivateState = {
-  readonly secretKey: Uint8Array;
-};
-
-export const createBBoardPrivateState = (secretKey: Uint8Array) => ({
-  secretKey,
-});
-
-/* **********************************************************************
- * The witnesses object for the bulletin board contract is an object
- * with a field for each witness function, mapping the name of the function
- * to its implementation.
- *
- * The implementation of each function always takes as its first argument
- * a value of type WitnessContext<L, PS>, where L is the ledger object type
- * that corresponds to the ledger declaration in the Compact code, and PS
- *  is the private state type, like BBoardPrivateState defined above.
- *
- * A WitnessContext has three
- * fields:
- *  - ledger: T
- *  - privateState: PS
- *  - contractAddress: string
- *
- * The other arguments (after the first) to each witness function
- * correspond to the ones declared in Compact for the witness function.
- * The function's return value is a tuple of the new private state and
- * the declared return value.  In this case, that's a BBoardPrivateState
- * and a Uint8Array (because the contract declared a return value of Bytes[32],
- * and that's a Uint8Array in TypeScript).
- *
- * The localSecretKey witness does not need the ledger or contractAddress
- * from the WitnessContext, so it uses the parameter notation that puts
- * only the binding for the privateState in scope.
- */
-export const witnesses = {
-  localSecretKey: ({
-    privateState,
-  }: WitnessContext<Ledger, BBoardPrivateState>): [
-    BBoardPrivateState,
-    Uint8Array,
-  ] => [privateState, privateState.secretKey],
-};
 
 /* **********************************************************************
  * Veilcore private state: the caller's genetic preimage. Only its
@@ -129,8 +74,10 @@ export type LineagePrivateState = {
 };
 
 const ZERO32 = (): Uint8Array => new Uint8Array(32);
-const emptyPath = (depth = 16): Uint8Array[] => Array.from({ length: depth }, ZERO32);
-const emptyDirs = (depth = 16): boolean[] => Array.from({ length: depth }, () => false);
+const emptyPath = (depth = 16): Uint8Array[] =>
+  Array.from({ length: depth }, ZERO32);
+const emptyDirs = (depth = 16): boolean[] =>
+  Array.from({ length: depth }, () => false);
 
 /** A private state with no obligations and no claimed ancestry. */
 export const createLineagePrivateState = (
@@ -157,30 +104,53 @@ export const withAncestry = (
   ancestry: Uint8Array[],
   ancestrySiblings: Uint8Array[][],
   ancestryDirections: boolean[][],
-): LineagePrivateState => ({ ...state, ancestry, ancestrySiblings, ancestryDirections });
+): LineagePrivateState => ({
+  ...state,
+  ancestry,
+  ancestrySiblings,
+  ancestryDirections,
+});
 
 export const lineageWitnesses = {
-  localGeneticSecret: ({ privateState }: WitnessContext<LineageLedger, LineagePrivateState>): [
-    LineagePrivateState, Uint8Array,
+  localGeneticSecret: ({
+    privateState,
+  }: WitnessContext<LineageLedger, LineagePrivateState>): [
+    LineagePrivateState,
+    Uint8Array,
   ] => [privateState, privateState.geneticSecret],
 
-  merkleSiblings: ({ privateState }: WitnessContext<LineageLedger, LineagePrivateState>): [
-    LineagePrivateState, Uint8Array[],
+  merkleSiblings: ({
+    privateState,
+  }: WitnessContext<LineageLedger, LineagePrivateState>): [
+    LineagePrivateState,
+    Uint8Array[],
   ] => [privateState, privateState.siblings],
 
-  merkleDirections: ({ privateState }: WitnessContext<LineageLedger, LineagePrivateState>): [
-    LineagePrivateState, boolean[],
+  merkleDirections: ({
+    privateState,
+  }: WitnessContext<LineageLedger, LineagePrivateState>): [
+    LineagePrivateState,
+    boolean[],
   ] => [privateState, privateState.directions],
 
-  ancestryChain: ({ privateState }: WitnessContext<LineageLedger, LineagePrivateState>): [
-    LineagePrivateState, Uint8Array[],
+  ancestryChain: ({
+    privateState,
+  }: WitnessContext<LineageLedger, LineagePrivateState>): [
+    LineagePrivateState,
+    Uint8Array[],
   ] => [privateState, privateState.ancestry],
 
-  ancestrySiblings: ({ privateState }: WitnessContext<LineageLedger, LineagePrivateState>): [
-    LineagePrivateState, Uint8Array[][],
+  ancestrySiblings: ({
+    privateState,
+  }: WitnessContext<LineageLedger, LineagePrivateState>): [
+    LineagePrivateState,
+    Uint8Array[][],
   ] => [privateState, privateState.ancestrySiblings],
 
-  ancestryDirections: ({ privateState }: WitnessContext<LineageLedger, LineagePrivateState>): [
-    LineagePrivateState, boolean[][],
+  ancestryDirections: ({
+    privateState,
+  }: WitnessContext<LineageLedger, LineagePrivateState>): [
+    LineagePrivateState,
+    boolean[][],
   ] => [privateState, privateState.ancestryDirections],
 };

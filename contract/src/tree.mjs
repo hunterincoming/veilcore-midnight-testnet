@@ -8,18 +8,21 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-import { pureCircuits as C } from './managed/lineage/contract/index.js';
+import { pureCircuits as C } from "./managed/lineage/contract/index.js";
 
 export const DEPTH = 16;
 export const NULL_LEAF = new Uint8Array(32);
 
-const hex = (u) => Buffer.from(u).toString('hex');
+const hex = (u) => Buffer.from(u).toString("hex");
 
 /** Sibling value for an all-null subtree at each level, computed once. */
 const nullNodes = (() => {
   const out = [];
   let n = NULL_LEAF;
-  for (let i = 0; i < DEPTH; i++) { out.push(n); n = C.merkleStep(n, n, false); }
+  for (let i = 0; i < DEPTH; i++) {
+    out.push(n);
+    n = C.merkleStep(n, n, false);
+  }
   out.push(n); // index DEPTH: root of a fully empty tree
   return out;
 })();
@@ -47,7 +50,11 @@ export class ObligationTree {
 
   /** Leaf key: the slot path read top-down, so it matches subtreeRoot's paths. */
   static key(dirs) {
-    return dirs.map((b) => (b ? '1' : '0')).slice().reverse().join('');
+    return dirs
+      .map((b) => (b ? "1" : "0"))
+      .slice()
+      .reverse()
+      .join("");
   }
 
   /** The leaf currently at a record's slot. */
@@ -68,12 +75,15 @@ export class ObligationTree {
 
     let occupied = false;
     for (const k of this.leaves.keys()) {
-      if (k.startsWith(path)) { occupied = true; break; }
+      if (k.startsWith(path)) {
+        occupied = true;
+        break;
+      }
     }
     if (!occupied) return nullNodes[level];
 
-    const left = this.subtreeRoot(level - 1, path + '0');
-    const right = this.subtreeRoot(level - 1, path + '1');
+    const left = this.subtreeRoot(level - 1, path + "0");
+    const right = this.subtreeRoot(level - 1, path + "1");
     // merkleStep(node, sibling, siblingIsLeft) — node is the right child here.
     return C.merkleStep(right, left, true);
   }
@@ -86,27 +96,32 @@ export class ObligationTree {
    * an off-chain builder silently disagrees with its circuit.
    */
   siblingsFor(dirs) {
-    const top = dirs.map((b) => (b ? '1' : '0')).slice().reverse().join('');
+    const top = dirs
+      .map((b) => (b ? "1" : "0"))
+      .slice()
+      .reverse()
+      .join("");
     const sibs = [];
     for (let level = 0; level < DEPTH; level++) {
       const depthFromTop = DEPTH - 1 - level;
       const prefix = top.slice(0, depthFromTop);
       const mine = top[depthFromTop];
-      sibs.push(this.subtreeRoot(level, prefix + (mine === '1' ? '0' : '1')));
+      sibs.push(this.subtreeRoot(level, prefix + (mine === "1" ? "0" : "1")));
     }
     return sibs;
   }
 
   /** Current root of the whole tree. */
   root() {
-    return this.subtreeRoot(DEPTH, '');
+    return this.subtreeRoot(DEPTH, "");
   }
 
   /** Record an obligation. Returns the path a caller supplies to `encumber`. */
   encumber(recordCommitment, obligationCommitment) {
     const dirs = this.slotOf(recordCommitment);
     const before = this.leafAt(dirs);
-    if (hex(before) !== hex(NULL_LEAF)) throw new Error('slot already carries an obligation');
+    if (hex(before) !== hex(NULL_LEAF))
+      throw new Error("slot already carries an obligation");
     const siblings = this.siblingsFor(dirs);
     const leaf = C.obligationLeaf(recordCommitment, obligationCommitment);
     const oldRoot = this.root();
@@ -117,6 +132,16 @@ export class ObligationTree {
   /** Clear an obligation. Returns the path a caller supplies to `discharge`. */
   discharge(recordCommitment, obligationCommitment) {
     const dirs = this.slotOf(recordCommitment);
+    // The circuit already refuses a discharge that names the wrong obligation:
+    // it folds obligationLeaf(rc, oc) and compares against the current root.
+    // This checks the same thing locally so a wrong reference fails here rather
+    // than after proving and paying for a transaction that cannot succeed.
+    const present = this.leafAt(dirs);
+    if (hex(present) === hex(NULL_LEAF))
+      throw new Error("slot carries no obligation");
+    const expected = C.obligationLeaf(recordCommitment, obligationCommitment);
+    if (hex(present) !== hex(expected))
+      throw new Error("slot carries a different obligation");
     const siblings = this.siblingsFor(dirs);
     const oldRoot = this.root();
     this.leaves.delete(ObligationTree.key(dirs));
@@ -126,7 +151,8 @@ export class ObligationTree {
   /** Path proving a record's slot is clean. Throws if it is not. */
   cleanPath(recordCommitment) {
     const dirs = this.slotOf(recordCommitment);
-    if (hex(this.leafAt(dirs)) !== hex(NULL_LEAF)) throw new Error('record carries an obligation');
+    if (hex(this.leafAt(dirs)) !== hex(NULL_LEAF))
+      throw new Error("record carries an obligation");
     return { dirs, siblings: this.siblingsFor(dirs), root: this.root() };
   }
 }

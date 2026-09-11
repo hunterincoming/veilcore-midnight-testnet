@@ -12,7 +12,7 @@ import AddIcon from '@mui/icons-material/Add';
 import { WalletBadge } from './veilcore/WalletBadge';
 import { TEAL } from '../config/theme';
 
-const network = (import.meta.env.VITE_NETWORK_ID as string) ?? 'preview';
+const network = import.meta.env.VITE_NETWORK_ID ?? 'preview';
 const demoMode = !(import.meta.env.VITE_VEILCORE_CONTRACT_ADDRESS as string);
 
 export const AppHeader: React.FC = () => {

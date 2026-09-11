@@ -41,10 +41,7 @@ const CONSEQUENCE: Record<string, string> = {
  * breeder fixing a spelling should be told that nothing breaks; a breeder correcting a
  * parent should be told that everything downstream re-checks.
  */
-export const previewCorrection = (
-  before: StrainRecord,
-  after: StrainRecord,
-): CorrectionPreview => {
+export const previewCorrection = (before: StrainRecord, after: StrainRecord): CorrectionPreview => {
   const id = holderKey().slice(0, 16);
   const changes = diffRecords(toEnvelope(before, id), toEnvelope(after, id));
   const sev = classifyCorrection(changes);

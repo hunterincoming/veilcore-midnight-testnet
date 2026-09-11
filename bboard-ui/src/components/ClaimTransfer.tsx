@@ -8,8 +8,16 @@
 
 import React, { useState } from 'react';
 import {
-  Alert, Box, Button, Dialog, DialogActions, DialogContent, DialogTitle,
-  Stack, TextField, Typography,
+  Alert,
+  Box,
+  Button,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Stack,
+  TextField,
+  Typography,
 } from '@mui/material';
 import InboxIcon from '@mui/icons-material/MoveToInboxOutlined';
 import { useNavigate } from 'react-router-dom';
@@ -74,24 +82,29 @@ export const ClaimTransfer: React.FC<{ variant?: 'button' | 'text' }> = ({ varia
         <DialogContent>
           <Stack spacing={2} sx={{ pt: 1 }}>
             <Typography variant="body2" color="text.secondary">
-              Enter the transfer code the sender gave you. You'll get a record descended from
-              theirs, and your confirmation of receipt is recorded against their record — which is
-              what makes it evidence rather than something they wrote alone.
+              Enter the transfer code the sender gave you. You&apos;ll get a record descended from theirs, and your
+              confirmation of receipt is recorded against their record — which is what makes it evidence rather than
+              something they wrote alone.
             </Typography>
             <TextField
               label="Transfer code"
               placeholder="TR-XXXXXXXX"
               value={code}
               onChange={(e) => setCode(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') void claim(); }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') void claim();
+              }}
               fullWidth
               slotProps={{ htmlInput: { style: { fontFamily: 'monospace', letterSpacing: 1 } } }}
             />
-            {error && <Alert severity="warning" variant="outlined">{error}</Alert>}
+            {error && (
+              <Alert severity="warning" variant="outlined">
+                {error}
+              </Alert>
+            )}
             <Box>
               <Typography variant="caption" color="text.secondary">
-                Only confirm what you actually received. This is a statement other people will rely
-                on.
+                Only confirm what you actually received. This is a statement other people will rely on.
               </Typography>
             </Box>
           </Stack>

@@ -16,7 +16,14 @@
  * is how a reference implementation quietly stops being one.
  */
 export type {
-  Envelope, Anchor, Attestation, ParentRef, Terms, Supersedes, JurisdictionBinding, SubjectType,
+  Envelope,
+  Anchor,
+  Attestation,
+  ParentRef,
+  Terms,
+  Supersedes,
+  JurisdictionBinding,
+  SubjectType,
 } from 'veilcore-records';
 export { FORMAT_VERSION, COMMITMENT_ALGORITHM } from 'veilcore-records';
 
@@ -123,11 +130,7 @@ export const toEnvelope = (r: StrainRecord, holderId: string, anchor?: Partial<A
  * a record if it knew our private schema — and the internal shape could never change
  * without invalidating every record ever issued.
  */
-export const sealEnvelope = async (
-  r: StrainRecord,
-  holderId: string,
-  anchor?: Partial<Anchor>,
-): Promise<Envelope> => {
+export const sealEnvelope = async (r: StrainRecord, holderId: string, anchor?: Partial<Anchor>): Promise<Envelope> => {
   const draft = toEnvelope(r, holderId, anchor);
   const commitment = await computeCommitment(draft);
   return { ...draft, commitment };

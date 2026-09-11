@@ -8,6 +8,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { holderKey } from './holder';
+import { readJson, isObject, isString, isNumber, optional, arrayField } from './json';
 
 const BASE = import.meta.env.VITE_API_BASE ?? '';
 
@@ -22,7 +23,28 @@ export type PendingTransfer = {
 
 export type SentTransfer = PendingTransfer & { readonly claimed_at?: number };
 
+const isPendingTransfer = (v: unknown): v is PendingTransfer =>
+  isObject(v) &&
+  isString(v.id) &&
+  isString(v.source_record) &&
+  isString(v.to_handle) &&
+  isNumber(v.created_at) &&
+  optional(v.quantity, isString) &&
+  optional(v.note, isString);
+
+const isSentTransfer = (v: unknown): v is SentTransfer =>
+  isPendingTransfer(v) && optional((v as Record<string, unknown>).claimed_at, isNumber);
+
 const auth = () => ({ 'Content-Type': 'application/json', 'x-holder-key': holderKey() });
+
+/**
+ * A response that is either a result or a stated error.
+ *
+ * A body matching neither is treated as an error rather than passed on: the caller
+ * has no way to tell the difference between a field that is missing and one that
+ * never existed, so saying so here is the only place it can be said usefully.
+ */
+const unexpected = { error: 'unexpected response from the registry' } as const;
 
 /** Offer a record to a recipient. Nothing moves until they claim it. */
 export const offerTransfer = async (
@@ -36,7 +58,11 @@ export const offerTransfer = async (
       headers: auth(),
       body: JSON.stringify({ sourceRecord, toHandle, ...opts }),
     });
-    return await res.json();
+    const body = await readJson(res);
+    if (!isObject(body)) return unexpected;
+    if (isString(body.transferId)) return { transferId: body.transferId };
+    if (isString(body.error)) return { error: body.error };
+    return unexpected;
   } catch {
     return { error: 'could not reach the registry' };
   }
@@ -56,7 +82,13 @@ export const claimTransfer = async (
       method: 'POST',
       headers: auth(),
     });
-    return await res.json();
+    const body = await readJson(res);
+    if (!isObject(body)) return unexpected;
+    if (isString(body.recordId) && isString(body.descendedFrom)) {
+      return { recordId: body.recordId, descendedFrom: body.descendedFrom };
+    }
+    if (isString(body.error)) return { error: body.error };
+    return unexpected;
   } catch {
     return { error: 'could not reach the registry' };
   }
@@ -67,7 +99,7 @@ export const pendingFor = async (handle: string): Promise<PendingTransfer[]> => 
   try {
     const res = await fetch(`${BASE}/transfers/pending/${encodeURIComponent(handle)}`);
     if (!res.ok) return [];
-    return (await res.json()).transfers ?? [];
+    return arrayField(await readJson(res), 'transfers', isPendingTransfer);
   } catch {
     return [];
   }
@@ -78,7 +110,7 @@ export const sentByMe = async (): Promise<SentTransfer[]> => {
   try {
     const res = await fetch(`${BASE}/transfers/sent`, { headers: auth() });
     if (!res.ok) return [];
-    return (await res.json()).transfers ?? [];
+    return arrayField(await readJson(res), 'transfers', isSentTransfer);
   } catch {
     return [];
   }

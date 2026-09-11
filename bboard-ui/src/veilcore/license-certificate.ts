@@ -42,14 +42,14 @@ export type PublicFace = {
 
 /** Disclosure keys. Named after what the recipient learns, not the field revealed. */
 export type LicenseGrant =
-  | 'existence'        // this licence exists and is active
-  | 'scope'            // what the licensee may do
-  | 'territory'        // where it applies
-  | 'term'             // start and end dates
-  | 'royalty'          // the commercial terms
-  | 'offspring'        // the obligation on descendants
-  | 'parties'          // who the counterparty is
-  | 'full';            // everything
+  | 'existence' // this licence exists and is active
+  | 'scope' // what the licensee may do
+  | 'territory' // where it applies
+  | 'term' // start and end dates
+  | 'royalty' // the commercial terms
+  | 'offspring' // the obligation on descendants
+  | 'parties' // who the counterparty is
+  | 'full'; // everything
 
 export type LicenseCertificate = {
   readonly public: PublicFace;
@@ -79,9 +79,11 @@ const publicFaceOf = (l: License): PublicFace => ({
  * was never assembled.
  */
 export const certificateFor = (l: License, grants: LicenseGrant[]): LicenseCertificate => {
-  const on = new Set(grants.includes('full')
-    ? (['existence', 'scope', 'territory', 'term', 'royalty', 'offspring', 'parties'] as LicenseGrant[])
-    : grants);
+  const on = new Set(
+    grants.includes('full')
+      ? (['existence', 'scope', 'territory', 'term', 'royalty', 'offspring', 'parties'] as LicenseGrant[])
+      : grants,
+  );
 
   const t: LicenseTerms = l.terms;
   const disclosed: Partial<Record<LicenseGrant, unknown>> = {};

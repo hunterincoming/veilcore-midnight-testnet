@@ -125,7 +125,10 @@ export const LicenseDetail: React.FC = () => {
         Licensing hub
       </Button>
 
-      <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1, mb: 2 }}>
+      <Stack
+        direction="row"
+        sx={{ alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1, mb: 2 }}
+      >
         <Box>
           <Stack direction="row" spacing={1.25} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
             <Typography variant="h4">
@@ -153,9 +156,9 @@ export const LicenseDetail: React.FC = () => {
           </Alert>
           {showLineageNote && (
             <Alert severity="info" variant="outlined" sx={{ mt: 1.5 }}>
-              Derivative rights are enforced through lineage: any cultivar later logged with {record?.strainName ?? 'this cultivar'} as
-              a parent is traceable through the lineage graph — so offspring bred from this shared cut stay linked to
-              this agreement.
+              Derivative rights are enforced through lineage: any cultivar later logged with{' '}
+              {record?.strainName ?? 'this cultivar'} as a parent is traceable through the lineage graph — so offspring
+              bred from this shared cut stay linked to this agreement.
               {knownDerivatives > 0
                 ? ` ${knownDerivatives} cultivar${knownDerivatives === 1 ? '' : 's'} already logged descend${knownDerivatives === 1 ? 's' : ''} from it.`
                 : ''}
@@ -177,7 +180,10 @@ export const LicenseDetail: React.FC = () => {
               <Typography variant="body2" color="text.secondary">
                 Draft — not yet issued. Signing produces a link you send to the licensee to counter-sign.
               </Typography>
-              <Button variant="contained" onClick={() => (issueLicense(license.id), setToast('Issued — send the link to your licensee.'))}>
+              <Button
+                variant="contained"
+                onClick={() => (issueLicense(license.id), setToast('Issued — send the link to your licensee.'))}
+              >
                 Issue &amp; sign
               </Button>
             </Stack>
@@ -186,7 +192,8 @@ export const LicenseDetail: React.FC = () => {
           {state === 'sent' && (
             <Stack spacing={1.5}>
               <Alert severity="warning" variant="outlined">
-                You&apos;ve signed. Awaiting the licensee&apos;s counter-signature — the license is <b>not active yet</b>.
+                You&apos;ve signed. Awaiting the licensee&apos;s counter-signature — the license is{' '}
+                <b>not active yet</b>.
               </Alert>
               <TextField
                 label="Counter-sign link (send to licensee)"
@@ -196,7 +203,11 @@ export const LicenseDetail: React.FC = () => {
                 slotProps={{ input: { readOnly: true } }}
               />
               <Stack direction="row" spacing={1.5} sx={{ flexWrap: 'wrap' }}>
-                <Button variant="outlined" startIcon={<ContentCopyIcon />} onClick={() => copy(signLink, 'Link copied.')}>
+                <Button
+                  variant="outlined"
+                  startIcon={<ContentCopyIcon />}
+                  onClick={() => copy(signLink, 'Link copied.')}
+                >
                   Copy link
                 </Button>
                 <Button component={RouterLink} to={`/license/${license.id}/sign`} variant="text">
@@ -212,11 +223,15 @@ export const LicenseDetail: React.FC = () => {
           {state === 'active' && (
             <Stack spacing={1.5}>
               <Alert severity="success" variant="outlined">
-                Active — both parties signed. Effective {new Date(license.licenseeSignedAt ?? license.createdAt).toLocaleDateString()}.
+                Active — both parties signed. Effective{' '}
+                {new Date(license.licenseeSignedAt ?? license.createdAt).toLocaleDateString()}.
               </Alert>
               <Stack direction="row" spacing={1.5} sx={{ flexWrap: 'wrap' }}>
                 <ShareLicense license={license} />
-                <Button variant="outlined" onClick={() => navigate(`/record/${license.recordId}/license?supersede=${license.id}`)}>
+                <Button
+                  variant="outlined"
+                  onClick={() => navigate(`/record/${license.recordId}/license?supersede=${license.id}`)}
+                >
                   Renew / amend
                 </Button>
                 <Button color="error" variant="text" onClick={onRevoke}>
@@ -228,8 +243,13 @@ export const LicenseDetail: React.FC = () => {
 
           {state === 'expired' && (
             <Stack spacing={1.5} sx={{ alignItems: 'flex-start' }}>
-              <Alert severity="info" variant="outlined">Expired on {license.terms.endDate}.</Alert>
-              <Button variant="outlined" onClick={() => navigate(`/record/${license.recordId}/license?supersede=${license.id}`)}>
+              <Alert severity="info" variant="outlined">
+                Expired on {license.terms.endDate}.
+              </Alert>
+              <Button
+                variant="outlined"
+                onClick={() => navigate(`/record/${license.recordId}/license?supersede=${license.id}`)}
+              >
                 Renew
               </Button>
             </Stack>
@@ -237,7 +257,8 @@ export const LicenseDetail: React.FC = () => {
 
           {state === 'revoked' && (
             <Alert severity="error" variant="outlined">
-              Revoked {license.revokedAt ? new Date(license.revokedAt).toLocaleDateString() : ''} — {license.revokedReason}
+              Revoked {license.revokedAt ? new Date(license.revokedAt).toLocaleDateString() : ''} —{' '}
+              {license.revokedReason}
             </Alert>
           )}
         </Paper>
@@ -286,7 +307,9 @@ export const LicenseDetail: React.FC = () => {
                       </Typography>
                       <Row k="Deal value" v={money(dv)} />
                       <Row k="Your royalty" v={money(e.amountOwed)} />
-                      {SHOW_VEILCORE_FEE && <Row k={`Veilcore fee (${VEILCORE_FEE_PCT}%)`} v={money(veilcoreFee(dv))} />}
+                      {SHOW_VEILCORE_FEE && (
+                        <Row k={`Veilcore fee (${VEILCORE_FEE_PCT}%)`} v={money(veilcoreFee(dv))} />
+                      )}
                     </Box>
                   );
                 })}

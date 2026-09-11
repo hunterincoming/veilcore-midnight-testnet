@@ -113,10 +113,14 @@ export const CounterSignPage: React.FC = () => {
             )}
 
             {effectiveState(license) === 'expired' && (
-              <Alert severity="info" variant="outlined">This license has expired ({license.terms.endDate}).</Alert>
+              <Alert severity="info" variant="outlined">
+                This license has expired ({license.terms.endDate}).
+              </Alert>
             )}
             {effectiveState(license) === 'revoked' && (
-              <Alert severity="error" variant="outlined">This license was revoked — {license.revokedReason}.</Alert>
+              <Alert severity="error" variant="outlined">
+                This license was revoked — {license.revokedReason}.
+              </Alert>
             )}
 
             <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 2.5 }}>

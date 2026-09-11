@@ -8,8 +8,7 @@
 import { pureCircuits } from '../../../contract/src/managed/veilcore/contract/index.js';
 
 /** Hex-encode bytes (no 0x prefix). */
-export const toHex = (bytes: Uint8Array): string =>
-  Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+export const toHex = (bytes: Uint8Array): string => Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
 
 const sha256 = async (bytes: Uint8Array): Promise<Uint8Array> =>
   new Uint8Array(await crypto.subtle.digest('SHA-256', bytes as unknown as BufferSource));
@@ -71,7 +70,6 @@ export const fingerprintRecord = async (r: {
   };
   return toHex(await sha256(new TextEncoder().encode(canon(committed))));
 };
-
 
 /** Short display form of a fingerprint. */
 /**

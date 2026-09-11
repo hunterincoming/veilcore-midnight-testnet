@@ -28,10 +28,12 @@ export const SettlementStatus: React.FC<{ record: StrainRecord }> = ({ record })
   if (state.status === 'none') {
     return (
       <Stack spacing={1}>
-        <Typography variant="overline" sx={{ display: 'block' }}>Settlement</Typography>
+        <Typography variant="overline" sx={{ display: 'block' }}>
+          Settlement
+        </Typography>
         <Typography variant="body2" color="text.secondary">
-          Sealed on your device and held in the registry. Not yet included in an anchored batch —
-          records are anchored together, so one transaction covers many and you never need a wallet.
+          Sealed on your device and held in the registry. Not yet included in an anchored batch — records are anchored
+          together, so one transaction covers many and you never need a wallet.
         </Typography>
       </Stack>
     );
@@ -65,22 +67,31 @@ export const SettlementStatus: React.FC<{ record: StrainRecord }> = ({ record })
       </Box>
 
       <Stack direction="row" spacing={1}>
-        <Button size="small" variant="outlined" startIcon={<DownloadIcon />}
-          onClick={() => downloadProof(proof, record.id)}>
+        <Button
+          size="small"
+          variant="outlined"
+          startIcon={<DownloadIcon />}
+          onClick={() => downloadProof(proof, record.id)}
+        >
           Download proof
         </Button>
         {anchored && proof.anchor?.txHash && (
-          <Button size="small" variant="text" startIcon={<LinkIcon />}
+          <Button
+            size="small"
+            variant="text"
+            startIcon={<LinkIcon />}
             href={`https://explorer.preview.midnight.network/tx/${proof.anchor.txHash}`}
-            target="_blank" rel="noopener">
+            target="_blank"
+            rel="noopener"
+          >
             View transaction
           </Button>
         )}
       </Stack>
 
       <Typography variant="caption" color="text.secondary">
-        Keep this proof. It verifies with the open-source package and a chain lookup — it does not
-        depend on us being here.
+        Keep this proof. It verifies with the open-source package and a chain lookup — it does not depend on us being
+        here.
       </Typography>
     </Stack>
   );

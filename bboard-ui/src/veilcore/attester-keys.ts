@@ -12,6 +12,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { generateKeypair, signAttestation, signRetraction, type Keypair } from 'veilcore-records';
+import { readJson, isObject, isString, isBoolean, optional } from './json';
 
 const KEY = 'veilcore.attester.v1';
 const BASE = import.meta.env.VITE_API_BASE ?? '';
@@ -24,10 +25,23 @@ export type AttesterProfile = {
   registeredAt?: number;
 };
 
+const isKeypair = (v: unknown): v is Keypair => isObject(v) && isString(v.publicKey) && isString(v.privateKey);
+
+/**
+ * A stored profile is only usable if the keypair survived storage intact.
+ *
+ * Checking here rather than at first use means a corrupted entry reads as "no
+ * attester set up" and the operator is asked to create one, instead of failing
+ * inside a signing call with a message about an undefined key.
+ */
+const isAttesterProfile = (v: unknown): v is AttesterProfile => isObject(v) && isKeypair(v.keypair);
+
 export const loadAttester = (): AttesterProfile | null => {
   try {
     const raw = localStorage.getItem(KEY);
-    return raw ? (JSON.parse(raw) as AttesterProfile) : null;
+    if (!raw) return null;
+    const parsed: unknown = JSON.parse(raw);
+    return isAttesterProfile(parsed) ? parsed : null;
   } catch {
     return null;
   }
@@ -66,9 +80,17 @@ export const publishAttester = async (p: AttesterProfile): Promise<{ attesterId?
         accreditation: p.accreditation,
       }),
     });
-    const out = await res.json();
-    if (!out.error) save({ ...p, registeredAt: Date.now() });
-    return out;
+    const body = await readJson(res);
+    if (!isObject(body)) return { error: 'unexpected response from the registry' };
+    if (isString(body.error)) return { error: body.error };
+    // Record the registration only on positive confirmation. Treating "no error
+    // field" as success means an unreadable response marks the attester as
+    // published when it may not be, and the operator has no reason to retry.
+    if (isString(body.attesterId)) {
+      save({ ...p, registeredAt: Date.now() });
+      return { attesterId: body.attesterId };
+    }
+    return { error: 'unexpected response from the registry' };
   } catch {
     return { error: 'could not reach the registry' };
   }
@@ -81,21 +103,35 @@ export const attestRecord = async (
   documentHash: string,
   type: 'laboratory-report' | 'genetic-fingerprint' | 'inspection' | 'chain-of-custody' = 'laboratory-report',
 ): Promise<{ attestationId?: string; strength?: string; error?: string }> => {
-  const signed = await signAttestation({
-    attestationId: `att_${crypto.randomUUID().replace(/-/g, '').slice(0, 16)}`,
-    type,
-    subjectCommitment,
-    attester: { publicKey: p.keypair.publicKey, displayName: p.displayName, role: p.role },
-    documentHash,
-    hashAlgorithm: 'sha256',
-    issuedAt: new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'),
-  }, p.keypair.privateKey);
+  const signed = await signAttestation(
+    {
+      attestationId: `att_${crypto.randomUUID().replace(/-/g, '').slice(0, 16)}`,
+      type,
+      subjectCommitment,
+      attester: { publicKey: p.keypair.publicKey, displayName: p.displayName, role: p.role },
+      documentHash,
+      hashAlgorithm: 'sha256',
+      issuedAt: new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'),
+    },
+    p.keypair.privateKey,
+  );
 
   try {
     const res = await fetch(`${BASE}/attestations`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(signed),
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(signed),
     });
-    return await res.json();
+    const body = await readJson(res);
+    if (!isObject(body)) return { error: 'unexpected response from the registry' };
+    if (isString(body.error)) return { error: body.error };
+    if (isString(body.attestationId)) {
+      return {
+        attestationId: body.attestationId,
+        ...(isString(body.strength) ? { strength: body.strength } : {}),
+      };
+    }
+    return { error: 'unexpected response from the registry' };
   } catch {
     return { error: 'could not reach the registry' };
   }
@@ -114,19 +150,31 @@ export const retract = async (
   reason: 'issued-in-error' | 'superseded' | 'sample-compromised' | 'other',
   note?: string,
 ): Promise<{ retracted?: boolean; error?: string }> => {
-  const signed = await signRetraction({
-    attestationId,
-    attesterPublicKey: p.keypair.publicKey,
-    reason,
-    note,
-    retractedAt: new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'),
-  }, p.keypair.privateKey);
+  const signed = await signRetraction(
+    {
+      attestationId,
+      attesterPublicKey: p.keypair.publicKey,
+      reason,
+      note,
+      retractedAt: new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'),
+    },
+    p.keypair.privateKey,
+  );
 
   try {
     const res = await fetch(`${BASE}/attestations/${encodeURIComponent(attestationId)}/retract`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(signed),
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(signed),
     });
-    return await res.json();
+    const body = await readJson(res);
+    if (!isObject(body)) return { error: 'unexpected response from the registry' };
+    if (isString(body.error)) return { error: body.error };
+    // A retraction that is not confirmed is not reported as done. The attester
+    // needs to know to try again, because an attestation they believe is
+    // withdrawn and is not withdrawn is worse than one they know is standing.
+    if (optional(body.retracted, isBoolean) && body.retracted === true) return { retracted: true };
+    return { error: 'unexpected response from the registry' };
   } catch {
     return { error: 'could not reach the registry' };
   }

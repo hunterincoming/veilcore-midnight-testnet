@@ -17,9 +17,9 @@ import { verifyInclusion } from 'veilcore-records';
 const BASE = import.meta.env.VITE_API_BASE ?? '';
 
 export type ProofState =
-  | { status: 'none' }                                  // not yet batched
-  | { status: 'pending'; proof: InclusionProof }        // batched, root not yet anchored
-  | { status: 'anchored'; proof: InclusionProof };      // root is on chain
+  | { status: 'none' } // not yet batched
+  | { status: 'pending'; proof: InclusionProof } // batched, root not yet anchored
+  | { status: 'anchored'; proof: InclusionProof }; // root is on chain
 
 /** Fetch a record's inclusion proof, and verify it locally before trusting it. */
 export const proofFor = async (commitment?: string): Promise<ProofState> => {
@@ -27,7 +27,14 @@ export const proofFor = async (commitment?: string): Promise<ProofState> => {
   try {
     const res = await fetch(`${BASE}/proof/${encodeURIComponent(commitment)}`);
     if (!res.ok) return { status: 'none' };
-    const proof: InclusionProof = await res.json();
+    const body: unknown = await res.json();
+    if (typeof body !== 'object' || body === null) return { status: 'none' };
+
+    // The assertion here is narrower than it looks: verifyInclusion below folds the
+    // path and compares it to the root, which is a stronger check than any type
+    // guard could be. A body that is not a proof fails there rather than being
+    // displayed, so structural checking would only duplicate it.
+    const proof = body as InclusionProof;
 
     // Verify before displaying. A registry claiming a record is included is not
     // evidence; the path folding to the root is.

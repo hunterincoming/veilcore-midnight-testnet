@@ -8,8 +8,16 @@
 
 import React, { useState } from 'react';
 import {
-  Alert, Box, Button, Dialog, DialogActions, DialogContent, DialogTitle,
-  Stack, TextField, Typography,
+  Alert,
+  Box,
+  Button,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Stack,
+  TextField,
+  Typography,
 } from '@mui/material';
 import SendIcon from '@mui/icons-material/SendOutlined';
 import ContentCopyIcon from '@mui/icons-material/ContentCopyOutlined';
@@ -67,13 +75,18 @@ export const SendToLab: React.FC<{ record: StrainRecord }> = ({ record }) => {
           {transferId ? (
             <Stack spacing={2} sx={{ pt: 1 }}>
               <Alert severity="success" variant="outlined">
-                Give this code to {handle}. When they claim it, they confirm receipt — and that
-                confirmation becomes the attestation on your record.
+                Give this code to {handle}. When they claim it, they confirm receipt — and that confirmation becomes the
+                attestation on your record.
               </Alert>
               <Box
                 sx={{
-                  p: 2, borderRadius: 1, background: 'rgba(255,255,255,0.04)',
-                  fontFamily: 'monospace', fontSize: 20, textAlign: 'center', letterSpacing: 1,
+                  p: 2,
+                  borderRadius: 1,
+                  background: 'rgba(255,255,255,0.04)',
+                  fontFamily: 'monospace',
+                  fontSize: 20,
+                  textAlign: 'center',
+                  letterSpacing: 1,
                 }}
               >
                 {transferId}
@@ -82,15 +95,15 @@ export const SendToLab: React.FC<{ record: StrainRecord }> = ({ record }) => {
                 {copied ? 'Copied' : 'Copy code'}
               </Button>
               <Typography variant="caption" color="text.secondary">
-                Nothing has moved yet. The transfer completes when they claim it, and until then
-                your record is unchanged.
+                Nothing has moved yet. The transfer completes when they claim it, and until then your record is
+                unchanged.
               </Typography>
             </Stack>
           ) : (
             <Stack spacing={2} sx={{ pt: 1 }}>
               <Typography variant="body2" color="text.secondary">
-                They receive a record descended from yours — not a copy. When they confirm receipt,
-                the attestation is recorded against their key, which is the only way to get one.
+                They receive a record descended from yours — not a copy. When they confirm receipt, the attestation is
+                recorded against their key, which is the only way to get one.
               </Typography>
               <TextField
                 label="Who are you sending it to"
@@ -106,13 +119,12 @@ export const SendToLab: React.FC<{ record: StrainRecord }> = ({ record }) => {
                 onChange={(e) => setQuantity(e.target.value)}
                 fullWidth
               />
-              <TextField
-                label="Note (optional)"
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                fullWidth
-              />
-              {error && <Alert severity="warning" variant="outlined">{error}</Alert>}
+              <TextField label="Note (optional)" value={note} onChange={(e) => setNote(e.target.value)} fullWidth />
+              {error && (
+                <Alert severity="warning" variant="outlined">
+                  {error}
+                </Alert>
+              )}
             </Stack>
           )}
         </DialogContent>

@@ -36,10 +36,15 @@ const POINTS = [
 export const TrustPanel: React.FC = () => (
   <Paper sx={{ p: { xs: 2.5, md: 3.5 } }}>
     <Typography variant="h6" sx={{ mb: 0.5 }}>
-      “What stops me from logging <Box component="span" sx={{ color: TEAL }}>your</Box> cultivar?”
+      “What stops me from logging{' '}
+      <Box component="span" sx={{ color: TEAL }}>
+        your
+      </Box>{' '}
+      cultivar?”
     </Typography>
     <Typography variant="body2" color="text.secondary" sx={{ mb: 2.5 }}>
-      Fair question — it’s the whole point. Four things make a VeilCore record hard to fake, rather than just easy to write:
+      Fair question — it’s the whole point. Four things make a VeilCore record hard to fake, rather than just easy to
+      write:
     </Typography>
     <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }}>
       {POINTS.map((p) => (

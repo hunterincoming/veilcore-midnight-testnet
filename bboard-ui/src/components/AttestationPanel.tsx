@@ -27,11 +27,12 @@ export const AttestationPanel: React.FC<{ record: StrainRecord }> = ({ record })
   if (items.length === 0 && !legacy) {
     return (
       <Stack spacing={1}>
-        <Typography variant="overline" sx={{ display: 'block' }}>Attestations</Typography>
+        <Typography variant="overline" sx={{ display: 'block' }}>
+          Attestations
+        </Typography>
         <Typography variant="body2" color="text.secondary">
-          Nobody else has confirmed this record yet. A record you signed alone is weaker evidence
-          than one a second party confirms — send the cultivar to a lab and their confirmation is
-          recorded against their key, not yours.
+          Nobody else has confirmed this record yet. A record you signed alone is weaker evidence than one a second
+          party confirms — send the cultivar to a lab and their confirmation is recorded against their key, not yours.
         </Typography>
       </Stack>
     );
@@ -39,13 +40,15 @@ export const AttestationPanel: React.FC<{ record: StrainRecord }> = ({ record })
 
   return (
     <Stack spacing={2}>
-      <Typography variant="overline" sx={{ display: 'block' }}>Attestations</Typography>
+      <Typography variant="overline" sx={{ display: 'block' }}>
+        Attestations
+      </Typography>
 
       {legacy && items.length === 0 && (
         <Alert severity="info" variant="outlined">
-          Confirmed by {legacy.attesterHandle ?? 'a second party'} on{' '}
-          {new Date(legacy.attestedAt).toLocaleDateString()} through a transfer claim. Recorded
-          before signing existed, so it identifies a party without proving who they are.
+          Confirmed by {legacy.attesterHandle ?? 'a second party'} on {new Date(legacy.attestedAt).toLocaleDateString()}{' '}
+          through a transfer claim. Recorded before signing existed, so it identifies a party without proving who they
+          are.
         </Alert>
       )}
 
@@ -54,17 +57,14 @@ export const AttestationPanel: React.FC<{ record: StrainRecord }> = ({ record })
         return (
           <Box key={a.attestationId} sx={{ pl: 1.5, borderLeft: '2px solid rgba(255,255,255,0.12)' }}>
             <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap', mb: 0.5 }}>
-              <Chip
-                size="small"
-                variant="outlined"
-                color={s.ok ? 'primary' : 'default'}
-                label={s.label}
-              />
+              <Chip size="small" variant="outlined" color={s.ok ? 'primary' : 'default'} label={s.label} />
               <Typography variant="caption" color="text.secondary">
                 {a.type} · {new Date(a.issuedAt).toLocaleDateString()}
               </Typography>
             </Stack>
-            <Typography variant="body2" color="text.secondary">{s.why}</Typography>
+            <Typography variant="body2" color="text.secondary">
+              {s.why}
+            </Typography>
           </Box>
         );
       })}

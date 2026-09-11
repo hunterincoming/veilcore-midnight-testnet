@@ -38,6 +38,35 @@ type VerifyResult = {
   otherAgreements?: { id: string; status: string; type: string }[];
 };
 
+/**
+ * The fields this page reads. Anything absent renders as not disclosed, which is
+ * the same as the holder choosing not to show it, so only `found` has to be there.
+ */
+const isVerifyResult = (v: unknown): v is VerifyResult => {
+  if (typeof v !== 'object' || v === null || Array.isArray(v)) return false;
+  const r = v as Record<string, unknown>;
+  if (typeof r.found !== 'boolean') return false;
+  const str = (x: unknown) => x === undefined || x === null || typeof x === 'string';
+  const num = (x: unknown) => x === undefined || typeof x === 'number';
+  const bool = (x: unknown) => x === undefined || typeof x === 'boolean';
+  return (
+    str(r.id) &&
+    str(r.cultivar) &&
+    str(r.recordFingerprint) &&
+    str(r.breedingMethod) &&
+    bool(r.dnaPaired) &&
+    bool(r.attested) &&
+    bool(r.priorPossession) &&
+    bool(r.lineageIntact) &&
+    num(r.activeLicenses) &&
+    num(r.sealedAt) &&
+    num(r.otherRecordCount) &&
+    (r.disclosed === undefined || Array.isArray(r.disclosed)) &&
+    (r.parents === undefined || Array.isArray(r.parents)) &&
+    (r.otherAgreements === undefined || Array.isArray(r.otherAgreements))
+  );
+};
+
 const Fact: React.FC<{ ok?: boolean; children: React.ReactNode }> = ({ ok = true, children }) => (
   <Stack direction="row" spacing={1} sx={{ alignItems: 'flex-start' }}>
     {ok ? (
@@ -64,10 +93,14 @@ export const VerifyPage: React.FC = () => {
     let cancelled = false;
     const url = `${API}/verify/${encodeURIComponent(id)}${show !== null ? `?show=${encodeURIComponent(show)}` : ''}`;
     fetch(url)
-      .then((r) => r.json())
+      .then((r): Promise<unknown> => r.json())
       .then((data) => {
         if (!cancelled) {
-          setResult(data);
+          // A shareable link is opened by someone who has no other way to check what
+          // they are being shown. A body that is not a verdict is treated as no
+          // record rather than rendered with blank fields, because a page that looks
+          // like a verification and is not one is worse than an error.
+          setResult(isVerifyResult(data) ? data : null);
           setLoading(false);
         }
       })
@@ -105,8 +138,8 @@ export const VerifyPage: React.FC = () => {
               No record found for {id || 'this ID'}
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              This verification link doesn&apos;t match any record in the registry. Check the link is
-              complete and unmodified.
+              This verification link doesn&apos;t match any record in the registry. Check the link is complete and
+              unmodified.
             </Typography>
           </Paper>
         ) : (
@@ -136,7 +169,9 @@ export const VerifyPage: React.FC = () => {
                   {disclosed.has('own') && <Fact>Prior possession proven — sealed to this breeder.</Fact>}
                   {disclosed.has('dna') && (
                     <Fact ok={!!result.dnaPaired}>
-                      {result.dnaPaired ? 'DNA-verified — bound to the paired lab report.' : 'DNA report not yet paired.'}
+                      {result.dnaPaired
+                        ? 'DNA-verified — bound to the paired lab report.'
+                        : 'DNA report not yet paired.'}
                     </Fact>
                   )}
                   {disclosed.has('lineage') && <Fact>Lineage intact — unbroken chain back to the sealed record.</Fact>}

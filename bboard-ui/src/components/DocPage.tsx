@@ -22,17 +22,20 @@ const DOCS: Record<string, { file: string; title: string; blurb: string }> = {
   spec: {
     file: 'SPEC.md',
     title: 'The record format',
-    blurb: 'The specification. Record structure, canonical serialisation, anchoring, corrections, attester identity, resolution across registries, and verification.',
+    blurb:
+      'The specification. Record structure, canonical serialisation, anchoring, corrections, attester identity, resolution across registries, and verification.',
   },
   evidence: {
     file: 'EVIDENCE.md',
     title: 'Records in evidence',
-    blurb: 'For counsel. What a party can establish, how it is authenticated in five jurisdictions, and — at length — what it does not prove.',
+    blurb:
+      'For counsel. What a party can establish, how it is authenticated in five jurisdictions, and — at length — what it does not prove.',
   },
   integrate: {
     file: 'INTEGRATING.md',
     title: 'Integrating VeilCore',
-    blurb: 'For developers adding this to software a laboratory or registry already uses. No account, no server, no key.',
+    blurb:
+      'For developers adding this to software a laboratory or registry already uses. No account, no server, no key.',
   },
 };
 
@@ -55,8 +58,12 @@ export const DocPage: React.FC = () => {
   if (!meta) {
     return (
       <Container maxWidth="md" sx={{ py: 8 }}>
-        <Typography variant="h4" sx={{ mb: 2 }}>No such document</Typography>
-        <Button component={RouterLink} to="/" startIcon={<ArrowBackIcon />}>Back</Button>
+        <Typography variant="h4" sx={{ mb: 2 }}>
+          No such document
+        </Typography>
+        <Button component={RouterLink} to="/" startIcon={<ArrowBackIcon />}>
+          Back
+        </Button>
       </Container>
     );
   }
@@ -78,8 +85,14 @@ export const DocPage: React.FC = () => {
       </Typography>
 
       <Stack direction="row" spacing={1.5} sx={{ mb: 5, flexWrap: 'wrap', gap: 1.5 }}>
-        <Button size="small" variant="outlined" startIcon={<CodeIcon />}
-          href={`${REPO_VIEW}/${meta.file}`} target="_blank" rel="noopener">
+        <Button
+          size="small"
+          variant="outlined"
+          startIcon={<CodeIcon />}
+          href={`${REPO_VIEW}/${meta.file}`}
+          target="_blank"
+          rel="noopener"
+        >
           Source
         </Button>
       </Stack>
@@ -87,8 +100,10 @@ export const DocPage: React.FC = () => {
       {failed && (
         <Alert severity="warning" variant="outlined">
           This document could not be loaded. It is published at{' '}
-          <a href={`${REPO_VIEW}/${meta.file}`} target="_blank" rel="noopener noreferrer"
-             style={{ color: TEAL }}>the repository</a>, which is always the authoritative copy.
+          <a href={`${REPO_VIEW}/${meta.file}`} target="_blank" rel="noopener noreferrer" style={{ color: TEAL }}>
+            the repository
+          </a>
+          , which is always the authoritative copy.
         </Alert>
       )}
 
@@ -99,26 +114,63 @@ export const DocPage: React.FC = () => {
           dangerouslySetInnerHTML={{ __html: html }}
           sx={{
             '& h1': { fontFamily: '"Space Grotesk", sans-serif', fontSize: 32, mt: 6, mb: 2, fontWeight: 600 },
-            '& h2': { fontFamily: '"Space Grotesk", sans-serif', fontSize: 24, mt: 5, mb: 2, fontWeight: 600,
-                      borderTop: '1px solid', borderColor: 'divider', pt: 4 },
+            '& h2': {
+              fontFamily: '"Space Grotesk", sans-serif',
+              fontSize: 24,
+              mt: 5,
+              mb: 2,
+              fontWeight: 600,
+              borderTop: '1px solid',
+              borderColor: 'divider',
+              pt: 4,
+            },
             '& h3': { fontFamily: '"Space Grotesk", sans-serif', fontSize: 18, mt: 4, mb: 1.5, fontWeight: 600 },
             '& p': { fontSize: 15.5, lineHeight: 1.75, mb: 2, color: 'text.secondary' },
             '& li': { fontSize: 15.5, lineHeight: 1.75, mb: 0.75, color: 'text.secondary' },
             '& strong': { color: 'text.primary', fontWeight: 600 },
             '& a': { color: TEAL },
-            '& code': { fontFamily: 'ui-monospace, Menlo, monospace', fontSize: 13,
-                        background: 'rgba(47,240,207,0.07)', px: 0.7, py: 0.2, borderRadius: 0.5 },
-            '& pre': { background: 'rgba(255,255,255,0.03)', p: 2, borderRadius: 1, overflowX: 'auto',
-                       border: '1px solid', borderColor: 'divider' },
+            '& code': {
+              fontFamily: 'ui-monospace, Menlo, monospace',
+              fontSize: 13,
+              background: 'rgba(47,240,207,0.07)',
+              px: 0.7,
+              py: 0.2,
+              borderRadius: 0.5,
+            },
+            '& pre': {
+              background: 'rgba(255,255,255,0.03)',
+              p: 2,
+              borderRadius: 1,
+              overflowX: 'auto',
+              border: '1px solid',
+              borderColor: 'divider',
+            },
             '& pre code': { background: 'none', px: 0 },
             '& table': { width: '100%', borderCollapse: 'collapse', my: 3, fontSize: 14 },
-            '& th': { textAlign: 'left', p: 1.2, borderBottom: '2px solid', borderColor: 'divider',
-                      fontWeight: 600, fontSize: 13 },
-            '& td': { p: 1.2, borderBottom: '1px solid', borderColor: 'divider',
-                      color: 'text.secondary', verticalAlign: 'top' },
+            '& th': {
+              textAlign: 'left',
+              p: 1.2,
+              borderBottom: '2px solid',
+              borderColor: 'divider',
+              fontWeight: 600,
+              fontSize: 13,
+            },
+            '& td': {
+              p: 1.2,
+              borderBottom: '1px solid',
+              borderColor: 'divider',
+              color: 'text.secondary',
+              verticalAlign: 'top',
+            },
             '& hr': { border: 0, borderTop: '1px solid', borderColor: 'divider', my: 4 },
-            '& blockquote': { borderLeft: '2px solid', borderColor: TEAL, pl: 2, ml: 0,
-                              color: 'text.secondary', fontStyle: 'italic' },
+            '& blockquote': {
+              borderLeft: '2px solid',
+              borderColor: TEAL,
+              pl: 2,
+              ml: 0,
+              color: 'text.secondary',
+              fontStyle: 'italic',
+            },
           }}
         />
       )}

@@ -11,8 +11,17 @@
 
 import React, { useState } from 'react';
 import {
-  Alert, Box, Button, Checkbox, Dialog, DialogActions, DialogContent, DialogTitle,
-  FormControlLabel, Stack, Typography,
+  Alert,
+  Box,
+  Button,
+  Checkbox,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  FormControlLabel,
+  Stack,
+  Typography,
 } from '@mui/material';
 import ShareIcon from '@mui/icons-material/IosShareOutlined';
 import { exportCertificate, type LicenseGrant } from '../../veilcore/license-certificate';
@@ -25,7 +34,11 @@ const GRANTS: { key: LicenseGrant; label: string; why: string }[] = [
   { key: 'territory', label: 'Where it applies', why: 'The licensed territory' },
   { key: 'term', label: 'How long it runs', why: 'Start and end dates' },
   { key: 'royalty', label: 'The commercial terms', why: 'Royalty type, amount and basis. Usually the most sensitive' },
-  { key: 'offspring', label: 'The obligation on offspring', why: 'What descendants owe. A downstream buyer often needs this' },
+  {
+    key: 'offspring',
+    label: 'The obligation on offspring',
+    why: 'What descendants owe. A downstream buyer often needs this',
+  },
   { key: 'parties', label: 'Who the counterparty is', why: 'The licensee name' },
 ];
 
@@ -37,7 +50,8 @@ export const ShareLicense: React.FC<{ license: License }> = ({ license }) => {
   const toggle = (k: LicenseGrant) =>
     setChosen((prev) => {
       const next = new Set(prev);
-      next.has(k) ? next.delete(k) : next.add(k);
+      if (next.has(k)) next.delete(k);
+      else next.add(k);
       return next;
     });
 
@@ -63,9 +77,9 @@ export const ShareLicense: React.FC<{ license: License }> = ({ license }) => {
                 Always included
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                That this licence exists, its current state, the record it was issued against, and
-                whether it binds descendants. Anyone can verify these without your permission —
-                that is what makes the licence checkable rather than a claim.
+                That this licence exists, its current state, the record it was issued against, and whether it binds
+                descendants. Anyone can verify these without your permission — that is what makes the licence checkable
+                rather than a claim.
               </Typography>
             </Box>
 
@@ -81,7 +95,9 @@ export const ShareLicense: React.FC<{ license: License }> = ({ license }) => {
                     label={
                       <Box>
                         <Typography variant="body2">{g.label}</Typography>
-                        <Typography variant="caption" color="text.secondary">{g.why}</Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {g.why}
+                        </Typography>
                       </Box>
                     }
                     sx={{ alignItems: 'flex-start', mb: 0.5 }}
@@ -91,8 +107,8 @@ export const ShareLicense: React.FC<{ license: License }> = ({ license }) => {
             </Box>
 
             <Alert severity="info" variant="outlined">
-              What you leave unchecked is not in the file at all — not hidden, absent. They cannot
-              read it however they open it.
+              What you leave unchecked is not in the file at all — not hidden, absent. They cannot read it however they
+              open it.
             </Alert>
           </Stack>
         </DialogContent>

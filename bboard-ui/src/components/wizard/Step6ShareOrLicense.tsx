@@ -120,8 +120,8 @@ export const Step6ShareOrLicense: React.FC<{
             {type === 'license' ? 'This is how breeders get paid.' : 'Shared — on your terms.'}
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 480, mx: 'auto', mt: 1 }}>
-            Both parties signed. The agreement is active — and its terms are bound to {record.strainName}&apos;s
-            sealed record and its DNA fingerprint.
+            Both parties signed. The agreement is active — and its terms are bound to {record.strainName}&apos;s sealed
+            record and its DNA fingerprint.
           </Typography>
         </MBox>
 
@@ -249,7 +249,8 @@ export const Step6ShareOrLicense: React.FC<{
             <GavelIcon sx={{ color: TEAL }} />
             <Typography variant="h6">A company</Typography>
             <Typography variant="body2" color="text.secondary">
-              License agreement — rights, territory, royalty, exclusivity.{SHOW_VEILCORE_FEE ? ' Carries the Veilcore 3% fee.' : ''}
+              License agreement — rights, territory, royalty, exclusivity.
+              {SHOW_VEILCORE_FEE ? ' Carries the Veilcore 3% fee.' : ''}
             </Typography>
           </Stack>
         </Paper>
@@ -261,8 +262,8 @@ export const Step6ShareOrLicense: React.FC<{
             <ShareIcon sx={{ color: TEAL }} />
             <Typography variant="h6">Another breeder</Typography>
             <Typography variant="body2" color="text.secondary">
-              Breeder share — breeding/distribution rights, attribution, offspring royalty. No fee; lineage
-              keeps derivatives traceable.
+              Breeder share — breeding/distribution rights, attribution, offspring royalty. No fee; lineage keeps
+              derivatives traceable.
             </Typography>
           </Stack>
         </Paper>

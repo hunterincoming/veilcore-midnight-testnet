@@ -55,7 +55,8 @@ export const TermsBuilder: React.FC = () => {
   }
 
   // A commercial license needs a royalty amount; the others just need a counterparty.
-  const canSave = type === 'license' ? Boolean(t.licensee.trim() && t.royaltyAmount.trim()) : Boolean(t.licensee.trim());
+  const canSave =
+    type === 'license' ? Boolean(t.licensee.trim() && t.royaltyAmount.trim()) : Boolean(t.licensee.trim());
 
   const onSave = async () => {
     if (!canSave) return;
@@ -81,16 +82,18 @@ export const TermsBuilder: React.FC = () => {
   };
 
   const heading = supersedeId ? `Renew / amend — ${AGREEMENT_LABEL[type]}` : AGREEMENT_LABEL[type];
-  const saveLabel = busy
-    ? 'Sealing agreement…'
-    : supersedeId
-      ? 'Save amended agreement'
-      : `Create agreement (Draft)`;
+  const saveLabel = busy ? 'Sealing agreement…' : supersedeId ? 'Save amended agreement' : `Create agreement (Draft)`;
 
   return (
     <Box>
       <AppHeader />
-      <Button component={RouterLink} to={`/record/${record.id}`} size="small" startIcon={<ArrowBackIcon />} sx={{ mb: 2 }}>
+      <Button
+        component={RouterLink}
+        to={`/record/${record.id}`}
+        size="small"
+        startIcon={<ArrowBackIcon />}
+        sx={{ mb: 2 }}
+      >
         Back to {record.strainName}
       </Button>
       <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', flexWrap: 'wrap', mb: 0.5 }}>

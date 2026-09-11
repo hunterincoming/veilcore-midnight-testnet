@@ -24,7 +24,11 @@ export const getRole = (): Role | null => {
 };
 
 export const setRole = (r: Role): void => {
-  try { localStorage.setItem(KEY, r); } catch { /* private mode */ }
+  try {
+    localStorage.setItem(KEY, r);
+  } catch {
+    /* private mode */
+  }
 };
 
 /** Whether to show the things a breeder does: log, send, license. */

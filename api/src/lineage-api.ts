@@ -63,11 +63,7 @@ export class LineageAPI {
    * computed before someone else's transaction will fail the fold. That is the
    * intended behaviour — it is what stops a stale view from overwriting the tree.
    */
-  async encumber(
-    recordCommitment: Uint8Array,
-    obligationCommitment: Uint8Array,
-    path: SlotPath,
-  ): Promise<void> {
+  async encumber(recordCommitment: Uint8Array, obligationCommitment: Uint8Array, path: SlotPath): Promise<void> {
     await this.setPath(path);
     this.logger?.info(`encumbering ${toHex(recordCommitment)}`);
     const txData = await this.deployedContract.callTx.encumber(recordCommitment, obligationCommitment);
@@ -81,11 +77,7 @@ export class LineageAPI {
   }
 
   /** Clear an obligation, returning the record's slot to null. */
-  async discharge(
-    recordCommitment: Uint8Array,
-    obligationCommitment: Uint8Array,
-    path: SlotPath,
-  ): Promise<void> {
+  async discharge(recordCommitment: Uint8Array, obligationCommitment: Uint8Array, path: SlotPath): Promise<void> {
     await this.setPath(path);
     this.logger?.info(`discharging ${toHex(recordCommitment)}`);
     const txData = await this.deployedContract.callTx.discharge(recordCommitment, obligationCommitment);
@@ -120,9 +112,7 @@ export class LineageAPI {
 
   /** Write the path (and optionally the claimed ancestry) into private state. */
   private async setPath(path: SlotPath, ancestry?: Uint8Array[]): Promise<void> {
-    const current = (await this.providers.privateStateProvider.get(
-      lineagePrivateStateKey,
-    )) as LineagePrivateState;
+    const current = (await this.providers.privateStateProvider.get(lineagePrivateStateKey)) as LineagePrivateState;
 
     const zero = () => new Uint8Array(32);
     const chain = Array.from({ length: 4 }, (_, i) => ancestry?.[i] ?? zero());

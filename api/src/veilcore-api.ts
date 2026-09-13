@@ -102,11 +102,12 @@ export class VeilcoreAPI implements DeployedVeilcoreAPI {
    * its secret preimage WITHOUT revealing it. Only the public commitment is disclosed.
    *
    * The commitment is returned for the same reason anchorBatch returns its
-   * transaction: a proof nobody can tie to a record proves nothing. `disclose()`
-   * inside the circuit clears the compiler's private-data check; it does not
-   * publish. Until the value crosses a public boundary the transcript carries a
-   * counter increment and nothing else, and a verifier sees that somebody proved
-   * something without learning which record.
+   * transaction: a verifier needs the value, not just the fact that a call
+   * happened. It was already bound to the transaction as a public input to the
+   * proof — the ledger transcript carries only a counter increment, which is a
+   * different layer — but reading it meant parsing proof internals. Returning it
+   * here means a holder can hand over the commitment and the transaction hash
+   * together and a verifier can compare against the earlier anchor.
    */
   async proveOwnership(): Promise<{ commitment: Uint8Array; txHash: string; blockHeight: number }> {
     this.logger?.info('proving prior possession (zk)');

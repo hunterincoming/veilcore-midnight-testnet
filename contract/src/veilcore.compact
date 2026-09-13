@@ -89,14 +89,20 @@ export circuit anchorBatch(root: Bytes<32>): [] {
 }
 
 export circuit proveOwnership(): Bytes<32> {
-  // RETURNED, not just disclosed. `disclose` clears the compiler's private-data
-  // check; it does not publish. A value becomes visible only when it crosses a
-  // public boundary — a ledger write, a return from an exported circuit, or a
-  // contract-to-contract call. Computing the commitment into a local and
-  // discarding it left the transcript with nothing but a counter increment, so
-  // an observer could see that someone proved something and never which record.
-  // The whole evidentiary claim rests on this value being checkable against the
-  // earlier anchor, which requires it to be on chain.
+  // RETURNED as well as disclosed, and the distinction is worth stating because
+  // it looks like a soundness matter and is not one.
+  //
+  // The commitment was already bound to the transaction before this return
+  // existed: the compiled IR hashes the domain separator and the witness secret
+  // and calls declare_pub_input on the result, and a proof's public inputs are
+  // visible to anyone verifying it. What the ledger transcript carries is a
+  // counter increment, which is a different layer and easy to mistake for the
+  // whole picture.
+  //
+  // Returning it makes the value reachable without parsing proof internals. A
+  // holder hands a verifier the commitment and the transaction; the verifier
+  // compares it against the earlier anchor. That was always possible and it was
+  // never convenient.
   const c = disclose(commit(localGeneticSecret()));
   proofSeq.increment(1);
   return c;

@@ -175,5 +175,42 @@ run(breeder, 'revokeLicense', INTENDED);
 ok('F4: revocation leaves no pending transfer behind', !state().pendingTransferOf.member(INTENDED),
     'pendingTransferOf still holds the revoked licence');
 
+// F5: rotateRecordSecret is the newest circuit and the least exercised, which is
+// how the transfer defect got through. A rotation moves a record's identity, so
+// the question is whether anyone other than the holder can move it.
+//
+// The circuit derives the caller's current commitment from their own witness
+// secret rather than taking it as an argument, so a stranger rotating "someone
+// else's" record can only ever rotate their own. That is the defence, and it is
+// worth a test rather than an assumption: an argument-shaped version of this
+// circuit would have exactly the bug the licence lifecycle had four times.
+const VICTIM_RECORD = commit(BREEDER);
+const MALLORY_NEW = commit(b32(0x61));
+
+const f5 = rejects(() => run(mallory, 'rotateRecordSecret', MALLORY_NEW));
+ok('F5: a stranger rotating cannot touch the breeder\'s record',
+    f5 !== '' || state().lastAnchor === undefined || !same(state().lastAnchor, VICTIM_RECORD),
+    'mallory\'s rotation landed on the breeder\'s commitment');
+
+// F6: the holder can rotate, and the returned value names the identity being
+// left behind. Without it the transaction is a new anchor with no link to the
+// old one, and a verifier holding the earlier anchor has no way to follow the
+// record across the rotation.
+const BREEDER_NEW = commit(b32(0x62));
+const rot = run(breeder, 'rotateRecordSecret', BREEDER_NEW);
+ok('F6: the holder can rotate their own record',
+    rot !== undefined,
+    'the rightful holder was refused');
+ok('F6: the rotation names the identity it replaces',
+    rot?.result !== undefined && same(rot.result, VICTIM_RECORD),
+    'nothing links the new commitment to the old one, so the record cannot be followed');
+
+// F7: a rotation to the same commitment is a no-op that looks like a rotation.
+// Left unguarded it would let a holder produce an endless run of transactions
+// that each appear to move an identity and move nothing.
+const f7 = rejects(() => run(breeder, 'rotateRecordSecret', commit(BREEDER)));
+ok('F7: rotating to the identity you already hold is refused', f7 !== '',
+    'a no-op rotation was accepted');
+
 console.log(`\n${failures === 0 ? 'all checks passed' : `${failures} check(s) failed`}\n`);
 process.exit(failures === 0 ? 0 : 1);

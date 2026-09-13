@@ -72,6 +72,8 @@ cd ../bboard-ui && npm run build
 
 `fb9c55944908c466dcea7b9807f00ea727b37cebec13870080016ddc5a9d721d` — twelve circuits covering anchoring, DNA pairing, the licence lifecycle and assignment.
 
+**The source in this repository is ahead of that deployment.** A review against Midnight's own security guide found that `proveOwnership` and `pairDna` computed their commitments and never let them reach a public position, so the transactions carried a counter increment and nothing identifying a record. Both now return the commitment. A key-rotation circuit was added, because a witness secret cannot be recovered from the chain and a holder who lost theirs had no remedy. That makes thirteen circuits, and the deployed address above predates all of it.
+
 An outside developer compiled it, deployed it, and replayed every call as an attacker. Four authorisation gaps were found and fixed. A fifth, found on a subsequent read-through, was in transfer: reassigning a holder field moved nothing, because a licence's identity is the secret behind its commitment and a secret cannot be un-known — the outgoing party kept every power they had. Transfer was rewritten as assignment: the old licence ends and a new one begins under a commitment the incoming party generated.
 
 All of it is kept as regression tests in `contract/test-contract.mjs`, which `npm test` runs.

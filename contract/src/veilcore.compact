@@ -4,10 +4,17 @@
 // Only commitments (domain-separated hashes) are ever stored on-chain. Genetic
 // preimages, license terms, and counterparties stay off-chain as private witnesses.
 //
-// STATE MODEL: bounded by design. Anchoring writes no growable state — the
-// commitment lives in the transaction, and the chain already retains transaction
-// history. Licensing holds only LIVE agreements; terminal licenses are removed,
-// so the map is bounded by open business rather than by total usage.
+// STATE MODEL. Anchoring writes no growable state — the commitment lives in the
+// transaction, and the chain already retains transaction history. Licensing holds
+// only LIVE agreements; terminal licences are removed, so the maps track open
+// business rather than accumulating every licence ever issued.
+//
+// That is not the same as being bounded against an adversary, and the earlier
+// wording claimed more than it could. `issueLicense` requires owning a record,
+// but a record is owned by committing a secret and anyone can choose one. A party
+// with no material can therefore issue licences to themselves and grow the maps,
+// paying a fee per entry. The bound is economic, not structural. Stated plainly
+// here because a reader who takes "bounded by design" at face value will not look.
 
 pragma language_version 0.23;
 
@@ -66,6 +73,14 @@ export circuit anchor(commitment: Bytes<32>): [] {
  *
  * State stays bounded: the root is disclosed into the transaction and only a counter
  * and one slot are written, the same pattern as `anchor`.
+ *
+ * ⚠️ THIS CIRCUIT IS UNAUTHENTICATED, deliberately. Anyone may anchor any root, and
+ * `lastBatchRoot` therefore holds whichever root was written most recently by anyone
+ * at all. It is a convenience slot, not a statement about who anchored. An inclusion
+ * proof is checked by folding the path and comparing against the root recorded in the
+ * transaction the holder cites — never against this slot, which a later caller can
+ * overwrite. Reading `lastBatchRoot` as authoritative would turn a scratch value into
+ * evidence, which is the failure this contract exists to avoid.
  */
 export circuit anchorBatch(root: Bytes<32>): [] {
   const r = disclose(root);
@@ -73,19 +88,33 @@ export circuit anchorBatch(root: Bytes<32>): [] {
   lastBatchRoot = r;
 }
 
-export circuit proveOwnership(): [] {
+export circuit proveOwnership(): Bytes<32> {
+  // RETURNED, not just disclosed. `disclose` clears the compiler's private-data
+  // check; it does not publish. A value becomes visible only when it crosses a
+  // public boundary — a ledger write, a return from an exported circuit, or a
+  // contract-to-contract call. Computing the commitment into a local and
+  // discarding it left the transcript with nothing but a counter increment, so
+  // an observer could see that someone proved something and never which record.
+  // The whole evidentiary claim rests on this value being checkable against the
+  // earlier anchor, which requires it to be on chain.
   const c = disclose(commit(localGeneticSecret()));
   proofSeq.increment(1);
+  return c;
 }
 
 // Bind a DNA report fingerprint to a record you own. The binding is the
 // transaction; no state is written.
-export circuit pairDna(recordCommitment: Bytes<32>, dnaCommitment: Bytes<32>): [] {
+export circuit pairDna(recordCommitment: Bytes<32>, dnaCommitment: Bytes<32>): Bytes<32> {
   assert(recordCommitment == commit(localGeneticSecret()), "Only the record owner can pair DNA");
   const rc = disclose(recordCommitment);
   const dc = disclose(dnaCommitment);
   anchorSeq.increment(1);
+  // The pairing is the point, so both halves have to be public. Writing only the
+  // DNA side published a fingerprint attached to nothing: an observer learned
+  // that somebody paired a report, not to which record. The record commitment is
+  // returned so the transaction carries both and the binding is checkable.
   lastAnchor = dc;
+  return rc;
 }
 
 /**
@@ -216,6 +245,36 @@ export circuit revokeLicense(licenseCommitment: Bytes<32>): [] {
   // approveTransfer passes the member check then fails inside the record
   // lookup, so the error does not describe what happened.
   if (pendingTransferOf.member(lc)) { pendingTransferOf.remove(lc); }
+}
+
+/**
+ * Move a record's identity to a new secret.
+ *
+ * A witness secret cannot be recovered from the chain. Without a rotation path, a
+ * holder who loses their secret loses every record and licence keyed to it, with
+ * no remedy — which is precisely the failure a provenance record is supposed to
+ * prevent. Midnight's own guidance is to build the path before it is needed.
+ *
+ * The holder proves control of the current secret and names the new commitment.
+ * Licences issued against the old record are re-keyed by the issuer through the
+ * normal transfer path rather than swept here: a circuit that silently rewrote
+ * every agreement attached to a record would move other parties' rights without
+ * their knowledge, and the licensee's consent is the thing that makes a licence
+ * bilateral.
+ *
+ * The new commitment is generated by the holder from a secret they have just
+ * created, so nothing secret crosses the wire and the old secret is never
+ * required again.
+ */
+export circuit rotateRecordSecret(newRecordCommitment: Bytes<32>): Bytes<32> {
+  const old = disclose(commit(localGeneticSecret()));
+  const fresh = disclose(newRecordCommitment);
+  assert(old != fresh, "The new commitment must differ from the old one");
+  anchorSeq.increment(1);
+  // Both values reach a public position, so the rotation is a checkable link
+  // between the two identities rather than an unexplained new anchor.
+  lastAnchor = fresh;
+  return old;
 }
 
 // A licensee proves they hold a valid, ACTIVE license without revealing the

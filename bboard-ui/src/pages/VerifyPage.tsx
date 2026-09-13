@@ -262,7 +262,17 @@ export const VerifyPage: React.FC = () => {
             </Typography>
 
             <Box sx={{ mt: 2, textAlign: 'right' }}>
-              <Chip size="small" variant="outlined" label="Verified against the registry" />
+              {/* The last thing a reader sees, and it was printed on every response. A
+                  record with no commitment has nothing to verify against anything. */}
+              <Chip
+                size="small"
+                variant="outlined"
+                label={
+                  result.recordFingerprint
+                    ? 'Verified against the registry'
+                    : 'Read from the registry — nothing verified'
+                }
+              />
             </Box>
           </Paper>
         )}

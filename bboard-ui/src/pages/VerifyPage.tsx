@@ -31,7 +31,12 @@ type VerifyResult = {
   disclosed?: string[];
   priorPossession?: boolean;
   sealedAt?: number;
-  lineageIntact?: boolean;
+  /** null when the endpoint did not check descent — not the same as false. */
+  lineageIntact?: boolean | null;
+  lineageNote?: string;
+  /** Keys the caller asked for that the server declines to answer. */
+  unavailable?: string[];
+  unavailableReason?: string;
   parents?: string[];
   breedingMethod?: string | null;
   otherRecordCount?: number;
@@ -57,13 +62,19 @@ const isVerifyResult = (v: unknown): v is VerifyResult => {
     bool(r.dnaPaired) &&
     bool(r.attested) &&
     bool(r.priorPossession) &&
-    bool(r.lineageIntact) &&
+    // null is a valid answer here and means "not checked". Requiring a boolean made
+    // the guard reject a well-formed response, and the page then reported no record
+    // for a record that exists.
+    (r.lineageIntact === null || bool(r.lineageIntact)) &&
     num(r.activeLicenses) &&
     num(r.sealedAt) &&
     num(r.otherRecordCount) &&
     (r.disclosed === undefined || Array.isArray(r.disclosed)) &&
     (r.parents === undefined || Array.isArray(r.parents)) &&
-    (r.otherAgreements === undefined || Array.isArray(r.otherAgreements))
+    (r.otherAgreements === undefined || Array.isArray(r.otherAgreements)) &&
+    (r.unavailable === undefined || Array.isArray(r.unavailable)) &&
+    str(r.lineageNote) &&
+    str(r.unavailableReason)
   );
 };
 
@@ -174,7 +185,14 @@ export const VerifyPage: React.FC = () => {
                         : 'DNA report not yet paired.'}
                     </Fact>
                   )}
-                  {disclosed.has('lineage') && <Fact>Lineage intact — unbroken chain back to the sealed record.</Fact>}
+                  {disclosed.has('lineage') &&
+                    (result.lineageIntact === true ? (
+                      <Fact>Lineage intact — unbroken chain back to the sealed record.</Fact>
+                    ) : (
+                      // Printed on the request rather than the answer until now, so the
+                      // page asserted an unbroken chain whatever the server reported.
+                      <Fact ok={false}>{result.lineageNote ?? 'Lineage was not checked for this record.'}</Fact>
+                    ))}
                   {disclosed.has('sealed') && result.sealedAt && <Fact>Sealed {fmt(result.sealedAt)}.</Fact>}
                   {disclosed.has('parents') && (
                     <Fact ok={(result.parents?.length ?? 0) > 0}>
@@ -184,12 +202,23 @@ export const VerifyPage: React.FC = () => {
                   {disclosed.has('method') && result.breedingMethod && (
                     <Fact>Breeding method: {result.breedingMethod}</Fact>
                   )}
-                  {disclosed.has('others') && (
-                    <Fact>{result.otherRecordCount ?? 0} other cultivars held by this breeder.</Fact>
-                  )}
-                  {disclosed.has('agreementTerms') && (
-                    <Fact>{result.otherAgreements?.length ?? 0} other agreements on record.</Fact>
-                  )}
+                  {/* These two disclosed facts about the HOLDER rather than this record —
+                      how many other cultivars they hold, and the status of agreements on
+                      records the reader was never shown. The server no longer answers
+                      them, and `?? 0` would print "0 other cultivars" as though an
+                      absent answer were a finding. */}
+                  {disclosed.has('others') &&
+                    (result.otherRecordCount === undefined ? (
+                      <Fact ok={false}>Not disclosed: what else this breeder holds.</Fact>
+                    ) : (
+                      <Fact>{result.otherRecordCount} other cultivars held by this breeder.</Fact>
+                    ))}
+                  {disclosed.has('agreementTerms') &&
+                    (result.otherAgreements === undefined ? (
+                      <Fact ok={false}>Not disclosed: this breeder&apos;s other agreements.</Fact>
+                    ) : (
+                      <Fact>{result.otherAgreements.length} other agreements on record.</Fact>
+                    ))}
                 </>
               ) : (
                 <>

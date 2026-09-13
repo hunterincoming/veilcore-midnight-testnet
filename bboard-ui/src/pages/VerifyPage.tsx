@@ -158,8 +158,8 @@ export const VerifyPage: React.FC = () => {
             <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', mb: 2 }}>
               <VerifiedIcon sx={{ color: TEAL, fontSize: 30 }} />
               <Box>
-                <Typography variant="overline" sx={{ color: TEAL }}>
-                  Provenance verified
+                <Typography variant="overline" sx={{ color: result.recordFingerprint ? TEAL : 'text.secondary' }}>
+                  {result.recordFingerprint ? 'Provenance verified' : 'Record found — nothing sealed'}
                 </Typography>
                 <Typography variant="h5">{result.cultivar}</Typography>
               </Box>
@@ -173,11 +173,26 @@ export const VerifyPage: React.FC = () => {
             <Divider sx={{ mb: 2 }} />
 
             <Stack spacing={1.25}>
-              <Fact>Record exists and its fingerprint is intact — unaltered since it was sealed.</Fact>
+              {/* Printed on arrival until now, so a record with no commitment was told to
+                  the reader as verified and intact. The heading above had the same
+                  problem, and it is the line a reader actually takes away. */}
+              {result.recordFingerprint ? (
+                <Fact>Record exists and its fingerprint is intact — unaltered since it was sealed.</Fact>
+              ) : (
+                <Fact ok={false}>
+                  This record carries no commitment, so nothing about it can be checked. It exists in the registry and
+                  that is all.
+                </Fact>
+              )}
 
               {isSelective ? (
                 <>
-                  {disclosed.has('own') && <Fact>Prior possession proven — sealed to this breeder.</Fact>}
+                  {disclosed.has('own') &&
+                    (result.priorPossession ? (
+                      <Fact>Prior possession proven — sealed to this breeder.</Fact>
+                    ) : (
+                      <Fact ok={false}>Prior possession not established — this record was never sealed.</Fact>
+                    ))}
                   {disclosed.has('dna') && (
                     <Fact ok={!!result.dnaPaired}>
                       {result.dnaPaired

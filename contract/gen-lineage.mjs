@@ -3,7 +3,43 @@
 // depth 16 or 24 is how subtle errors get in, so they are generated instead.
 import fs from 'node:fs';
 
-const DEPTH = Number(process.argv[2] || 16);
+// CHOOSING A DEPTH — this is a capacity decision, not a tuning knob.
+//
+// A record's slot is derived from its own commitment, which is what removes the
+// need for any registry to assign slots. The cost is a birthday bound: with
+// 2^DEPTH slots a collision becomes likely at roughly 2^(DEPTH/2) records, not
+// 2^DEPTH. Measured, one draw each (contract/slot-capacity.mjs regenerates this):
+//
+//   depth 16      65,536 slots        373 records before a collision
+//   depth 24  16,777,216 slots      3,804 records
+//   depth 32   4.29e9    slots    114,915 records
+//
+// A collision is not cosmetic and it cuts both ways. The second record to land in
+// a taken slot cannot be encumbered, because `encumber` asserts the slot is clean.
+// It also cannot prove clean, because `proveAncestorClean` asserts the slot holds
+// the null leaf — so a record sharing a slot with someone else's obligation
+// reports as carrying one it never had. For a contract that exists to answer
+// whether material is free of upstream claims, that is a false encumbrance, and it
+// blocks a sale that should have gone through.
+//
+// PROVER KEYS DO NOT SCALE SMOOTHLY, and this is why 24 is the default rather than
+// 16. Measured on encumber.prover:
+//
+//   depth 16    76.5 MB
+//   depth 24    76.6 MB      <- same bucket, so the extra capacity is free
+//   depth 32   152.5 MB      <- next bucket
+//
+// So depth 24 gives ten times the capacity of depth 16 for no cost at all.
+// Depth 32 doubles the key, and a prover key that size has been observed to
+// exceed wasm's memory space and fail to prove in a browser, which would put
+// encumbrance behind a self-hosted proof server. That trade is available if a
+// deployment genuinely needs ~100,000 records; it should be made deliberately.
+//
+// 32 is the hard ceiling: the slot derivation takes one byte per level and a
+// commitment is 32 bytes, so past that the tree cannot be addressed from the
+// commitment alone. No depth makes this unbounded. Registry-free slot assignment
+// is bought with a birthday bound, and the only question is where to put it.
+const DEPTH = Number(process.argv[2] || 24);
 if (DEPTH < 1 || DEPTH > 32) throw new Error('depth must be 1..32 (one byte per level)');
 
 const fold = Array.from({ length: DEPTH }, (_, i) =>

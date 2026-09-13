@@ -1,9 +1,9 @@
 // Veilcore Lineage — heritable rights for self-replicating assets.
 // SPDX-License-Identifier: Apache-2.0
 //
-// GENERATED FILE — edit gen-lineage.mjs and re-run `node gen-lineage.mjs 16`.
+// GENERATED FILE — edit gen-lineage.mjs and re-run `node gen-lineage.mjs 24`.
 // Compact has no loops, so the Merkle fold and slot derivation are unrolled. At
-// depth 16 that is 16 levels; generating them removes a whole class of
+// depth 24 that is 24 levels; generating them removes a whole class of
 // hand-transcription errors.
 //
 // Every IP registry on earth records objects: a patent, a work, a variety.
@@ -16,7 +16,7 @@
 // a sparse Merkle tree represented only by its root; the tree is reconstructed
 // off-chain from transaction history, as the descent graph is.
 //
-// SPARSE TREE — depth 16, 65536 slots
+// SPARSE TREE — depth 24, 16777216 slots
 // Every record has a deterministic slot derived from its own commitment, so no
 // assignment or registry is needed and an unwritten slot is clean by default. A
 // record is clean when its slot holds the null leaf.
@@ -42,11 +42,11 @@ export ledger cleanProofSeq: Counter;
 export ledger encumberedRoot: Bytes<32>;
 
 witness localGeneticSecret(): Bytes<32>;
-witness merkleSiblings(): Vector<16, Bytes<32>>;
-witness merkleDirections(): Vector<16, Boolean>;
+witness merkleSiblings(): Vector<24, Bytes<32>>;
+witness merkleDirections(): Vector<24, Boolean>;
 witness ancestryChain(): Vector<4, Bytes<32>>;
-witness ancestrySiblings(): Vector<4, Vector<16, Bytes<32>>>;
-witness ancestryDirections(): Vector<4, Vector<16, Boolean>>;
+witness ancestrySiblings(): Vector<4, Vector<24, Bytes<32>>>;
+witness ancestryDirections(): Vector<4, Vector<24, Boolean>>;
 
 export circuit commit(secret: Bytes<32>): Bytes<32> {
   return persistentHash<Vector<2, Bytes<32>>>([pad(32, "veilcore:commit"), secret]);
@@ -68,8 +68,8 @@ export circuit merkleStep(node: Bytes<32>, sibling: Bytes<32>, siblingIsLeft: Bo
 
 export circuit merkleRoot(
   leaf: Bytes<32>,
-  siblings: Vector<16, Bytes<32>>,
-  dirs: Vector<16, Boolean>,
+  siblings: Vector<24, Bytes<32>>,
+  dirs: Vector<24, Boolean>,
 ): Bytes<32> {
   const n0 = merkleStep(leaf, siblings[0], dirs[0]);
   const n1 = merkleStep(n0, siblings[1], dirs[1]);
@@ -87,12 +87,20 @@ export circuit merkleRoot(
   const n13 = merkleStep(n12, siblings[13], dirs[13]);
   const n14 = merkleStep(n13, siblings[14], dirs[14]);
   const n15 = merkleStep(n14, siblings[15], dirs[15]);
-  return n15;
+  const n16 = merkleStep(n15, siblings[16], dirs[16]);
+  const n17 = merkleStep(n16, siblings[17], dirs[17]);
+  const n18 = merkleStep(n17, siblings[18], dirs[18]);
+  const n19 = merkleStep(n18, siblings[19], dirs[19]);
+  const n20 = merkleStep(n19, siblings[20], dirs[20]);
+  const n21 = merkleStep(n20, siblings[21], dirs[21]);
+  const n22 = merkleStep(n21, siblings[22], dirs[22]);
+  const n23 = merkleStep(n22, siblings[23], dirs[23]);
+  return n23;
 }
 
 // One byte per level, high bit taken. Hash output is uniform, so slots distribute
 // evenly across the tree.
-export circuit slotBits(recordCommitment: Bytes<32>): Vector<16, Boolean> {
+export circuit slotBits(recordCommitment: Bytes<32>): Vector<24, Boolean> {
   return [
     (recordCommitment[0] as Uint<8>) > 127,
     (recordCommitment[1] as Uint<8>) > 127,
@@ -110,13 +118,21 @@ export circuit slotBits(recordCommitment: Bytes<32>): Vector<16, Boolean> {
     (recordCommitment[13] as Uint<8>) > 127,
     (recordCommitment[14] as Uint<8>) > 127,
     (recordCommitment[15] as Uint<8>) > 127,
+    (recordCommitment[16] as Uint<8>) > 127,
+    (recordCommitment[17] as Uint<8>) > 127,
+    (recordCommitment[18] as Uint<8>) > 127,
+    (recordCommitment[19] as Uint<8>) > 127,
+    (recordCommitment[20] as Uint<8>) > 127,
+    (recordCommitment[21] as Uint<8>) > 127,
+    (recordCommitment[22] as Uint<8>) > 127,
+    (recordCommitment[23] as Uint<8>) > 127,
   ];
 }
 
 // A path's direction bits are its slot position. Checking them against the derived
 // bits is what binds a path to one record — without it, any clean slot's path would
 // satisfy any record's proof.
-export circuit assertPathBelongsTo(recordCommitment: Bytes<32>, dirs: Vector<16, Boolean>): [] {
+export circuit assertPathBelongsTo(recordCommitment: Bytes<32>, dirs: Vector<24, Boolean>): [] {
   const bits = slotBits(recordCommitment);
   assert(disclose(dirs[0] == bits[0]), "Merkle path does not belong to this record");
   assert(disclose(dirs[1] == bits[1]), "Merkle path does not belong to this record");
@@ -134,6 +150,14 @@ export circuit assertPathBelongsTo(recordCommitment: Bytes<32>, dirs: Vector<16,
   assert(disclose(dirs[13] == bits[13]), "Merkle path does not belong to this record");
   assert(disclose(dirs[14] == bits[14]), "Merkle path does not belong to this record");
   assert(disclose(dirs[15] == bits[15]), "Merkle path does not belong to this record");
+  assert(disclose(dirs[16] == bits[16]), "Merkle path does not belong to this record");
+  assert(disclose(dirs[17] == bits[17]), "Merkle path does not belong to this record");
+  assert(disclose(dirs[18] == bits[18]), "Merkle path does not belong to this record");
+  assert(disclose(dirs[19] == bits[19]), "Merkle path does not belong to this record");
+  assert(disclose(dirs[20] == bits[20]), "Merkle path does not belong to this record");
+  assert(disclose(dirs[21] == bits[21]), "Merkle path does not belong to this record");
+  assert(disclose(dirs[22] == bits[22]), "Merkle path does not belong to this record");
+  assert(disclose(dirs[23] == bits[23]), "Merkle path does not belong to this record");
 }
 
 // Verify the current leaf and compute the replacement in one traversal. The
@@ -143,8 +167,8 @@ export circuit assertPathBelongsTo(recordCommitment: Bytes<32>, dirs: Vector<16,
 export circuit replaceLeaf(
   oldLeaf: Bytes<32>,
   newLeaf: Bytes<32>,
-  siblings: Vector<16, Bytes<32>>,
-  dirs: Vector<16, Boolean>,
+  siblings: Vector<24, Bytes<32>>,
+  dirs: Vector<24, Boolean>,
 ): Vector<2, Bytes<32>> {
   const o0 = merkleStep(oldLeaf, siblings[0], dirs[0]);
   const w0 = merkleStep(newLeaf, siblings[0], dirs[0]);
@@ -178,7 +202,23 @@ export circuit replaceLeaf(
   const w14 = merkleStep(w13, siblings[14], dirs[14]);
   const o15 = merkleStep(o14, siblings[15], dirs[15]);
   const w15 = merkleStep(w14, siblings[15], dirs[15]);
-  return [o15, w15];
+  const o16 = merkleStep(o15, siblings[16], dirs[16]);
+  const w16 = merkleStep(w15, siblings[16], dirs[16]);
+  const o17 = merkleStep(o16, siblings[17], dirs[17]);
+  const w17 = merkleStep(w16, siblings[17], dirs[17]);
+  const o18 = merkleStep(o17, siblings[18], dirs[18]);
+  const w18 = merkleStep(w17, siblings[18], dirs[18]);
+  const o19 = merkleStep(o18, siblings[19], dirs[19]);
+  const w19 = merkleStep(w18, siblings[19], dirs[19]);
+  const o20 = merkleStep(o19, siblings[20], dirs[20]);
+  const w20 = merkleStep(w19, siblings[20], dirs[20]);
+  const o21 = merkleStep(o20, siblings[21], dirs[21]);
+  const w21 = merkleStep(w20, siblings[21], dirs[21]);
+  const o22 = merkleStep(o21, siblings[22], dirs[22]);
+  const w22 = merkleStep(w21, siblings[22], dirs[22]);
+  const o23 = merkleStep(o22, siblings[23], dirs[23]);
+  const w23 = merkleStep(w22, siblings[23], dirs[23]);
+  return [o23, w23];
 }
 
 export circuit declareParent(childCommitment: Bytes<32>, parentCommitment: Bytes<32>): [] {

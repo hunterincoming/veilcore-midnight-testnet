@@ -10,7 +10,13 @@
 
 import { pureCircuits as C } from "./managed/lineage/contract/index.js";
 
-export const DEPTH = 16;
+// Derived from the contract, never declared here. This was a hardcoded 16 while
+// the contract was regenerated at 24, which is a silent break: siblingsFor would
+// return sixteen siblings, the circuit would expect twenty-four, and every
+// encumber, discharge and clean proof would fail — after proving, after paying.
+// A constant that has to track a generated file and has nothing enforcing it is
+// a bug waiting for a regeneration.
+export const DEPTH = C.slotBits(new Uint8Array(32)).length;
 export const NULL_LEAF = new Uint8Array(32);
 
 const hex = (u) => Buffer.from(u).toString("hex");

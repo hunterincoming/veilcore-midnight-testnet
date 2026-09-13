@@ -8,6 +8,7 @@ import * as Veilcore from '../../contract/src/managed/veilcore/contract/index.js
 import { CompiledVeilcore } from '../../contract/src/veilcore';
 import { type VeilcorePrivateState, createVeilcorePrivateState } from '../../contract/src/witnesses.js';
 import { deployContract, findDeployedContract } from '@midnight-ntwrk/midnight-js-contracts';
+import { type SigningKey } from '@midnight-ntwrk/midnight-js-protocol/compact-runtime';
 import { combineLatest, map, from, type Observable } from 'rxjs';
 import { toHex } from '@midnight-ntwrk/midnight-js-utils';
 import * as utils from './utils/index.js';
@@ -318,13 +319,49 @@ export class VeilcoreAPI implements DeployedVeilcoreAPI {
     });
   }
 
-  static async deploy(providers: VeilcoreProviders, logger?: Logger): Promise<VeilcoreAPI> {
-    logger?.info('deployContract');
+  /**
+   * Deploy the contract, naming its maintenance authority.
+   *
+   * The authority can insert and remove verifier keys, which means it decides
+   * which circuits the network will accept calls to. That is not a footnote: a
+   * party holding the key can disable any part of this contract, and a registry
+   * whose rules can be rewritten by one party is not the neutral thing the
+   * format claims to be.
+   *
+   * Passing `signingKey` is required rather than optional, deliberately. Left
+   * unset, `deployContract` samples a key, installs it as the authority and
+   * stores it in the private state provider — so a deployment acquires an
+   * authority nobody chose, held in a file nobody decided the custody of. That
+   * is what happened on preprod.
+   *
+   * Passing `null` deploys with NO authority: at the ledger level that is an
+   * empty committee with a threshold of one, which no signature can satisfy, so
+   * the contract is permanently non-upgradable. That is a real option and a
+   * one-way door. Circuits are bound to the proof system that compiled them, and
+   * when the proving stack breaks compatibility an un-upgradable contract cannot
+   * be repaired — only replaced, with every record that names its address left
+   * pointing at a contract that can no longer be called.
+   *
+   * Sealed records still verify either way. Verification is SHA-256 over a
+   * canonical serialisation and needs nothing from any chain, so losing the
+   * contract degrades anchoring rather than invalidating evidence.
+   */
+  static async deploy(
+    providers: VeilcoreProviders,
+    signingKey: SigningKey | null,
+    logger?: Logger,
+  ): Promise<VeilcoreAPI> {
+    logger?.info(
+      signingKey === null
+        ? 'deployContract — NO maintenance authority, permanently non-upgradable'
+        : 'deployContract — with the maintenance authority supplied',
+    );
 
     const deployedVeilcoreContract = await deployContract(providers, {
       compiledContract: CompiledVeilcore,
       privateStateId: veilcorePrivateStateKey,
       initialPrivateState: createVeilcorePrivateState(utils.randomBytes(32)),
+      ...(signingKey === null ? {} : { signingKey }),
     });
 
     logger?.trace({

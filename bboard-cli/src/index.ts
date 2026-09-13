@@ -41,6 +41,7 @@ import { type Config, StandaloneConfig } from './config.js';
 import { levelPrivateStateProvider } from '@midnight-ntwrk/midnight-js-level-private-state-provider';
 import { type ContractAddress } from '@midnight-ntwrk/midnight-js-protocol/compact-runtime';
 import { assertIsContractAddress, toHex } from '@midnight-ntwrk/midnight-js-utils';
+import { sampleSigningKey } from '@midnight-ntwrk/midnight-js-protocol/compact-runtime';
 import { TestEnvironment } from '@midnight-ntwrk/testkit-js';
 import { MidnightWalletProvider } from './midnight-wallet-provider';
 import { randomBytes } from '../../api/src/utils';
@@ -98,7 +99,31 @@ const deployOrJoin = async (
     const choice = await rli.question(DEPLOY_OR_JOIN_QUESTION);
     switch (choice) {
       case '1': {
-        const api = await VeilcoreAPI.deploy(providers, logger);
+        // The authority decides which circuits the network accepts calls to, so
+        // it is asked rather than defaulted. Left to the SDK, a key is sampled
+        // and installed silently and the deployment acquires an authority
+        // nobody chose.
+        logger.info(
+          'A maintenance authority can insert and remove verifier keys, so it can disable any circuit in this contract.',
+        );
+        logger.info(
+          'Without one the contract is permanently non-upgradable, and cannot be repaired when the proof system changes.',
+        );
+        logger.info('Sealed records verify either way — verification is SHA-256 and needs nothing from a chain.');
+        const authority = (await rli.question('Deploy with a maintenance authority? (y/N): ')).trim().toLowerCase();
+
+        let signingKey: string | null = null;
+        if (authority === 'y' || authority === 'yes') {
+          signingKey = (await rli.question('Signing key (blank to generate one): ')).trim() || sampleSigningKey();
+          logger.info(`Maintenance authority signing key: ${signingKey}`);
+          logger.info(
+            'Record this somewhere deliberate. Whoever holds it controls what the contract accepts, and losing it makes the contract permanently non-upgradable.',
+          );
+        } else {
+          logger.info('Deploying with NO maintenance authority. This cannot be undone.');
+        }
+
+        const api = await VeilcoreAPI.deploy(providers, signingKey, logger);
         logger.info(`Deployed contract at address: ${api.deployedContractAddress}`);
         return api;
       }
@@ -488,7 +513,20 @@ export const run = async (config: Config, testEnv: TestEnvironment, logger: Logg
         privateStateStoreName: config.privateStateStoreName,
         signingKeyStoreName: `${config.privateStateStoreName}-signing-keys`,
         privateStoragePasswordProvider: () => {
-          return 'Bboard-Test-2026!';
+          // This store holds the contract's maintenance authority key, which can
+          // insert or remove verifier keys and so decide what the contract accepts.
+          // The literal that used to sit here came from the example this was forked
+          // from and was published in a public repository, which is no password at
+          // all on a network where the contract matters.
+          const password = process.env.VEILCORE_PRIVATE_STATE_PASSWORD;
+          if (!password) {
+            throw new Error(
+              'VEILCORE_PRIVATE_STATE_PASSWORD is not set. It encrypts private state and the ' +
+                'maintenance authority signing key. Sixteen characters or more, with at least ' +
+                'three of uppercase, lowercase, digits and symbols.',
+            );
+          }
+          return password;
         },
         accountId: seed,
       }),

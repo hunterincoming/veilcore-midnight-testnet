@@ -37,6 +37,7 @@ import CompactStandardLibrary;
 // Fixed single-slot fields. No growable container anywhere in this contract.
 export ledger descentSeq: Counter;
 export ledger lastDescent: Bytes<32>;
+export ledger lastClearedAncestor: Bytes<32>;
 export ledger encumberSeq: Counter;
 export ledger cleanProofSeq: Counter;
 export ledger encumberedRoot: Bytes<32>;
@@ -44,9 +45,17 @@ export ledger encumberedRoot: Bytes<32>;
 witness localGeneticSecret(): Bytes<32>;
 witness merkleSiblings(): Vector<24, Bytes<32>>;
 witness merkleDirections(): Vector<24, Boolean>;
+// One ancestor per proof, by design: a verifier collects one proof per generation
+// rather than paying for a bundled walk in every prover key. ancestryChain is a
+// fixed vector so the caller names which ancestor this proof concerns; only
+// element 0 is read.
+//
+// ancestrySiblings and ancestryDirections were declared for a four-generation walk
+// that was never built. They are removed rather than left in place: an unread
+// witness still shapes the interface a caller has to satisfy, and a declaration
+// that describes behaviour the circuit does not have is worse than a missing
+// feature, because a reader plans around it.
 witness ancestryChain(): Vector<4, Bytes<32>>;
-witness ancestrySiblings(): Vector<4, Vector<24, Bytes<32>>>;
-witness ancestryDirections(): Vector<4, Vector<24, Boolean>>;
 
 export circuit commit(secret: Bytes<32>): Bytes<32> {
   return persistentHash<Vector<2, Bytes<32>>>([pad(32, "veilcore:commit"), secret]);
@@ -269,7 +278,27 @@ export circuit discharge(recordCommitment: Bytes<32>, obligationCommitment: Byte
 // each path costs DEPTH hashes, and bundling them makes the prover key unusable in
 // a browser. A verifier collects one proof per generation.
 //
-// The ancestor commitment stays private; only the claiming record is disclosed.
+// WHAT THIS PROVES, AND WHAT IT DOES NOT.
+//
+// It proves that a named commitment occupies a clean slot. It does not prove that
+// commitment is an ancestor of the caller — nothing in contract state records the
+// descent graph, so no circuit can check it. The join is the verifier's: they take
+// the descent edges declared through declareParent, and check that each parent in
+// the chain has a clean proof naming it. That division is deliberate and it is what
+// the file header describes.
+//
+// THE ANCESTOR COMMITMENT IS DISCLOSED, and an earlier version of this circuit hid
+// it. Hiding it was not privacy, it was the proof having no subject: a verifier
+// could see that somebody proved something clean and could not tell what, so they
+// could not perform the join above, and a caller whose real parent was encumbered
+// could supply any commitment with a clean slot and the proof would pass.
+//
+// Disclosing it costs nothing a holder wants to keep. A commitment is a hash and
+// means nothing without the record behind it — the breeding programme, the
+// counterparties and the generation count stay private, which is the privacy the
+// format actually promises. What it does cost is correlation: an observer can see
+// the same commitment cleared repeatedly. A holder who minds that rotates the
+// record's secret and clears under the new commitment.
 export circuit proveAncestorClean(): [] {
   const self = commit(localGeneticSecret());
   const nullLeaf = default<Bytes<32>>;
@@ -278,10 +307,14 @@ export circuit proveAncestorClean(): [] {
   const dirs = merkleDirections();
   const chain = ancestryChain();
 
-  assertPathBelongsTo(chain[0], dirs);
+  const ancestor = disclose(chain[0]);
+  assertPathBelongsTo(ancestor, dirs);
   assert(disclose(merkleRoot(nullLeaf, siblings, dirs)) == encumberedRoot,
          "This ancestor carries an unmet obligation");
 
   cleanProofSeq.increment(1);
-  lastDescent = disclose(self);
+  // Its own slot, because lastDescent holds edge hashes and the two are
+  // indistinguishable as bytes. One field with two meanings is a field a reader
+  // cannot use.
+  lastClearedAncestor = ancestor;
 }

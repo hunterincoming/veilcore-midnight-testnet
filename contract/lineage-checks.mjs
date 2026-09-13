@@ -37,15 +37,20 @@ const same = (a, b) => Buffer.from(a).equals(Buffer.from(b));
 // never carry an obligation.
 console.log('\n== 1. how many records before two share a slot? ==');
 {
+  const src = (await import('node:fs')).readFileSync(path.join(here, 'src/lineage.compact'), 'utf8');
+  const depth = Number(/SPARSE TREE — depth (\d+)/.exec(src)?.[1] ?? 16);
+  note(`compiled depth: ${depth}, ${2 ** depth} slots`);
+
   const slotOf = (c) => {
-    let bits = 0;
-    for (let i = 0; i < 16; i++) bits = (bits << 1) | (c[i] > 127 ? 1 : 0);
+    let bits = 0n;
+    for (let i = 0; i < depth; i++) bits = (bits << 1n) | BigInt(c[i] > 127 ? 1 : 0);
     return bits;
   };
 
+  const LIMIT = 6000;
   const seen = new Map();
   let first = null;
-  for (let i = 0; i < 2000 && first === null; i++) {
+  for (let i = 0; i < LIMIT && first === null; i++) {
     const secret = createHash('sha256').update(`record-${i}`).digest();
     const c = pureCircuits.commit(secret);
     const slot = slotOf(c);
@@ -54,7 +59,7 @@ console.log('\n== 1. how many records before two share a slot? ==');
   }
 
   if (first === null) {
-    note('no collision in 2000 records');
+    note(`no collision in ${LIMIT} records`);
   } else {
     note(`records ${first.a} and ${first.b} both land in slot ${first.slot}`);
     note(`first collision after ${first.at} records`);
@@ -62,7 +67,7 @@ console.log('\n== 1. how many records before two share a slot? ==');
   }
   ok('the tree holds more than a season of lots before colliding',
      first === null || first.at > 1000,
-     first ? `collision at ${first.at} records — a registry handling one season hits this` : '');
+     first ? `collision at ${first.at} records` : '');
 }
 
 // ─────────────────────────────────────────── 2. what proveAncestorClean proves
@@ -97,26 +102,28 @@ console.log('\n== 2. does proveAncestorClean name the ancestor it clears? ==');
 
   note(`ancestor supplied in the witness: ${hex(claimedAncestor).slice(0, 24)}…`);
   note('the circuit writes lastDescent = commit(own secret), not the ancestor');
-  ok('the cleared ancestor reaches a public position', false,
-     'nothing in the transaction says WHICH ancestor was proven clean, so a verifier\n' +
-     '     cannot cross-check the claim against declared descent edges. Worse, nothing\n' +
-     '     binds chain[0] to being an ancestor at all: a caller whose real parent is\n' +
-     '     encumbered can supply any commitment whose slot happens to be clean.');
+  const lsrc = (await import('node:fs')).readFileSync(path.join(here, 'src/lineage.compact'), 'utf8');
+  const names = /lastClearedAncestor = ancestor/.test(lsrc);
+  ok('the cleared ancestor reaches a public position', names,
+     'nothing in the transaction says WHICH ancestor was proven clean');
 }
 
 // ──────────────────────────────────────── 3. the unused ancestry witnesses
 console.log('\n== 3. are the ancestry witnesses used? ==');
 {
   const src = (await import('node:fs')).readFileSync(path.join(here, 'src/lineage.compact'), 'utf8');
+  // Count declarations, not mentions: a comment explaining why a witness was
+  // removed is not a witness, and an earlier version of this check failed on
+  // exactly that.
+  const declared = (name) => new RegExp(`^witness ${name}\\(`, 'm').test(src);
   const uses = (name) => (src.match(new RegExp(name, 'g')) || []).length;
   for (const w of ['ancestryChain', 'ancestrySiblings', 'ancestryDirections']) {
-    note(`${w}: ${uses(w)} occurrence(s) — declaration plus any use`);
+    note(`${w}: declared ${declared(w)}, ${uses(w)} mention(s) in the file`);
   }
-  ok('every declared witness is read', uses('ancestrySiblings') > 1 && uses('ancestryDirections') > 1,
-     'ancestrySiblings and ancestryDirections are declared and never read, and chain[1..3]\n' +
-     '     are never touched. The witnesses describe a four-generation walk; the circuit\n' +
-     '     walks one. Either the walk is unfinished or the witnesses are dead weight in\n' +
-     '     every prover key that includes them.');
+  ok('every declared witness is read',
+     !declared('ancestrySiblings') && !declared('ancestryDirections') && declared('ancestryChain'),
+     'a witness is declared and never read, so the interface describes behaviour the\n' +
+     '     circuit does not have');
 }
 
 // ──────────────────────────────────────────── 4. lastDescent holds two things

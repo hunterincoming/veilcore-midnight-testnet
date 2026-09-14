@@ -17,7 +17,12 @@ import { newNonce, fingerprintRecord } from './commitment';
  * recipient's own handle and key, so the claim points at someone.
  */
 export type Attestation = {
+  /** Legacy name for addressedTo — kept so records written before the rename still render. */
   readonly attesterHandle?: string;
+  /** The handle the sender addressed. Not a party this attestation confirms. */
+  readonly addressedTo?: string;
+  /** What the claim establishes, in words. */
+  readonly confirms?: string;
   readonly attesterKey?: string;
   readonly type?: string;
   readonly transferId?: string;

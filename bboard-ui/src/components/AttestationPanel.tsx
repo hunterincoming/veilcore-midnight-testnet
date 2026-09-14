@@ -46,9 +46,18 @@ export const AttestationPanel: React.FC<{ record: StrainRecord }> = ({ record })
 
       {legacy && items.length === 0 && (
         <Alert severity="info" variant="outlined">
-          Confirmed by {legacy.attesterHandle ?? 'a second party'} on {new Date(legacy.attestedAt).toLocaleDateString()}{' '}
-          through a transfer claim. Recorded before signing existed, so it identifies a party without proving who they
-          are.
+          {/* The lead sentence used to read "Confirmed by bob", which asserts the thing
+              the caveat below then walks back. A transfer claim establishes that
+              someone holding the sender's code took delivery — the handle is who the
+              sender addressed, not a party this confirms, because a recipient holds no
+              key when the offer is made. */}
+          Delivery taken on {new Date(legacy.attestedAt).toLocaleDateString()} by a party holding the code the sender
+          issued
+          {(legacy.addressedTo ?? legacy.attesterHandle)
+            ? `, addressed to ${legacy.addressedTo ?? legacy.attesterHandle}`
+            : ''}
+          . Recorded before signing existed, so it establishes that a second party took delivery without proving who
+          they are.
         </Alert>
       )}
 

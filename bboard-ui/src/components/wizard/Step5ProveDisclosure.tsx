@@ -147,8 +147,9 @@ export const Step5ProveDisclosure: React.FC<{ recordId: string; onDone: () => vo
         <Alert severity="success" variant="outlined" icon={<VerifiedIcon />}>
           <Typography variant="subtitle2">Proof sealed locally · {shortFingerprint(result.token)}</Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, mb: 1 }}>
-            Share this recipient-specific link. It shows only what you selected — the withheld facts stay sealed and
-            provable, and the genetics are never disclosed.
+            Share this recipient-specific link. It shows only what you selected — the withheld facts are not shown, and
+            the genetics are never disclosed. Proving a withheld fact without revealing it needs the per-field scheme,
+            which the specification does not yet define.
           </Typography>
           <TextField
             value={result.absolute}

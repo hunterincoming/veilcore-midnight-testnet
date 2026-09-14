@@ -83,7 +83,9 @@ export class DescentGraph {
    * @param provenClean   hex commitments with a verified clean proof
    */
   verifyDescent(record, provenClean) {
-    const cleared = new Set([...provenClean].map((c) => (typeof c === 'string' ? c : hex(c))));
+    const cleared = new Set(
+      [...provenClean].map((c) => (typeof c === "string" ? c : hex(c))),
+    );
     const seen = new Set();
     const missing = [];
 

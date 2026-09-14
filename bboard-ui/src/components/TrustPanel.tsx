@@ -13,8 +13,8 @@ import { TEAL } from '../config/theme';
 const POINTS = [
   {
     icon: <ScheduleIcon />,
-    title: 'First to log it wins',
-    body: 'Priority goes to whoever sealed the record first. Logging someone else’s cultivar later puts you behind their record, not ahead of it.',
+    title: 'An earlier record beats a later one',
+    body: 'Between two sealed records, the earlier one was sealed earlier and anyone can check that. It does not settle a claim against someone who never logged anything — a record is evidence, not a registration.',
   },
   {
     icon: <ScienceIcon />,
@@ -23,8 +23,8 @@ const POINTS = [
   },
   {
     icon: <GroupIcon />,
-    title: 'A second party vouches',
-    body: 'Lab attestation adds an independent party who confirms they handled the sample — far stronger than a record you signed alone.',
+    title: 'A second party takes delivery',
+    body: 'When material is transferred, the party who takes it confirms receipt with their own key. That is a second party in the record rather than you alone — what it establishes is that someone took delivery, not who they are.',
   },
   {
     icon: <AccountTreeIcon />,

@@ -3,10 +3,9 @@
 // they hold valid rights without exposing the terms or genetics (prove-a-license).
 // SPDX-License-Identifier: Apache-2.0
 
-import React, { useState } from 'react';
+import React from 'react';
 import { Alert, Box, Button, Chip, Container, Divider, Paper, Stack, Typography } from '@mui/material';
 import { useParams } from 'react-router-dom';
-import VerifiedIcon from '@mui/icons-material/VerifiedOutlined';
 import {
   useLicenses,
   getLicense,
@@ -33,7 +32,6 @@ export const CounterSignPage: React.FC = () => {
   useLicenses();
   const { id = '' } = useParams();
   const license = getLicense(id);
-  const [proven, setProven] = useState(false);
 
   return (
     <Box sx={{ minHeight: '100vh', background: '#04070a' }}>
@@ -95,20 +93,20 @@ export const CounterSignPage: React.FC = () => {
             {effectiveState(license) === 'active' && (
               <Stack spacing={1.5}>
                 <Alert severity="success" variant="outlined">
-                  Active — both parties have signed. These rights are now enforceable and bound to the genetics.
+                  Active — both parties have signed. The terms are bound to the record, and what that is worth in a
+                  dispute is for the parties and, if it comes to it, a court.
                 </Alert>
-                {proven ? (
-                  <Alert icon={<VerifiedIcon />} severity="success" variant="outlined">
-                    ✓ Valid, active license proven — without revealing the terms, the counterparty, or the genetics.
-                  </Alert>
-                ) : (
-                  <Box>
-                    <Button variant="outlined" startIcon={<VerifiedIcon />} onClick={() => setProven(true)}>
-                      Prove my license
-                    </Button>
-                    <Chip size="small" variant="outlined" label="zero-knowledge" sx={{ ml: 1 }} />
-                  </Box>
-                )}
+                {/* This button used to set a boolean and render "license proven". No
+                    circuit ran, nothing was checked, and the word next to it was
+                    zero-knowledge — a button that prints a success message is the
+                    simulate button this project removed once already. It now says what
+                    it is. Wiring it to proveLicense means a wallet, a proof server and
+                    a deployed contract, which the web app does not have. */}
+                <Alert severity="info" variant="outlined">
+                  Proving a licence without revealing its terms runs the proveLicense circuit, which needs a wallet and
+                  a proof server. The CLI in <code>bboard-cli</code> does it against the deployed contract. This page
+                  cannot, and will not pretend to.
+                </Alert>
               </Stack>
             )}
 

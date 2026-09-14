@@ -16,7 +16,6 @@ import { toHex } from '@midnight-ntwrk/midnight-js-utils';
 import {
   type DeployedLineageContract,
   type LineageProviders,
-  type DescentVerdict,
   lineagePrivateStateKey,
 } from './lineage-types.js';
 import { type LineagePrivateState } from '../../contract/src/witnesses.js';
@@ -97,7 +96,10 @@ export class LineageAPI {
    * paths quadrupled the prover key, which put it out of reach of a browser. A
    * verifier collects one proof per generation instead.
    */
-  async proveAncestorClean(ancestorCommitment: Uint8Array, path: SlotPath): Promise<void> {
+  async proveAncestorClean(
+    ancestorCommitment: Uint8Array,
+    path: SlotPath,
+  ): Promise<{ ancestor: Uint8Array; txHash: string; blockHeight: number }> {
     await this.setPath(path, [ancestorCommitment]);
     this.logger?.info('proving ancestor clean (zk)');
     const txData = await this.deployedContract.callTx.proveAncestorClean();
@@ -108,12 +110,28 @@ export class LineageAPI {
         blockHeight: txData.public.blockHeight,
       },
     });
+
+    // The circuit discloses which ancestor it cleared and writes it to
+    // lastClearedAncestor. Returning void discarded it, which is the same defect this
+    // layer had with proveOwnership: a verifier cannot join the proof to a declared
+    // descent edge without knowing what was proven clean, and a proof with no subject
+    // is one a caller whose real parent is encumbered could produce against any clean
+    // record.
+    return {
+      ancestor: ancestorCommitment,
+      txHash: txData.public.txHash,
+      blockHeight: txData.public.blockHeight,
+    };
   }
 
   /** Write the path (and optionally the claimed ancestry) into private state. */
   private async setPath(path: SlotPath, ancestry?: Uint8Array[]): Promise<void> {
     const current = (await this.providers.privateStateProvider.get(lineagePrivateStateKey)) as LineagePrivateState;
 
+    // Four slots because the witness is a fixed vector, though the circuit reads only
+    // element 0 — one ancestor per proof, by design, since bundling a whole lineage
+    // quadrupled the prover key. The padding is not dead weight in the proof, it is
+    // the shape the witness declares.
     const zero = () => new Uint8Array(32);
     const chain = Array.from({ length: 4 }, (_, i) => ancestry?.[i] ?? zero());
 
@@ -127,28 +145,20 @@ export class LineageAPI {
   }
 }
 
-/**
- * Verify a clean-descent claim. Both mechanisms must agree.
- *
- * The Merkle side is checked on chain by the circuit; this is the graph side, and
- * it is what stops a prover naming a convenient unrelated record as their parent —
- * a claim whose Merkle proof would verify perfectly.
- */
-export const verifyDescentClaim = (
-  hasDeclaredEdge: (child: Uint8Array, parent: Uint8Array) => boolean,
-  requiredDepth: number,
-  record: Uint8Array,
-  claimedChain: Uint8Array[],
-): DescentVerdict => {
-  if (claimedChain.length < requiredDepth) {
-    return { ok: false, reason: 'ancestry incomplete — a generation was omitted' };
-  }
-  let current = record;
-  for (const ancestor of claimedChain) {
-    if (!hasDeclaredEdge(current, ancestor)) {
-      return { ok: false, reason: 'ancestry rejected — no declared edge for this link' };
-    }
-    current = ancestor;
-  }
-  return { ok: true };
-};
+// verifyDescentClaim was here and is deliberately gone.
+//
+// It was the third implementation of descent verification in this project, and it
+// carried the same defect as the other two: it walked the claimed chain as a single
+// line, so a cross — a seed parent and a pollen parent, which is every cannabis
+// variety — could not be verified by any chain a caller supplied. One parent was
+// refused as an omitted generation, both were refused because the second is not the
+// first's parent.
+//
+// Nothing imported it. Deleting beats fixing, because the next person needing this
+// might have found this copy rather than the correct one.
+//
+// The verifier walks the graph rather than the caller's list, in
+// contract/src/descent.mjs (verifyDescent) and behind POST /lineage/verify on the
+// registry. Both take the set of ancestors a caller holds clean proofs for and
+// require every declared ancestor to be covered, which also closes omission: a
+// seller whose grandparent is encumbered cannot pass by declaring only the parent.

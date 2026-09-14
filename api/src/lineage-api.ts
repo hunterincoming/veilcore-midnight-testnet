@@ -13,11 +13,7 @@
 import { type Logger } from 'pino';
 import { type ContractAddress } from '@midnight-ntwrk/compact-runtime';
 import { toHex } from '@midnight-ntwrk/midnight-js-utils';
-import {
-  type DeployedLineageContract,
-  type LineageProviders,
-  lineagePrivateStateKey,
-} from './lineage-types.js';
+import { type DeployedLineageContract, type LineageProviders, lineagePrivateStateKey } from './lineage-types.js';
 import { type LineagePrivateState } from '../../contract/src/witnesses.js';
 
 /** A record's position and path in the obligation tree. */

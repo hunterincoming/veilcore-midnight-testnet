@@ -54,6 +54,12 @@ const dualFold = Array.from({ length: DEPTH }, (_, i) =>
     : `  const o${i} = merkleStep(o${i - 1}, siblings[${i}], dirs[${i}]);\n  const w${i} = merkleStep(w${i - 1}, siblings[${i}], dirs[${i}]);`
 ).join('\n');
 
+const emptyFold = Array.from({ length: DEPTH }, (_, i) =>
+  i === 0
+    ? '  const e0 = merkleStep(nullLeaf, nullLeaf, false);'
+    : `  const e${i} = merkleStep(e${i - 1}, e${i - 1}, false);`
+).join('\n');
+
 const slotBits = Array.from({ length: DEPTH }, (_, i) =>
   `    (recordCommitment[${i}] as Uint<8>) > 127,`
 ).join('\n');
@@ -103,10 +109,47 @@ import CompactStandardLibrary;
 // Fixed single-slot fields. No growable container anywhere in this contract.
 export ledger descentSeq: Counter;
 export ledger lastDescent: Bytes<32>;
+
+// The edge hash alone lets a verifier TEST a pair they already suspect. It does not
+// let them ENUMERATE a record's parents, so the descent graph cannot be rebuilt from
+// chain data and every clean-descent answer depends on the registry that watched the
+// API calls. Child and parent go on chain so the graph is independently obtainable.
+export ledger lastDescentChild: Bytes<32>;
+export ledger lastDescentParent: Bytes<32>;
+
+// Same for the obligation tree. An encumbrance published only its new root, so a
+// third party saw a sequence of roots without the leaves that produced them: it could
+// build no sibling path and could not tell which records were encumbered.
+export ledger lastEncumberedRecord: Bytes<32>;
+export ledger lastObligation: Bytes<32>;
 export ledger lastClearedAncestor: Bytes<32>;
 export ledger encumberSeq: Counter;
 export ledger cleanProofSeq: Counter;
 export ledger encumberedRoot: Bytes<32>;
+
+/**
+ * Set the obligation tree to its empty root.
+ *
+ * Without this the root starts at the default Bytes<32>, which is all zeros — and
+ * all zeros is not the root of an empty tree, it is an unset cell. Every encumber
+ * then fails "Slot is not clean" and every proveAncestorClean fails "This ancestor
+ * carries an unmet obligation", because both compare a correctly folded root
+ * against a value no fold can produce. The contract deployed dead.
+ *
+ * The suite did not catch it. The tree tests compare pure circuits against an empty
+ * root computed off-chain, and nothing ran encumber against a freshly constructed
+ * state. One harness did call proveAncestorClean on the initial state, got the
+ * refusal, and reported it as expected — a test that saw the bug and called it
+ * correct.
+ *
+ * The fold pairs the null leaf with itself at every level, which is what an empty
+ * sparse tree is.
+ */
+constructor() {
+  const nullLeaf = default<Bytes<32>>;
+${emptyFold}
+  encumberedRoot = e${DEPTH - 1};
+}
 
 witness localGeneticSecret(): Bytes<32>;
 witness merkleSiblings(): Vector<${DEPTH}, Bytes<32>>;
@@ -186,6 +229,8 @@ export circuit declareParent(childCommitment: Bytes<32>, parentCommitment: Bytes
   const p = disclose(parentCommitment);
   descentSeq.increment(1);
   lastDescent = descentEdge(c, p);
+  lastDescentChild = c;
+  lastDescentParent = p;
 }
 
 export circuit encumber(recordCommitment: Bytes<32>, obligationCommitment: Bytes<32>): [] {
@@ -204,6 +249,8 @@ export circuit encumber(recordCommitment: Bytes<32>, obligationCommitment: Bytes
   assert(disclose(roots[0]) == encumberedRoot, "Slot is not clean, or the Merkle path is invalid");
   encumberSeq.increment(1);
   encumberedRoot = disclose(roots[1]);
+  lastEncumberedRecord = rc;
+  lastObligation = oc;
 }
 
 export circuit discharge(recordCommitment: Bytes<32>, obligationCommitment: Bytes<32>): [] {
@@ -222,6 +269,8 @@ export circuit discharge(recordCommitment: Bytes<32>, obligationCommitment: Byte
   assert(disclose(roots[0]) == encumberedRoot, "No such obligation at this slot, or the Merkle path is invalid");
   encumberSeq.increment(1);
   encumberedRoot = disclose(roots[1]);
+  lastEncumberedRecord = rc;
+  lastObligation = oc;
 }
 
 // Prove one ancestor is clean. One Merkle path per proof, not five in one circuit:

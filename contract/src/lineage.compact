@@ -37,10 +37,70 @@ import CompactStandardLibrary;
 // Fixed single-slot fields. No growable container anywhere in this contract.
 export ledger descentSeq: Counter;
 export ledger lastDescent: Bytes<32>;
+
+// The edge hash alone lets a verifier TEST a pair they already suspect. It does not
+// let them ENUMERATE a record's parents, so the descent graph cannot be rebuilt from
+// chain data and every clean-descent answer depends on the registry that watched the
+// API calls. Child and parent go on chain so the graph is independently obtainable.
+export ledger lastDescentChild: Bytes<32>;
+export ledger lastDescentParent: Bytes<32>;
+
+// Same for the obligation tree. An encumbrance published only its new root, so a
+// third party saw a sequence of roots without the leaves that produced them: it could
+// build no sibling path and could not tell which records were encumbered.
+export ledger lastEncumberedRecord: Bytes<32>;
+export ledger lastObligation: Bytes<32>;
 export ledger lastClearedAncestor: Bytes<32>;
 export ledger encumberSeq: Counter;
 export ledger cleanProofSeq: Counter;
 export ledger encumberedRoot: Bytes<32>;
+
+/**
+ * Set the obligation tree to its empty root.
+ *
+ * Without this the root starts at the default Bytes<32>, which is all zeros — and
+ * all zeros is not the root of an empty tree, it is an unset cell. Every encumber
+ * then fails "Slot is not clean" and every proveAncestorClean fails "This ancestor
+ * carries an unmet obligation", because both compare a correctly folded root
+ * against a value no fold can produce. The contract deployed dead.
+ *
+ * The suite did not catch it. The tree tests compare pure circuits against an empty
+ * root computed off-chain, and nothing ran encumber against a freshly constructed
+ * state. One harness did call proveAncestorClean on the initial state, got the
+ * refusal, and reported it as expected — a test that saw the bug and called it
+ * correct.
+ *
+ * The fold pairs the null leaf with itself at every level, which is what an empty
+ * sparse tree is.
+ */
+constructor() {
+  const nullLeaf = default<Bytes<32>>;
+  const e0 = merkleStep(nullLeaf, nullLeaf, false);
+  const e1 = merkleStep(e0, e0, false);
+  const e2 = merkleStep(e1, e1, false);
+  const e3 = merkleStep(e2, e2, false);
+  const e4 = merkleStep(e3, e3, false);
+  const e5 = merkleStep(e4, e4, false);
+  const e6 = merkleStep(e5, e5, false);
+  const e7 = merkleStep(e6, e6, false);
+  const e8 = merkleStep(e7, e7, false);
+  const e9 = merkleStep(e8, e8, false);
+  const e10 = merkleStep(e9, e9, false);
+  const e11 = merkleStep(e10, e10, false);
+  const e12 = merkleStep(e11, e11, false);
+  const e13 = merkleStep(e12, e12, false);
+  const e14 = merkleStep(e13, e13, false);
+  const e15 = merkleStep(e14, e14, false);
+  const e16 = merkleStep(e15, e15, false);
+  const e17 = merkleStep(e16, e16, false);
+  const e18 = merkleStep(e17, e17, false);
+  const e19 = merkleStep(e18, e18, false);
+  const e20 = merkleStep(e19, e19, false);
+  const e21 = merkleStep(e20, e20, false);
+  const e22 = merkleStep(e21, e21, false);
+  const e23 = merkleStep(e22, e22, false);
+  encumberedRoot = e23;
+}
 
 witness localGeneticSecret(): Bytes<32>;
 witness merkleSiblings(): Vector<24, Bytes<32>>;
@@ -236,6 +296,8 @@ export circuit declareParent(childCommitment: Bytes<32>, parentCommitment: Bytes
   const p = disclose(parentCommitment);
   descentSeq.increment(1);
   lastDescent = descentEdge(c, p);
+  lastDescentChild = c;
+  lastDescentParent = p;
 }
 
 export circuit encumber(recordCommitment: Bytes<32>, obligationCommitment: Bytes<32>): [] {
@@ -254,6 +316,8 @@ export circuit encumber(recordCommitment: Bytes<32>, obligationCommitment: Bytes
   assert(disclose(roots[0]) == encumberedRoot, "Slot is not clean, or the Merkle path is invalid");
   encumberSeq.increment(1);
   encumberedRoot = disclose(roots[1]);
+  lastEncumberedRecord = rc;
+  lastObligation = oc;
 }
 
 export circuit discharge(recordCommitment: Bytes<32>, obligationCommitment: Bytes<32>): [] {
@@ -272,6 +336,8 @@ export circuit discharge(recordCommitment: Bytes<32>, obligationCommitment: Byte
   assert(disclose(roots[0]) == encumberedRoot, "No such obligation at this slot, or the Merkle path is invalid");
   encumberSeq.increment(1);
   encumberedRoot = disclose(roots[1]);
+  lastEncumberedRecord = rc;
+  lastObligation = oc;
 }
 
 // Prove one ancestor is clean. One Merkle path per proof, not five in one circuit:

@@ -49,3 +49,9 @@ node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# Generated test fixture, not a deployed contract. `npm run compact` regenerates it
+# from gen-lineage.mjs; verify-max-7.mjs grinds a slot collision against it, which
+# costs 27 million hashes at the production depth and a few hundred at depth 8.
+# Tracked it would put 620 lines of generated output into every review.
+contract/src/lineage-shallow.compact

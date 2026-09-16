@@ -171,13 +171,17 @@ console.log('\n== 4. does lastDescent hold one kind of value? ==');
   // commitment are indistinguishable as bytes, and only running both shows whether
   // one cell is being asked to carry both.
   const childSecret = createHash('sha256').update('child').digest();
+  const parentSecret = createHash('sha256').update('parent').digest();
   const child = pureCircuits.commit(childSecret);
-  const parent = pureCircuits.commit(createHash('sha256').update('parent').digest());
+  const parent = pureCircuits.commit(parentSecret);
 
+  // An edge takes both parties now: the child offers, the named parent confirms
+  // under their own secret. declareParent did it in one call on the child's word.
   let ctx = freshCtx();
-  ctx = party({ own: childSecret }).impureCircuits.declareParent(ctx, child, parent).context;
+  ctx = party({ own: childSecret }).impureCircuits.proposeParent(ctx, child, parent).context;
+  ctx = party({ own: parentSecret }).impureCircuits.confirmParent(ctx, child, parent).context;
   const afterEdge = ledger(ctx.currentQueryContext.state);
-  note(`after declareParent, lastDescent = ${hex(afterEdge.lastDescent).slice(0, 24)}…`);
+  note(`after confirmParent, lastDescent = ${hex(afterEdge.lastDescent).slice(0, 24)}…`);
   ok('lastDescent holds the edge hash',
      same(afterEdge.lastDescent, pureCircuits.descentEdge(child, parent)));
 

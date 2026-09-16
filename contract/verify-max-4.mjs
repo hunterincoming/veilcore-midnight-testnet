@@ -4,16 +4,14 @@
  * L2 and L6 run against the compiled artifact. L4 is stated rather than fixed and
  * the last section shows why no circuit can close it.
  *
- * L3 IS NOT DEMONSTRATED HERE, and the header used to say it was. It has two
- * halves and they are in different places:
+ * L3 has two halves and they are closed in different places:
  *   · silence — a child declaring nothing, or stopping short — is closed off
  *     chain by verifyDescent walking the declared graph. descent-checks.mjs
  *     cases 2 and 4, and test-descent.mjs, run it.
- *   · substitution — a child declaring a parent that never agreed — is NOT
- *     closed. declareParent still takes the parent's commitment on the child
- *     holder's word alone; the review's direction is a propose/countersign pair
- *     shaped like the licence flow, and no circuit here does that yet.
- * Naming a case in a summary line is not running it.
+ *   · substitution — a child declaring a parent that never agreed — is closed on
+ *     chain, below. declareParent took the parent on the child holder's word;
+ *     proposeParent/confirmParent is the licence transfer flow's shape, so the
+ *     record being named has to prove its own secret before the edge exists.
  *
  *   node contract/verify-max-4.mjs
  */
@@ -165,6 +163,76 @@ console.log('\n== L6. does a clean proof name who made it? ==');
   ok('a record is not its own ancestor', selfErr !== '', 'a record cleared itself');
 }
 
+// ── L3: can a child name a parent that never agreed? ────────────────────────
+console.log('\n== L3. does an edge take the parent\'s agreement? ==');
+{
+  ctx = emptyCtx();
+  const sellerSecret = sec('seller');
+  const strangerSecret = sec('a-clean-stranger');
+  const seller = C.commit(sellerSecret);
+  const stranger = C.commit(strangerSecret);
+  const realMother = C.commit(sec('the-encumbered-mother'));
+
+  const edges = (who, circuit, ...args) =>
+    refused(party(who, who), circuit, [], [], ...args);
+
+  // The seller's real mother is encumbered, so they name a clean stranger instead.
+  const proposed = edges(sellerSecret, 'proposeParent', seller, stranger);
+  note(proposed ? `proposal refused: ${proposed}` : 'the seller proposed the stranger as their parent');
+  ok('anyone may still PROPOSE any parent', proposed === '',
+     'proposing is an offer, not a claim — refusing it here would only move the\n' +
+     '     problem to whoever decides which offers are allowed');
+
+  note(`pendingParentOf holds the offer: ${state().pendingParentOf.member(seller)}`);
+  ok('an unconfirmed proposal is not an edge',
+     Number(state().descentSeq) === 0 &&
+     hex(state().lastDescentChild) === hex(new Uint8Array(32)),
+     'a proposal that counted as an edge would be declareParent with extra steps');
+
+  // The seller confirms it themselves. This is the whole attack.
+  const selfConfirm = edges(sellerSecret, 'confirmParent', seller, stranger);
+  note(selfConfirm ? `self-confirmation refused: ${selfConfirm}` : 'the seller confirmed their own parentage');
+  ok('THE SELLER CANNOT CONFIRM AN EDGE TO SOMEBODY ELSE', selfConfirm !== '',
+     'declareParent asserted the CHILD\'s preimage and took the parent on their word,\n' +
+     '     so a seller whose mother was encumbered declared descent from any clean\n' +
+     '     record they liked and the edge was indistinguishable from a real one');
+
+  // Nor can a third party who holds neither.
+  const byStrangerElse = edges(sec('unrelated'), 'confirmParent', seller, stranger);
+  ok('nor can a bystander confirm it', byStrangerElse !== '');
+
+  // The named record itself can — that is what consent means.
+  const consented = edges(strangerSecret, 'confirmParent', seller, stranger);
+  note(consented ? `refused: ${consented}` : 'the named parent agreed, and the edge exists');
+  ok('the named parent can confirm, and only then is there an edge', consented === '',
+     consented);
+  ok('the edge is on chain once both parties have acted',
+     hex(state().lastDescentChild) === hex(seller) &&
+     hex(state().lastDescentParent) === hex(stranger) &&
+     Number(state().descentSeq) === 1);
+
+  // And a child cannot swap the parent out from under a confirmation.
+  ctx = emptyCtx();
+  const childSecret = sec('swapper');
+  const child = C.commit(childSecret);
+  const agreed = C.commit(sec('parent-who-agreed'));
+  const other = C.commit(sec('parent-who-did-not'));
+  refused(party(childSecret, childSecret), 'proposeParent', [], [], child, agreed);
+  refused(party(childSecret, childSecret), 'withdrawParent', [], [], child);
+  refused(party(childSecret, childSecret), 'proposeParent', [], [], child, other);
+  const stale = edges(sec('parent-who-agreed'), 'confirmParent', child, agreed);
+  ok('a confirmation lands on the parent that is actually proposed', stale !== '',
+     'the parent agreed to one thing and the child re-proposed another underneath\n' +
+     '     them — the same swap approveTransfer takes expectedNewLicense to stop');
+
+  note('');
+  note('WHAT THIS COSTS: a record whose parent has no holder — a landrace, a');
+  note('collection accession, a breeder who has gone — can never have that edge');
+  note('confirmed. Descent through such a record is not expressible, which is why a');
+  note('registry requires a confirmed path to an origin IT recognises rather than');
+  note('reading a sparse graph as a clean one.');
+}
+
 // ── L4: what cannot be fixed here ───────────────────────────────────────────
 console.log('\n== L4. a fresh secret is a clean slot, and no circuit stops that ==');
 {
@@ -180,6 +248,6 @@ console.log('\n== L4. a fresh secret is a clean slot, and no circuit stops that 
 }
 
 console.log(`\n${bad === 0
-  ? 'L2 and L6 closed; L4 stated; L3 substitution still open (see header)'
+  ? 'L2, L3 and L6 closed; L4 stated and unclosable'
   : `${bad} check(s) failing`}`);
 process.exit(bad === 0 ? 0 : 1);

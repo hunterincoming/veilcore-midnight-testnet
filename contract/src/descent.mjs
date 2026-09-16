@@ -1,16 +1,23 @@
 // Descent graph reconstruction and lineage verification.
 //
 // The contract proves a claimed ancestor is unencumbered. It cannot prove the
-// claimed ancestor is the real one — a prover could name any clean record as their
-// parent. That half is closed here: declareParent discloses descentEdge(child,
-// parent) into a transaction, so the true graph is public and permanent.
+// claimed ancestor is the real one — that is established by the edges in
+// transaction history, which this module reconstructs.
 //
-// TWO ATTACKS, AND THEY NEED DIFFERENT ANSWERS. Substitution — naming an unrelated
-// clean record — is caught by checking the edge was declared. Omission — declaring
-// the parent and staying quiet about the grandparent — states nothing false and
-// passes any check that walks only what the prover hands over. So the verifier
-// walks the graph themselves: they supply the set of ancestors they hold clean
-// proofs for, and verifyDescent requires every declared ancestor to be in it.
+// TWO ATTACKS, AND THEY ARE CLOSED IN DIFFERENT PLACES.
+//
+// SUBSTITUTION — naming an unrelated clean record as your mother — is closed ON
+// CHAIN. An edge takes proposeParent from the child and confirmParent from the
+// named parent, each under their own secret, so a record cannot be written into
+// somebody's pedigree without agreeing to it. It used to be one unilateral call,
+// and the edge it produced was indistinguishable from a real one; checking that an
+// edge "was declared" therefore checked only that the prover had declared it.
+//
+// OMISSION — declaring the parent and staying quiet about the grandparent — states
+// nothing false and passes any check that walks only what the prover hands over. So
+// the verifier walks the graph themselves: they supply the set of ancestors they
+// hold clean proofs for, and verifyDescent requires every ancestor it finds to be
+// in it.
 //
 // SPDX-License-Identifier: Apache-2.0
 
@@ -24,7 +31,7 @@ export class DescentGraph {
     this.parentsOf = new Map();
   }
 
-  /** Record an edge observed in a declareParent transaction. */
+  /** Record an edge observed in a confirmParent transaction. */
   observe(child, parent) {
     this.edges.add(hex(C.descentEdge(child, parent)));
     const k = hex(child);

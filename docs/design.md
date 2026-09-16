@@ -164,10 +164,12 @@ ignored independently.
 ### Ledger state
 
 ```
-descentSeq            Counter
+descentSeq            Counter      // confirmed edges
+descentProposalSeq    Counter      // offers and withdrawals
 lastDescent           Bytes<32>    // edge hash
 lastDescentChild      Bytes<32>
 lastDescentParent     Bytes<32>
+pendingParentOf       Map<Bytes<32>, Bytes<32>>   // offered, not yet accepted
 encumberSeq           Counter
 lastEncumberedRecord  Bytes<32>
 lastObligation        Bytes<32>
@@ -180,7 +182,9 @@ recentRoot1..7        Bytes<32>    // the seven before it
 lastProofRoot         Bytes<32>    // which root the last clean proof used
 ```
 
-Twenty fixed slots. No growable container anywhere.
+Twenty-one fixed slots and one map, cleared on confirmation or withdrawal — bounded by
+open proposals rather than cumulative usage, the same bound licensing has and with the
+same remedy: the party who created the entry is the one who can clear it.
 
 **The leaf inputs are on chain because otherwise nobody can rebuild the tree.** An
 encumbrance that published only its new root left a third party watching a sequence of
@@ -195,9 +199,25 @@ sees only these cells, and rebuilds both structures from them.
 
 ### Descent edges are transactions, not state
 
-`declareParent` asserts the caller holds the child's preimage, then discloses
-`descentEdge(child, parent)` into the transaction. The graph is reconstructed off-chain
-from those transactions — public, permanent, and costing no ledger growth.
+**An edge takes both parties.** `proposeParent` asserts the caller holds the *child's*
+preimage and records an offer; `confirmParent` asserts the caller holds the *parent's*
+and turns it into an edge. Until both have acted there is no edge — only a public
+offer, which is exactly as good as the assertion it is.
+
+This is the licence transfer flow's shape, for the same reason. A single unilateral
+`declareParent` let a seller whose real mother was encumbered declare descent from any
+clean record they liked, and the edge it produced was indistinguishable from a real one:
+same circuit, same cells, same hash. Checking that an edge "was declared" therefore
+checked only that the prover had declared it.
+
+Confirmed edges are reconstructed off-chain from transaction history — public,
+permanent, and costing one map entry that is cleared when the offer resolves.
+`descentSeq` counts confirmations and `descentProposalSeq` counts offers, so a reader
+rebuilding the graph counts edges rather than asks.
+
+**What an edge does not mean:** that the child is biologically descended from the
+parent. It means both holders said so. Two colluding parties can agree to any edge they
+like; the DNA pairing narrows that and does not close it.
 
 ### Obligations: a sparse Merkle tree
 
@@ -388,14 +408,23 @@ they cannot do is tie a *presentation* to a member of that set. Unlinkable is al
 invisible — the transaction exists, and its timing is a channel against a holder who is
 the only party likely to be presenting at a given moment.
 
-### 6. Parentage is still declared unilaterally
+### 6. A sparse graph is not a clean one
 
-`declareParent` asserts the caller holds the **child's** preimage and takes the parent
-on their word. Omission is caught by `verifyDescent` walking the graph; **substitution is
-not.** A child naming a parent that never agreed produces an edge that looks exactly like
-a real one. The fix is a propose/countersign pair shaped like the licence flow, and it
-is not built. `verify-max-4.mjs` states this in its header rather than claiming L3
-closed, which an earlier version of that file did.
+Substitution and omission are both closed — the first on chain by two-party edges, the
+second by `verifyDescent` walking rather than the prover supplying. What remains is a
+consequence of the first fix, and a registry has to plan for it.
+
+**A record whose parent has no holder can never have that edge confirmed.** A landrace,
+an accession from a collection that never joined, a breeder who has gone — descent
+through any of them is not expressible, because there is nobody to run `confirmParent`.
+The graph will therefore be sparse at exactly the points where lineage is oldest.
+
+A registry must not read "no declared ancestors" as "clean". That is rule 3 again, from
+the other direction: require a **confirmed path to an origin you recognise**, and treat a
+record whose pedigree stops at an unconfirmable parent as unproven rather than clean.
+Where a collection is willing, the practical answer is for it to hold secrets for its
+accessions and confirm edges to them; where it is not, the line ends there and the
+registry decides what that is worth.
 
 ---
 

@@ -2,7 +2,7 @@
  * Finding 3, answered by building the third party.
  *
  * The review's fix was "publish rc and oc from encumber/discharge, and child and
- * parent from declareParent, through ledger writes". Cells were added for all of
+ * parent from the edge circuits, through ledger writes". Cells were added for all of
  * those. The open question was whether that is actually SUFFICIENT — and the only
  * honest way to answer it is to write the outsider and make them do the work.
  *
@@ -75,6 +75,7 @@ const observe = () => {
     lastCleanProofBy: hex(s.lastCleanProofBy),
     encumberSeq: Number(s.encumberSeq),
     descentSeq: Number(s.descentSeq),
+    descentProposalSeq: Number(s.descentProposalSeq),
     cleanProofSeq: Number(s.cleanProofSeq),
   });
 };
@@ -97,8 +98,14 @@ const ben = (n) => C.commit(benSec(n));
 const obl = (n) => sec(`obligation-${n}`);
 
 // Four records, a two-generation pedigree with a cross at the top.
+//
+// Each edge is two transactions now: the child offers and the named parent confirms
+// under their own secret. Only the confirmation moves descentSeq, so the observer
+// below counts edges rather than offers — an unconfirmed proposal is an assertion,
+// not a link.
 for (const [child, parent] of [[2, 1], [3, 1], [4, 2], [4, 3]]) {
-  run(party(holder(child), holder(child)), 'declareParent', rec(child), rec(parent));
+  run(party(holder(child), holder(child)), 'proposeParent', rec(child), rec(parent));
+  run(party(holder(parent), holder(parent)), 'confirmParent', rec(child), rec(parent));
 }
 
 // Three encumbrances, one of them later discharged and re-attached under a
@@ -125,6 +132,7 @@ attach(3, 'levy', 2);
   run(party(holder(9), holder(9), p.siblings, p.dirs, [rec(4)], p.occupant), 'proveAncestorClean');
 }
 note(`${chainLog.length - 1} transactions, ${insider.leaves.size} obligations outstanding`);
+note(`${chainLog.at(-1).descentSeq} confirmed edges from ${chainLog.at(-1).descentProposalSeq} proposals`);
 
 // ── the outsider ────────────────────────────────────────────────────────────
 /**

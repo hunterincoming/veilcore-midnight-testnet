@@ -12,9 +12,13 @@
 // upstream. Nothing records rights that inherit. This does.
 //
 // STATE MODEL
-// Bounded by design. Every ledger field is a fixed single slot. Obligations live in
-// a sparse Merkle tree represented only by its root; the tree is reconstructed
-// off-chain from transaction history, as the descent graph is.
+// Every ledger field is a fixed single slot except pendingParentOf, which holds
+// parentage offered and not yet accepted and is cleared on confirmation or
+// withdrawal — bounded by open proposals rather than by cumulative usage, the same
+// bound licensing has. Obligations live in a sparse Merkle tree represented only by
+// its root; the tree is reconstructed off-chain from transaction history, as the
+// descent graph is, and the leaf inputs are published so that a third party can
+// actually do it.
 //
 // SPARSE TREE — depth 8, 256 slots
 // Every record has a deterministic slot derived from its own commitment, so no
@@ -50,8 +54,18 @@
 // a registry consuming this should require.
 //
 // BOUNDARY
-// The caller asserts who their ancestors are. A verifier cross-checks that claim
-// against the descent edges declared in transaction history.
+// An edge takes both parties: the child offers and the named parent confirms under
+// their own secret. A seller can still name any record as their mother; what they
+// cannot do is make it stick, because that record has to agree. A verifier walks the
+// confirmed edges in transaction history and requires a clean proof for every
+// ancestor it finds — the walk is the verifier's, never the prover's, because a
+// pedigree branches and a chain handed over by the party who benefits from it is
+// missing whatever was inconvenient.
+//
+// WHAT AN EDGE STILL DOES NOT MEAN: that the child is biologically descended from
+// the parent. It means both holders said so. Two colluding parties can agree to
+// any edge they like, and the contract cannot tell breeding from agreement — that
+// is what the DNA pairing in the provenance contract narrows and does not close.
 
 pragma language_version 0.23;
 
@@ -67,6 +81,32 @@ export ledger lastDescent: Bytes<32>;
 // API calls. Child and parent go on chain so the graph is independently obtainable.
 export ledger lastDescentChild: Bytes<32>;
 export ledger lastDescentParent: Bytes<32>;
+
+/**
+ * Parentage proposed by a child and not yet accepted by the parent.
+ *
+ * AN EDGE USED TO BE UNILATERAL. declareParent asserted the caller held the CHILD's
+ * preimage and took the parent on their word, so a seller whose real mother was
+ * encumbered could declare descent from any clean record they liked. The edge it
+ * produced was indistinguishable from a real one — same circuit, same cells, same
+ * hash — so a verifier walking the graph was walking a graph the seller had
+ * written. Omission was closed by making the verifier walk it; substitution was
+ * not, because the thing being walked was still the prover's claim.
+ *
+ * Naming a parent is now an offer. The propose/countersign shape is the licence
+ * transfer flow: one party asks, the other agrees, and until both have acted
+ * nothing is established.
+ *
+ * Cleared on confirmation and on withdrawal, so it is bounded by open proposals
+ * rather than by cumulative usage — the same bound licensing has, and the same
+ * remedy: the party who created the entry is the one who can clear it.
+ */
+export ledger pendingParentOf: Map<Bytes<32>, Bytes<32>>;
+
+// Proposals and withdrawals move this; confirmations move descentSeq. One counter
+// per kind of event, because a reader rebuilding the graph counts edges and an
+// offer is not an edge.
+export ledger descentProposalSeq: Counter;
 
 // Same for the obligation tree. An encumbrance published only its new root, so a
 // third party saw a sequence of roots without the leaves that produced them: it could
@@ -329,14 +369,74 @@ export circuit replaceLeaf(
   return [o7, w7];
 }
 
-export circuit declareParent(childCommitment: Bytes<32>, parentCommitment: Bytes<32>): [] {
-  assert(childCommitment == commit(localGeneticSecret()), "Only the record holder can declare its parentage");
+/**
+ * Offer a parent. THE CHILD'S HOLDER ASKS; nothing is established yet.
+ *
+ * Replaces declareParent, which did the whole thing in one call on the child's word
+ * alone. A proposal is visible — the map key is public — so a parent can see an
+ * offer standing against them, and so can anyone else; an unconfirmed proposal is
+ * exactly as good as the assertion it is, which is to say not evidence.
+ *
+ * ONE LIVE PROPOSAL PER CHILD. A cross has two parents, so declaring both is two
+ * rounds rather than one: propose, confirm, propose, confirm. That is the same
+ * serialisation proposeTransfer accepts for the same reason — replacing a standing
+ * offer is a withdrawal followed by a new one, and both need the proposer.
+ */
+export circuit proposeParent(childCommitment: Bytes<32>, parentCommitment: Bytes<32>): [] {
+  assert(childCommitment == commit(localGeneticSecret()),
+         "Only the record holder can propose its parentage");
   const c = disclose(childCommitment);
   const p = disclose(parentCommitment);
+  assert(c != p, "A record is not its own parent");
+  assert(!pendingParentOf.member(c), "This record already has a parentage proposal outstanding");
+  descentProposalSeq.increment(1);
+  pendingParentOf.insert(c, p);
+}
+
+/**
+ * Accept being named as a parent. ONLY THE PARENT'S HOLDER.
+ *
+ * This is the half that closes substitution. A seller can still NAME any record;
+ * what they cannot do is make the naming stick, because the record they named has
+ * to prove its own secret here. Pointing at a convenient clean stranger now needs
+ * that stranger's cooperation.
+ *
+ * The parent confirms a SPECIFIC CHILD, and the stored proposal has to still name
+ * them — the same reason approveTransfer takes expectedNewLicense rather than
+ * approving whatever is pending at execution time. A child who withdraws and
+ * re-proposes to somebody else between the parent's decision and their transaction
+ * gets a refusal, not a confirmation the parent did not mean to give.
+ *
+ * WHAT THIS COSTS, and it is a real cost: a record whose parent has no holder — a
+ * landrace, an accession from a collection that never joined, a breeder who has
+ * gone — can never have that edge confirmed. Descent through such a record is not
+ * expressible. That is the price of an edge meaning both parties agreed, and it is
+ * why a registry should require a confirmed path to an origin IT recognises rather
+ * than treating a sparse graph as a clean one.
+ */
+export circuit confirmParent(childCommitment: Bytes<32>, parentCommitment: Bytes<32>): [] {
+  const c = disclose(childCommitment);
+  const p = disclose(parentCommitment);
+  assert(pendingParentOf.member(c), "No parentage proposed for that record");
+  assert(parentCommitment == commit(localGeneticSecret()),
+         "Only the named parent's holder can confirm an edge to it");
+  assert(pendingParentOf.lookup(c) == p, "That is not the parent proposed for this record");
+
+  pendingParentOf.remove(c);
   descentSeq.increment(1);
   lastDescent = descentEdge(c, p);
   lastDescentChild = c;
   lastDescentParent = p;
+}
+
+/** Retract a proposal. The proposer only, the same as withdrawTransfer. */
+export circuit withdrawParent(childCommitment: Bytes<32>): [] {
+  assert(childCommitment == commit(localGeneticSecret()),
+         "Only the record holder can withdraw its own proposal");
+  const c = disclose(childCommitment);
+  assert(pendingParentOf.member(c), "No parentage proposed for that record");
+  descentProposalSeq.increment(1);
+  pendingParentOf.remove(c);
 }
 
 /**
@@ -434,9 +534,9 @@ export circuit discharge(recordCommitment: Bytes<32>, obligationCommitment: Byte
 // It proves that a named commitment occupies a clean slot. It does not prove that
 // commitment is an ancestor of the caller — nothing in contract state records the
 // descent graph, so no circuit can check it. The join is the verifier's: they take
-// the descent edges declared through declareParent, and check that each parent in
-// the chain has a clean proof naming it. That division is deliberate and it is what
-// the file header describes.
+// the descent edges confirmed through proposeParent/confirmParent, and check that
+// each parent in the chain has a clean proof naming it. That division is deliberate
+// and it is what the file header describes.
 //
 // THE ANCESTOR COMMITMENT IS DISCLOSED, and an earlier version of this circuit hid
 // it. Hiding it was not privacy, it was the proof having no subject: a verifier

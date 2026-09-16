@@ -96,8 +96,11 @@ console.log('\n== 1. does lineage deploy with a live tree? ==');
 console.log('\n== 2b. can a third party enumerate a parent? ==');
 {
   const secret = createHash('sha256').update('child-holder').digest();
+  const parentSecret = createHash('sha256').update('parent-holder').digest();
   const child = V.pureCircuits.commit(secret);
-  const parent = createHash('sha256').update('parent-commitment').digest();
+  // A real parent with a holder, not an arbitrary 32 bytes: the edge only reaches
+  // the chain once that holder confirms it under their own secret.
+  const parent = L.pureCircuits.commit(parentSecret);
 
   const contract = new L.Contract({
     localGeneticSecret: (c) => [c.privateState, secret],
@@ -110,9 +113,22 @@ console.log('\n== 2b. can a third party enumerate a parent? ==');
     merkleDirections: (c) => [c.privateState, []],
     ancestryChain: (c) => [c.privateState, [child, child, child, child]],
   });
+  const parentContract = new L.Contract({
+    localGeneticSecret: (c) => [c.privateState, parentSecret],
+    beneficiarySecret: (c) => [c.privateState, parentSecret],
+    slotIsEmpty: (c) => [c.privateState, true],
+    slotOccupantRecord: (c) => [c.privateState, new Uint8Array(32)],
+    slotOccupantObligation: (c) => [c.privateState, new Uint8Array(32)],
+    slotOccupantBeneficiary: (c) => [c.privateState, new Uint8Array(32)],
+    merkleSiblings: (c) => [c.privateState, []],
+    merkleDirections: (c) => [c.privateState, []],
+    ancestryChain: (c) => [c.privateState, [child, child, child, child]],
+  });
+
   const ctor = contract.initialState(rt.createConstructorContext({}, COIN));
-  const ctx = rt.createCircuitContext(rt.sampleContractAddress(), COIN, ctor.currentContractState, {});
-  const r = contract.impureCircuits.declareParent(ctx, child, parent);
+  let ctx = rt.createCircuitContext(rt.sampleContractAddress(), COIN, ctor.currentContractState, {});
+  ctx = contract.impureCircuits.proposeParent(ctx, child, parent).context;
+  const r = parentContract.impureCircuits.confirmParent(ctx, child, parent);
   const st = L.ledger(r.context.currentQueryContext.state);
 
   note(`lastDescentChild : ${hex(st.lastDescentChild).slice(0, 24)}…`);

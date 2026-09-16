@@ -655,7 +655,33 @@ export circuit proveLicense(): [] {
          "No live licence for that secret");
 }
 
-// Public, privacy-safe status lookup for a live license.
+/**
+ * Public status lookup for a live licence. THIS ONE NAMES THE ISSUER.
+ *
+ * It takes the licence commitment as a PUBLIC ARGUMENT, by design: the caller is
+ * asking about a licence they already know, and a status lookup that hid which
+ * licence it concerned would answer nothing. The map lookups below put that key in
+ * the public transcript, and `licenseRecordOf` maps it straight to the issuing
+ * record — so every call links a licence to the breeder who issued it, and repeated
+ * calls about the same licence link to each other.
+ *
+ * NOT INTERCHANGEABLE WITH proveLicense, and the names invite exactly that mistake.
+ * Picking by name, `licenseStatus` reads like the safe read-only one and
+ * `proveLicense` like the heavyweight one. It is the other way round:
+ *
+ *   licenseStatus(lc)   asks a PUBLIC question — which licence, and therefore whose
+ *   proveLicense()      takes no arguments at all and names nothing
+ *
+ * Use this to display or audit a licence whose identity is already in the open
+ * between the parties. Use `proveLicense` whenever a holder is showing a stranger
+ * that they hold something, which is the case that repeats and the case that links.
+ *
+ * The RETURNED state reaches the caller's own DApp and not the chain — a return
+ * travels in the blinded communication commitment. So the answer is not public; the
+ * question is. That is the opposite of the property a reader usually assumes from a
+ * lookup, and it is why the old one-line comment calling this "privacy-safe" was
+ * removed rather than reworded.
+ */
 export circuit licenseStatus(licenseCommitment: Bytes<32>): LicenseState {
   const lc = disclose(licenseCommitment);
   assert(licenseStatusOf.member(lc), "No such live license");

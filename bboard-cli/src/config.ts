@@ -35,6 +35,12 @@ export const currentDir = path.resolve(new URL(import.meta.url).pathname, '..');
 
 export class StandaloneConfig implements Config {
   getEnvironment(logger: Logger): TestEnvironment {
+    // Declared rather than left unset. The other two configs name their network and
+    // this one did not, so `getNetworkId()` threw here — which was harmless until the
+    // deploy guard started refusing on a network it cannot determine. A process that
+    // cannot say where it is deploying is not one that should be deploying, so the
+    // fix is to say, not to make absence permissive.
+    setNetworkId('undeployed');
     return getTestEnvironment(logger) as TestEnvironment;
   }
   privateStateStoreName = 'bboard-private-state';

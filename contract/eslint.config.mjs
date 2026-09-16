@@ -46,7 +46,11 @@ const config = tseslint.config(
         // whole lint fails. Naming them here lets them be linted without being
         // compiled.
         projectService: {
-          allowDefaultProject: ["src/tree.mjs", "src/descent.mjs"],
+          allowDefaultProject: [
+            "src/tree.mjs",
+            "src/descent.mjs",
+            "src/license-tree.mjs",
+          ],
         },
         tsconfigRootDir: import.meta.dirname,
       },

@@ -12,6 +12,7 @@ import { createHash } from 'node:crypto';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const V = await import(pathToFileURL(path.join(here, 'src/managed/veilcore/contract/index.js')).href);
+const { LicenseTree } = await import(pathToFileURL(path.join(here, 'src/license-tree.mjs')).href);
 const rt = await import('@midnight-ntwrk/compact-runtime');
 
 let bad = 0;
@@ -29,7 +30,17 @@ const party = (secret) => new V.Contract({
   localGeneticSecret: (c) => [c.privateState, secret],
   incomingGeneticSecret: (c) => [c.privateState, secret],
   recoverySecret: (c) => [c.privateState, secret],
+  // Licence-tree path for the call about to be made. proveLicense takes no
+  // arguments now, so which licence is being shown is witness data.
+  licenseSecret: (c) => [c.privateState, licPath.secret],
+  licenseRecord: (c) => [c.privateState, licPath.record],
+  licenseSiblings: (c) => [c.privateState, licPath.siblings],
+  licenseDirections: (c) => [c.privateState, licPath.dirs],
 });
+
+const licTree = new LicenseTree();
+const NO_PATH = { secret: sec('none'), record: sec('none'), siblings: [], dirs: [] };
+let licPath = NO_PATH;
 
 // One shared ledger, several parties acting on it.
 const base = party(BREEDER);
@@ -48,6 +59,51 @@ const refused = (secret, circuit, ...args) => {
   catch (e) { return String(e?.message ?? e); }
 };
 const state = () => V.ledger(ctx.currentQueryContext.state);
+
+/**
+ * Run a licence circuit with the tree path it needs, advancing the local tree only
+ * when the chain accepted the call. A refused call must leave the tree where it
+ * was, or every path built after it is against a root the chain never held.
+ */
+const licensed = (plan, apply, secret, name, ...args) => {
+  let p;
+  try { p = plan(); } catch { p = { index: 0, siblings: [], dirs: [] }; }
+  licPath = { ...licPath, siblings: p.siblings, dirs: p.dirs };
+  try {
+    const out = run(secret, name, ...args);
+    apply(p.index);
+    return out;
+  } finally { licPath = NO_PATH; }
+};
+const countersign = (who, secret, record) => {
+  const lc = V.pureCircuits.licenseCommit(secret, record);
+  return licensed(() => licTree.planInsert(lc), (i) => licTree.applyInsert(lc, i),
+                  who, 'countersignLicense', secret, record);
+};
+const approve = (who, lc, record, nlc) =>
+  licensed(() => licTree.planReplace(lc), (i) => licTree.applyReplace(lc, nlc, i),
+           who, 'approveTransfer', lc, record, nlc);
+
+/**
+ * Present a licence. NO CIRCUIT ARGUMENTS: the secret, the record and the position
+ * are all witnesses, which is the whole of finding 9. A party with no live licence
+ * cannot build a real path, so this hands over a null one and lets the fold refuse.
+ */
+const present = (who, secret, record) => {
+  const lc = V.pureCircuits.licenseCommit(secret, record);
+  let p;
+  try { p = licTree.pathFor(lc); }
+  catch {
+    p = { siblings: Array.from({ length: 16 }, () => new Uint8Array(32)),
+          dirs: Array.from({ length: 16 }, () => false) };
+  }
+  licPath = { secret, record, siblings: p.siblings, dirs: p.dirs };
+  try { return run(who, 'proveLicense'); } finally { licPath = NO_PATH; }
+};
+const presentRefused = (who, secret, record) => {
+  try { present(who, secret, record); return ''; }
+  catch (e) { return String(e?.message ?? e); }
+};
 
 const breederRecord = V.pureCircuits.commit(BREEDER);
 const sniperRecord = V.pureCircuits.commit(SNIPER);
@@ -75,7 +131,7 @@ console.log('\n== V1. can a sniper capture a licence before the breeder issues i
      `refused: ${breederErr} — the sniper blocked the breeder`);
 
   // The licensee countersigns naming the breeder's record.
-  const csErr = refused(LICENSEE, 'countersignLicense', licenceSecret, breederRecord);
+  const csErr = (() => { try { countersign(LICENSEE, licenceSecret, breederRecord); return ''; } catch (e) { return String(e?.message ?? e); } })();
   ok('the licensee countersigns the breeder\'s licence', csErr === '', csErr);
   ok('the breeder\'s licence is the active one',
      state().licenseStatusOf.member(intended) &&
@@ -85,8 +141,10 @@ console.log('\n== V1. can a sniper capture a licence before the breeder issues i
      'the countersignature landed on the sniper\'s entry and the licence went active\n     under a record the licensee never agreed to');
 
   // And a proof against the sniper's record fails.
-  const proofErr = refused(LICENSEE, 'proveLicense', licenceSecret, sniperRecord);
-  ok('proving against the sniper\'s record fails', proofErr !== '');
+  const proofErr = presentRefused(LICENSEE, licenceSecret, sniperRecord);
+  ok('proving against the sniper\'s record fails', proofErr !== '',
+     'the sniper\'s entry is PENDING and never entered the tree, so there is no leaf\n' +
+     '     to open — and the commitment differs from the breeder\'s in any case');
 }
 
 // ── V3: sublicence through the shared domain tag ────────────────────────────
@@ -124,9 +182,9 @@ console.log('\n== V2. can an outgoing licensee resurrect an assigned licence? ==
   const nlc = V.pureCircuits.licenseCommit(incoming, breederRecord);
 
   run(BREEDER, 'issueLicense', breederRecord, lc);
-  run(LICENSEE, 'countersignLicense', outgoing, breederRecord);
+  countersign(LICENSEE, outgoing, breederRecord);
   run(LICENSEE, 'proposeTransfer', outgoing, breederRecord, nlc);
-  run(BREEDER, 'approveTransfer', lc, breederRecord, nlc);
+  approve(BREEDER, lc, breederRecord, nlc);
 
   ok('the assignment removed the old licence', !state().licenseStatusOf.member(lc));
 
@@ -140,8 +198,12 @@ console.log('\n== V2. can an outgoing licensee resurrect an assigned licence? ==
      'the outgoing party re-created the exact key that was removed, countersigned it\n' +
      '     themselves, and proveLicense with the old secret passed');
 
-  const proofErr = refused(LICENSEE, 'proveLicense', outgoing, breederRecord);
+  const proofErr = presentRefused(LICENSEE, outgoing, breederRecord);
   ok('the old secret no longer proves the breeder\'s licence', proofErr !== '', proofErr);
+
+  // And the incoming party can, from the slot the outgoing party's leaf vacated.
+  const incomingErr = presentRefused(LICENSEE, incoming, breederRecord);
+  ok('the incoming party proves the licence that moved to them', incomingErr === '', incomingErr);
 }
 
 console.log(`\n${bad === 0 ? 'V1, V2 and V3 no longer hold' : `${bad} check(s) failing`}`);

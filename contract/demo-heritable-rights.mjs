@@ -16,6 +16,11 @@ import { ObligationTree, EMPTY_ROOT } from './src/tree.mjs';
 import { DescentGraph } from './src/descent.mjs';
 import { pureCircuits as C } from './src/managed/lineage/contract/index.js';
 
+// Obligations name who is owed. The beneficiary is part of the leaf, so the
+// encumbered party cannot reconstruct it and release themselves — which is what
+// made an obligation a note-to-self before.
+const BENEFICIARY = C.commit(new Uint8Array(32).fill(0xBE));
+
 const hex = (u) => Buffer.from(u).toString('hex');
 const short = (u) => hex(u).slice(0, 16) + '…';
 const secret = (s) => { const a = new Uint8Array(32); for (let i=0;i<s.length&&i<32;i++) a[i]=s.charCodeAt(i); a[31]=s.length; return a; };
@@ -30,16 +35,26 @@ const merkleClean = (rec) => {
   return hex(C.merkleRoot(new Uint8Array(32), tree.siblingsFor(d), d)) === hex(tree.root());
 };
 
-/** A full verification: the chain must be genuine AND every link unencumbered. */
+/**
+ * A full verification: the chain must be genuine AND every link unencumbered.
+ *
+ * Omission used to be caught by comparing the claimed chain's LENGTH against
+ * requiredChainLength. That could not work on a pedigree that branches — a cross
+ * has a seed parent and a pollen parent, so a transitive ancestor count is not a
+ * length any single valid chain can meet — and the buyer was still taking the
+ * seller's word for which ancestors existed. verifyDescent walks the declared
+ * graph itself and requires every ancestor it finds to have been proven clean.
+ */
 const verify = (record, claimedChain) => {
   const genuine = graph.verifyChain(record, claimedChain);
   if (!genuine.ok) return { ok: false, why: `ancestry rejected — ${genuine.reason}` };
-  if (claimedChain.length < graph.requiredChainLength(record))
-    return { ok: false, why: 'ancestry incomplete — a generation was omitted' };
   if (!merkleClean(record)) return { ok: false, why: 'this record carries an unmet obligation' };
-  for (const a of claimedChain)
-    if (!merkleClean(a)) return { ok: false, why: 'an ancestor carries an unmet obligation' };
-  return { ok: true };
+  // The buyer clears the ancestors it has proofs for, then makes the graph prove
+  // nothing was left out.
+  const provenClean = claimedChain.filter(merkleClean).map(hex);
+  const walked = graph.verifyDescent(record, provenClean);
+  if (!walked.ok) return { ok: false, why: walked.reason };
+  return { ok: true, ancestorsChecked: walked.ancestorsChecked };
 };
 
 const report = (label, r) => line(`   ${label.padEnd(34)} ${r.ok ? 'ACCEPTED' : 'REJECTED — ' + r.why}`);
@@ -67,7 +82,7 @@ line(`   Descent edge  ${short(C.descentEdge(daughter, mother))}  (public, perma
 line();
 
 line('3. The royalty is attached to the mother.');
-const e = tree.encumber(mother, royalty);
+const e = tree.encumber(mother, royalty, BENEFICIARY);
 line(`   Root  ${short(e.oldRoot)}  →  ${short(e.newRoot)}`);
 line();
 
@@ -88,7 +103,7 @@ report('empty claim', verify(daughter, []));
 line();
 
 line('7. The royalty is paid and the obligation discharged.');
-const d = tree.discharge(mother, royalty);
+const d = tree.discharge(mother, royalty, BENEFICIARY);
 line(`   Root  ${short(d.oldRoot)}  →  ${short(d.newRoot)}`);
 line(`   Back to empty: ${hex(d.newRoot) === hex(EMPTY_ROOT) ? 'yes' : 'no'}`);
 line();
@@ -101,9 +116,14 @@ line('  accepted or rejected, and nothing else');
 line();
 line('WHAT WAS NEVER DISCLOSED');
 line('  · the genetics — no sequence data exists anywhere in this system');
-line('  · which ancestor was checked, or what it was');
 line('  · the terms — the royalty is a commitment, never a value');
 line('  · the depth — every proof costs the same regardless of generations');
+line();
+line('WHAT IS DISCLOSED, AND WAS LISTED HERE AS PRIVATE');
+line('  · which ancestor was cleared. proveAncestorClean discloses it, deliberately:');
+line('    a proof whose subject is hidden is a proof a verifier cannot join to a');
+line('    descent edge, and any clean commitment would satisfy it. A commitment is');
+line('    a hash, so what it costs is correlation, not genetics.');
 line();
 line('WHAT THE CHAIN HOLDS');
 line('  · four counters and one 32-byte root — state does not grow with usage');

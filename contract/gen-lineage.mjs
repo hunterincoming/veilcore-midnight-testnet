@@ -42,6 +42,13 @@ import fs from 'node:fs';
 const DEPTH = Number(process.argv[2] || 24);
 if (DEPTH < 1 || DEPTH > 32) throw new Error('depth must be 1..32 (one byte per level)');
 
+// Optional output path. The production contract is depth 24, where grinding a
+// commitment into a chosen slot costs about 27 million hashes — far too slow to run
+// inside a test. A shallow build makes the same attack cheap enough to execute for
+// real rather than describe, and depth changes nothing about the attack except its
+// price. See verify-max-7.mjs.
+const OUT = process.argv[3] || 'src/lineage.compact';
+
 const fold = Array.from({ length: DEPTH }, (_, i) =>
   i === 0
     ? `  const n0 = merkleStep(leaf, siblings[0], dirs[0]);`
@@ -68,7 +75,33 @@ const pathChecks = Array.from({ length: DEPTH }, (_, i) =>
   `  assert(disclose(dirs[${i}] == bits[${i}]), "Merkle path does not belong to this record");`
 ).join('\n');
 
-const ancestors = '';
+// Finding 8: a ring of recent roots. RING - 1 previous roots are kept beside the
+// current one, so a proof built against a root that has since moved on is still
+// accepted. Eight is the review's suggestion and is a straight latency/soundness
+// trade: the older the root a proof may cite, the longer an obligation attached in
+// the meantime goes unnoticed by that proof.
+const RING = 8;
+
+const ringCells = Array.from({ length: RING - 1 }, (_, i) =>
+  `export ledger recentRoot${i + 1}: Bytes<32>;`
+).join('\n');
+
+// Newest first: each cell takes the value of the one before it, then the current
+// root moves into slot 1. Written back to front so no cell is overwritten before
+// it has been read.
+const ringShift = [
+  ...Array.from({ length: RING - 2 }, (_, i) =>
+    `  recentRoot${RING - 1 - i} = recentRoot${RING - 2 - i};`),
+  '  recentRoot1 = encumberedRoot;',
+].join('\n');
+
+const ringInit = Array.from({ length: RING - 1 }, (_, i) =>
+  `  recentRoot${i + 1} = e${DEPTH - 1};`
+).join('\n');
+
+const ringAccept = Array.from({ length: RING - 1 }, (_, i) =>
+  `             || f == recentRoot${i + 1}`
+).join('\n');
 
 const src = `// Veilcore Lineage — heritable rights for self-replicating assets.
 // SPDX-License-Identifier: Apache-2.0
@@ -90,13 +123,36 @@ const src = `// Veilcore Lineage — heritable rights for self-replicating asset
 //
 // SPARSE TREE — depth ${DEPTH}, ${2 ** DEPTH} slots
 // Every record has a deterministic slot derived from its own commitment, so no
-// assignment or registry is needed and an unwritten slot is clean by default. A
-// record is clean when its slot holds the null leaf.
+// assignment or registry is needed and an unwritten slot is clean by default.
+//
+// A RECORD IS CLEAN WHEN ITS SLOT HOLDS NOTHING THAT BINDS IT — not when the slot
+// is empty. A slot is ${DEPTH} bits of a commitment, so another record's obligation can
+// land in it, and requiring emptiness reported the second record as carrying an
+// obligation it never incurred. That happens to two honest records on a collision,
+// and it can be arranged deliberately: grinding a secret into a chosen slot costs
+// about 2^${DEPTH} hashes, and a squatter who encumbers their own record there blocks
+// somebody else's sale. The leaf names the record it binds, so a clean proof shows
+// the occupant is somebody else.
+//
+// WHAT THAT DOES NOT FIX: the squatted record still cannot BE encumbered, because
+// one slot holds one leaf. Closing that needs a bucket leaf or a tree indexed by
+// the full commitment — a redesign rather than a check. verify-max-7.mjs runs the
+// attack and pins the remainder.
 //
 // SOUNDNESS
 // A new root is never supplied by the caller. It is derived in-circuit from the
 // current root plus a Merkle path given as a private witness, and the path is bound
 // to the record by its derived slot bits. A forged or borrowed path fails.
+//
+// WHAT THIS CANNOT DO
+// A party can anchor material under a fresh secret and get a clean slot with no
+// history. No circuit can prevent that: the contract cannot tell a genuinely new
+// accession from a laundered one, because both look like a commitment nobody has
+// seen before. So absence of a dirty ancestor is not evidence of a clean line, and
+// a verifier who treats it that way is reading the wrong thing. What the contract
+// can support is a POSITIVE check — a confirmed path from the record to an origin
+// the verifier already recognises, with every node on it clean — and that is what
+// a registry consuming this should require.
 //
 // BOUNDARY
 // The caller asserts who their ancestors are. A verifier cross-checks that claim
@@ -122,10 +178,52 @@ export ledger lastDescentParent: Bytes<32>;
 // build no sibling path and could not tell which records were encumbered.
 export ledger lastEncumberedRecord: Bytes<32>;
 export ledger lastObligation: Bytes<32>;
+
+// Who an encumbrance is in favour of. A third party rebuilding the tree needs it:
+// the leaf is a function of the beneficiary, so without it no sibling path can be
+// reconstructed and no discharge verified.
+export ledger lastBeneficiary: Bytes<32>;
 export ledger lastClearedAncestor: Bytes<32>;
 export ledger encumberSeq: Counter;
 export ledger cleanProofSeq: Counter;
+
+// Who made a clean proof. Without it the circuit computed the caller's commitment
+// and discarded it, so the proof restated public root state and named nobody.
+export ledger lastCleanProofBy: Bytes<32>;
 export ledger encumberedRoot: Bytes<32>;
+
+/**
+ * The ${RING - 1} roots before the current one.
+ *
+ * ONE GLOBAL ROOT MADE EVERY PROOF RACE EVERY OTHER TRANSACTION. encumber,
+ * discharge and proveAncestorClean all asserted the single current root, so any
+ * unrelated update landing between proving and inclusion invalidated every proof
+ * in flight — and a party toggling an obligation on its own record each block
+ * starved everyone else for the cost of the transactions.
+ *
+ * A reader collects one proof per generation and a busy registry moves the root
+ * between them, so the failure was not a corner case. Writers still need the
+ * current root, because two writers folding against different roots would produce
+ * two incompatible trees; a READER only needs a root the chain published recently.
+ *
+ * WHAT IT COSTS, PLAINLY. A freshly attached obligation is not binding on a proof
+ * that cites a root from before it. A seller who watches for an encumbrance and
+ * submits a proof they prepared a moment earlier defeats it, and keeps defeating it
+ * until ${RING - 1} further updates have pushed that root off the ring. The window
+ * cuts both ways and this is the other edge of it.
+ *
+ * That is why lastProofRoot exists. A verifier deciding anything that matters
+ * requires lastProofRoot == encumberedRoot and accepts that a busy or hostile
+ * registry may make a proof take several attempts; one who does not care about the
+ * last few updates takes the older root and cannot be starved. The contract
+ * publishes what is needed to make that choice instead of making it for everyone.
+ * verify-max-8.mjs runs both sides.
+ */
+${ringCells}
+
+// Which root the last clean proof was folded against. Without it a verifier
+// reading a proof cannot tell how stale the tree behind it was.
+export ledger lastProofRoot: Bytes<32>;
 
 /**
  * Set the obligation tree to its empty root.
@@ -149,9 +247,25 @@ constructor() {
   const nullLeaf = default<Bytes<32>>;
 ${emptyFold}
   encumberedRoot = e${DEPTH - 1};
+  // The whole ring starts at the empty root for the same reason the current one
+  // does: a default Bytes<32> is an unset cell, not a tree, and a reader accepting
+  // it would accept a proof folded against nothing.
+${ringInit}
+  lastProofRoot = e${DEPTH - 1};
 }
 
 witness localGeneticSecret(): Bytes<32>;
+
+/**
+ * The secret behind an obligation's beneficiary.
+ *
+ * An obligation used to be a leaf the encumbered party could remove alone, which
+ * made it a note-to-self rather than a claim: the holder of an encumbered record
+ * discharged their own royalty and proved clean in the next call. The beneficiary
+ * is now inside the leaf and discharge proves their secret, so the party who is
+ * owed decides when they stop being owed.
+ */
+witness beneficiarySecret(): Bytes<32>;
 witness merkleSiblings(): Vector<${DEPTH}, Bytes<32>>;
 witness merkleDirections(): Vector<${DEPTH}, Boolean>;
 // One ancestor per proof, by design: a verifier collects one proof per generation
@@ -166,6 +280,34 @@ witness merkleDirections(): Vector<${DEPTH}, Boolean>;
 // feature, because a reader plans around it.
 witness ancestryChain(): Vector<4, Bytes<32>>;
 
+/**
+ * Whatever is sitting in the ancestor's slot, and what it is made of.
+ *
+ * SLOT SQUATTING. A slot is derived from the first ${DEPTH} bytes of a commitment, one
+ * bit each, so finding a secret whose commitment lands in a chosen slot costs about
+ * 2^${DEPTH} hashes — measured at 27.4 million in 81 seconds on one core. A squatter
+ * grinds such a secret, encumbers THEIR OWN record, and the leaf lands in the
+ * victim's slot. The victim's clean proof then failed, because it asserted the slot
+ * held the null leaf, and the contract reported an obligation the victim had never
+ * incurred. Two honest records colliding produced exactly the same false
+ * encumbrance, and depth only changes the grinding cost.
+ *
+ * The leaf already names the record it binds. So a clean proof no longer requires
+ * an EMPTY slot, it requires a slot holding nothing that binds THIS ancestor: the
+ * null leaf, or a well-formed obligation against somebody else. The occupant's
+ * three fields are witnesses so the fold can reproduce the real leaf; forging them
+ * needs a hash collision, because the same bytes have to fold to the published root.
+ *
+ * NOT FIXED BY THIS: the victim still cannot BE encumbered, because encumber
+ * asserts the slot is clean and one slot holds one leaf. That needs a bucket leaf
+ * or an indexed tree keyed by the full commitment, and it is a redesign of the tree
+ * rather than a check. verify-max-7.mjs runs the attack and pins that half.
+ */
+witness slotIsEmpty(): Boolean;
+witness slotOccupantRecord(): Bytes<32>;
+witness slotOccupantObligation(): Bytes<32>;
+witness slotOccupantBeneficiary(): Bytes<32>;
+
 export circuit commit(secret: Bytes<32>): Bytes<32> {
   return persistentHash<Vector<2, Bytes<32>>>([pad(32, "veilcore:commit"), secret]);
 }
@@ -174,8 +316,22 @@ export circuit descentEdge(child: Bytes<32>, parent: Bytes<32>): Bytes<32> {
   return persistentHash<Vector<3, Bytes<32>>>([pad(32, "veilcore:descent"), child, parent]);
 }
 
-export circuit obligationLeaf(recordCommitment: Bytes<32>, obligationCommitment: Bytes<32>): Bytes<32> {
-  return persistentHash<Vector<3, Bytes<32>>>([pad(32, "veilcore:obligation"), recordCommitment, obligationCommitment]);
+/**
+ * The leaf for an obligation on a record, naming who is owed.
+ *
+ * The beneficiary is inside the hash. Without it the leaf was a function of the
+ * encumbered record and the obligation alone, so the encumbered party could
+ * reconstruct it and discharge themselves — an obligation nobody but the obligated
+ * could remove is not an obligation.
+ */
+export circuit obligationLeaf(
+  recordCommitment: Bytes<32>,
+  obligationCommitment: Bytes<32>,
+  beneficiaryCommitment: Bytes<32>,
+): Bytes<32> {
+  return persistentHash<Vector<4, Bytes<32>>>([
+    pad(32, "veilcore:obligation"), recordCommitment, obligationCommitment, beneficiaryCommitment,
+  ]);
 }
 
 export circuit merkleStep(node: Bytes<32>, sibling: Bytes<32>, siblingIsLeft: Boolean): Bytes<32> {
@@ -233,8 +389,21 @@ export circuit declareParent(childCommitment: Bytes<32>, parentCommitment: Bytes
   lastDescentParent = p;
 }
 
+/**
+ * Attach an obligation to a record, in favour of a named beneficiary.
+ *
+ * Called BY THE BENEFICIARY, not by the encumbered party. The holder of a record
+ * has no reason to encumber it and every reason not to, so a circuit only they
+ * could call made the whole mechanism voluntary. The beneficiary proves their own
+ * secret here and again at discharge.
+ *
+ * Note what this does not establish: that the beneficiary is entitled to anything.
+ * Anyone may encumber any record, and a verifier reads an encumbrance as "somebody
+ * asserts a claim against this" rather than as a finding. The contract records the
+ * assertion and who made it; whether it is owed is for the parties.
+ */
 export circuit encumber(recordCommitment: Bytes<32>, obligationCommitment: Bytes<32>): [] {
-  assert(recordCommitment == commit(localGeneticSecret()), "Only the record holder can encumber it");
+  const beneficiary = commit(beneficiarySecret());
 
   const siblings = merkleSiblings();
   const dirs = merkleDirections();
@@ -244,17 +413,32 @@ export circuit encumber(recordCommitment: Bytes<32>, obligationCommitment: Bytes
 
   const rc = disclose(recordCommitment);
   const oc = disclose(obligationCommitment);
-  const roots = replaceLeaf(nullLeaf, obligationLeaf(rc, oc), siblings, dirs);
+  const bc = disclose(beneficiary);
+  const roots = replaceLeaf(nullLeaf, obligationLeaf(rc, oc, bc), siblings, dirs);
 
   assert(disclose(roots[0]) == encumberedRoot, "Slot is not clean, or the Merkle path is invalid");
   encumberSeq.increment(1);
+  // A WRITER STILL NEEDS THE CURRENT ROOT — asserted above. Two writers folding
+  // against different roots would each produce a valid-looking new root for a
+  // different tree, and the second to land would silently drop the first's leaf.
+  // Only readers get the ring.
+${ringShift}
   encumberedRoot = disclose(roots[1]);
   lastEncumberedRecord = rc;
   lastObligation = oc;
+  lastBeneficiary = bc;
 }
 
+/**
+ * Clear an obligation. ONLY THE BENEFICIARY.
+ *
+ * This used to require the encumbered record's secret, which meant the party who
+ * owed discharged the debt: encumber a record with a royalty, discharge it in the
+ * next block, prove clean in the one after. The beneficiary's secret is what
+ * releases it now, because being released is their decision.
+ */
 export circuit discharge(recordCommitment: Bytes<32>, obligationCommitment: Bytes<32>): [] {
-  assert(recordCommitment == commit(localGeneticSecret()), "Only the holder can discharge");
+  const beneficiary = commit(beneficiarySecret());
 
   const siblings = merkleSiblings();
   const dirs = merkleDirections();
@@ -264,13 +448,19 @@ export circuit discharge(recordCommitment: Bytes<32>, obligationCommitment: Byte
   assertPathBelongsTo(recordCommitment, dirs);
 
   const nullLeaf = default<Bytes<32>>;
-  const roots = replaceLeaf(obligationLeaf(rc, oc), nullLeaf, siblings, dirs);
+  const bc = disclose(beneficiary);
+  // The fold only reproduces the current root if the beneficiary in the leaf is the
+  // one calling, so a stranger's discharge fails here rather than needing a
+  // separate check.
+  const roots = replaceLeaf(obligationLeaf(rc, oc, bc), nullLeaf, siblings, dirs);
 
   assert(disclose(roots[0]) == encumberedRoot, "No such obligation at this slot, or the Merkle path is invalid");
   encumberSeq.increment(1);
+${ringShift}
   encumberedRoot = disclose(roots[1]);
   lastEncumberedRecord = rc;
   lastObligation = oc;
+  lastBeneficiary = bc;
 }
 
 // Prove one ancestor is clean. One Merkle path per proof, not five in one circuit:
@@ -298,6 +488,27 @@ export circuit discharge(recordCommitment: Bytes<32>, obligationCommitment: Byte
 // format actually promises. What it does cost is correlation: an observer can see
 // the same commitment cleared repeatedly. A holder who minds that rotates the
 // record's secret and clears under the new commitment.
+/**
+ * Is this a root the chain published recently?
+ *
+ * A reader's proof is built, then included some blocks later. Against a single
+ * global root any unrelated encumbrance in between invalidated it, so a verifier
+ * collecting one proof per generation on a busy registry could be starved
+ * indefinitely — deliberately, by anyone willing to pay for a transaction a block.
+ */
+// The argument must already be disclosed by the caller. The root of a valid path is a
+// value the chain published, so disclosing it gives nothing away — and comparing a
+// witness-derived value against ledger cells is a disclosure the compiler is right
+// to refuse until it is declared.
+export circuit rootIsRecent(folded: Bytes<32>): Boolean {
+  // Declared here as well as at the call site: a parameter of an exported circuit
+  // is witness-derived as far as the compiler is concerned, whatever the caller did
+  // with it, and comparing it against a ledger cell is a disclosure either way.
+  const f = disclose(folded);
+  return f == encumberedRoot
+${ringAccept};
+}
+
 export circuit proveAncestorClean(): [] {
   const self = commit(localGeneticSecret());
   const nullLeaf = default<Bytes<32>>;
@@ -307,10 +518,32 @@ export circuit proveAncestorClean(): [] {
   const chain = ancestryChain();
 
   const ancestor = disclose(chain[0]);
+  // The proof is bound to the caller. The value was computed and never used, so the
+  // circuit proved a fact about public root state that anyone could prove about
+  // anybody — a clean proof with no claimant is a statement nobody made.
+  assert(self != ancestor, "A record is not its own ancestor");
+  lastCleanProofBy = disclose(self);
   assertPathBelongsTo(ancestor, dirs);
-  assert(disclose(merkleRoot(nullLeaf, siblings, dirs)) == encumberedRoot,
+
+  // WHAT IS ACTUALLY IN THE SLOT. One extra hash, and still one fold: the leaf is
+  // either the null leaf or an obligation binding a DIFFERENT record, which says
+  // nothing about this ancestor. Lying about which costs a hash collision — the
+  // bytes chosen here have to fold to a root the chain published.
+  const empty = disclose(slotIsEmpty());
+  const occRecord = slotOccupantRecord();
+  const occupant = empty
+    ? nullLeaf
+    : obligationLeaf(occRecord, slotOccupantObligation(), slotOccupantBeneficiary());
+  // A leaf that names the ancestor IS this ancestor's obligation, so it is refused
+  // here rather than by the fold.
+  assert(empty || disclose(occRecord != ancestor),
          "This ancestor carries an unmet obligation");
 
+  const folded = disclose(merkleRoot(occupant, siblings, dirs));
+  assert(rootIsRecent(folded), "This ancestor carries an unmet obligation");
+
+  // Which root this proof was folded against, so a verifier can see how stale it is.
+  lastProofRoot = folded;
   cleanProofSeq.increment(1);
   // Its own slot, because lastDescent holds edge hashes and the two are
   // indistinguishable as bytes. One field with two meanings is a field a reader
@@ -319,5 +552,5 @@ export circuit proveAncestorClean(): [] {
 }
 `;
 
-fs.writeFileSync('src/lineage.compact', src);
-console.log(`generated lineage.compact at depth ${DEPTH} (${2 ** DEPTH} slots)`);
+fs.writeFileSync(OUT, src);
+console.log(`generated ${OUT} at depth ${DEPTH} (${2 ** DEPTH} slots)`);

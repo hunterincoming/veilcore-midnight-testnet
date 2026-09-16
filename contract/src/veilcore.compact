@@ -16,6 +16,11 @@
 // paying a fee per entry. The bound is economic, not structural. Stated plainly
 // here because a reader who takes "bounded by design" at face value will not look.
 //
+// The active-licence tree adds one root cell and no growable state at all: it holds
+// live licences only, and a slot freed by revocation or assignment is reusable. Its
+// capacity is 65,536 CONCURRENT active licences, which is a hard ceiling rather than
+// an economic one — the one place in this contract where a limit is structural.
+//
 // Two maps now grow permanently and are not bounded by open business at all:
 // `recoveryOf` gains an entry per anchored record, `rotatedTo` an entry per
 // rotation, and neither is ever cleared. That is the price of the two guarantees
@@ -124,6 +129,149 @@ export circuit commit(secret: Bytes<32>): Bytes<32> {
  */
 export circuit licenseCommit(secret: Bytes<32>, recordCommitment: Bytes<32>): Bytes<32> {
   return persistentHash<Vector<3, Bytes<32>>>([pad(32, "veilcore:license"), secret, recordCommitment]);
+}
+
+// ─────────────────────────────────────────────────── the active-licence tree
+//
+// GENERATED, like lineage.compact's fold, and for the same reason: Compact has no
+// loops, so a depth-16 tree is 16 unrolled steps and 32 for a replacement. They were
+// produced mechanically rather than typed.
+//
+// WHY THERE IS A TREE AT ALL. proveLicense used to look the licence commitment up
+// in licenseStatusOf. A map lookup puts its key in the public transcript, and
+// licenseRecordOf maps that key to the issuing record — so every presentation of a
+// licence named the breeder, and two presentations of the same licence were
+// trivially linkable to each other. The comment above it claimed the opposite.
+//
+// A presentation against a ROOT names nothing. The leaf is the licence commitment,
+// the path is a private witness, and the only public statement is that some leaf in
+// the current tree was opened by someone who knows the secret behind it.
+//
+// POSITIONS ARE NOT DERIVED from the commitment, unlike the obligation tree's slots.
+// Nothing needs them to be: an insert proves the slot it targets is empty, and a
+// removal proves the leaf it names is where it says. Leaving position free means no
+// birthday bound and no grinding target — 65536 concurrent ACTIVE licences, all of
+// them usable, rather than a collision becoming likely in the hundreds.
+//
+// Capacity is concurrent, not cumulative: revocation and assignment free slots.
+
+export ledger activeLicenseRoot: Bytes<32>;
+
+/**
+ * The licensee's licence secret, and the record it was issued against.
+ *
+ * Witnesses rather than arguments, because an argument to proveLicense is a public
+ * value and naming either one is the whole defect.
+ */
+witness licenseSecret(): Bytes<32>;
+witness licenseRecord(): Bytes<32>;
+witness licenseSiblings(): Vector<16, Bytes<32>>;
+witness licenseDirections(): Vector<16, Boolean>;
+
+// Its own domain tag. Record commitments, licence commitments and tree nodes are
+// three kinds of thing, and two of them sharing a tag is what let a licence secret
+// be loaded as a genetic secret and anchored as a record of its own.
+export circuit licenseNode(node: Bytes<32>, sibling: Bytes<32>, siblingIsLeft: Boolean): Bytes<32> {
+  const left = siblingIsLeft ? sibling : node;
+  const right = siblingIsLeft ? node : sibling;
+  return persistentHash<Vector<3, Bytes<32>>>([pad(32, "veilcore:licnode"), left, right]);
+}
+
+export circuit licenseMerkleRoot(
+  leaf: Bytes<32>,
+  siblings: Vector<16, Bytes<32>>,
+  dirs: Vector<16, Boolean>,
+): Bytes<32> {
+  const n0 = licenseNode(leaf, siblings[0], dirs[0]);
+  const n1 = licenseNode(n0, siblings[1], dirs[1]);
+  const n2 = licenseNode(n1, siblings[2], dirs[2]);
+  const n3 = licenseNode(n2, siblings[3], dirs[3]);
+  const n4 = licenseNode(n3, siblings[4], dirs[4]);
+  const n5 = licenseNode(n4, siblings[5], dirs[5]);
+  const n6 = licenseNode(n5, siblings[6], dirs[6]);
+  const n7 = licenseNode(n6, siblings[7], dirs[7]);
+  const n8 = licenseNode(n7, siblings[8], dirs[8]);
+  const n9 = licenseNode(n8, siblings[9], dirs[9]);
+  const n10 = licenseNode(n9, siblings[10], dirs[10]);
+  const n11 = licenseNode(n10, siblings[11], dirs[11]);
+  const n12 = licenseNode(n11, siblings[12], dirs[12]);
+  const n13 = licenseNode(n12, siblings[13], dirs[13]);
+  const n14 = licenseNode(n13, siblings[14], dirs[14]);
+  const n15 = licenseNode(n14, siblings[15], dirs[15]);
+  return n15;
+}
+
+// Verify the current leaf and compute the replacement in one traversal: the
+// siblings are the same for both, so folding twice would double the constraint
+// count for nothing. Returns [old root, new root]; the caller asserts the old one.
+export circuit licenseReplaceLeaf(
+  oldLeaf: Bytes<32>,
+  newLeaf: Bytes<32>,
+  siblings: Vector<16, Bytes<32>>,
+  dirs: Vector<16, Boolean>,
+): Vector<2, Bytes<32>> {
+  const o0 = licenseNode(oldLeaf, siblings[0], dirs[0]);
+  const w0 = licenseNode(newLeaf, siblings[0], dirs[0]);
+  const o1 = licenseNode(o0, siblings[1], dirs[1]);
+  const w1 = licenseNode(w0, siblings[1], dirs[1]);
+  const o2 = licenseNode(o1, siblings[2], dirs[2]);
+  const w2 = licenseNode(w1, siblings[2], dirs[2]);
+  const o3 = licenseNode(o2, siblings[3], dirs[3]);
+  const w3 = licenseNode(w2, siblings[3], dirs[3]);
+  const o4 = licenseNode(o3, siblings[4], dirs[4]);
+  const w4 = licenseNode(w3, siblings[4], dirs[4]);
+  const o5 = licenseNode(o4, siblings[5], dirs[5]);
+  const w5 = licenseNode(w4, siblings[5], dirs[5]);
+  const o6 = licenseNode(o5, siblings[6], dirs[6]);
+  const w6 = licenseNode(w5, siblings[6], dirs[6]);
+  const o7 = licenseNode(o6, siblings[7], dirs[7]);
+  const w7 = licenseNode(w6, siblings[7], dirs[7]);
+  const o8 = licenseNode(o7, siblings[8], dirs[8]);
+  const w8 = licenseNode(w7, siblings[8], dirs[8]);
+  const o9 = licenseNode(o8, siblings[9], dirs[9]);
+  const w9 = licenseNode(w8, siblings[9], dirs[9]);
+  const o10 = licenseNode(o9, siblings[10], dirs[10]);
+  const w10 = licenseNode(w9, siblings[10], dirs[10]);
+  const o11 = licenseNode(o10, siblings[11], dirs[11]);
+  const w11 = licenseNode(w10, siblings[11], dirs[11]);
+  const o12 = licenseNode(o11, siblings[12], dirs[12]);
+  const w12 = licenseNode(w11, siblings[12], dirs[12]);
+  const o13 = licenseNode(o12, siblings[13], dirs[13]);
+  const w13 = licenseNode(w12, siblings[13], dirs[13]);
+  const o14 = licenseNode(o13, siblings[14], dirs[14]);
+  const w14 = licenseNode(w13, siblings[14], dirs[14]);
+  const o15 = licenseNode(o14, siblings[15], dirs[15]);
+  const w15 = licenseNode(w14, siblings[15], dirs[15]);
+  return [o15, w15];
+}
+
+/**
+ * Start the licence tree at the root of an empty tree.
+ *
+ * veilcore had no constructor. Adding a tree without one would have repeated
+ * finding 1 exactly: the root would start at the default Bytes<32>, which is an
+ * unset cell rather than a tree, no fold could ever reproduce it, and every
+ * countersignature and every licence proof would fail in every deployment.
+ */
+constructor() {
+  const nullLeaf = default<Bytes<32>>;
+  const l0 = licenseNode(nullLeaf, nullLeaf, false);
+  const l1 = licenseNode(l0, l0, false);
+  const l2 = licenseNode(l1, l1, false);
+  const l3 = licenseNode(l2, l2, false);
+  const l4 = licenseNode(l3, l3, false);
+  const l5 = licenseNode(l4, l4, false);
+  const l6 = licenseNode(l5, l5, false);
+  const l7 = licenseNode(l6, l6, false);
+  const l8 = licenseNode(l7, l7, false);
+  const l9 = licenseNode(l8, l8, false);
+  const l10 = licenseNode(l9, l9, false);
+  const l11 = licenseNode(l10, l10, false);
+  const l12 = licenseNode(l11, l11, false);
+  const l13 = licenseNode(l12, l12, false);
+  const l14 = licenseNode(l13, l13, false);
+  const l15 = licenseNode(l14, l14, false);
+  activeLicenseRoot = l15;
 }
 
 /**
@@ -254,6 +402,16 @@ export circuit countersignLicense(secret: Bytes<32>, recordCommitment: Bytes<32>
   assert(licenseStatusOf.lookup(lc) == LicenseState.PENDING, "License is not pending");
   assert(licenseRecordOf.lookup(lc) == rc, "This license was not issued against that record");
   licenseStatusOf.insert(lc, LicenseState.ACTIVE);
+
+  // ACTIVATION IS WHAT PUTS A LICENCE IN THE TREE. A pending licence is one the
+  // issuer has signed and nobody has accepted, so there is nothing to present yet;
+  // countersigning is the moment it becomes provable, and the tree holds exactly
+  // the set proveLicense is allowed to open.
+  const nullLeaf = default<Bytes<32>>;
+  const roots = licenseReplaceLeaf(nullLeaf, lc, licenseSiblings(), licenseDirections());
+  assert(disclose(roots[0]) == activeLicenseRoot,
+         "That licence tree slot is not empty, or the path is invalid");
+  activeLicenseRoot = disclose(roots[1]);
 }
 
 
@@ -332,6 +490,15 @@ export circuit approveTransfer(licenseCommitment: Bytes<32>, recordCommitment: B
   licenseStatusOf.insert(nlc, LicenseState.ACTIVE);
   licenseRecordOf.insert(nlc, disclose(recordCommitment));
   transferSeq.increment(1);
+
+  // The outgoing leaf is REPLACED by the incoming one, in place. One fold rather
+  // than a removal and an insertion: the agreement continues, so the slot it
+  // occupies continues with it, and the outgoing party's leaf stops being openable
+  // at the same instant the incoming party's starts.
+  const roots = licenseReplaceLeaf(lc, nlc, licenseSiblings(), licenseDirections());
+  assert(disclose(roots[0]) == activeLicenseRoot,
+         "That licence is not at the position given, or the path is invalid");
+  activeLicenseRoot = disclose(roots[1]);
 }
 
 /** Withdraw a proposed transfer. Either the proposal expires or it is retracted. */
@@ -361,6 +528,12 @@ export circuit revokeLicense(licenseCommitment: Bytes<32>): [] {
   assert(issuer == me || (rotatedTo.member(issuer) && rotatedTo.lookup(issuer) == me),
          "Only the issuer, or the record they rotated to, can revoke");
   assertLive(me);
+  // Read before the removal below, and before the tree is touched. Only an ACTIVE
+  // licence has a leaf: a PENDING one was issued and never accepted, so there is
+  // nothing in the tree to take out and requiring a path for it would make a
+  // pending licence unrevokable. Both states are public, so branching on this
+  // leaks nothing that the maps do not already show.
+  const wasActive = licenseStatusOf.lookup(lc) == LicenseState.ACTIVE;
   licenseStatusOf.remove(lc);
   licenseRecordOf.remove(lc);
   // A revoked licence must leave nothing behind. Without this, the pending
@@ -368,6 +541,18 @@ export circuit revokeLicense(licenseCommitment: Bytes<32>): [] {
   // approveTransfer passes the member check then fails inside the record
   // lookup, so the error does not describe what happened.
   if (pendingTransferOf.member(lc)) { pendingTransferOf.remove(lc); }
+
+  // AND IT MUST LEAVE THE TREE, or revocation would remove a licence from the maps
+  // while leaving it presentable — proveLicense opens the tree, not the map, so a
+  // leaf left behind is a revoked licence that still proves. Removing it is the
+  // whole revocation as far as a verifier is concerned.
+  if (wasActive) {
+    const nullLeaf = default<Bytes<32>>;
+    const roots = licenseReplaceLeaf(lc, nullLeaf, licenseSiblings(), licenseDirections());
+    assert(disclose(roots[0]) == activeLicenseRoot,
+           "That licence is not at the position given, or the path is invalid");
+    activeLicenseRoot = disclose(roots[1]);
+  }
 }
 
 /**
@@ -436,17 +621,38 @@ export circuit recoverRecordSecret(recordCommitment: Bytes<32>, newRecordCommitm
 }
 
 
-// A licensee proves they hold a valid, ACTIVE license without revealing the
-// secret, the terms, the counterparty, or the genetics.
-export circuit proveLicense(secret: Bytes<32>, recordCommitment: Bytes<32>): [] {
-  // Naming the record is what makes this a proof about a licence somebody issued,
-  // rather than about any entry with a matching key. A re-issued or sniped entry
-  // derives from a different record and therefore a different commitment.
-  const rc = disclose(recordCommitment);
-  const dlc = disclose(licenseCommit(secret, rc));
-  assert(licenseStatusOf.member(dlc), "No such license against that record");
-  assert(licenseStatusOf.lookup(dlc) == LicenseState.ACTIVE, "License is not active");
-  assert(licenseRecordOf.lookup(dlc) == rc, "This license was not issued against that record");
+/**
+ * A licensee proves they hold a live licence, naming nothing.
+ *
+ * NO ARGUMENTS, DELIBERATELY. Every input here is a witness, and the only public
+ * output is that the assertion held. What the chain sees is: somebody opened a leaf
+ * of the current active-licence tree.
+ *
+ * What it used to see. The commitment was derived and then used as a key into
+ * licenseStatusOf, and a map lookup puts its key in the public transcript.
+ * licenseRecordOf maps that key straight to the issuing record, so every
+ * presentation named the breeder — and because the key is the same key every time,
+ * two presentations of one licence linked to each other and to every other
+ * presentation of any licence from that breeder. The comment above this circuit
+ * said it revealed no counterparty. It revealed the counterparty every time.
+ *
+ * Both halves still hold:
+ *   · only the holder can pass — the leaf is rebuilt from their own secret, so
+ *     opening a leaf requires knowing what is behind it;
+ *   · only a LIVE licence can pass — the tree holds exactly the active set.
+ *     countersignLicense inserts, revokeLicense removes, approveTransfer moves the
+ *     leaf to the incoming party. A revoked licence has no leaf to open, and a
+ *     pending one was never inserted.
+ *
+ * What it still leaks: that a presentation happened, and when. Unlinkable, not
+ * invisible. Hiding the fact of a presentation is a different mechanism again.
+ */
+export circuit proveLicense(): [] {
+  const leaf = licenseCommit(licenseSecret(), licenseRecord());
+  // The comparison is disclosed — that is the proof's public statement — while the
+  // leaf, the path and the position it sits at are not.
+  assert(disclose(licenseMerkleRoot(leaf, licenseSiblings(), licenseDirections()) == activeLicenseRoot),
+         "No live licence for that secret");
 }
 
 // Public, privacy-safe status lookup for a live license.

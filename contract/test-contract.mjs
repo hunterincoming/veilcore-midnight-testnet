@@ -21,6 +21,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const artifact = path.join(here, 'src/managed/veilcore/contract/index.js');
 const mod = await import(pathToFileURL(artifact).href);
 const { Contract, LicenseState, ledger, pureCircuits } = mod;
+const { LicenseTree } = await import(pathToFileURL(path.join(here, 'src/license-tree.mjs')).href);
 
 let failures = 0;
 const ok = (name, cond, detail) => {
@@ -42,7 +43,20 @@ const witnesses = (secret, incoming = secret, recovery = secret) => ({
   localGeneticSecret: (ctx) => [ctx.privateState, secret],
   incomingGeneticSecret: (ctx) => [ctx.privateState, incoming],
   recoverySecret: (ctx) => [ctx.privateState, recovery],
+  // The active-licence tree. Every circuit that moves a leaf reads these, and
+  // proveLicense reads nothing else — a licence proof takes no arguments now, so
+  // the licence and the record it was issued against are witnesses like everything
+  // else about it. Set immediately before each call by the helpers below.
+  licenseSecret: (ctx) => [ctx.privateState, licPath.secret],
+  licenseRecord: (ctx) => [ctx.privateState, licPath.record],
+  licenseSiblings: (ctx) => [ctx.privateState, licPath.siblings],
+  licenseDirections: (ctx) => [ctx.privateState, licPath.dirs],
 });
+
+// The caller's own copy of the tree, kept in step with the chain.
+const licTree = new LicenseTree();
+const NO_PATH = { secret: new Uint8Array(32), record: new Uint8Array(32), siblings: [], dirs: [] };
+let licPath = NO_PATH;
 
 const BREEDER = b32(0x11);
 const LICENSEE = b32(0x22);
@@ -90,6 +104,50 @@ const run = (contract, name, ...args) => {
 };
 const state = () => ledger(ctx.currentQueryContext.state);
 
+/**
+ * Run a licence circuit with the tree path it needs, and advance the local tree
+ * only if the call succeeded. A refused call must leave the local tree where it
+ * was, or every path built afterwards is against a root the chain never had.
+ */
+const licensed = (plan, apply, party, name, ...args) => {
+  let p;
+  try { p = plan(); } catch { p = { index: 0, siblings: [], dirs: [] }; }
+  licPath = { ...licPath, siblings: p.siblings, dirs: p.dirs };
+  try {
+    const out = run(party, name, ...args);
+    apply(p.index);
+    return out;
+  } finally { licPath = NO_PATH; }
+};
+
+const countersign = (party, secret, record) => {
+  const lc = licenseCommit(secret, record);
+  return licensed(() => licTree.planInsert(lc), (i) => licTree.applyInsert(lc, i),
+                  party, 'countersignLicense', secret, record);
+};
+const approve = (party, lc, record, nlc) =>
+  licensed(() => licTree.planReplace(lc), (i) => licTree.applyReplace(lc, nlc, i),
+           party, 'approveTransfer', lc, record, nlc);
+const revoke = (party, lc) =>
+  licensed(() => licTree.planRemove(lc), (i) => licTree.applyRemove(lc, i),
+           party, 'revokeLicense', lc);
+
+/**
+ * Present a licence. Takes no circuit arguments at all: the secret, the record and
+ * the position are witnesses, so nothing about which licence is being shown reaches
+ * the transcript. A party who does not hold a live licence cannot build a path, so
+ * this hands the circuit an all-null one and lets it refuse.
+ */
+const present = (party, secret, record) => {
+  const lc = licenseCommit(secret, record);
+  let p;
+  try { p = licTree.pathFor(lc); }
+  catch { p = { siblings: Array.from({ length: 16 }, () => new Uint8Array(32)),
+                dirs: Array.from({ length: 16 }, () => false) }; }
+  licPath = { secret, record, siblings: p.siblings, dirs: p.dirs };
+  try { return run(party, 'proveLicense'); } finally { licPath = NO_PATH; }
+};
+
 console.log('\n== 1. the intended flows ==\n');
 
 run(breeder, 'anchor', RECORD, BREEDER_RECOVERY);
@@ -115,13 +173,15 @@ ok('issueLicense: only the record owner may issue',
 ok('issueLicense: no double issue',
     rejects(() => run(breeder, 'issueLicense', RECORD, LICENSE)).includes('already exists'));
 
-run(licensee, 'countersignLicense', LICENSE_SECRET, RECORD);
+countersign(licensee, LICENSE_SECRET, RECORD);
 ok('countersign: now ACTIVE', state().licenseStatusOf.lookup(LICENSE) === LicenseState.ACTIVE);
 
-run(licensee, 'proveLicense', b32(0x33), RECORD);
-ok('proveLicense: the secret holder passes', true);
+// Asserted `true` — it ran the circuit and then checked nothing, so the line would
+// have passed had proveLicense been a no-op. It passes if the call is accepted.
+ok('proveLicense: the secret holder passes',
+    rejects(() => present(licensee, b32(0x33), RECORD)) === '');
 ok('proveLicense: a wrong secret fails',
-    rejects(() => run(mallory, 'proveLicense', b32(0x77), RECORD)).includes('No such license'));
+    rejects(() => present(mallory, b32(0x77), RECORD)).includes('No live licence'));
 
 // Assignment. The incoming party generates their own secret and hands over only
 // its commitment, so after approval the licence lives under a key the outgoing
@@ -131,7 +191,7 @@ const ASSIGNEE_LICENSE = licenseCommit(ASSIGNEE_SECRET, RECORD);
 run(licensee, 'proposeTransfer', LICENSE_SECRET, RECORD, ASSIGNEE_LICENSE);
 ok('proposeTransfer: proposal recorded', state().pendingTransferOf.member(LICENSE));
 
-run(breeder, 'approveTransfer', LICENSE, RECORD, ASSIGNEE_LICENSE);
+approve(breeder, LICENSE, RECORD, ASSIGNEE_LICENSE);
 ok('approveTransfer: the new licence is live and ACTIVE',
     state().licenseStatusOf.lookup(ASSIGNEE_LICENSE) === LicenseState.ACTIVE);
 ok('approveTransfer: it is issued against the same record',
@@ -143,24 +203,24 @@ ok('approveTransfer: proposal cleared', !state().pendingTransferOf.member(LICENS
 // to END the outgoing party's rights rather than add a second holder.
 ok('approveTransfer: the OLD licence no longer exists', !state().licenseStatusOf.member(LICENSE));
 ok('approveTransfer: the outgoing party can no longer prove the licence',
-    rejects(() => run(licensee, 'proveLicense', LICENSE_SECRET, RECORD)).includes('No such license'));
+    rejects(() => present(licensee, LICENSE_SECRET, RECORD)).includes('No live licence'));
 ok('approveTransfer: the outgoing party can no longer propose another assignment',
     rejects(() => run(licensee, 'proposeTransfer', LICENSE_SECRET, RECORD, licenseCommit(b32(0x55), RECORD))) !== '');
 ok('approveTransfer: the incoming party can prove it',
-    rejects(() => run(licensee, 'proveLicense', ASSIGNEE_SECRET, RECORD)) === '');
+    rejects(() => present(licensee, ASSIGNEE_SECRET, RECORD)) === '');
 
 console.log('\n== 2. the same flows, driven by an attacker ==\n');
 
 // F1: countersignLicense authenticates nobody. The licence commitment is
 // public: it is disclosed by issueLicense and it is a ledger map key.
 run(breeder, 'issueLicense', RECORD, LICENSE2);
-const f1 = rejects(() => run(mallory, 'countersignLicense', b32(0xAA), RECORD));
+const f1 = rejects(() => countersign(mallory, b32(0xAA), RECORD));
 ok('F1: a stranger CANNOT activate a pending licence', f1 !== '',
     f1 === '' ? `mallory activated it, status is now ${state().licenseStatusOf.lookup(LICENSE2)}` : f1);
 
 // LICENSE2 is still PENDING: F1 no longer activates it as a side effect, now
 // that a stranger cannot countersign. The rightful holder activates it here.
-run(licensee, 'countersignLicense', LICENSE2_SECRET, RECORD);
+countersign(licensee, LICENSE2_SECRET, RECORD);
 
 // F2: approveTransfer reads whatever proposal is pending at execution time and
 // proposeTransfer is unauthenticated, so the recipient can be swapped under the
@@ -169,7 +229,7 @@ const INTENDED = licenseCommit(LICENSEE, RECORD);
 const MALLORYS = licenseCommit(MALLORY, RECORD);
 run(licensee, 'proposeTransfer', LICENSE2_SECRET, RECORD, INTENDED);   // the licensee proposes
 rejects(() => run(mallory, 'proposeTransfer', b32(0xAA), RECORD, MALLORYS));  // the sniper tries to overwrite
-run(breeder, 'approveTransfer', LICENSE2, RECORD, INTENDED);   // the breeder approves the party it saw
+approve(breeder, LICENSE2, RECORD, INTENDED);   // the breeder approves the party it saw
 ok('F2: approval lands on the recipient the issuer saw',
     state().licenseStatusOf.member(INTENDED) && !state().licenseStatusOf.member(MALLORYS),
     state().licenseStatusOf.member(MALLORYS) ? 'it landed on the sniper instead' : 'it landed somewhere else');
@@ -192,7 +252,7 @@ ok('F3: a stranger CANNOT withdraw a proposal they did not make', f3 !== '',
 // licence that replaced LICENSE2 when it was assigned.
 run(licensee, 'withdrawTransfer', INTENDED_SECRET, RECORD);
 run(licensee, 'proposeTransfer', INTENDED_SECRET, RECORD, licenseCommit(b32(0x57), RECORD));
-run(breeder, 'revokeLicense', INTENDED);
+revoke(breeder, INTENDED);
 ok('F4: revocation leaves no pending transfer behind', !state().pendingTransferOf.member(INTENDED),
     'pendingTransferOf still holds the revoked licence');
 

@@ -26,13 +26,25 @@ const COIN = '0'.repeat(64);
 console.log('\n== 1. does lineage deploy with a live tree? ==');
 {
   const secret = createHash('sha256').update('holder').digest();
+  const benSecret = createHash('sha256').update('beneficiary').digest();
   const t = new tree.ObligationTree();
   const rec = V.pureCircuits.commit(secret);
   const obl = createHash('sha256').update('royalty').digest();
-  const p = t.encumber(rec, obl);
+  // An obligation names who is owed, so the leaf — and therefore the path — is a
+  // function of the beneficiary as well. Building the path without one produced a
+  // leaf the circuit would never compute.
+  const ben = L.pureCircuits.commit(benSecret);
+  const p = t.encumber(rec, obl, ben);
 
   const contract = new L.Contract({
     localGeneticSecret: (c) => [c.privateState, secret],
+    beneficiarySecret: (c) => [c.privateState, benSecret],
+    // Read only by proveAncestorClean, which this section does not call; supplied
+    // because a missing witness stops the Contract being constructed at all.
+    slotIsEmpty: (c) => [c.privateState, true],
+    slotOccupantRecord: (c) => [c.privateState, new Uint8Array(32)],
+    slotOccupantObligation: (c) => [c.privateState, new Uint8Array(32)],
+    slotOccupantBeneficiary: (c) => [c.privateState, new Uint8Array(32)],
     merkleSiblings: (c) => [c.privateState, p.siblings],
     merkleDirections: (c) => [c.privateState, p.dirs],
     ancestryChain: (c) => [c.privateState, [rec, rec, rec, rec]],
@@ -73,6 +85,10 @@ console.log('\n== 1. does lineage deploy with a live tree? ==');
     ok('the obligation is on chain',
        hex(after.lastObligation) === hex(obl),
        'without the leaf inputs a third party cannot rebuild a sibling path');
+    ok('the beneficiary is on chain',
+       hex(after.lastBeneficiary) === hex(ben),
+       'the leaf is a function of the beneficiary too, so without it no sibling path\n' +
+       '     can be reconstructed and no discharge verified');
   }
 }
 
@@ -85,6 +101,11 @@ console.log('\n== 2b. can a third party enumerate a parent? ==');
 
   const contract = new L.Contract({
     localGeneticSecret: (c) => [c.privateState, secret],
+    beneficiarySecret: (c) => [c.privateState, secret],
+    slotIsEmpty: (c) => [c.privateState, true],
+    slotOccupantRecord: (c) => [c.privateState, new Uint8Array(32)],
+    slotOccupantObligation: (c) => [c.privateState, new Uint8Array(32)],
+    slotOccupantBeneficiary: (c) => [c.privateState, new Uint8Array(32)],
     merkleSiblings: (c) => [c.privateState, []],
     merkleDirections: (c) => [c.privateState, []],
     ancestryChain: (c) => [c.privateState, [child, child, child, child]],
@@ -111,6 +132,12 @@ console.log('\n== 2c. is a prior-possession proof checkable by a third party? ==
     localGeneticSecret: (c) => [c.privateState, secret],
     incomingGeneticSecret: (c) => [c.privateState, createHash('sha256').update('incoming').digest()],
     recoverySecret: (c) => [c.privateState, createHash('sha256').update('recovery').digest()],
+    // No licence circuit runs in this section; supplied because a missing witness
+    // stops the Contract being constructed at all.
+    licenseSecret: (c) => [c.privateState, new Uint8Array(32)],
+    licenseRecord: (c) => [c.privateState, new Uint8Array(32)],
+    licenseSiblings: (c) => [c.privateState, []],
+    licenseDirections: (c) => [c.privateState, []],
   });
   const ctor = contract.initialState(rt.createConstructorContext({}, COIN));
   const ctx = rt.createCircuitContext(rt.sampleContractAddress(), COIN, ctor.currentContractState, {});

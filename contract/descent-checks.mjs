@@ -59,11 +59,10 @@ console.log('\n== 2. is a chain that stops short of a dirty ancestor caught? =='
   note(truncated.ok ? 'verifyDescent: ok' : `verifyDescent: ${truncated.reason}`);
 
   ok('a chain stopping short of a known ancestor is refused', !truncated.ok,
-     'verifyChain confirms each claimed link and never checks the chain reaches the top.\n' +
-     '     requiredChainLength exists for this and nothing calls it, so a seller whose\n' +
-     '     grandparent is encumbered declares only the parent edge, proves the parent\n' +
-     '     clean, and passes. The whole point of walking descent is that a per-record\n' +
-     '     check is not enough.');
+     'verifyChain confirms each claimed link and never checks the chain reaches the top,\n' +
+     '     so a seller whose grandparent is encumbered declares only the parent edge,\n' +
+     '     proves the parent clean, and passes. verifyDescent walks the graph itself\n' +
+     '     instead, because the whole point is that a per-record check is not enough.');
 }
 
 // ── 3. a cross has two parents ──────────────────────────────────────────────
@@ -82,8 +81,8 @@ console.log('\n== 3. does it handle a record with two parents? ==');
   note(both.ok ? `verifyDescent with both cleared: ok, ${both.ancestorsChecked} checked` : `refused: ${both.reason}`);
 
   ok('clearing every declared parent verifies', both.ok,
-     `requiredChainLength counts every ancestor transitively while verifyChain follows a\n` +
-     '     single line, so on any branching pedigree the number it returns cannot be met.\n' +
+     'ancestorCount counts every ancestor transitively while verifyChain follows a\n' +
+     '     single line, so comparing the two could never be met on a branching pedigree.\n' +
      '     A cross has two parents by definition, so this is the ordinary case.');
 }
 

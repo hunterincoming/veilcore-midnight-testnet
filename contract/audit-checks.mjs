@@ -28,7 +28,25 @@ const b32 = (fill) => new Uint8Array(32).fill(fill);
 const hex = (b) => Buffer.from(b).toString('hex');
 const same = (a, b) => Buffer.from(a).equals(Buffer.from(b));
 
-const witnesses = (secret) => ({ localGeneticSecret: (ctx) => [ctx.privateState, secret] });
+// Every declared witness has to be supplied or the Contract constructor throws
+// before a single circuit runs, which is how this file stopped executing when
+// rotation and recovery were added. A party that never rotates never reads the
+// last two, so defaulting them to its own secret leaves every case unchanged.
+const witnesses = (secret, incoming = secret, recovery = secret) => ({
+  localGeneticSecret: (ctx) => [ctx.privateState, secret],
+  incomingGeneticSecret: (ctx) => [ctx.privateState, incoming],
+  recoverySecret: (ctx) => [ctx.privateState, recovery],
+  // The active-licence tree. proveLicense reads only witnesses, so the licence and
+  // the record it was issued against are supplied here rather than as arguments.
+  licenseSecret: (ctx) => [ctx.privateState, licPath.secret],
+  licenseRecord: (ctx) => [ctx.privateState, licPath.record],
+  licenseSiblings: (ctx) => [ctx.privateState, licPath.siblings],
+  licenseDirections: (ctx) => [ctx.privateState, licPath.dirs],
+});
+
+// No licence circuit that moves a leaf runs in this file — section 3 only issues,
+// which leaves licences PENDING and outside the tree — so the path stays null.
+const licPath = { secret: b32(0), record: b32(0), siblings: [], dirs: [] };
 const COIN = '0'.repeat(64);
 const ADDR = rt.sampleContractAddress();
 
@@ -61,20 +79,17 @@ console.log('\n== 1. does proveOwnership publish the commitment? ==');
   note(`proofSeq ${beforeSeq} -> ${after.proofSeq}`);
   note(`lastAnchor after: ${hex(after.lastAnchor).slice(0, 24)}…`);
 
-  // A return from an exported circuit is a public position, same as a ledger
-  // write. Checking only the ledger asked the wrong question.
+  // A RETURN IS NOT A PUBLIC POSITION, and this check asserted on one. The return
+  // travels in the call's communication commitment, which is blinded with
+  // randomness: it reaches the caller's own DApp and nobody reading the chain. The
+  // check therefore passed while the question in its own name — does a verifier
+  // learn which record was proven — was still answered no. The ledger cell is what
+  // the chain carries, so that is what is read.
   const returned = r.result;
-  note(`returned value: ${returned ? hex(returned).slice(0, 24) + '…' : '(none)'}`);
-  ok('proveOwnership publishes the commitment', returned != null && same(returned, expected),
+  note(`returned value:     ${returned ? hex(returned).slice(0, 24) + '…' : '(none)'}`);
+  note(`lastOwnershipProof: ${hex(after.lastOwnershipProof).slice(0, 24)}…`);
+  ok('proveOwnership publishes the commitment', same(after.lastOwnershipProof, expected),
      'nothing reaches a public position — a verifier cannot tell which record was proven');
-
-  // What the transaction itself carries is the other half of the question.
-  // Print it so it can be inspected by eye rather than asserted blindly.
-  note('public transcript of the call:');
-  try {
-    console.log(JSON.stringify(r.result ?? null));
-    console.log(JSON.stringify(r.context?.transcript ?? r.proofData ?? '(no transcript field)').slice(0, 400));
-  } catch { note('(transcript not serialisable — inspect manually)'); }
 }
 
 // ───────────────────────────────────────────────────── 2. pairDna binding
@@ -95,9 +110,10 @@ console.log('\n== 2. does pairDna bind the record to the DNA report on chain? ==
   note(`dna commitment:    ${hex(dc).slice(0, 24)}…`);
   note(`lastAnchor holds:  ${hex(after.lastAnchor).slice(0, 24)}…`);
 
-  note(`returned value:    ${r.result ? hex(r.result).slice(0, 24) + '…' : '(none)'}`);
+  note(`lastPairedRecord:  ${hex(after.lastPairedRecord).slice(0, 24)}…`);
   ok('lastAnchor holds the DNA commitment', same(after.lastAnchor, dc));
-  ok('the record commitment also reaches a public position', r.result != null && same(r.result, rc),
+  // Was asserted on r.result, for the same reason and with the same defect as 1.
+  ok('the record commitment also reaches a public position', same(after.lastPairedRecord, rc),
      'only the DNA side is public — the pairing is not checkable on chain');
 }
 
@@ -114,7 +130,9 @@ console.log('\n== 3. can a stranger grow licence state without bound? ==');
   const N = 50;
 
   for (let i = 0; i < N; i++) {
-    const lc = pureCircuits.commit(b32(i + 1));
+    // licenseCommit, not commit: records and licences no longer share a domain
+    // tag, and the commitment is bound to the record it is issued against.
+    const lc = pureCircuits.licenseCommit(b32(i + 1), griefRecord);
     cur = contract.impureCircuits.issueLicense(cur, griefRecord, lc).context;
   }
 
@@ -169,7 +187,7 @@ console.log('\n== 6. do assert messages leak private state? ==');
 {
   const { contract, ctx } = fresh(BREEDER);
   const wrong = b32(0x77);
-  const msg = rejects(() => contract.impureCircuits.anchor(ctx, wrong));
+  const msg = rejects(() => contract.impureCircuits.anchor(ctx, wrong, pureCircuits.commit(b32(0xB1))));
   note(`message: "${msg}"`);
   const leaks = /[0-9a-f]{16,}/i.test(msg);
   ok('no hex-looking material in the failure message', !leaks);

@@ -12,6 +12,7 @@ import { createHash } from 'node:crypto';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const V = await import(pathToFileURL(path.join(here, 'src/managed/veilcore/contract/index.js')).href);
+const { LicenseTree } = await import(pathToFileURL(path.join(here, 'src/license-tree.mjs')).href);
 const rt = await import('@midnight-ntwrk/compact-runtime');
 
 let bad = 0;
@@ -33,7 +34,16 @@ const party = (own, incoming = own, recovery = own) =>
     localGeneticSecret: (c) => [c.privateState, own],
     incomingGeneticSecret: (c) => [c.privateState, incoming],
     recoverySecret: (c) => [c.privateState, recovery],
+    // Licence-tree path, set before the one call in this file that moves a leaf:
+    // the successor revoking a licence the old record issued.
+    licenseSecret: (c) => [c.privateState, licPath.secret],
+    licenseRecord: (c) => [c.privateState, licPath.record],
+    licenseSiblings: (c) => [c.privateState, licPath.siblings],
+    licenseDirections: (c) => [c.privateState, licPath.dirs],
   });
+
+const licTree = new LicenseTree();
+let licPath = { secret: sec('none'), record: sec('none'), siblings: [], dirs: [] };
 
 const commit = V.pureCircuits.commit;
 const licenseCommit = V.pureCircuits.licenseCommit;

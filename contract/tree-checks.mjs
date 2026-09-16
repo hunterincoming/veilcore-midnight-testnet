@@ -22,6 +22,12 @@ const { ObligationTree, DEPTH, NULL_LEAF, EMPTY_ROOT } =
 const { pureCircuits: C } =
   await import(pathToFileURL(path.join(here, 'src/managed/lineage/contract/index.js')).href);
 
+// Obligations name who is owed. The beneficiary is part of the leaf, so the
+// encumbered party cannot reconstruct it and release themselves — which is what
+// made an obligation a note-to-self before. Declared AFTER the import that binds
+// C: it was above it, so the file threw before a single check ran.
+const BENEFICIARY = C.commit(new Uint8Array(32).fill(0xBE));
+
 let failures = 0;
 const ok = (name, cond, detail) => {
   if (cond) console.log(`OK   ${name}`);
@@ -43,9 +49,9 @@ console.log('\n== 1. does a built path fold to the root the client computed? =='
   const t = new ObligationTree();
   const r = rec(1);
   const o = obl(1);
-  const { dirs, siblings, oldRoot, newRoot } = t.encumber(r, o);
+  const { dirs, siblings, oldRoot, newRoot } = t.encumber(r, o, BENEFICIARY);
 
-  const leaf = C.obligationLeaf(r, o);
+  const leaf = C.obligationLeaf(r, o, BENEFICIARY);
   const folded = C.merkleRoot(leaf, siblings, dirs);
 
   note(`client newRoot:  ${hex(newRoot).slice(0, 24)}…`);
@@ -63,7 +69,7 @@ console.log('\n== 2. do the direction bits equal the record\'s slot bits? ==');
 {
   const t = new ObligationTree();
   const r = rec(2);
-  const { dirs } = t.encumber(r, obl(2));
+  const { dirs } = t.encumber(r, obl(2), BENEFICIARY);
   const bits = C.slotBits(r);
 
   const equal = dirs.length === bits.length && dirs.every((d, i) => d === bits[i]);
@@ -76,7 +82,7 @@ console.log('\n== 2. do the direction bits equal the record\'s slot bits? ==');
 console.log('\n== 3. does it hold with a populated tree? ==');
 {
   const t = new ObligationTree();
-  for (let i = 10; i < 60; i++) t.encumber(rec(i), obl(i));
+  for (let i = 10; i < 60; i++) t.encumber(rec(i), obl(i), BENEFICIARY);
 
   let bad = 0;
   for (let i = 10; i < 60; i++) {
@@ -95,9 +101,9 @@ console.log('\n== 4. does discharge undo encumber exactly? ==');
   const before = t.root();
   const r = rec(3);
   const o = obl(3);
-  t.encumber(r, o);
+  t.encumber(r, o, BENEFICIARY);
   const mid = t.root();
-  const d = t.discharge(r, o);
+  const d = t.discharge(r, o, BENEFICIARY);
 
   ok('the root moves when an obligation is added', !same(before, mid));
   ok('discharging returns to the exact prior root', same(t.root(), before),
@@ -110,14 +116,14 @@ console.log('\n== 5. do the client guards match the circuit\'s asserts? ==');
 {
   const t = new ObligationTree();
   const r = rec(4);
-  t.encumber(r, obl(4));
+  t.encumber(r, obl(4), BENEFICIARY);
 
   ok('encumbering an occupied slot is refused',
-     rejects(() => t.encumber(r, obl(99))) !== '',
+     rejects(() => t.encumber(r, obl(99), BENEFICIARY)) !== '',
      'the circuit asserts the slot is clean; letting the client build this wastes a proof');
   ok('discharging an obligation that is not there is refused',
-     rejects(() => t.discharge(r, obl(99))) !== '',
-     'the circuit folds obligationLeaf(rc, oc) and compares to the root');
+     rejects(() => t.discharge(r, obl(99), BENEFICIARY)) !== '',
+     'the circuit folds obligationLeaf(rc, oc, bc) and compares to the root');
   ok('a clean path for an encumbered record is refused',
      rejects(() => t.cleanPath(r)) !== '');
 }

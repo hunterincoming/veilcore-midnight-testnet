@@ -4,6 +4,11 @@
 import { ObligationTree, EMPTY_ROOT } from './src/tree.mjs';
 import { pureCircuits as C } from './src/managed/lineage/contract/index.js';
 
+// Obligations name who is owed. The beneficiary is part of the leaf, so the
+// encumbered party cannot reconstruct it and release themselves — which is what
+// made an obligation a note-to-self before.
+const BENEFICIARY = C.commit(new Uint8Array(32).fill(0xBE));
+
 const hex = (u) => Buffer.from(u).toString('hex');
 const secret = (n) => { const a = new Uint8Array(32); a[0]=n; a[7]=(n*3)%256; a[31]=n; return a; };
 let failures = 0;
@@ -15,13 +20,13 @@ check('empty tree matches the empty-root constant', hex(t.root()) === hex(EMPTY_
 // Eight obligations, so most subtrees hold more than one leaf.
 const recs = [], obls = [];
 for (let i = 1; i <= 8; i++) { recs.push(C.commit(secret(i))); obls.push(C.commit(secret(100 + i))); }
-for (let i = 0; i < 8; i++) t.encumber(recs[i], obls[i]);
+for (let i = 0; i < 8; i++) t.encumber(recs[i], obls[i], BENEFICIARY);
 
 const root = t.root();
 let allVerify = true;
 for (let i = 0; i < 8; i++) {
   const dirs = C.slotBits(recs[i]);
-  const r = C.merkleRoot(C.obligationLeaf(recs[i], obls[i]), t.siblingsFor(dirs), dirs);
+  const r = C.merkleRoot(C.obligationLeaf(recs[i], obls[i], BENEFICIARY), t.siblingsFor(dirs), dirs);
   if (hex(r) !== hex(root)) allVerify = false;
 }
 check('all 8 encumbered paths fold to the current root', allVerify);
@@ -31,12 +36,12 @@ check('an untouched record still proves clean',
   hex(C.merkleRoot(new Uint8Array(32), t.siblingsFor(cd), cd)) === hex(root));
 
 // Discharging one must not disturb the others.
-t.discharge(recs[3], obls[3]);
+t.discharge(recs[3], obls[3], BENEFICIARY);
 const afterRoot = t.root();
 let othersOk = true;
 for (const i of [0, 1, 2, 4, 5, 6, 7]) {
   const dirs = C.slotBits(recs[i]);
-  const r = C.merkleRoot(C.obligationLeaf(recs[i], obls[i]), t.siblingsFor(dirs), dirs);
+  const r = C.merkleRoot(C.obligationLeaf(recs[i], obls[i], BENEFICIARY), t.siblingsFor(dirs), dirs);
   if (hex(r) !== hex(afterRoot)) othersOk = false;
 }
 check('discharging one leaves the other seven verifiable', othersOk);
@@ -46,7 +51,7 @@ check('the discharged record can now prove clean',
   hex(C.merkleRoot(new Uint8Array(32), t.siblingsFor(dd), dd)) === hex(afterRoot));
 
 // Clearing everything must return exactly to the empty root.
-for (const i of [0, 1, 2, 4, 5, 6, 7]) t.discharge(recs[i], obls[i]);
+for (const i of [0, 1, 2, 4, 5, 6, 7]) t.discharge(recs[i], obls[i], BENEFICIARY);
 check('clearing all obligations restores the empty root', hex(t.root()) === hex(EMPTY_ROOT));
 
 console.log(failures === 0 ? '\nAll tree tests passed.' : `\n${failures} FAILURES`);

@@ -13,13 +13,14 @@
     }
   },
   "scripts": {
-    "build": "rm -rf dist && tsc --project tsconfig.build.json && cp -Rf ./src/managed ./dist/managed && cp ./src/veilcore.compact ./dist && cp ./src/lineage.compact ./dist && cp ./src/tree.mjs ./src/descent.mjs ./dist",
+    "build": "rm -rf dist && tsc --project tsconfig.build.json && cp -Rf ./src/managed ./dist/managed && cp ./src/veilcore.compact ./dist && cp ./src/lineage.compact ./dist && cp ./src/tree.mjs ./src/descent.mjs ./src/license-tree.mjs ./dist",
     "ci": "npm run compact && npm run typecheck && npm run lint && npm run build && npm run test",
-    "compact": "compact compile src/veilcore.compact ./src/managed/veilcore && compact compile src/lineage.compact ./src/managed/lineage",
+    "compact": "compact compile src/veilcore.compact ./src/managed/veilcore && compact compile src/lineage.compact ./src/managed/lineage && npm run compact:shallow",
     "lint": "eslint src",
     "prepack": "npm build",
-    "test": "node test-contract.mjs",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "test": "for f in test-*.mjs *-checks.mjs verify-max-*.mjs; do echo \"--- $f\"; node \"$f\" || exit 1; done",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "compact:shallow": "node gen-lineage.mjs 8 src/lineage-shallow.compact && compact compile --skip-zk src/lineage-shallow.compact ./src/managed/lineage-shallow"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.5",

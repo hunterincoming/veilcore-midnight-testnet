@@ -273,10 +273,17 @@ ok('F5: a stranger rotating cannot touch the breeder\'s record',
     f5 !== '' || state().lastAnchor === undefined || !same(state().lastAnchor, VICTIM_RECORD),
     'mallory\'s rotation landed on the breeder\'s commitment');
 
-// F6: the holder can rotate, and the returned value names the identity being
-// left behind. Without it the transaction is a new anchor with no link to the
-// old one, and a verifier holding the earlier anchor has no way to follow the
-// record across the rotation.
+// F6: the holder can rotate, and the CHAIN names the identity being left behind.
+// Without it the transaction is a new anchor with no link to the old one, and a
+// verifier holding the earlier anchor has no way to follow the record across the
+// rotation.
+//
+// This asserted on rot.result — the circuit's RETURN VALUE — which is exactly the
+// thing this whole class of finding is about. A return travels in the call's
+// communication commitment, which is blinded: it reaches the caller's own DApp and
+// nobody reading the chain. So the check passed while a third party could still
+// not follow the record, which is the entire property it is named for. The ledger
+// cell is what the chain carries.
 const BREEDER_NEW_SECRET = b32(0x62);
 const BREEDER_NEW = commit(BREEDER_NEW_SECRET);
 // The rotating party holds the incoming secret. Naming a commitment used to be
@@ -286,9 +293,12 @@ const rot = run(breederRotating, 'rotateRecordSecret', BREEDER_NEW);
 ok('F6: the holder can rotate their own record',
     rot !== undefined,
     'the rightful holder was refused');
-ok('F6: the rotation names the identity it replaces',
-    rot?.result !== undefined && same(rot.result, VICTIM_RECORD),
+ok('F6: the rotation names the identity it replaces, on chain',
+    same(state().lastRotatedFrom, VICTIM_RECORD) && same(state().lastRotatedTo, BREEDER_NEW),
     'nothing links the new commitment to the old one, so the record cannot be followed');
+// The return still carries it, and that is fine — it is just not evidence.
+ok('F6: the return value agrees with the ledger, and is not the proof of it',
+    rot?.result !== undefined && same(rot.result, VICTIM_RECORD));
 
 // F7: a rotation to the same commitment is a no-op that looks like a rotation.
 // Left unguarded it would let a holder produce an endless run of transactions

@@ -13,9 +13,13 @@
 import { type Logger } from 'pino';
 import { type ContractAddress } from '@midnight-ntwrk/compact-runtime';
 import { toHex } from '@midnight-ntwrk/midnight-js-utils';
+import { deployContract } from '@midnight-ntwrk/midnight-js-contracts';
 import * as Lineage from '../../contract/src/managed/lineage/contract/index.js';
+import { CompiledLineage } from '../../contract/src/lineage';
 import { type DeployedLineageContract, type LineageProviders, lineagePrivateStateKey } from './lineage-types.js';
-import { type LineagePrivateState } from '../../contract/src/witnesses.js';
+import { type LineagePrivateState, createLineagePrivateState } from '../../contract/src/witnesses.js';
+import { assertDeploymentRecordCurrent } from './deploy-guard.js';
+import * as utils from './utils/index.js';
 
 /** A record's position and path in the obligation tree. */
 export type SlotPath = {
@@ -270,6 +274,54 @@ export class LineageAPI {
       beneficiarySecret: beneficiarySecret ?? current.geneticSecret,
     };
     await this.providers.privateStateProvider.set(lineagePrivateStateKey, next);
+  }
+
+  /**
+   * Deploy the lineage contract, behind the same deployment-record gate as veilcore.
+   *
+   * READ THIS BEFORE TRUSTING IT. Until the lineage service is changed to call it,
+   * this guard is not on the path that deploys lineage.compact in practice. That
+   * deploy happens outside this repository: there is no `deployContract` call for
+   * lineage anywhere in this tree, `LineageAPI` had no factory at all, and the
+   * service therefore reaches the class some other way. TypeScript's `private` on
+   * the constructor is erased at compile time — `dist/api/src/lineage-api.js` emits
+   * a plain public constructor — so `new LineageAPI(deployed, providers)` from
+   * outside compiles to nothing that stops it and skips every static on this class.
+   *
+   * So this static is the entry point for the service to adopt, not a gate that
+   * already holds. The thing that closes the hole is the service calling
+   * `assertDeploymentRecordCurrent('lineage', logger)` at its own deploy site —
+   * which is why that function is exported from the package rather than kept
+   * module-private the way the first version of this guard was.
+   *
+   * The gate is deliberately not on the constructor. The constructor is also the
+   * read path — walking lineage, resolving descent, serving verification — and
+   * refusing there would take the registry down on any network not on the
+   * allowlist, rather than refusing a deploy.
+   */
+  static async deploy(providers: LineageProviders, logger?: Logger): Promise<LineageAPI> {
+    // Refuses unless the target network is one where the deployment record is not a
+    // gate, or a sufficient revision has been declared as filed. Closed by default:
+    // an unknown network, an unset network, a missing revision or a mistyped one all
+    // refuse. Same record and same revision counter as veilcore — see the note on
+    // REQUIRED_RECORD_REVISION in deploy-guard.ts for why it is not its own.
+    assertDeploymentRecordCurrent('lineage', logger);
+
+    logger?.info('deployContract — lineage');
+
+    const deployedLineageContract = await deployContract(providers, {
+      compiledContract: CompiledLineage,
+      privateStateId: lineagePrivateStateKey,
+      initialPrivateState: createLineagePrivateState(utils.randomBytes(32)),
+    });
+
+    logger?.trace({
+      contractDeployed: {
+        finalizedDeployTxData: deployedLineageContract.deployTxData.public,
+      },
+    });
+
+    return new LineageAPI(deployedLineageContract, providers, logger);
   }
 }
 

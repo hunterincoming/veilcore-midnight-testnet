@@ -8,7 +8,7 @@ import * as Veilcore from '../../contract/src/managed/veilcore/contract/index.js
 import { CompiledVeilcore } from '../../contract/src/veilcore';
 import { type VeilcorePrivateState, createVeilcorePrivateState } from '../../contract/src/witnesses.js';
 import { deployContract, findDeployedContract } from '@midnight-ntwrk/midnight-js-contracts';
-import { getNetworkId } from '@midnight-ntwrk/midnight-js-network-id';
+import { assertDeploymentRecordCurrent } from './deploy-guard.js';
 import { type SigningKey } from '@midnight-ntwrk/midnight-js-protocol/compact-runtime';
 import { combineLatest, map, from, type Observable } from 'rxjs';
 import { toHex } from '@midnight-ntwrk/midnight-js-utils';
@@ -21,119 +21,6 @@ import {
   type AnchoredStrain,
   veilcorePrivateStateKey,
 } from './veilcore-types.js';
-
-/**
- * The deployment-record revision this build requires before it may be deployed
- * anywhere that is not on the list below.
- *
- * PR #314 corrected a revision that described a fix its own fingerprints did not
- * contain, and committed publicly to filing a fourth before the deploy key is used.
- * A fourth revision needs fresh `npm run compact` fingerprints from the build being
- * deployed, the current circuit count, and the second contract — which no revision
- * mentions at all.
- *
- * Raise this when a later build needs a later revision. It is a constant rather than
- * an environment variable so that moving it is a reviewed change.
- */
-const REQUIRED_RECORD_REVISION = 4;
-
-/**
- * Networks a deployment may target without a current deployment record.
- *
- * AN ALLOWLIST, NOT A DENYLIST, and that is the whole point. The previous guard
- * asked whether the network was mainnet and let everything else through, keyed on an
- * environment variable nothing in this repository set — so the obvious way to add
- * mainnet, a config class calling `setNetworkId('mainnet')` beside the preview and
- * preprod ones, would have passed it without anyone touching the guard.
- *
- * Refusing by default costs one line here when a genuinely new development network
- * appears. Missing a production deploy costs a deployment record that describes a
- * contract nobody is running.
- *
- * THIS GUARD COVERS ONE OF TWO CONTRACTS. `lineage.compact` has no deploy path in
- * this package — LineageAPI exposes none, and the lineage service deploys it from
- * outside this repository — so nothing stops it going to a network this guard would
- * refuse veilcore on.
- *
- * The deployment record has the same gap from the other end: no revision of it
- * mentions the lineage contract at all, so there is nothing for a fourth revision to
- * bring up to date there, only something to add. Both halves are open, and they are
- * the same hole seen from two sides — a guard that checks a record, and a record
- * that does not describe everything being deployed.
- */
-const RECORD_NOT_REQUIRED: ReadonlySet<string> = new Set([
-  'undeployed',
-  'standalone',
-  'devnet',
-  'testnet',
-  'preview',
-  'preprod',
-]);
-
-/**
- * The network this process is configured for, or null if nothing has set one.
- *
- * `getNetworkId()` throws rather than returning a default when `setNetworkId` has
- * not been called, and null is treated as unknown — which refuses. A caller that
- * cannot say where it is deploying is not a caller that should be deploying.
- */
-const resolveNetwork = (): string | null => {
-  try {
-    return getNetworkId().toLowerCase();
-  } catch {
-    return null;
-  }
-};
-
-/**
- * Refuse to deploy until the deployment record describes this build.
- *
- * Throws unless the target network is one where the record is not a gate, or a
- * sufficient revision has been declared as filed.
- */
-const assertDeploymentRecordCurrent = (logger?: Logger): void => {
-  const network = resolveNetwork();
-  if (network !== null && RECORD_NOT_REQUIRED.has(network)) {
-    logger?.info(`network ${network} — deployment record not required`);
-    return;
-  }
-
-  // Strict decimal digits. `Number('v4')` is NaN and `NaN < 4` is false, so the
-  // previous `filed < 4` test let a typo through silently: the one input most likely
-  // to be mistyped disabled the check it was mistyped into.
-  const raw = (process.env.VEILCORE_DEPLOYMENT_RECORD_REVISION ?? '').trim();
-  const filed = /^\d+$/.test(raw) ? Number(raw) : Number.NaN;
-  const declared = Number.isInteger(filed) && filed >= REQUIRED_RECORD_REVISION;
-
-  if (declared) {
-    logger?.info(`deployment record revision ${filed} declared for network ${network ?? 'unknown'}`);
-    return;
-  }
-
-  const where =
-    network === null
-      ? 'No network is set — setNetworkId() has not been called, so this process cannot say\nwhere it is deploying.'
-      : `Network "${network}" is not on the list of networks that may be deployed to\nwithout a current deployment record.`;
-
-  const why =
-    raw === ''
-      ? 'VEILCORE_DEPLOYMENT_RECORD_REVISION is unset.'
-      : `VEILCORE_DEPLOYMENT_RECORD_REVISION="${raw}" is not a whole number of at least ${REQUIRED_RECORD_REVISION}.`;
-
-  throw new Error(
-    `Refusing to deploy: the deployment record is behind this build.\n\n${where}\n${why}\n\n` +
-      'The record in midnightntwrk/midnight-improvement-proposals carries artefact\n' +
-      'fingerprints and a circuit list. PR #314 corrected a revision that described a\n' +
-      'fix its own fingerprints did not contain, and states that a fourth revision will\n' +
-      'be filed before the deploy key is used. The third revision predates the\n' +
-      'constructor, the licence tree and the recovery circuit.\n\n' +
-      `File the revision, then set VEILCORE_DEPLOYMENT_RECORD_REVISION=${REQUIRED_RECORD_REVISION}.\n` +
-      'Setting it without filing is the thing this guard exists to catch.\n\n' +
-      'For a new development network, add it to RECORD_NOT_REQUIRED in veilcore-api.ts.\n' +
-      'Widening this is a reviewed code change, deliberately — it is not an\n' +
-      'environment variable, because the previous guard was and nothing ever set it.',
-  );
-};
 
 /**
  * A licence's position and path in the active-licence tree.
@@ -660,8 +547,8 @@ export class VeilcoreAPI implements DeployedVeilcoreAPI {
     // Refuses unless the target network is one where the deployment record is not a
     // gate, or a sufficient revision has been declared as filed. Closed by default:
     // an unknown network, an unset network, a missing revision or a mistyped one all
-    // refuse. See assertDeploymentRecordCurrent above.
-    assertDeploymentRecordCurrent(logger);
+    // refuse. See api/src/deploy-guard.ts, and test-deploy-guard.mjs for the table.
+    assertDeploymentRecordCurrent('veilcore', logger);
 
     logger?.info(
       signingKey === null

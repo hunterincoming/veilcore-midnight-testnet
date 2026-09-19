@@ -10,8 +10,9 @@
   "types": "./dist/index.d.ts",
   "scripts": {
     "build": "rm -rf dist && tsc --project tsconfig.build.json",
-    "ci": "npm run typecheck && npm run lint && npm run build",
+    "ci": "npm run typecheck && npm run lint && npm run build && npm run test",
     "lint": "eslint src",
+    "test": "node test-deploy-guard.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   }
 }

@@ -20,6 +20,10 @@
 
 export * as utils from './utils/index.js';
 
+// Exported so a deploy path outside this repository — the lineage service — can
+// call the gate at its own deploy site. A guard it cannot reach is a guard that
+// sits where the deploy never touches.
+export * from './deploy-guard.js';
 export * from './veilcore-types.js';
 export * from './veilcore-api.js';
 export * from './lineage-types.js';

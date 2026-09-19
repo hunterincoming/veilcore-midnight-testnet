@@ -20,6 +20,7 @@
  */
 
 import { createInterface, type Interface } from 'node:readline/promises';
+import path from 'node:path';
 import { stdin as input, stdout as output } from 'node:process';
 import { Buffer } from 'node:buffer';
 import { WebSocket } from 'ws';
@@ -30,6 +31,10 @@ import {
   type VeilcoreProviders,
   type DeployedVeilcoreContract,
   type VeilcorePrivateStateId,
+  LineageAPI,
+  type LineageProviders,
+  type LineagePrivateStateId,
+  type LineageCircuitKeys,
 } from '../../api/src/index';
 import { type WalletFacade } from '@midnight-ntwrk/wallet-sdk-facade';
 import { ledger, type Ledger, pureCircuits } from '../../contract/src/managed/veilcore/contract/index.js';
@@ -49,7 +54,7 @@ import { LicenseTree } from '../../contract/src/license-tree.mjs';
 import { unshieldedToken } from '@midnight-ntwrk/midnight-js-protocol/ledger';
 import { syncWallet, waitForUnshieldedFunds } from './wallet-utils';
 import { generateDust } from './generate-dust';
-import { type VeilcorePrivateState } from '../../contract/src/witnesses.js';
+import { type VeilcorePrivateState, type LineagePrivateState } from '../../contract/src/witnesses.js';
 
 // @ts-expect-error: It's needed to enable WebSocket usage through apollo
 globalThis.WebSocket = WebSocket;
@@ -88,11 +93,17 @@ const DEPLOY_OR_JOIN_QUESTION = `
 You can do one of the following:
   1. Deploy a new Veilcore contract
   2. Join an existing Veilcore contract
-  3. Exit
+  3. Deploy a new Lineage contract
+  4. Exit
 Which would you like to do? `;
 
-const deployOrJoin = async (
+// Exported so the deploy branches can be driven without a wallet, an indexer and a
+// proof server. There is deliberately no mainnet Config — adding one is the reviewed
+// change the allowlist in deploy-guard.ts is there to force — so the only way to
+// exercise what this menu does on a refused network is to call it directly.
+export const deployOrJoin = async (
   providers: VeilcoreProviders,
+  lineageProviders: LineageProviders,
   rli: Interface,
   logger: Logger,
 ): Promise<VeilcoreAPI | null> => {
@@ -137,7 +148,23 @@ const deployOrJoin = async (
         logger.info(`Joined contract at address: ${api.deployedContractAddress}`);
         return api;
       }
-      case '3':
+      case '3': {
+        // The second contract, on the same deployment-record gate as the first.
+        //
+        // Until this branch existed, `LineageAPI.deploy` was guarded and unreachable:
+        // nothing in either repository called it, so deploying lineage meant doing it
+        // by hand, which is how a guard gets bypassed without anyone deciding to. The
+        // registry service cannot deploy it — it has no wallet, no network id and no
+        // midnight-js-contracts — so this CLI is where the deploy belongs.
+        //
+        // It returns to the menu rather than becoming the session's contract: the rest
+        // of this loop drives veilcore, and lineage is deployed once and then used by
+        // the registry.
+        const api = await LineageAPI.deploy(lineageProviders, logger);
+        logger.info(`Deployed lineage contract at address: ${api.deployedContractAddress}`);
+        continue;
+      }
+      case '4':
         logger.info('Exiting...');
         return null;
       default:
@@ -220,8 +247,13 @@ You can do one of the following:
   15. Exit
 Which would you like to do? `;
 
-const mainLoop = async (providers: VeilcoreProviders, rli: Interface, logger: Logger): Promise<void> => {
-  const veilcoreApi = await deployOrJoin(providers, rli, logger);
+const mainLoop = async (
+  providers: VeilcoreProviders,
+  lineageProviders: LineageProviders,
+  rli: Interface,
+  logger: Logger,
+): Promise<void> => {
+  const veilcoreApi = await deployOrJoin(providers, lineageProviders, rli, logger);
   if (veilcoreApi === null) {
     return;
   }
@@ -650,7 +682,38 @@ export const run = async (config: Config, testEnv: TestEnvironment, logger: Logg
       walletProvider: walletProvider,
       midnightProvider: walletProvider,
     };
-    await mainLoop(providers, rli, logger);
+
+    // The same wallet, indexer and proof server, pointed at the other contract's
+    // circuits and its own private state. zkConfigPath names managed/veilcore in all
+    // three configs, so the sibling directory is derived rather than added to each.
+    const lineageZkConfigProvider = new NodeZkConfigProvider<LineageCircuitKeys>(
+      path.resolve(config.zkConfigPath, '..', 'lineage'),
+    );
+    const lineageProviders: LineageProviders = {
+      privateStateProvider: levelPrivateStateProvider<LineagePrivateStateId, LineagePrivateState>({
+        privateStateStoreName: `${config.privateStateStoreName}-lineage`,
+        signingKeyStoreName: `${config.privateStateStoreName}-lineage-signing-keys`,
+        privateStoragePasswordProvider: () => {
+          const password = process.env.VEILCORE_PRIVATE_STATE_PASSWORD;
+          if (!password) {
+            throw new Error(
+              'VEILCORE_PRIVATE_STATE_PASSWORD is not set. It encrypts private state and the ' +
+                'maintenance authority signing key. Sixteen characters or more, with at least ' +
+                'three of uppercase, lowercase, digits and symbols.',
+            );
+          }
+          return password;
+        },
+        accountId: seed,
+      }),
+      publicDataProvider: indexerPublicDataProvider(envConfiguration.indexer, envConfiguration.indexerWS),
+      zkConfigProvider: lineageZkConfigProvider,
+      proofProvider: httpClientProofProvider(envConfiguration.proofServer, lineageZkConfigProvider),
+      walletProvider: walletProvider,
+      midnightProvider: walletProvider,
+    };
+
+    await mainLoop(providers, lineageProviders, rli, logger);
   } catch (e) {
     logError(logger, e);
     logger.info('Exiting...');

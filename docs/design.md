@@ -48,7 +48,7 @@ nobody uses.
 ## Contract 1 — Provenance
 
 `contract/src/veilcore.compact` · deployed to Preview at
-`dc18e54d2f8031dda0eca1970bb1b1639c1686a14303fe057bb46f07bd0a233b`
+`f75d42dc1e4ec5a2cdcc50509f2d432ad60fb5c64b5da921a0ec22a0e287f939`
 
 ### Ledger state
 

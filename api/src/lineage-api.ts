@@ -69,6 +69,12 @@ export class LineageAPI {
     );
   }
 
+  /** As a record's holder: claim against your OWN record, in your favour, in one step. */
+  async encumberOwnRecord(obligationCommitment: Uint8Array): Promise<void> {
+    this.logger?.info('placing an obligation on your own record');
+    tx(this.logger, 'encumberOwnRecord', await this.deployedContract.callTx.encumberOwnRecord(obligationCommitment));
+  }
+
   /** As the beneficiary: retract a proposal the holder has not accepted. */
   async withdrawObligation(recordCommitment: Uint8Array, obligationCommitment: Uint8Array): Promise<void> {
     this.logger?.info('withdrawing obligation proposal');

@@ -271,7 +271,10 @@ parent. It means both holders said so. The DNA pairing narrows that and does not
 ### Obligations take both parties too (security pass, 30 Sep 2026)
 
 The beneficiary proposes (`proposeObligation`), the record's holder accepts
-(`acceptObligation`), and only the beneficiary can release (`discharge`). A clean proof
+(`acceptObligation`), and only the beneficiary can release (`discharge`). A holder
+claiming against their OWN record — a breeder marking a licensed mother so descendants
+cannot prove clean while the royalty stands — does it in one step
+(`encumberOwnRecord`), since they are both parties. A clean proof
 (`proveAncestorClean(ancestor)`) fails while any obligation is in force against the
 ancestor, and reads the state it executes against.
 

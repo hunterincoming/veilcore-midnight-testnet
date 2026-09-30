@@ -113,10 +113,31 @@ console.log('\n== 5. proposals ==');
   ok('a stranger cannot withdraw the breeder\'s proposal', tryRun(COMPETITOR, 'withdrawObligation', GROWER_REC, ROYALTY) !== '');
   ok('the breeder withdraws it', tryRun(BREEDER, 'withdrawObligation', GROWER_REC, ROYALTY) === '');
   ok('a withdrawn proposal cannot be accepted', tryRun(GROWER, 'acceptObligation', ROYALTY, BREEDER_REC) !== '');
-  ok('a record cannot owe itself', tryRun(GROWER, 'proposeObligation', GROWER_REC, ROYALTY) !== '');
+  ok('proposing against your own record is refused (use encumberOwnRecord)', tryRun(GROWER, 'proposeObligation', GROWER_REC, ROYALTY) !== '');
   run(BREEDER, 'proposeObligation', GROWER_REC, ROYALTY);
   run(GROWER, 'acceptObligation', ROYALTY, BREEDER_REC);
   ok('an obligation in force cannot be re-proposed', tryRun(BREEDER, 'proposeObligation', GROWER_REC, ROYALTY) !== '');
+}
+
+// ── 5b. a holder's claim on their own record ───────────────────────────────
+console.log('\n== 5b. a breeder marks their own licensed mother ==');
+{
+  fresh();
+  ok('the holder encumbers their own record in one step', tryRun(BREEDER, 'encumberOwnRecord', ROYALTY) === '');
+  ok('the record now carries an obligation', !clean(BREEDER_REC));
+  ok('it is recorded with the holder as beneficiary',
+    state().openObligations.member(C.obligationKey(BREEDER_REC, ROYALTY, BREEDER_REC)));
+  ok('a stranger cannot discharge it', tryRun(COMPETITOR, 'discharge', BREEDER_REC, ROYALTY) !== '');
+  ok('a stranger cannot place one on someone else\'s record this way', (() => {
+    // encumberOwnRecord only ever acts on the CALLER's record.
+    run(COMPETITOR, 'encumberOwnRecord', FAKE);
+    return state().openObligations.member(C.obligationKey(C.commit(COMPETITOR), FAKE, C.commit(COMPETITOR))) &&
+      !state().openObligations.member(C.obligationKey(BREEDER_REC, FAKE, C.commit(COMPETITOR)));
+  })());
+  ok('the same claim cannot be placed twice', tryRun(BREEDER, 'encumberOwnRecord', ROYALTY) !== '');
+  ok('empty obligation refused', tryRun(BREEDER, 'encumberOwnRecord', Z) !== '');
+  ok('the holder releases it and the record is clean again',
+    tryRun(BREEDER, 'discharge', BREEDER_REC, ROYALTY) === '' && clean(BREEDER_REC));
 }
 
 // ── 6. descent ──────────────────────────────────────────────────────────────

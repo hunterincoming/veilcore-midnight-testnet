@@ -6,8 +6,10 @@
 // contract records two things and nothing else:
 //
 //   DESCENT      child -> parent edges that BOTH holders agreed to.
-//   OBLIGATIONS  claims against a record that BOTH the holder and the beneficiary
-//                agreed to, and that only the beneficiary can release.
+//   OBLIGATIONS  claims against a record that its HOLDER agreed to, in favour of a
+//                beneficiary who alone can release them. A holder may claim against
+//                their own record in one step (encumberOwnRecord: a breeder marking a
+//                licensed mother); anyone else proposes and the holder accepts.
 //
 // A verifier walks confirmed edges in transaction history and requires a clean proof
 // for every ancestor it finds. The walk is the verifier's, never the prover's: a
@@ -189,11 +191,34 @@ export circuit proposeObligation(recordCommitment: Bytes<32>, obligationCommitme
   const o = disclose(obligationCommitment);
   assert(r != default<Bytes<32>>, "The record cannot be empty");
   assert(o != default<Bytes<32>>, "The obligation cannot be empty");
-  assert(r != b, "A record cannot owe itself");
+  assert(r != b, "To claim against your own record, use encumberOwnRecord");
   const k = obligationKey(r, o, b);
   assert(!pendingObligations.member(k), "That obligation is already proposed");
   assert(!openObligations.member(k), "That obligation is already in force");
   pendingObligations.insert(k);
+}
+
+/**
+ * A holder places a claim on THEIR OWN record, in their own favour, in one step.
+ *
+ * The common case: a breeder licensing a variety marks the mother record so that
+ * material descending from it cannot prove clean descent while the royalty stands.
+ * The holder is both parties, so consent is the call itself. Only they can release it,
+ * and waiving a right of their own is theirs to do.
+ */
+export circuit encumberOwnRecord(obligationCommitment: Bytes<32>): [] {
+  const r = self();
+  const o = disclose(obligationCommitment);
+  assert(o != default<Bytes<32>>, "The obligation cannot be empty");
+  const k = obligationKey(r, o, r);
+  assert(!openObligations.member(k), "That obligation is already in force");
+  openObligations.insert(k);
+  const n = obligationCountOf.member(r) ? obligationCountOf.lookup(r) : 0 as Uint<32>;
+  obligationCountOf.insert(r, (n + 1) as Uint<32>);
+  obligationSeq.increment(1);
+  lastObligationRecord = r;
+  lastObligation = o;
+  lastBeneficiary = r;
 }
 
 /** The beneficiary retracts a proposal the holder has not accepted. */

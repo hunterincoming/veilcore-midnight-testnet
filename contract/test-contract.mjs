@@ -105,11 +105,12 @@ const run = (contract, name, ...args) => {
     return out;
 };
 const state = () => ledger(ctx.currentQueryContext.state);
+const freeSlot = () => { let s = 0n; while (state().licenseAtSlot.member(s)) s++; return s; };
 
 // Writers take no path: the ledger places and clears leaves itself.
 const countersign = (party, secret, record) => {
   licPath = { ...NO_PATH, secret };
-  try { return run(party, 'countersignLicense', record); } finally { licPath = NO_PATH; }
+  try { return run(party, 'countersignLicense', record, freeSlot()); } finally { licPath = NO_PATH; }
 };
 const approve = (party, lc, record, nlc) => run(party, 'approveTransfer', lc, record, nlc);
 const revoke = (party, lc) => run(party, 'revokeLicense', lc, RECORD);

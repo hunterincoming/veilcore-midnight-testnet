@@ -58,11 +58,12 @@ const refused = (secret, circuit, ...args) => {
   catch (e) { return String(e?.message ?? e); }
 };
 const state = () => V.ledger(ctx.currentQueryContext.state);
+const freeSlot = () => { let s = 0n; while (state().licenseAtSlot.member(s)) s++; return s; };
 
 // Writers take no path: the ledger places and clears leaves itself.
 const countersign = (who, secret, record) => {
   licPath = { ...NO_PATH, secret };
-  try { return run(who, 'countersignLicense', record); } finally { licPath = NO_PATH; }
+  try { return run(who, 'countersignLicense', record, freeSlot()); } finally { licPath = NO_PATH; }
 };
 const approve = (who, lc, record, nlc) => run(who, 'approveTransfer', lc, record, nlc);
 

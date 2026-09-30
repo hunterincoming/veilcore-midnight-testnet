@@ -70,7 +70,7 @@ licenseStatusOf     Map<Bytes<32>, LicenseState>   // key = licenseKey(licence, 
 pendingTransferOf   Map<Bytes<32>, Bytes<32>>      // key = licenseKey; cleared on approve/withdraw/revoke
 activeLicenses      HistoricMerkleTree<24, Bytes<32>>  // leaves = licenseKey of ACTIVE licences
 licenseSlotOf       Map<Bytes<32>, Uint<64>>       // licenseKey -> leaf index; live only
-nextLicenseSlot     Counter                        // next unused leaf index
+licenseAtSlot       Map<Uint<64>, Bytes<32>>       // leaf index -> licenseKey; live only
 rotatedTo           Map<Bytes<32>, Bytes<32>>      // rotation history: retired -> next
 originOf            Map<Bytes<32>, Bytes<32>>      // successor -> origin
 headOf              Map<Bytes<32>, Bytes<32>>      // moved origin -> current head (liveness)
@@ -194,7 +194,9 @@ bytes, chosen by the verifier, used once and never published.** A public or reus
 challenge lets anyone test every issuing record against the tag.
 
 **The tree is the ledger's own `HistoricMerkleTree`, and its leaves are licence KEYS.**
-`countersignLicense` places `licenseKey(lc, issuer)` at the next unused index;
+`countersignLicense` places `licenseKey(lc, issuer)` at a free index the client picks
+at random (a shared next-index counter let only one activation land per block, which
+anyone with DUST could exploit to block everyone else's);
 `revokeLicense` clears it; `approveTransfer` replaces it in place. The ledger does the
 placing, so **writers supply no path** and a revocation cannot be starved by other tree
 traffic. A presentation proves a path against any root since the last revocation or
@@ -210,7 +212,7 @@ presentable. With the key as the leaf, a leaf names its issuer and appears at mo
 It also found that a licensee could keep a revocation from ever landing by toggling a
 transfer proposal, because revoke read it; revoke now clears it unconditionally.
 
-Capacity is **2^24 activations over the contract's life** (indices are not reused).
+Capacity is **2^24 concurrent active licences**; indices are reused after revocation.
 
 ### Verified on chain
 
@@ -323,6 +325,10 @@ Each is a way the contracts can be read wrongly by somebody who has done everyth
 right.
 
 ### 1. Resolve every record through the provenance contract's identity chain
+
+A commitment `x` is retired from the moment `headOf(originFor(x)) != x`. **`rotatedTo`
+is not a complete list** — recovery does not write it — so learn retirement times by
+replaying the rotation and recovery events (`lastRotatedTo`, `lastRecoveredOrigin`).
 
 The two contracts cannot read each other. A holder who rotates a secret in the
 provenance contract gets a new commitment with a clean lineage history. So:

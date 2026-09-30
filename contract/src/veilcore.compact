@@ -13,13 +13,13 @@
 // LICENCES. Entries are keyed by licenseKey(licence, issuing record), and the same key
 // is the leaf of the active-licence tree, a ledger HistoricMerkleTree. Writers never
 // supply a path: the ledger places and clears leaves itself, so revocation and transfer
-// cannot be blocked by unrelated tree traffic. Readers (presentations) prove a path
-// against any root since the last revocation or transfer; activations do not
-// invalidate them.
+// cannot be blocked by unrelated tree traffic, and activations conflict only if two
+// pick the same leaf index. Readers (presentations) prove a path against any root
+// since the last revocation or transfer; activations do not invalidate them.
 //
 // STATE. Licence state is bounded by live agreements, economically: anyone can hold a
 // secret and issue licences to themselves at a fee per entry. The tree holds 2^24
-// activations over the contract's life. Four identity maps grow permanently (one entry
+// concurrent active licences; indices are reused after revocation. Four identity maps grow permanently (one entry
 // per anchor, and per rotation or recovery): that is the price of a lost or stolen
 // secret not being final and a retired one ceasing to work.
 //
@@ -68,7 +68,12 @@ export ledger lastPresentation: Bytes<32>;
 export ledger lastActivatedLicense: Bytes<32>;
 export ledger lastActivatedRecord: Bytes<32>;
 
-/** Retired record -> the record a ROTATION moved it to. History for verifiers. */
+/**
+ * Retired record -> the record a ROTATION moved it to. NOT a complete retirement list:
+ * recovery does not write here (reading the old head is what let a thief block it).
+ * A commitment x is retired exactly when headOf(originFor(x)) != x; replay rotation
+ * and recovery events (lastRotatedTo, lastRecoveredOrigin) to learn when.
+ */
 export ledger rotatedTo: Map<Bytes<32>, Bytes<32>>;
 /** Successor -> the origin it descends from. */
 export ledger originOf: Map<Bytes<32>, Bytes<32>>;
@@ -86,8 +91,17 @@ export ledger pendingTransferOf: Map<Bytes<32>, Bytes<32>>;
 export ledger activeLicenses: HistoricMerkleTree<24, Bytes<32>>;
 /** licenseKey -> its leaf index, so revocation and transfer need no path. */
 export ledger licenseSlotOf: Map<Bytes<32>, Uint<64>>;
-/** Next unused leaf index. Leaves are never reused: capacity is 2^24 activations. */
-export ledger nextLicenseSlot: Counter;
+/**
+ * Leaf index -> the licenseKey occupying it. Live licences only.
+ *
+ * The activating party picks a free index (the client picks at random). A shared
+ * next-index counter made every activation read the same cell, so only one could land
+ * per block, and anyone with DUST — which regenerates for free — could activate a
+ * throwaway licence every block and keep everybody else's from landing. Now two
+ * activations conflict only if they pick the same index. Indices are reused after
+ * revocation, so capacity is 2^24 CONCURRENT active licences.
+ */
+export ledger licenseAtSlot: Map<Uint<64>, Bytes<32>>;
 
 // ─────────────────────────────────────────────────────────────── witnesses
 
@@ -174,7 +188,9 @@ circuit assertSameIdentity(me: Bytes<32>, issuer: Bytes<32>): [] {
 /**
  * A rotation or recovery target must have no history: moving into an existing
  * successor would overwrite its origin and orphan the licences under it, and moving
- * into an anchored or moved record would merge two identities.
+ * into an anchored or moved record would merge two identities. An UNANCHORED record
+ * that has issued licences can still be moved into (the mover holds its secret, so it
+ * is the same person); its licences then belong to the moving identity.
  */
 circuit assertUnused(record: Bytes<32>): [] {
   assert(!rotatedTo.member(record), "That commitment has been retired");
@@ -313,19 +329,22 @@ export circuit issueLicense(licenseCommitment: Bytes<32>): [] {
 
 /**
  * The licensee accepts, proving the licence secret (a witness). Activation publishes
- * the licence and its issuer and places the leaf; the licensee supplies no path.
+ * the licence and its issuer and places the leaf at `slot`, a free index the client
+ * picks at random; no path is needed.
  */
-export circuit countersignLicense(recordCommitment: Bytes<32>): [] {
+export circuit countersignLicense(recordCommitment: Bytes<32>, slot: Uint<64>): [] {
   const rc = disclose(recordCommitment);
   const lc = licenseCommit(licenseSecret(), rc);
   const k = disclose(licenseKey(lc, rc));
   assert(licenseStatusOf.member(k), "No such license against that record");
   assert(licenseStatusOf.lookup(k) == LicenseState.PENDING, "License is not pending");
+  const s = disclose(slot);
+  assert(s < 16777216, "That slot is outside the licence tree");
+  assert(!licenseAtSlot.member(s), "That slot is taken; pick another");
   licenseStatusOf.insert(k, LicenseState.ACTIVE);
-  const slot = nextLicenseSlot.read();
-  activeLicenses.insertIndex(k, slot);
-  licenseSlotOf.insert(k, slot);
-  nextLicenseSlot.increment(1);
+  activeLicenses.insertIndex(k, s);
+  licenseSlotOf.insert(k, s);
+  licenseAtSlot.insert(s, k);
   lastActivatedLicense = disclose(lc);
   lastActivatedRecord = rc;
 }
@@ -370,6 +389,7 @@ export circuit approveTransfer(licenseCommitment: Bytes<32>, issuingRecord: Byte
   licenseSlotOf.remove(k);
   licenseStatusOf.insert(nk, LicenseState.ACTIVE);
   licenseSlotOf.insert(nk, slot);
+  licenseAtSlot.insert(slot, nk);
   activeLicenses.insertIndex(nk, slot);
   activeLicenses.resetHistory();
   transferSeq.increment(1);
@@ -386,9 +406,11 @@ export circuit withdrawTransfer(recordCommitment: Bytes<32>): [] {
 
 /**
  * The issuer, or its successor across any number of moves, revokes. Needs no tree
- * path and reads nothing the licensee can change, so it cannot be starved: it used to
- * need a path against the current root and read whether a transfer was pending, and a
- * licensee toggling either each block kept every revocation from landing.
+ * path and no longer reads whether a transfer is pending, so it cannot be starved: it
+ * used to need a path against the current root and read the pending map, and a
+ * licensee toggling either each block kept every revocation from landing. It does read
+ * whether the licence is PENDING or ACTIVE, so a licensee can make one revocation of
+ * a pending licence fail once, by countersigning first; it cannot repeat that.
  */
 export circuit revokeLicense(licenseCommitment: Bytes<32>, issuingRecord: Bytes<32>): [] {
   const me = liveSelf();
@@ -400,8 +422,10 @@ export circuit revokeLicense(licenseCommitment: Bytes<32>, issuingRecord: Bytes<
   licenseStatusOf.remove(k);
   pendingTransferOf.remove(k);
   if (wasActive) {
-    activeLicenses.insertIndexDefault(licenseSlotOf.lookup(k));
+    const slot = licenseSlotOf.lookup(k);
+    activeLicenses.insertIndexDefault(slot);
     licenseSlotOf.remove(k);
+    licenseAtSlot.remove(slot);
     // Drop every older root, so a path proved before this revocation stops working.
     activeLicenses.resetHistory();
   }

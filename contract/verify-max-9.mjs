@@ -51,6 +51,7 @@ let ctx = rt.createCircuitContext(
   party(sec('x')).initialState(rt.createConstructorContext({}, COIN)).currentContractState, {},
 );
 const state = () => V.ledger(ctx.currentQueryContext.state);
+const freeSlot = () => { let s = 0n; while (state().licenseAtSlot.member(s)) s++; return s; };
 /**
  * The ledger tree's current root as a transcript carries it. A HistoricMerkleTree
  * root is a field element, and checkRoot publishes it as a 32-byte little-endian
@@ -114,7 +115,7 @@ const refused = (secret, circuit, ...args) => {
 // Writers take no path: the ledger places and clears leaves itself.
 const countersign = (who, secret, record) => {
   licPath = { ...NO_PATH, secret };
-  try { return run(who, 'countersignLicense', record); } finally { licPath = NO_PATH; }
+  try { return run(who, 'countersignLicense', record, freeSlot()); } finally { licPath = NO_PATH; }
 };
 // No live leaf: a well-formed path for that leaf at slot 0 (real siblings when the tree
 // has a slot 0, all-zero ones before the first activation). Passes the leaf check; the
@@ -154,7 +155,7 @@ console.log('\n== 0. the tree deploys usable ==');
   const t = state().activeLicenses;
   note('licence tree: ledger HistoricMerkleTree<24>, 2^24 activations over the contract\'s life');
   ok('the ledger tree deploys empty, with its root accepted by checkRoot',
-     state().nextLicenseSlot === 0n && t.firstFree() === 0n && t.checkRoot(t.root()),
+     state().licenseAtSlot.isEmpty() && t.firstFree() === 0n && t.checkRoot(t.root()),
      'an unusable deployed tree would make every countersignature and licence proof\n' +
      '     fail — finding 1, repeated in a second contract');
 }

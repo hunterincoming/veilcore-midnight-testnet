@@ -44,14 +44,17 @@
 //     history. Absence of a dirty ancestor is not evidence of a clean line; a
 //     registry should require a confirmed path to an origin IT recognises.
 //   · This contract cannot read the provenance contract, so it does not know about
-//     rotation there. A verifier MUST resolve every record through the provenance
-//     contract's originOf/rotatedTo and check obligations against EVERY commitment in
-//     that identity's chain, and MUST ignore an edge confirmed, a proof made, or a
-//     DISCHARGE made under a commitment after the provenance contract retired it.
-//     Otherwise rotating a secret sheds its obligations, and a thief holding a
-//     beneficiary's retired secret can release what that beneficiary is owed. Current
-//     state alone cannot tell a legitimate discharge from a thief's: a clean proof is
-//     only as good as the verifier's replay of the discharges behind it.
+//     rotation or recovery there. A commitment x is retired from the moment the
+//     provenance contract's headOf(originFor(x)) != x; rotatedTo is NOT a complete
+//     list (recovery does not write it). A verifier MUST replay the provenance
+//     contract's rotation and recovery events (lastRotatedTo, lastRecoveredOrigin) to
+//     learn when each commitment was retired, check obligations against EVERY
+//     commitment in the identity, and ignore an edge confirmed, a proof made, or a
+//     DISCHARGE made under a commitment after it was retired. Otherwise rotating a
+//     secret sheds its obligations, and a thief holding a beneficiary's retired secret
+//     can release what that beneficiary is owed. Current state alone cannot tell a
+//     legitimate discharge from a thief's: a clean proof is only as good as the
+//     verifier's replay of the discharges behind it.
 //   · An edge means both holders said so, not that the child is biologically
 //     descended from the parent. The DNA pairing in the provenance contract narrows
 //     that; it does not close it.

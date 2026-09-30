@@ -227,3 +227,18 @@ A separate reviewer, who had not written or seen the fixes being made, attacked 
 A side effect of the tree change: the CLI and API no longer keep their own licence tree, because the path witness reads the ledger at proving time. The old CLI only worked against a contract deployed in the same session.
 
 **Test totals now:** 106 provenance attack checks and 51 lineage attack checks, all refused, plus the full existing suite.
+
+
+---
+
+# Round 3: second independent review (30 Sep, night)
+
+A fresh reviewer attacked the fixed build and found **no critical or high issues**. What they found:
+
+| # | Finding | Status |
+|---|---|---|
+| M1 | The lineage verifier rule said to read `rotatedTo`, but recovery doesn't write it, so a thief's post-recovery discharge passed. | **Fixed.** The rule now says: retired exactly when `headOf(originFor(x)) != x`; replay the rotation and recovery events. It's in the lineage header, the `rotatedTo` comment and design rule 1. |
+| L1 | A shared slot counter meant one licence activation per block, and anyone with DUST (which regenerates for free) could block everyone else's. | **Fixed.** The client picks a random free index, and two activations only conflict if they pick the same one. Indices are reused after revocation. Replay tests are in `attack-30sep.mjs` R2-L1. |
+| L2 | The revoke comment overclaimed. A licensee can make one revoke of a pending licence fail by countersigning first. | **Comment corrected.** It can't be repeated. |
+| — | The deploy comment said "empty committee". | **Corrected.** |
+| — | Rotating into an unanchored record that has issued licences merges them into the mover's identity. | **Documented.** The mover holds that record's secret, so it's the same person. |

@@ -51,11 +51,12 @@ const fresh = () => {
 const run = (p, circuit, ...args) => { const r = p.impureCircuits[circuit](ctx, ...args); ctx = r.context; return r; };
 const tryRun = (p, circuit, ...args) => { try { run(p, circuit, ...args); return ''; } catch (e) { return String(e?.message ?? e); } };
 const state = () => V.ledger(ctx.currentQueryContext.state);
+const freeSlot = () => { let s = 0n; while (state().licenseAtSlot.member(s)) s++; return s; };
 
 // Writers take no path: the ledger places and clears leaves itself.
 const withLic = (l, f) => { lic = { ...NO_LIC, ...l }; try { return f(); } finally { lic = NO_LIC; } };
 const countersign = (licSecret, record) =>
-  withLic({ secret: licSecret }, () => tryRun(party(sec('anyone')), 'countersignLicense', record));
+  withLic({ secret: licSecret }, () => tryRun(party(sec('anyone')), 'countersignLicense', record, freeSlot()));
 const revoke = (who, lc, issuer) => tryRun(who, 'revokeLicense', lc, issuer);
 const approve = (who, lc, issuer, nlc) => tryRun(who, 'approveTransfer', lc, issuer, nlc);
 
@@ -484,6 +485,36 @@ console.log('\n== L-b  rotating an unanchored record is refused ==');
     err.includes('Anchor this record before rotating it'), err || 'accepted');
   ok('the refused rotation leaves X anchorable', tryRun(party(X), 'anchor', C.recoveryCommit(sec('r'))) === '');
   ok('and once anchored, X rotates', tryRun(party(X, { incoming: Y }), 'rotateRecordSecret', C.commit(Y)) === '');
+}
+
+// ── R2-L1: activations cannot be starved by a shared counter ───────────────
+console.log('\n== R2-L1  one activation per block? ==');
+{
+  fresh(); anchorA();
+  const lc1 = C.licenseCommit(L1, A_REC), lc2 = C.licenseCommit(L2, A_REC);
+  run(party(A), 'issueLicense', lc1);
+  run(party(A), 'issueLicense', lc2);
+  const S0 = ctx;
+  // Activation 1 lands first, at slot 5.
+  withLic({ secret: L1 }, () => run(party(sec('x')), 'countersignLicense', A_REC, 5n));
+  const S1 = ctx;
+  const other = withLic({ secret: L2 }, () => replay(party(sec('y')), 'countersignLicense', [A_REC, 6n], S0, S1));
+  ok('a second activation proved on the same state lands if it picked another slot', lands(other),
+    typeof other === 'string' ? other : '');
+  const same = withLic({ secret: L2 }, () => replay(party(sec('y')), 'countersignLicense', [A_REC, 5n], S0, S1));
+  ok('one that picked the SAME slot is refused, and nothing is overwritten', !lands(same));
+  ctx = S1;
+  ok('a taken slot is refused in-process too',
+    withLic({ secret: L2 }, () => tryRun(party(sec('y')), 'countersignLicense', A_REC, 5n)) !== '');
+  ok('a slot outside the tree is refused',
+    withLic({ secret: L2 }, () => tryRun(party(sec('y')), 'countersignLicense', A_REC, 16777216n)) !== '');
+  // Slots are reused after revocation, and the old leaf's paths do not come back.
+  run(party(A), 'revokeLicense', lc1, A_REC);
+  ok('a revoked licence frees its slot', !state().licenseAtSlot.member(5n));
+  ok('the freed slot can be used again',
+    withLic({ secret: L2 }, () => tryRun(party(sec('y')), 'countersignLicense', A_REC, 5n)) === '');
+  ok('the revoked licence does not present from the reused slot', present(L1, A_REC, sec('ch')) !== '');
+  ok('the new occupant does', present(L2, A_REC, sec('ch')) === '');
 }
 
 // ── L2: licence secrets never ride as arguments ────────────────────────────

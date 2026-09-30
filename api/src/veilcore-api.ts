@@ -348,8 +348,11 @@ export class VeilcoreAPI implements DeployedVeilcoreAPI {
   async countersignLicense(secret: Uint8Array, recordCommitment: Uint8Array): Promise<void> {
     // The secret travels as a WITNESS, never as a circuit argument.
     await this.patchPrivateState({ licenseSecret: secret });
+    // A random free leaf index. A shared counter let one activation land per block;
+    // random indices only collide by chance, and a collision is refused, not overwritten.
+    const slot = await this.randomFreeLicenseSlot();
     this.logger?.info('countersigning licence');
-    const txData = await this.deployedContract.callTx.countersignLicense(recordCommitment);
+    const txData = await this.deployedContract.callTx.countersignLicense(recordCommitment, slot);
     this.logger?.trace({
       transactionAdded: {
         circuit: 'countersignLicense',
@@ -522,6 +525,19 @@ export class VeilcoreAPI implements DeployedVeilcoreAPI {
     });
   }
 
+  /** A leaf index of the active-licence tree that no live licence occupies. */
+  private async randomFreeLicenseSlot(): Promise<bigint> {
+    const contractState = await this.providers.publicDataProvider.queryContractState(this.deployedContractAddress);
+    if (contractState === null) throw new Error('the veilcore contract has no state at its address');
+    const taken = Veilcore.ledger(contractState.data).licenseAtSlot;
+    for (let i = 0; i < 64; i++) {
+      const bytes = utils.randomBytes(3);
+      const slot = BigInt((bytes[0] << 16) | (bytes[1] << 8) | bytes[2]);
+      if (!taken.member(slot)) return slot;
+    }
+    throw new Error('could not find a free licence slot; the tree is nearly full');
+  }
+
   /**
    * Merge fields into the private state the witnesses read.
    *
@@ -550,9 +566,10 @@ export class VeilcoreAPI implements DeployedVeilcoreAPI {
    * authority nobody chose, held in a file nobody decided the custody of. That
    * is what happened on preprod.
    *
-   * Passing `null` deploys with NO authority: at the ledger level that is an
-   * empty committee with a threshold of one, which no signature can satisfy, so
-   * the contract is permanently non-upgradable. That is a real option and a
+   * Passing `null` ends with NO usable authority: midnight-js always installs one
+   * (it samples a key when none is given), so the contract is deployed and the
+   * authority is then retired with a key that is never stored (maintenance.ts),
+   * leaving the contract permanently non-upgradable. That is a real option and a
    * one-way door. Circuits are bound to the proof system that compiled them, and
    * when the proving stack breaks compatibility an un-upgradable contract cannot
    * be repaired — only replaced, with every record that names its address left

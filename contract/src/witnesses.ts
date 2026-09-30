@@ -146,10 +146,17 @@ export const veilcoreWitnesses = {
     ledger,
     privateState,
   }: VC): [VeilcorePrivateState, MerkleTreePath<Uint8Array>] => {
-    const lc = veilcorePureCircuits.licenseCommit(privateState.licenseSecret, privateState.licenseRecord);
-    const leaf = veilcorePureCircuits.licenseKey(lc, privateState.licenseRecord);
+    const lc = veilcorePureCircuits.licenseCommit(
+      privateState.licenseSecret,
+      privateState.licenseRecord,
+    );
+    const leaf = veilcorePureCircuits.licenseKey(
+      lc,
+      privateState.licenseRecord,
+    );
     const path = ledger.activeLicenses.findPathForLeaf(leaf);
-    if (path === undefined) throw new Error("No live licence for that secret and record");
+    if (path === undefined)
+      throw new Error("No live licence for that secret and record");
     return [privateState, path];
   },
 

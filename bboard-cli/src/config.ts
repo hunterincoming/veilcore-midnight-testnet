@@ -17,6 +17,7 @@ import path from 'node:path';
 import {
   EnvironmentConfiguration,
   getTestEnvironment,
+  ProofServerClient,
   RemoteTestEnvironment,
   TestEnvironment,
 } from '@midnight-ntwrk/testkit-js';
@@ -99,9 +100,62 @@ export class MainnetConfig implements Config {
 }
 
 /** Endpoints from docs.midnight.network, "Networks and environments". No faucet. */
+/** The Blockfrost project id for Midnight mainnet, from the environment. Never logged. */
+export const BLOCKFROST_VAR = 'VEILCORE_BLOCKFROST_PROJECT_ID';
+export const blockfrostProjectId = (): string => {
+  const id = (process.env[BLOCKFROST_VAR] ?? '').trim();
+  if (!/^[A-Za-z0-9_-]{8,}$/.test(id)) {
+    throw new Error(
+      `${BLOCKFROST_VAR} is not set. Since 30 Sep 2026 Midnight mainnet's indexer and RPC are served by Blockfrost: ` +
+        'create a Midnight Mainnet project at blockfrost.io and export its project id.',
+    );
+  }
+  return id;
+};
+
+/**
+ * Mainnet through Blockfrost, the public provider since Midnight shut its own mainnet
+ * indexer and RPC on 30 Sep 2026. The project id rides as a query parameter, since
+ * midnight-js cannot set headers; the logger scrubs it (launcher/mainnet.ts).
+ *
+ * The test kit's own health check rebuilds each URL without its query string, so it
+ * would call Blockfrost without the project id and fail. This one keeps it.
+ */
 export class MainnetEnvironment extends RemoteTestEnvironment {
+  private readonly projectId = blockfrostProjectId();
+
   constructor(logger: Logger) {
     super(logger);
+    this.healthCheck = async (): Promise<void> => {
+      const cfg = this.getEnvironmentConfiguration();
+      const post = async (url: string, body: unknown): Promise<unknown> => {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(body),
+          signal: AbortSignal.timeout(15_000),
+        });
+        if (!res.ok)
+          throw new Error(`HTTP ${res.status}${res.status === 403 ? ' (is the Blockfrost project id right?)' : ''}`);
+        return res.json();
+      };
+      try {
+        const block = (await post(cfg.indexer, { query: '{ block { height } }' })) as {
+          data?: { block?: { height?: number } };
+        };
+        if (typeof block.data?.block?.height !== 'number') throw new Error('no block height in the answer');
+        logger.info(`Connected to the mainnet indexer (Blockfrost): block ${block.data.block.height}`);
+      } catch (e) {
+        throw new Error(`Mainnet indexer check failed: ${e instanceof Error ? e.message : String(e)}`);
+      }
+      try {
+        await post(cfg.node, { jsonrpc: '2.0', id: 1, method: 'system_health', params: [] });
+        logger.info('Connected to the mainnet node RPC (Blockfrost)');
+      } catch (e) {
+        throw new Error(`Mainnet node RPC check failed: ${e instanceof Error ? e.message : String(e)}`);
+      }
+      await new ProofServerClient(cfg.proofServer, logger).health();
+    };
   }
 
   private getProofServerUrl(): string {
@@ -113,14 +167,15 @@ export class MainnetEnvironment extends RemoteTestEnvironment {
   }
 
   getEnvironmentConfiguration(): EnvironmentConfiguration {
+    const q = `?project_id=${encodeURIComponent(this.projectId)}`;
     return {
       walletNetworkId: 'mainnet',
       networkId: 'mainnet',
-      indexer: 'https://indexer.mainnet.midnight.network/api/v4/graphql',
-      indexerWS: 'wss://indexer.mainnet.midnight.network/api/v4/graphql/ws',
-      node: 'https://rpc.mainnet.midnight.network',
-      nodeWS: 'wss://rpc.mainnet.midnight.network',
-      // There is no mainnet faucet. Empty, so the environment health check skips it.
+      indexer: `https://midnight-mainnet.blockfrost.io/api/v0${q}`,
+      indexerWS: `wss://midnight-mainnet.blockfrost.io/api/v0/ws${q}`,
+      node: `https://rpc.midnight-mainnet.blockfrost.io/${q}`,
+      nodeWS: `wss://rpc.midnight-mainnet.blockfrost.io/${q}`,
+      // There is no mainnet faucet. Empty, so no faucet check.
       faucet: '',
       proofServer: this.getProofServerUrl(),
     };

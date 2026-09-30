@@ -15,9 +15,10 @@
 
 import { createLogger } from '../logger-utils.js';
 import { run } from '../index.js';
-import { MainnetConfig } from '../config.js';
+import { MainnetConfig, blockfrostProjectId } from '../config.js';
 
 const config = new MainnetConfig();
-const logger = await createLogger(config.logDir);
+// The Blockfrost project id travels in the endpoint URLs; keep it out of the terminal and log file.
+const logger = await createLogger(config.logDir, [blockfrostProjectId()]);
 const testEnvironment = config.getEnvironment(logger);
 await run(config, testEnvironment, logger);

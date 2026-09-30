@@ -19,7 +19,27 @@ import pinoPretty from 'pino-pretty';
 import pino from 'pino';
 import { createWriteStream } from 'node:fs';
 
-export const createLogger = async (logPath: string): Promise<pino.Logger> => {
+/** Replace every occurrence of each secret in a log argument (strings, and objects via JSON). */
+const scrub = (secrets: readonly string[], v: unknown): unknown => {
+  if (secrets.length === 0) return v;
+  const clean = (t: string): string => secrets.reduce((acc, sec) => acc.split(sec).join('[redacted]'), t);
+  if (typeof v === 'string') return clean(v);
+  if (v !== null && typeof v === 'object') {
+    try {
+      return JSON.parse(clean(JSON.stringify(v))) as unknown;
+    } catch {
+      return v;
+    }
+  }
+  return v;
+};
+
+/**
+ * A logger for the terminal and a log file. `secrets` (for example an API token carried
+ * in a URL) are replaced in everything logged, by this logger and its children, before
+ * it reaches either.
+ */
+export const createLogger = async (logPath: string, secrets: readonly string[] = []): Promise<pino.Logger> => {
   await fs.mkdir(path.dirname(logPath), { recursive: true });
   const pretty: pinoPretty.PrettyStream = pinoPretty({
     colorize: true,
@@ -33,6 +53,11 @@ export const createLogger = async (logPath: string): Promise<pino.Logger> => {
     {
       level,
       depthLimit: 20,
+      hooks: {
+        logMethod(args, method) {
+          method.apply(this, args.map((a) => scrub(secrets, a)) as Parameters<typeof method>);
+        },
+      },
     },
     pino.multistream([
       { stream: pretty, level },

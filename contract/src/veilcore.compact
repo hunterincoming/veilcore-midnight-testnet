@@ -285,6 +285,16 @@ export circuit assertLive(recordCommitment: Bytes<32>): [] {
  * compares it to their secret is correct only as long as nobody edits the comparison
  * away; deriving it leaves nothing to get wrong.
  */
+/*
+ * Refusing the all-zero value. Battleship-style input validation: every argument is
+ * checked, not only the ones that look dangerous. All-zero is the licence tree's
+ * EMPTY LEAF, so a licence or transfer target of zero would move a live licence
+ * into a slot the tree treats as free; as a recovery commitment it silently makes
+ * a record unrecoverable; as a root or DNA fingerprint it records nothing.
+ */
+// (Compact assert messages must be literals, so each check is written inline:
+//  assert(v != default<Bytes<32>>, "...").)
+
 circuit liveSelf(): Bytes<32> {
   const me = disclose(commit(localGeneticSecret()));
   assertLive(me);
@@ -340,6 +350,7 @@ export circuit anchor(recoveryCommitment: Bytes<32>): [] {
   assert(!originOf.member(c), "This commitment is a successor; its origin is already anchored");
   assert(!recoveryOf.member(c), "This record is already anchored");
   const rcv = disclose(recoveryCommitment);
+  assert(rcv != default<Bytes<32>>, "The recovery commitment cannot be empty");
   assert(rcv != c, "The recovery commitment must differ from the record");
   anchorSeq.increment(1);
   lastAnchor = c;
@@ -357,6 +368,7 @@ export circuit anchor(recoveryCommitment: Bytes<32>): [] {
  */
 export circuit anchorBatch(root: Bytes<32>): [] {
   const r = disclose(root);
+  assert(r != default<Bytes<32>>, "The batch root cannot be empty");
   batchSeq.increment(1);
   lastBatchRoot = r;
 }
@@ -377,6 +389,7 @@ export circuit proveOwnership(): Bytes<32> {
 export circuit pairDna(dnaCommitment: Bytes<32>): Bytes<32> {
   const rc = liveSelf();
   const dc = disclose(dnaCommitment);
+  assert(dc != default<Bytes<32>>, "The DNA fingerprint cannot be empty");
   pairSeq.increment(1);
   lastPairedRecord = rc;
   lastPairedDna = dc;
@@ -432,6 +445,7 @@ export circuit replaceRecoveryCommitment(recordCommitment: Bytes<32>, newRecover
   assert(recoveryOf.lookup(origin) == recoveryCommit(recoverySecret()),
          "That is not the recovery secret for this record");
   const next = disclose(newRecoveryCommitment);
+  assert(next != default<Bytes<32>>, "The recovery commitment cannot be empty");
   assert(next != recoveryOf.lookup(origin), "The new recovery commitment must differ");
   recoveryOf.insert(origin, next);
 }
@@ -448,6 +462,7 @@ export circuit replaceRecoveryCommitment(recordCommitment: Bytes<32>, newRecover
 export circuit issueLicense(licenseCommitment: Bytes<32>): [] {
   const me = liveSelf();
   const lc = disclose(licenseCommitment);
+  assert(lc != default<Bytes<32>>, "The licence commitment cannot be empty");
   const k = licenseKey(lc, me);
   assert(!licenseStatusOf.member(k), "License already exists");
   licenseStatusOf.insert(k, LicenseState.PENDING);
@@ -489,6 +504,7 @@ export circuit proposeTransfer(recordCommitment: Bytes<32>, newLicenseCommitment
   assert(licenseStatusOf.lookup(k) == LicenseState.ACTIVE, "Only an active license can be transferred");
   assert(!pendingTransferOf.member(k), "A transfer is already proposed for this license");
   const nlc = disclose(newLicenseCommitment);
+  assert(nlc != default<Bytes<32>>, "The incoming licence commitment cannot be empty");
   assert(!licenseStatusOf.member(licenseKey(nlc, rc)), "That licence commitment is already in use");
   transferSeq.increment(1);
   pendingTransferOf.insert(k, nlc);
@@ -579,11 +595,14 @@ export circuit revokeLicense(licenseCommitment: Bytes<32>, issuingRecord: Bytes<
  */
 export circuit proveLicense(): [] {
   const record = licenseRecord();
+  const challenge = presentationChallenge();
+  // Only the fact that the challenge is non-zero is disclosed, never the challenge.
+  assert(disclose(challenge != default<Bytes<32>>), "A presentation needs the verifier's challenge");
   const leaf = licenseCommit(licenseSecret(), record);
   assert(disclose(licenseMerkleRoot(leaf, licenseSiblings(), licenseDirections()) == activeLicenseRoot),
          "No live licence for that secret");
   presentationSeq.increment(1);
-  lastPresentation = disclose(presentationTag(record, presentationChallenge()));
+  lastPresentation = disclose(presentationTag(record, challenge));
 }
 
 /**

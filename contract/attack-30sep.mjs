@@ -263,6 +263,31 @@ console.log('\n== H3  what a licence presentation proves ==');
     ![hex(A_REC), hex(lcA), hex(C.presentationTag(A_REC, new Uint8Array(32)))].includes(hex(tag)));
 }
 
+// ── V1: every argument is validated (Battleship pattern) ───────────────────
+console.log('\n== V1  empty (all-zero) inputs are refused ==');
+{
+  const Z = new Uint8Array(32);
+  fresh();
+  ok('anchor with an empty recovery commitment', tryRun(party(A), 'anchor', Z) !== '');
+  anchorA();
+  ok('anchorBatch of an empty root', tryRun(party(A), 'anchorBatch', Z) !== '');
+  ok('pairDna with an empty fingerprint', tryRun(party(A), 'pairDna', Z) !== '');
+  ok('issueLicense of an empty licence (the tree\'s empty leaf)', tryRun(party(A), 'issueLicense', Z) !== '');
+  ok('replacing recovery with an empty commitment',
+    tryRun(party(sec('n'), { recovery: RECOVERY }), 'replaceRecoveryCommitment', A_REC, Z) !== '');
+
+  // The one that did damage: transferring a live licence to the empty leaf.
+  const lc = C.licenseCommit(L1, A_REC);
+  run(party(A), 'issueLicense', lc);
+  countersign(L1, A_REC);
+  const err = withLic({ secret: L1 }, () => tryRun(party(sec('x')), 'proposeTransfer', A_REC, Z));
+  ok('proposing a transfer to the empty leaf', err !== '',
+    'approving it would replace a live leaf with the empty leaf: the licence stays ACTIVE in the\n' +
+    '     map, cannot be presented by anyone, and its slot looks free to the next countersign');
+  ok('presenting without a verifier challenge', present(L1, A_REC, Z) !== '');
+  ok('the licence still presents with a real challenge', present(L1, A_REC, sec('real')) === '');
+}
+
 // ── L2: licence secrets never ride as arguments ────────────────────────────
 console.log('\n== L2  licence secrets are witnesses ==');
 {

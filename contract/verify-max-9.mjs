@@ -24,8 +24,6 @@ import { createHash } from 'node:crypto';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const V = await import(pathToFileURL(path.join(here, 'src/managed/veilcore/contract/index.js')).href);
-const { LicenseTree, DEPTH, CAPACITY, EMPTY_ROOT } =
-  await import(pathToFileURL(path.join(here, 'src/license-tree.mjs')).href);
 const rt = await import('@midnight-ntwrk/compact-runtime');
 
 let bad = 0;
@@ -36,7 +34,7 @@ const sec = (s) => createHash('sha256').update(s).digest();
 const C = V.pureCircuits;
 const COIN = '0'.repeat(64);
 
-const NO_PATH = { secret: sec('none'), record: sec('none'), siblings: [], dirs: [] };
+const NO_PATH = { secret: sec('none'), record: sec('none'), path: null };
 let licPath = NO_PATH;
 const party = (secret) => new V.Contract({
   localGeneticSecret: (c) => [c.privateState, secret],
@@ -44,8 +42,7 @@ const party = (secret) => new V.Contract({
   recoverySecret: (c) => [c.privateState, secret],
   licenseSecret: (c) => [c.privateState, licPath.secret],
   licenseRecord: (c) => [c.privateState, licPath.record],
-  licenseSiblings: (c) => [c.privateState, licPath.siblings],
-  licenseDirections: (c) => [c.privateState, licPath.dirs],
+  licensePath: (c) => [c.privateState, licPath.path],
   presentationChallenge: (c) => [c.privateState, licPath.challenge ?? sec('challenge')],
 });
 
@@ -54,6 +51,17 @@ let ctx = rt.createCircuitContext(
   party(sec('x')).initialState(rt.createConstructorContext({}, COIN)).currentContractState, {},
 );
 const state = () => V.ledger(ctx.currentQueryContext.state);
+/**
+ * The ledger tree's current root as a transcript carries it. A HistoricMerkleTree
+ * root is a field element, and checkRoot publishes it as a 32-byte little-endian
+ * cell — so bytes32() below does see it, in this form.
+ */
+const rootHex = () => {
+  let x = state().activeLicenses.root().field;
+  const b = new Uint8Array(32);
+  for (let i = 0; i < 32; i++) { b[i] = Number(x & 0xffn); x >>= 8n; }
+  return hex(b);
+};
 
 /**
  * Every 32-byte value anywhere in a structure, as hex.
@@ -103,33 +111,33 @@ const refused = (secret, circuit, ...args) => {
   catch (e) { return String(e?.message ?? e); }
 };
 
-const licTree = new LicenseTree();
-const licensed = (plan, apply, secret, name, ...args) => {
-  let p;
-  try { p = plan(); } catch { p = { index: 0, siblings: [], dirs: [] }; }
-  licPath = { ...licPath, siblings: p.siblings, dirs: p.dirs };
-  try { const out = run(secret, name, ...args); apply(p.index); return out; }
-  finally { licPath = NO_PATH; }
-};
+// Writers take no path: the ledger places and clears leaves itself.
 const countersign = (who, secret, record) => {
-  const lc = C.licenseCommit(secret, record);
   licPath = { ...NO_PATH, secret };
-  return licensed(() => licTree.planInsert(lc), (i) => licTree.applyInsert(lc, i),
-                  who, 'countersignLicense', record);
+  try { return run(who, 'countersignLicense', record); } finally { licPath = NO_PATH; }
 };
-const present = (who, secret, record, challenge = sec('challenge')) => {
-  const lc = C.licenseCommit(secret, record);
-  let p;
-  try { p = licTree.pathFor(lc); }
-  catch {
-    p = { siblings: Array.from({ length: DEPTH }, () => new Uint8Array(32)),
-          dirs: Array.from({ length: DEPTH }, () => false) };
-  }
-  licPath = { ...NO_PATH, secret, record, siblings: p.siblings, dirs: p.dirs, challenge };
+// No live leaf: a well-formed path for that leaf at slot 0 (real siblings when the tree
+// has a slot 0, all-zero ones before the first activation). Passes the leaf check; the
+// root check must refuse it.
+const stubPath = (tree, leaf) => {
+  try { return tree.pathForLeaf(0n, leaf); }
+  catch { return { leaf, path: Array.from({ length: 24 }, () => ({ sibling: { field: 0n }, goes_left: true })) }; }
+};
+const leafOf = (secret, record) => C.licenseKey(C.licenseCommit(secret, record), record);
+/**
+ * The path is findPathForLeaf on the ledger tree, as the SDK does it. A party with
+ * no live leaf finds none, so this hands over a well-formed path for that leaf at
+ * slot 0 and lets the root check refuse it. `path` overrides, to replay a stale one.
+ */
+const present = (who, secret, record, challenge = sec('challenge'), path = undefined) => {
+  const leaf = leafOf(secret, record);
+  const tree = state().activeLicenses;
+  const p = path ?? tree.findPathForLeaf(leaf) ?? stubPath(tree, leaf);
+  licPath = { ...NO_PATH, secret, record, path: p, challenge };
   try { return run(who, 'proveLicense'); } finally { licPath = NO_PATH; }
 };
-const presentRefused = (who, secret, record) => {
-  try { present(who, secret, record); return ''; } catch (e) { return String(e?.message ?? e); }
+const presentRefused = (who, secret, record, path = undefined) => {
+  try { present(who, secret, record, sec('challenge'), path); return ''; } catch (e) { return String(e?.message ?? e); }
 };
 
 // ── the setup: one breeder, two licensees ───────────────────────────────────
@@ -140,12 +148,15 @@ const OTHER_REC = C.commit(OTHER_BREEDER);
 
 console.log('\n== 0. the tree deploys usable ==');
 {
-  note(`licence tree depth ${DEPTH}, ${CAPACITY} concurrent active licences`);
-  ok('activeLicenseRoot starts at the empty tree root',
-     hex(state().activeLicenseRoot) === hex(EMPTY_ROOT),
-     'a root left at the default Bytes<32> is an unset cell no fold can reproduce,\n' +
-     '     so every countersignature and every licence proof would fail — finding 1,\n' +
-     '     repeated in a second contract');
+  // Was "activeLicenseRoot starts at the locally computed empty root": there is no
+  // hand-rolled root cell any more. The tree is a ledger HistoricMerkleTree, and the
+  // equivalent claim is that it deploys empty with its own root already provable.
+  const t = state().activeLicenses;
+  note('licence tree: ledger HistoricMerkleTree<24>, 2^24 activations over the contract\'s life');
+  ok('the ledger tree deploys empty, with its root accepted by checkRoot',
+     state().nextLicenseSlot === 0n && t.firstFree() === 0n && t.checkRoot(t.root()),
+     'an unusable deployed tree would make every countersignature and licence proof\n' +
+     '     fail — finding 1, repeated in a second contract');
 }
 
 run(BREEDER, 'anchor', C.recoveryCommit(sec('breeder-recovery')));
@@ -206,8 +217,8 @@ console.log('\n== 2. does a presentation name the licence or the breeder? ==');
      '     presentation, and licenseRecordOf maps it straight to the breeder');
 
   // A value IS published, and an unexplained one would be exactly the kind of thing
-  // this file exists to catch. It is the tree root the proof was compared against —
-  // already in a ledger cell, identical for every presentation, and therefore
+  // this file exists to catch. It is the tree root the proof was checked against —
+  // the ledger tree's public root, identical for every presentation, and therefore
   // carrying nothing about which licence was shown.
   // Since the 30 Sep security pass a presentation ALSO publishes its tag,
   // presentationTag(record, challenge): the thing a verifier checks. It is a hash
@@ -215,7 +226,7 @@ console.log('\n== 2. does a presentation name the licence or the breeder? ==');
   const only = [...presentations[0].public];
   const expectedTag = hex(C.presentationTag(BREEDER_REC, sec('challenge')));
   ok('it publishes exactly the shared tree root and the presentation tag',
-     only.length === 2 && only.includes(hex(state().activeLicenseRoot)) && only.includes(expectedTag),
+     only.length === 2 && only.includes(rootHex()) && only.includes(expectedTag),
      `unaccounted value(s) in the transcript: ${only.join(', ')}`);
 
   // THE CONTROL. If this fails, the scanner is not finding values that are really
@@ -243,7 +254,7 @@ console.log('\n== 3. can an observer link two presentations? ==');
   present(sec('carol'), CL, OTHER_REC, sec('ch-4'));     // a different breeder entirely
   // Each verifier supplies a FRESH random challenge, as the protocol requires.
   const four = calls.slice(before);
-  const root = hex(state().activeLicenseRoot);
+  const root = rootHex();
   const tags = four.map((c) => [...c.public].filter((v) => v !== root));
 
   note('two presentations of ONE licence, one of another, one from another breeder');
@@ -268,15 +279,17 @@ console.log('\n== 4. does a revoked licence stop proving? ==');
 {
   ok('bob proves before revocation', presentRefused(sec('bob'), BL, BREEDER_REC) === '');
 
-  const p = licTree.planRemove(bob);
-  licPath = { ...licPath, siblings: p.siblings, dirs: p.dirs };
-  const err = refused(BREEDER, 'revokeLicense', bob, BREEDER_REC);
-  licPath = NO_PATH;
+  const bobPath = state().activeLicenses.findPathForLeaf(leafOf(BL, BREEDER_REC));
+  const err = refused(BREEDER, 'revokeLicense', bob, BREEDER_REC);   // no path: the ledger clears the leaf
   ok('the breeder revokes', err === '', err);
-  licTree.applyRemove(bob, p.index);
 
-  ok('the chain root matches the tree after revocation',
-     hex(state().activeLicenseRoot) === hex(licTree.root()));
+  // Was "the chain root matches the local tree after revocation": no local tree any
+  // more. The equivalent claims against the ledger tree:
+  ok('bob\'s leaf is gone from the ledger tree',
+     state().activeLicenses.findPathForLeaf(leafOf(BL, BREEDER_REC)) === undefined);
+  ok('bob\'s path from before the revocation no longer proves',
+     bobPath !== undefined && presentRefused(sec('bob'), BL, BREEDER_REC, bobPath) !== '',
+     'revocation drops older roots; a stale path that still proved would outlive it');
   ok('bob cannot prove afterwards', presentRefused(sec('bob'), BL, BREEDER_REC) !== '',
      'a leaf left behind would be a revoked licence that still proves — proveLicense\n' +
      '     opens the tree, not the map, so removing it from the map alone does nothing');
@@ -294,10 +307,14 @@ console.log('\n== 5. what a presentation still tells an observer ==');
   note('and the tree itself is public — anyone replaying the chain knows the set of');
   note('active licences and who issued each. What they cannot do is tie a PRESENTATION');
   note('to a member of that set, which is what the finding was about.');
+  // Was "the chain root matches a locally rebuilt tree": the tree is ledger state now,
+  // so the claim is that its leaves follow from public values alone.
   ok('the active set is public by construction',
-     hex(state().activeLicenseRoot) === hex(licTree.root()),
-     'an observer rebuilds the same tree from the map writes, which is what lets a\n' +
-     '     holder recover their own path without storing it');
+     state().activeLicenses.findPathForLeaf(C.licenseKey(alice, BREEDER_REC)) !== undefined &&
+     state().activeLicenses.findPathForLeaf(C.licenseKey(carol, OTHER_REC)) !== undefined,
+     'anyone holding a licence commitment and its issuer (both published at activation)\n' +
+     '     finds its leaf in the ledger tree, which is what lets a holder recover their own\n' +
+     '     path without storing it');
 }
 
 console.log(`\n${bad === 0 ? 'finding 9 demonstrated fixed' : `${bad} still failing`}`);

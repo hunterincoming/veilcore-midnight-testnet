@@ -206,3 +206,24 @@ Every attack was confirmed against the previous build first. The fixes live in
 **MA1. "Deploying with NO maintenance authority" was false.** midnight-js does `signingKey ?? sampleSigningKey()`, so leaving the key out creates an authority with a random key, stored in the local signing-key database.
 
 Fixed in `api/src/maintenance.ts`. "No" now means: deploy, then immediately replace the authority with a key that is never stored, and delete the local copy. CLI menu 19 does the same later, after typing RETIRE. Both contracts' deploys ask the question.
+
+
+---
+
+# Round 2: independent review (30 Sep, evening)
+
+A separate reviewer, who had not written or seen the fixes being made, attacked both contracts. They demonstrated every finding below against the compiled build. All are now fixed, and each has a regression test in `attack-30sep.mjs`.
+
+| # | Severity | Finding | Fix |
+|---|---|---|---|
+| F1 | CRITICAL | **A transfer could forge a licence from another issuer.** The tree leaf was the bare licence commitment. M could transfer her own licence to `licenseCommit(x, B)` and present as B's licensee with no involvement from B. The same commitment could also sit in the tree twice, so B's revocation left the other copy presentable. | The leaf is now `licenseKey(licence, issuer)`, so it names its issuer and appears at most once. |
+| F2 | HIGH | **Revocation could be starved.** Revoke needed a path against the current root and read the pending-transfer map, so a licensee toggling a transfer proposal each block kept every revocation from landing. Any tree change also broke every in-flight presentation. | The hand-rolled tree was replaced by the ledger's own `HistoricMerkleTree`. Writers need no path, and revoke reads nothing the licensee can change. Presentations survive activations. Revocations and transfers drop older roots, so they take effect at once. |
+| F3 | HIGH | **A thief could block recovery forever.** Recovery read the current head, so rotating again before the recovery landed made it fail. | Liveness is now "is the current head" (`headOf`). Recovery writes the new head without reading the old one. |
+| LM1 | MEDIUM | **A thief with a beneficiary's retired secret could discharge a lineage obligation.** | The verifier rule now covers discharges (lineage header, design rule 1). |
+| La | LOW | **Anchoring with `recoveryCommit(all-zero)` let anyone recover the record.** | Refused. |
+| Lb | LOW | **Rotating an unanchored record stranded it.** | Rotation now requires an anchored identity. |
+| — | LOW | **Obligation count contention.** | Disclosed. The worst case is a retry. |
+
+A side effect of the tree change: the CLI and API no longer keep their own licence tree, because the path witness reads the ledger at proving time. The old CLI only worked against a contract deployed in the same session.
+
+**Test totals now:** 106 provenance attack checks and 51 lineage attack checks, all refused, plus the full existing suite.

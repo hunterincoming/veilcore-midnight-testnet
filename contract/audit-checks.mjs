@@ -36,18 +36,17 @@ const witnesses = (secret, incoming = secret, recovery = secret) => ({
   localGeneticSecret: (ctx) => [ctx.privateState, secret],
   incomingGeneticSecret: (ctx) => [ctx.privateState, incoming],
   recoverySecret: (ctx) => [ctx.privateState, recovery],
-  // The active-licence tree. proveLicense reads only witnesses, so the licence and
-  // the record it was issued against are supplied here rather than as arguments.
+  // proveLicense reads only witnesses, so the licence, the record it was issued
+  // against and its path in the ledger's activeLicenses tree are supplied here.
   licenseSecret: (ctx) => [ctx.privateState, licPath.secret],
   licenseRecord: (ctx) => [ctx.privateState, licPath.record],
-  licenseSiblings: (ctx) => [ctx.privateState, licPath.siblings],
-  licenseDirections: (ctx) => [ctx.privateState, licPath.dirs],
+  licensePath: (ctx) => [ctx.privateState, licPath.path],
   presentationChallenge: (ctx) => [ctx.privateState, licPath.secret],
 });
 
-// No licence circuit that moves a leaf runs in this file — section 3 only issues,
-// which leaves licences PENDING and outside the tree — so the path stays null.
-const licPath = { secret: b32(0), record: b32(0), siblings: [], dirs: [] };
+// No presentation runs in this file — section 3 only issues, which leaves licences
+// PENDING and outside the tree — so the path stays null.
+const licPath = { secret: b32(0), record: b32(0), path: null };
 const COIN = '0'.repeat(64);
 const ADDR = rt.sampleContractAddress();
 
@@ -187,12 +186,19 @@ console.log('\n== 5. can a stranger overwrite the published batch root? ==');
 // ────────────────────────────────────────── 6. assert messages leak nothing
 console.log('\n== 6. do assert messages leak private state? ==');
 {
+  // Real refusals, each reached through the circuit's own assert. This used to call
+  // anchor with an extra argument, so the message inspected was the runtime's
+  // argument-count error and the check tested nothing.
   const { contract, ctx } = fresh(BREEDER);
-  const wrong = b32(0x77);
-  const msg = rejects(() => contract.impureCircuits.anchor(ctx, wrong, pureCircuits.commit(b32(0xB1))));
-  note(`message: "${msg}"`);
-  const leaks = /[0-9a-f]{16,}/i.test(msg);
-  ok('no hex-looking material in the failure message', !leaks);
+  const anchored = contract.impureCircuits.anchor(ctx, pureCircuits.recoveryCommit(b32(0xB1))).context;
+  const msgs = [
+    rejects(() => contract.impureCircuits.anchor(anchored, pureCircuits.recoveryCommit(b32(0xB2)))),
+    rejects(() => contract.impureCircuits.recoverRecordSecret(anchored, pureCircuits.commit(BREEDER), pureCircuits.commit(b32(0x55)))),
+    rejects(() => contract.impureCircuits.revokeLicense(anchored, b32(0x66), pureCircuits.commit(BREEDER))),
+  ];
+  for (const m of msgs) note(`message: "${m}"`);
+  ok('each refusal came from a circuit assert', msgs.every((m) => m.startsWith('failed assert')));
+  ok('no hex-looking material in any failure message', msgs.every((m) => !/[0-9a-f]{16,}/i.test(m)));
 }
 
 console.log(`\n${failures === 0 ? 'no findings' : `${failures} finding(s) — see FAIL lines above`}`);

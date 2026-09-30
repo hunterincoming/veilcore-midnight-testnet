@@ -21,7 +21,6 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const artifact = path.join(here, 'src/managed/veilcore/contract/index.js');
 const mod = await import(pathToFileURL(artifact).href);
 const { Contract, LicenseState, ledger, pureCircuits } = mod;
-const { LicenseTree } = await import(pathToFileURL(path.join(here, 'src/license-tree.mjs')).href);
 
 let failures = 0;
 const ok = (name, cond, detail) => {
@@ -43,20 +42,18 @@ const witnesses = (secret, incoming = secret, recovery = secret) => ({
   localGeneticSecret: (ctx) => [ctx.privateState, secret],
   incomingGeneticSecret: (ctx) => [ctx.privateState, incoming],
   recoverySecret: (ctx) => [ctx.privateState, recovery],
-  // The active-licence tree. Every circuit that moves a leaf reads these, and
-  // proveLicense reads nothing else — a licence proof takes no arguments now, so
-  // the licence and the record it was issued against are witnesses like everything
-  // else about it. Set immediately before each call by the helpers below.
+  // The licence witnesses. proveLicense takes no arguments, so the licence, the
+  // record it was issued against and its path in the ledger's activeLicenses tree
+  // are witnesses like everything else about it. Writers read no path at all.
+  // Set immediately before each call by the helpers below.
   licenseSecret: (ctx) => [ctx.privateState, licPath.secret],
   licenseRecord: (ctx) => [ctx.privateState, licPath.record],
-  licenseSiblings: (ctx) => [ctx.privateState, licPath.siblings],
-  licenseDirections: (ctx) => [ctx.privateState, licPath.dirs],
+  licensePath: (ctx) => [ctx.privateState, licPath.path],
   presentationChallenge: (ctx) => [ctx.privateState, licPath.challenge],
 });
 
-// The caller's own copy of the tree, kept in step with the chain.
-const licTree = new LicenseTree();
-const NO_PATH = { secret: new Uint8Array(32), record: new Uint8Array(32), siblings: [], dirs: [], challenge: new Uint8Array(32).fill(0xC4) };
+// No local tree: the path comes from the ledger (findPathForLeaf) at presentation time.
+const NO_PATH = { secret: new Uint8Array(32), record: new Uint8Array(32), path: null, challenge: new Uint8Array(32).fill(0xC4) };
 let licPath = NO_PATH;
 
 const BREEDER = b32(0x11);
@@ -109,48 +106,33 @@ const run = (contract, name, ...args) => {
 };
 const state = () => ledger(ctx.currentQueryContext.state);
 
-/**
- * Run a licence circuit with the tree path it needs, and advance the local tree
- * only if the call succeeded. A refused call must leave the local tree where it
- * was, or every path built afterwards is against a root the chain never had.
- */
-const licensed = (plan, apply, party, name, ...args) => {
-  let p;
-  try { p = plan(); } catch { p = { index: 0, siblings: [], dirs: [] }; }
-  licPath = { ...licPath, siblings: p.siblings, dirs: p.dirs };
-  try {
-    const out = run(party, name, ...args);
-    apply(p.index);
-    return out;
-  } finally { licPath = NO_PATH; }
-};
-
+// Writers take no path: the ledger places and clears leaves itself.
 const countersign = (party, secret, record) => {
-  const lc = licenseCommit(secret, record);
   licPath = { ...NO_PATH, secret };
-  return licensed(() => licTree.planInsert(lc), (i) => licTree.applyInsert(lc, i),
-                  party, 'countersignLicense', record);
+  try { return run(party, 'countersignLicense', record); } finally { licPath = NO_PATH; }
 };
-const approve = (party, lc, record, nlc) =>
-  licensed(() => licTree.planReplace(lc), (i) => licTree.applyReplace(lc, nlc, i),
-           party, 'approveTransfer', lc, record, nlc);
-const revoke = (party, lc) =>
-  licensed(() => licTree.planRemove(lc), (i) => licTree.applyRemove(lc, i),
-           party, 'revokeLicense', lc, RECORD);
+const approve = (party, lc, record, nlc) => run(party, 'approveTransfer', lc, record, nlc);
+const revoke = (party, lc) => run(party, 'revokeLicense', lc, RECORD);
 
+// No live leaf: a well-formed path for that leaf at slot 0 (real siblings when the tree
+// has a slot 0, all-zero ones before the first activation). Passes the leaf check; the
+// root check must refuse it.
+const stubPath = (tree, leaf) => {
+  try { return tree.pathForLeaf(0n, leaf); }
+  catch { return { leaf, path: Array.from({ length: 24 }, () => ({ sibling: { field: 0n }, goes_left: true })) }; }
+};
 /**
  * Present a licence. Takes no circuit arguments at all: the secret, the record and
- * the position are witnesses, so nothing about which licence is being shown reaches
- * the transcript. A party who does not hold a live licence cannot build a path, so
- * this hands the circuit an all-null one and lets it refuse.
+ * the path are witnesses, so nothing about which licence is being shown reaches
+ * the transcript. The path is findPathForLeaf against the current ledger tree; a
+ * party who holds no live licence finds none, so this hands the circuit a
+ * well-formed path for that leaf at slot 0 and lets the root check refuse it.
  */
 const present = (party, secret, record) => {
-  const lc = licenseCommit(secret, record);
-  let p;
-  try { p = licTree.pathFor(lc); }
-  catch { p = { siblings: Array.from({ length: 16 }, () => new Uint8Array(32)),
-                dirs: Array.from({ length: 16 }, () => false) }; }
-  licPath = { ...NO_PATH, secret, record, siblings: p.siblings, dirs: p.dirs };
+  const leaf = pureCircuits.licenseKey(licenseCommit(secret, record), record);
+  const tree = state().activeLicenses;
+  const p = tree.findPathForLeaf(leaf) ?? stubPath(tree, leaf);
+  licPath = { ...NO_PATH, secret, record, path: p };
   try { return run(party, 'proveLicense'); } finally { licPath = NO_PATH; }
 };
 

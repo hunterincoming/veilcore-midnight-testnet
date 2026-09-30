@@ -12,7 +12,6 @@ import { createHash } from 'node:crypto';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const V = await import(pathToFileURL(path.join(here, 'src/managed/veilcore/contract/index.js')).href);
-const { LicenseTree } = await import(pathToFileURL(path.join(here, 'src/license-tree.mjs')).href);
 const rt = await import('@midnight-ntwrk/compact-runtime');
 
 let bad = 0;
@@ -30,17 +29,16 @@ const party = (secret) => new V.Contract({
   localGeneticSecret: (c) => [c.privateState, secret],
   incomingGeneticSecret: (c) => [c.privateState, secret],
   recoverySecret: (c) => [c.privateState, secret],
-  // Licence-tree path for the call about to be made. proveLicense takes no
-  // arguments now, so which licence is being shown is witness data.
+  // Licence witnesses for the call about to be made. proveLicense takes no
+  // arguments, so which licence is being shown — and its path in the ledger's
+  // activeLicenses tree — is witness data.
   licenseSecret: (c) => [c.privateState, licPath.secret],
   licenseRecord: (c) => [c.privateState, licPath.record],
-  licenseSiblings: (c) => [c.privateState, licPath.siblings],
-  licenseDirections: (c) => [c.privateState, licPath.dirs],
+  licensePath: (c) => [c.privateState, licPath.path],
   presentationChallenge: (c) => [c.privateState, licPath.challenge ?? sec('challenge')],
 });
 
-const licTree = new LicenseTree();
-const NO_PATH = { secret: sec('none'), record: sec('none'), siblings: [], dirs: [] };
+const NO_PATH = { secret: sec('none'), record: sec('none'), path: null };
 let licPath = NO_PATH;
 
 // One shared ledger, several parties acting on it.
@@ -61,45 +59,30 @@ const refused = (secret, circuit, ...args) => {
 };
 const state = () => V.ledger(ctx.currentQueryContext.state);
 
-/**
- * Run a licence circuit with the tree path it needs, advancing the local tree only
- * when the chain accepted the call. A refused call must leave the tree where it
- * was, or every path built after it is against a root the chain never held.
- */
-const licensed = (plan, apply, secret, name, ...args) => {
-  let p;
-  try { p = plan(); } catch { p = { index: 0, siblings: [], dirs: [] }; }
-  licPath = { ...licPath, siblings: p.siblings, dirs: p.dirs };
-  try {
-    const out = run(secret, name, ...args);
-    apply(p.index);
-    return out;
-  } finally { licPath = NO_PATH; }
-};
+// Writers take no path: the ledger places and clears leaves itself.
 const countersign = (who, secret, record) => {
-  const lc = V.pureCircuits.licenseCommit(secret, record);
   licPath = { ...NO_PATH, secret };
-  return licensed(() => licTree.planInsert(lc), (i) => licTree.applyInsert(lc, i),
-                  who, 'countersignLicense', record);
+  try { return run(who, 'countersignLicense', record); } finally { licPath = NO_PATH; }
 };
-const approve = (who, lc, record, nlc) =>
-  licensed(() => licTree.planReplace(lc), (i) => licTree.applyReplace(lc, nlc, i),
-           who, 'approveTransfer', lc, record, nlc);
+const approve = (who, lc, record, nlc) => run(who, 'approveTransfer', lc, record, nlc);
 
+// No live leaf: a well-formed path for that leaf at slot 0 (real siblings when the tree
+// has a slot 0, all-zero ones before the first activation). Passes the leaf check; the
+// root check must refuse it.
+const stubPath = (tree, leaf) => {
+  try { return tree.pathForLeaf(0n, leaf); }
+  catch { return { leaf, path: Array.from({ length: 24 }, () => ({ sibling: { field: 0n }, goes_left: true })) }; }
+};
 /**
- * Present a licence. NO CIRCUIT ARGUMENTS: the secret, the record and the position
- * are all witnesses, which is the whole of finding 9. A party with no live licence
- * cannot build a real path, so this hands over a null one and lets the fold refuse.
+ * Present a licence. NO CIRCUIT ARGUMENTS: the secret, the record and the path are
+ * all witnesses, which is the whole of finding 9. The path is findPathForLeaf on the
+ * ledger tree; a party with no live licence finds none, so this hands over a
+ * well-formed path for that leaf at slot 0 and lets the root check refuse it.
  */
 const present = (who, secret, record) => {
-  const lc = V.pureCircuits.licenseCommit(secret, record);
-  let p;
-  try { p = licTree.pathFor(lc); }
-  catch {
-    p = { siblings: Array.from({ length: 16 }, () => new Uint8Array(32)),
-          dirs: Array.from({ length: 16 }, () => false) };
-  }
-  licPath = { ...NO_PATH, secret, record, siblings: p.siblings, dirs: p.dirs };
+  const leaf = V.pureCircuits.licenseKey(V.pureCircuits.licenseCommit(secret, record), record);
+  const tree = state().activeLicenses;
+  licPath = { ...NO_PATH, secret, record, path: tree.findPathForLeaf(leaf) ?? stubPath(tree, leaf) };
   try { return run(who, 'proveLicense'); } finally { licPath = NO_PATH; }
 };
 const presentRefused = (who, secret, record) => {

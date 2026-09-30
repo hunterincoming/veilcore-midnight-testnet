@@ -12,7 +12,6 @@ import { createHash } from 'node:crypto';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const V = await import(pathToFileURL(path.join(here, 'src/managed/veilcore/contract/index.js')).href);
-const { LicenseTree } = await import(pathToFileURL(path.join(here, 'src/license-tree.mjs')).href);
 const rt = await import('@midnight-ntwrk/compact-runtime');
 
 let bad = 0;
@@ -34,17 +33,14 @@ const party = (own, incoming = own, recovery = own) =>
     localGeneticSecret: (c) => [c.privateState, own],
     incomingGeneticSecret: (c) => [c.privateState, incoming],
     recoverySecret: (c) => [c.privateState, recovery],
-    // Licence-tree path, set before the one call in this file that moves a leaf:
-    // the successor revoking a licence the old record issued.
+    // No presentation runs in this file, and revocation reads no path any more.
     licenseSecret: (c) => [c.privateState, licPath.secret],
     licenseRecord: (c) => [c.privateState, licPath.record],
-    licenseSiblings: (c) => [c.privateState, licPath.siblings],
-    licenseDirections: (c) => [c.privateState, licPath.dirs],
+    licensePath: (c) => [c.privateState, licPath.path],
     presentationChallenge: (c) => [c.privateState, sec('challenge')],
   });
 
-const licTree = new LicenseTree();
-let licPath = { secret: sec('none'), record: sec('none'), siblings: [], dirs: [] };
+const licPath = { secret: sec('none'), record: sec('none'), path: null };
 
 const commit = V.pureCircuits.commit;
 const licenseCommit = V.pureCircuits.licenseCommit;
@@ -109,8 +105,10 @@ console.log('\n== after rotating, does the old secret still act? ==');
      'a secret cannot be un-known, so only the contract declining to listen ends the\n' +
      '     old identity — without that a rotation left the holder with two working keys');
 
-  const pairErr = refused(party(OLD), 'pairDna', OLD_REC, sec('dna'));
-  ok('the retired secret cannot pair DNA', pairErr !== '');
+  // Called with one argument: it was passed OLD_REC as well, so it was refused for
+  // arity before liveness was ever checked.
+  const pairErr = refused(party(OLD), 'pairDna', sec('dna'));
+  ok('the retired secret cannot pair DNA', pairErr.includes('rotated or recovered'), pairErr);
 
   // And the successor can revoke what the old record issued.
   const revokeErr = refused(party(NEW, NEW, RECOVERY), 'revokeLicense', lc, OLD_REC);
@@ -134,7 +132,11 @@ console.log('\n== can a holder who lost their secret move the record? ==');
      'rotation requires the secret that was lost, so the checklist item — no role\n' +
      '     permanently lockable by a single lost secret — was not met at all');
 
-  ok('the record is now retired', state().rotatedTo.member(OLD_REC));
+  // Was rotatedTo.member(OLD_REC): recovery no longer writes rotatedTo (it would have
+  // to read the head, which is what let a thief starve it). Liveness is headOf.
+  ok('the record now lives under the new secret', hex(state().headOf.lookup(OLD_REC)) === hex(NEW_REC));
+  ok('the record is now retired: the old secret cannot act',
+     refused(party(OLD), 'proveOwnership') !== '');
 
   // A stranger's recovery secret does not work.
   ctx = fresh();

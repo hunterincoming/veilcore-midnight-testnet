@@ -46,9 +46,12 @@
 //   · This contract cannot read the provenance contract, so it does not know about
 //     rotation there. A verifier MUST resolve every record through the provenance
 //     contract's originOf/rotatedTo and check obligations against EVERY commitment in
-//     that identity's chain, and MUST ignore an edge confirmed or a proof made under
-//     a commitment after the provenance contract retired it. Otherwise rotating a
-//     secret sheds its obligations.
+//     that identity's chain, and MUST ignore an edge confirmed, a proof made, or a
+//     DISCHARGE made under a commitment after the provenance contract retired it.
+//     Otherwise rotating a secret sheds its obligations, and a thief holding a
+//     beneficiary's retired secret can release what that beneficiary is owed. Current
+//     state alone cannot tell a legitimate discharge from a thief's: a clean proof is
+//     only as good as the verifier's replay of the discharges behind it.
 //   · An edge means both holders said so, not that the child is biologically
 //     descended from the parent. The DNA pairing in the provenance contract narrows
 //     that; it does not close it.

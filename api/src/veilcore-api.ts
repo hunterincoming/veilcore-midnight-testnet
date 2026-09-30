@@ -23,19 +23,6 @@ import {
   veilcorePrivateStateKey,
 } from './veilcore-types.js';
 
-/**
- * A licence's position and path in the active-licence tree.
- *
- * The contract verifies the fold and stores only a root, so something has to keep
- * the tree and produce paths — `LicenseTree` in contract/src/license-tree.mjs. The
- * caller supplies the path for the same reason LineageAPI takes a SlotPath: it is
- * only valid against the root current at that moment.
- */
-export type LicensePath = {
-  readonly directions: boolean[];
-  readonly siblings: Uint8Array[];
-};
-
 /** An API for a deployed veilcore contract. */
 export interface DeployedVeilcoreAPI {
   readonly deployedContractAddress: ContractAddress;
@@ -43,7 +30,6 @@ export interface DeployedVeilcoreAPI {
 
   /** Anchors the CALLER's own record, derived from their secret. */
   anchor: (recoveryCommitment: Uint8Array) => Promise<void>;
-  activeLicenseRoot: () => Promise<Uint8Array>;
   proveOwnership: () => Promise<{ commitment: Uint8Array; txHash: string; blockHeight: number }>;
   rotateRecordSecret: (
     newRecordCommitment: Uint8Array,
@@ -54,7 +40,7 @@ export interface DeployedVeilcoreAPI {
     newRecordCommitment: Uint8Array,
     recoverySecret: Uint8Array,
     incomingSecret: Uint8Array,
-  ) => Promise<{ previousCommitment: Uint8Array; txHash: string; blockHeight: number }>;
+  ) => Promise<{ txHash: string; blockHeight: number }>;
   replaceRecoveryCommitment: (
     recordCommitment: Uint8Array,
     newRecoveryCommitment: Uint8Array,
@@ -65,12 +51,11 @@ export interface DeployedVeilcoreAPI {
     dnaCommitment: Uint8Array,
   ) => Promise<{ recordCommitment: Uint8Array; txHash: string; blockHeight: number }>;
   issueLicense: (licenseCommitment: Uint8Array) => Promise<void>;
-  countersignLicense: (secret: Uint8Array, recordCommitment: Uint8Array, path: LicensePath) => Promise<void>;
-  revokeLicense: (licenseCommitment: Uint8Array, issuingRecord: Uint8Array, path: LicensePath) => Promise<void>;
+  countersignLicense: (secret: Uint8Array, recordCommitment: Uint8Array) => Promise<void>;
+  revokeLicense: (licenseCommitment: Uint8Array, issuingRecord: Uint8Array) => Promise<void>;
   proveLicense: (
     secret: Uint8Array,
     recordCommitment: Uint8Array,
-    path: LicensePath,
     challenge: Uint8Array,
   ) => Promise<{ tag: Uint8Array; txHash: string; blockHeight: number }>;
   proposeTransfer: (
@@ -82,10 +67,12 @@ export interface DeployedVeilcoreAPI {
     licenseCommitment: Uint8Array,
     issuingRecord: Uint8Array,
     expectedNewLicense: Uint8Array,
-    path: LicensePath,
   ) => Promise<void>;
   withdrawTransfer: (secret: Uint8Array, recordCommitment: Uint8Array) => Promise<void>;
 }
+
+/** A verifier's presentation challenge: 32 fresh random bytes, used once, never published. */
+export const newPresentationChallenge = (): Uint8Array => utils.randomBytes(32);
 
 export class VeilcoreAPI implements DeployedVeilcoreAPI {
   private constructor(
@@ -236,7 +223,7 @@ export class VeilcoreAPI implements DeployedVeilcoreAPI {
     newRecordCommitment: Uint8Array,
     recoverySecret: Uint8Array,
     incomingSecret: Uint8Array,
-  ): Promise<{ previousCommitment: Uint8Array; txHash: string; blockHeight: number }> {
+  ): Promise<{ txHash: string; blockHeight: number }> {
     await this.patchPrivateState({ recoverySecret, incomingGeneticSecret: incomingSecret });
     this.logger?.info('recovering record with the recovery secret');
     const txData = await this.deployedContract.callTx.recoverRecordSecret(recordCommitment, newRecordCommitment);
@@ -250,11 +237,10 @@ export class VeilcoreAPI implements DeployedVeilcoreAPI {
         blockHeight: txData.public.blockHeight,
       },
     });
-    return {
-      previousCommitment: txData.private.result,
-      txHash: txData.public.txHash,
-      blockHeight: txData.public.blockHeight,
-    };
+    // Recovery does not read (or return) the head it retires: reading it is what let a
+    // thief who rotated again make recovery fail. The chain records the origin and the
+    // new head (lastRecoveredOrigin, lastRotatedTo).
+    return { txHash: txData.public.txHash, blockHeight: txData.public.blockHeight };
   }
 
   /**
@@ -356,13 +342,12 @@ export class VeilcoreAPI implements DeployedVeilcoreAPI {
    * under their own record was the same key the licensee countersigned — and the
    * licence went active under the sniper.
    *
-   * Activation is also what puts the licence in the tree, so this needs a path to a
-   * FREE slot: `LicenseTree.planInsert()`. Advance your local tree only once this
-   * resolves, or every path built afterwards is against a root the chain never had.
+   * Activation also places the licence in the ledger's tree. No path is needed: the
+   * ledger places the leaf itself.
    */
-  async countersignLicense(secret: Uint8Array, recordCommitment: Uint8Array, path: LicensePath): Promise<void> {
+  async countersignLicense(secret: Uint8Array, recordCommitment: Uint8Array): Promise<void> {
     // The secret travels as a WITNESS, never as a circuit argument.
-    await this.setLicenseWitness(path, secret);
+    await this.patchPrivateState({ licenseSecret: secret });
     this.logger?.info('countersigning licence');
     const txData = await this.deployedContract.callTx.countersignLicense(recordCommitment);
     this.logger?.trace({
@@ -381,14 +366,13 @@ export class VeilcoreAPI implements DeployedVeilcoreAPI {
    * maps alone would leave a revoked licence still presentable, because proveLicense
    * opens the tree rather than the map.
    *
-   * `path` must locate the licence's current leaf — `LicenseTree.planRemove()`. A
-   * PENDING licence has no leaf, and the circuit skips the tree for one, so any path
+   * No path: the ledger clears the leaf itself, so a revocation cannot be starved by
+   * other tree traffic. A PENDING licence has no leaf, and the circuit skips the tree for one, so nothing
    * is accepted in that case.
    */
-  async revokeLicense(licenseCommitment: Uint8Array, issuingRecord: Uint8Array, path: LicensePath): Promise<void> {
+  async revokeLicense(licenseCommitment: Uint8Array, issuingRecord: Uint8Array): Promise<void> {
     // `issuingRecord` is the record the licence was issued under. After a rotation it
     // is not the caller's current record; the circuit checks they are one identity.
-    await this.setLicenseWitness(path);
     this.logger?.info('revoking licence');
     const txData = await this.deployedContract.callTx.revokeLicense(licenseCommitment, issuingRecord);
     this.logger?.trace({
@@ -418,13 +402,13 @@ export class VeilcoreAPI implements DeployedVeilcoreAPI {
    * whose identity is already in the open between the parties, and this whenever a
    * holder is showing a stranger that they hold something.
    *
-   * `path` comes from `LicenseTree.pathFor()` and must not be published: the position
+   * The path is found by the licensePath witness in the ledger at proving time and is
+   * never published: the position
    * is what would make one presentation linkable to the next.
    */
   async proveLicense(
     secret: Uint8Array,
     recordCommitment: Uint8Array,
-    path: LicensePath,
     challenge: Uint8Array,
   ): Promise<{ tag: Uint8Array; txHash: string; blockHeight: number }> {
     // SINCE 30 SEP: a presentation is bound to the issuing record and to a challenge
@@ -433,7 +417,11 @@ export class VeilcoreAPI implements DeployedVeilcoreAPI {
     // random bytes from the verifier (see newPresentationChallenge) and must never be
     // published or reused, or anyone can test each issuing record against the tag.
     if (challenge.length !== 32) throw new Error('a presentation challenge is exactly 32 bytes');
-    await this.setLicenseWitness(path, secret, recordCommitment, challenge);
+    await this.patchPrivateState({
+      licenseSecret: secret,
+      licenseRecord: recordCommitment,
+      presentationChallenge: challenge,
+    });
     this.logger?.info('proving licence (zk)');
     const txData = await this.deployedContract.callTx.proveLicense();
     this.logger?.trace({
@@ -495,12 +483,10 @@ export class VeilcoreAPI implements DeployedVeilcoreAPI {
     licenseCommitment: Uint8Array,
     issuingRecord: Uint8Array,
     expectedNewLicense: Uint8Array,
-    path: LicensePath,
   ): Promise<void> {
-    // The outgoing leaf is replaced by the incoming one IN PLACE, so the path locates
-    // the old licence's current position: `LicenseTree.planReplace()`. The agreement
+    // The outgoing leaf is replaced by the incoming one IN PLACE, by the ledger; no
+    // path is needed. The agreement
     // continues, so the slot it occupies continues with it.
-    await this.setLicenseWitness(path);
     this.logger?.info('approving licence transfer');
     const txData = await this.deployedContract.callTx.approveTransfer(
       licenseCommitment,
@@ -537,20 +523,6 @@ export class VeilcoreAPI implements DeployedVeilcoreAPI {
   }
 
   /**
-   * The root of the active-licence tree, as the chain currently holds it.
-   *
-   * A caller keeping a local `LicenseTree` must check this before building a path.
-   * The tree is public — anyone replaying the chain arrives at the same one — but a
-   * local copy that has missed a transaction produces paths that fold to a root the
-   * chain never had, and the call fails after proving and after paying.
-   */
-  async activeLicenseRoot(): Promise<Uint8Array> {
-    const contractState = await this.providers.publicDataProvider.queryContractState(this.deployedContractAddress);
-    if (contractState === null) throw new Error('the veilcore contract has no state at its address');
-    return Veilcore.ledger(contractState.data).activeLicenseRoot;
-  }
-
-  /**
    * Merge fields into the private state the witnesses read.
    *
    * Every witness the contract declares has to be present or the Contract cannot be
@@ -561,28 +533,6 @@ export class VeilcoreAPI implements DeployedVeilcoreAPI {
   private async patchPrivateState(patch: Partial<VeilcorePrivateState>): Promise<void> {
     const current = (await this.providers.privateStateProvider.get(veilcorePrivateStateKey)) as VeilcorePrivateState;
     await this.providers.privateStateProvider.set(veilcorePrivateStateKey, { ...current, ...patch });
-  }
-
-  /**
-   * Put a licence-tree path, and optionally the licence being presented, in reach of
-   * the witnesses.
-   *
-   * `secret` and `recordCommitment` are only read by proveLicense — the other licence
-   * circuits take them as arguments or do not need them, and pass the path alone.
-   */
-  private async setLicenseWitness(
-    path: LicensePath,
-    secret?: Uint8Array,
-    recordCommitment?: Uint8Array,
-    challenge?: Uint8Array,
-  ): Promise<void> {
-    await this.patchPrivateState({
-      licenseSiblings: path.siblings,
-      licenseDirections: path.directions,
-      ...(secret === undefined ? {} : { licenseSecret: secret }),
-      ...(recordCommitment === undefined ? {} : { licenseRecord: recordCommitment }),
-      ...(challenge === undefined ? {} : { presentationChallenge: challenge }),
-    });
   }
 
   /**

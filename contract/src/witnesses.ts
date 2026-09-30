@@ -16,9 +16,15 @@
  * Private state and witness functions for the VeilCore and lineage contracts.
  */
 
-import { Ledger as VeilcoreLedger } from "./managed/veilcore/contract/index.js";
+import {
+  Ledger as VeilcoreLedger,
+  pureCircuits as veilcorePureCircuits,
+} from "./managed/veilcore/contract/index.js";
 import { Ledger as LineageLedger } from "./managed/lineage/contract/index.js";
-import { WitnessContext } from "@midnight-ntwrk/midnight-js-protocol/compact-runtime";
+import {
+  WitnessContext,
+  type MerkleTreePath,
+} from "@midnight-ntwrk/midnight-js-protocol/compact-runtime";
 
 /* **********************************************************************
  * Veilcore private state.
@@ -43,9 +49,6 @@ export type VeilcorePrivateState = {
   /** The licence being presented, and the record it was issued against. */
   readonly licenseSecret: Uint8Array;
   readonly licenseRecord: Uint8Array;
-  /** Its path in the active-licence tree. Set from ./license-tree.mjs per call. */
-  readonly licenseSiblings: Uint8Array[];
-  readonly licenseDirections: boolean[];
   /**
    * The verifier's challenge for the presentation about to be made. Chosen by the
    * VERIFIER, 32 random bytes, used once, never published.
@@ -60,8 +63,8 @@ const ZERO32 = (): Uint8Array => new Uint8Array(32);
  *
  * The rotation, recovery and licence fields default to the record secret or to
  * empty, because a party that never rotates and holds no licence never reads them.
- * A licence path is empty until a caller sets one: an empty path fails the fold,
- * which is the right outcome for a presentation nobody has prepared.
+ * The licence path is never stored: the licensePath witness reads it from the
+ * ledger at proving time (see below).
  */
 export const createVeilcorePrivateState = (
   geneticSecret: Uint8Array,
@@ -74,8 +77,6 @@ export const createVeilcorePrivateState = (
   recoverySecret: ZERO32(),
   licenseSecret: ZERO32(),
   licenseRecord: ZERO32(),
-  licenseSiblings: [],
-  licenseDirections: [],
   presentationChallenge: ZERO32(),
 });
 
@@ -92,26 +93,15 @@ export const withRecoverySecret = (
 ): VeilcorePrivateState => ({ ...state, recoverySecret });
 
 /**
- * Set the licence and its tree path, before any licence circuit.
- *
- * A path is only valid against the root current at that moment, so this is called
- * immediately before the call and from the tree in ./license-tree.mjs. For
- * proveLicense the secret and the record are witnesses too: a presentation takes no
- * arguments, which is what stops it naming the licence or its issuer.
+ * Name the licence a call acts on: its secret and the record it was issued against.
+ * No path: the licensePath witness finds it in the ledger's own tree when the call
+ * is proved, so it is always against the state the proof is made for.
  */
-export const withLicensePath = (
+export const withLicense = (
   state: VeilcorePrivateState,
   licenseSecret: Uint8Array,
   licenseRecord: Uint8Array,
-  licenseSiblings: Uint8Array[],
-  licenseDirections: boolean[],
-): VeilcorePrivateState => ({
-  ...state,
-  licenseSecret,
-  licenseRecord,
-  licenseSiblings,
-  licenseDirections,
-});
+): VeilcorePrivateState => ({ ...state, licenseSecret, licenseRecord });
 
 type VC = WitnessContext<VeilcoreLedger, VeilcorePrivateState>;
 
@@ -147,19 +137,21 @@ export const veilcoreWitnesses = {
     privateState.licenseRecord,
   ],
 
-  licenseSiblings: ({
+  /**
+   * The licence's path in activeLicenses, computed from the ledger the proof is made
+   * against. The leaf is licenseKey(licenseCommit(secret, record), record), the same
+   * value the contract recomputes and compares.
+   */
+  licensePath: ({
+    ledger,
     privateState,
-  }: VC): [VeilcorePrivateState, Uint8Array[]] => [
-    privateState,
-    privateState.licenseSiblings,
-  ],
-
-  licenseDirections: ({
-    privateState,
-  }: VC): [VeilcorePrivateState, boolean[]] => [
-    privateState,
-    privateState.licenseDirections,
-  ],
+  }: VC): [VeilcorePrivateState, MerkleTreePath<Uint8Array>] => {
+    const lc = veilcorePureCircuits.licenseCommit(privateState.licenseSecret, privateState.licenseRecord);
+    const leaf = veilcorePureCircuits.licenseKey(lc, privateState.licenseRecord);
+    const path = ledger.activeLicenses.findPathForLeaf(leaf);
+    if (path === undefined) throw new Error("No live licence for that secret and record");
+    return [privateState, path];
+  },
 
   presentationChallenge: ({
     privateState,

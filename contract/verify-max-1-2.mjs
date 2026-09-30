@@ -118,12 +118,14 @@ console.log('\n== 2c. is a prior-possession proof checkable by a third party? ==
     // stops the Contract being constructed at all.
     licenseSecret: (c) => [c.privateState, new Uint8Array(32)],
     licenseRecord: (c) => [c.privateState, new Uint8Array(32)],
-    licenseSiblings: (c) => [c.privateState, []],
-    licenseDirections: (c) => [c.privateState, []],
+    licensePath: (c) => [c.privateState, null],
     presentationChallenge: (c) => [c.privateState, new Uint8Array(32)],
   });
   const ctor = contract.initialState(rt.createConstructorContext({}, COIN));
-  const ctx = rt.createCircuitContext(rt.sampleContractAddress(), COIN, ctor.currentContractState, {});
+  const ctx0 = rt.createCircuitContext(rt.sampleContractAddress(), COIN, ctor.currentContractState, {});
+  // Anchor first: only an anchored record may rotate, and the rotation below needs it.
+  const ctx = contract.impureCircuits.anchor(ctx0,
+    V.pureCircuits.recoveryCommit(createHash('sha256').update('recovery').digest())).context;
 
   const r = contract.impureCircuits.proveOwnership(ctx);
   const st = V.ledger(r.context.currentQueryContext.state);

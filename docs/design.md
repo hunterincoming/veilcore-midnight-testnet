@@ -62,20 +62,24 @@ lastPairedRecord      Bytes<32>
 lastPairedDna         Bytes<32>
 lastRotatedFrom       Bytes<32>
 lastRotatedTo         Bytes<32>
+lastRecoveredOrigin   Bytes<32>
 lastPresentation      Bytes<32>   // presentationTag(record, challenge)
-lastActivatedLicense  Bytes<32>   // so anyone can rebuild the licence tree
+lastActivatedLicense  Bytes<32>
 lastActivatedRecord   Bytes<32>
-activeLicenseRoot     Bytes<32>   // root of the active-licence tree
 licenseStatusOf     Map<Bytes<32>, LicenseState>   // key = licenseKey(licence, issuer); live only
-pendingTransferOf   Map<Bytes<32>, Bytes<32>>      // key = licenseKey; cleared on approve/withdraw
-rotatedTo           Map<Bytes<32>, Bytes<32>>      // retired record -> next; never cleared
-originOf            Map<Bytes<32>, Bytes<32>>      // successor -> origin; never cleared
-headOf              Map<Bytes<32>, Bytes<32>>      // rotated origin -> current head
+pendingTransferOf   Map<Bytes<32>, Bytes<32>>      // key = licenseKey; cleared on approve/withdraw/revoke
+activeLicenses      HistoricMerkleTree<24, Bytes<32>>  // leaves = licenseKey of ACTIVE licences
+licenseSlotOf       Map<Bytes<32>, Uint<64>>       // licenseKey -> leaf index; live only
+nextLicenseSlot     Counter                        // next unused leaf index
+rotatedTo           Map<Bytes<32>, Bytes<32>>      // rotation history: retired -> next
+originOf            Map<Bytes<32>, Bytes<32>>      // successor -> origin
+headOf              Map<Bytes<32>, Bytes<32>>      // moved origin -> current head (liveness)
 recoveryOf          Map<Bytes<32>, Bytes<32>>      // origin -> recovery commitment
 ```
 
-Fixed slots, two licence maps cleared by the circuits that filled them, and four
-identity maps that grow by one entry per anchor, rotation or recovery.
+Fixed slots, licence maps cleared by the circuits that filled them, the ledger's own
+Merkle tree for active licences, and four identity maps that grow by one entry per
+anchor, rotation or recovery.
 
 **A value a verifier needs has to be written to a ledger cell.** Returning it from a
 circuit does not publish it: the return travels in the call's communication commitment,
@@ -101,6 +105,8 @@ and requires it to be live. None takes the caller's record as an argument.
 
 A record is an **origin** (anchored, nobody rotated into it) or a **successor**. Rotation
 and recovery write `originOf(successor) = origin` and `headOf(origin) = successor`.
+**A record is live only if it is its identity's current head** (`headOf`), and only an
+anchored identity can rotate.
 Authority over a licence is decided by comparing **origins**, so it survives any number
 of rotations. The previous one-hop check (`rotatedTo(issuer) == me`) meant that after a
 second rotation nobody could ever revoke a licence the first record issued, and after
@@ -113,7 +119,9 @@ orphan the licences under it.
 **Recovery is the master key.** `recoverRecordSecret(origin, new)` works whether or not
 the identity has been rotated since, and retires whatever the current head is. It used
 to require the record to be live, so a thief holding the primary secret could rotate
-first and keep the record for good. The recovery commitment sits on the origin, so a
+first and keep the record for good. It also **writes the new head without reading the
+old one**: an intermediate version read the head, so a thief who rotated again before
+the recovery landed made it fail, every time (found by the independent review). The recovery commitment sits on the origin, so a
 rotation no longer drops it, and `replaceRecoveryCommitment` (gated by the current
 recovery secret) replaces a recovery secret that may have leaked. Recovery commitments
 use their own domain tag (`veilcore:recover`); sharing the record tag made every
@@ -185,16 +193,24 @@ and anyone could point a verifier at somebody else's. **The challenge must be 32
 bytes, chosen by the verifier, used once and never published.** A public or reused
 challenge lets anyone test every issuing record against the tag.
 
-Activation publishes the licence and its issuer (`lastActivatedLicense`,
-`lastActivatedRecord`) because the ledger holds only the tree's root and every holder
-needs the other leaves to build their own path.
+**The tree is the ledger's own `HistoricMerkleTree`, and its leaves are licence KEYS.**
+`countersignLicense` places `licenseKey(lc, issuer)` at the next unused index;
+`revokeLicense` clears it; `approveTransfer` replaces it in place. The ledger does the
+placing, so **writers supply no path** and a revocation cannot be starved by other tree
+traffic. A presentation proves a path against any root since the last revocation or
+transfer (`resetHistory`), so new activations do not invalidate it, but a revocation
+takes effect at once. The path witness reads the ledger at proving time
+(`findPathForLeaf`), so clients keep no tree of their own.
 
-The tree holds the **ACTIVE** set: `countersignLicense` inserts, `revokeLicense` removes,
-`approveTransfer` replaces the outgoing leaf with the incoming one in the same slot. A
-pending licence was never inserted and a revoked one has no leaf to open. Capacity is
-**65,536 concurrent** active licences — a structural ceiling rather than an economic
-one, and the only one in either contract. Positions are assigned rather than derived
-from the commitment, so there is no birthday bound and no grinding target.
+Two things the independent review found in the hand-rolled tree this replaced: **a
+transfer could forge a licence from another issuer**, because the leaf was the bare
+licence commitment and nothing bound a transfer target to its issuer; and **the same
+commitment could sit in the tree twice**, so one issuer's revocation left the other copy
+presentable. With the key as the leaf, a leaf names its issuer and appears at most once.
+It also found that a licensee could keep a revocation from ever landing by toggling a
+transfer proposal, because revoke read it; revoke now clears it unconditionally.
+
+Capacity is **2^24 activations over the contract's life** (indices are not reused).
 
 ### Verified on chain
 
@@ -313,10 +329,13 @@ provenance contract gets a new commitment with a clean lineage history. So:
 
 - check obligations against **every** commitment in the identity's chain
   (`originOf` / `rotatedTo` / `headOf`), not only the one presented;
-- ignore an edge confirmed, or a proof made, under a commitment **after** the provenance
-  contract retired it.
+- ignore an edge confirmed, a proof made, or **a discharge** made under a commitment
+  **after** the provenance contract retired it.
 
-Without this, rotating a secret sheds its obligations.
+Without this, rotating a secret sheds its obligations, and a thief holding a
+beneficiary's retired secret can release what that beneficiary is owed. On-chain state
+alone cannot tell a legitimate discharge from a thief's, so a clean proof is only as
+good as the verifier's replay of the discharges behind it.
 
 ### 2. Rebuild from archival history, not from current state
 

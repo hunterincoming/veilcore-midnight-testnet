@@ -51,7 +51,6 @@ import { TestEnvironment } from '@midnight-ntwrk/testkit-js';
 import { MidnightWalletProvider } from './midnight-wallet-provider';
 import { randomBytes } from '../../api/src/utils';
 import { showSecret } from './secret-out';
-import { LicenseTree } from '../../contract/src/license-tree.mjs';
 import { unshieldedToken } from '@midnight-ntwrk/midnight-js-protocol/ledger';
 import { syncWallet, waitForUnshieldedFunds } from './wallet-utils';
 import { generateDust } from './generate-dust';
@@ -264,36 +263,6 @@ const mainLoop = async (
   if (veilcoreApi === null) {
     return;
   }
-  /**
-   * The CLI's copy of the active-licence tree.
-   *
-   * proveLicense opens a leaf of this tree rather than looking a commitment up in a
-   * map, which is what stops a presentation naming the breeder — but it means every
-   * licence call needs a path, and a path is only valid against the root the chain
-   * currently holds.
-   *
-   * THIS COPY STARTS EMPTY, so it is only correct when this CLI is the only party
-   * acting on a contract deployed in this session. Anything else — a second operator,
-   * a redeployment, a restart — and it has missed transactions. Rebuilding it properly
-   * means replaying the chain's history, which is an indexer's job and not a dev
-   * CLI's, so instead every licence action checks the local root against the chain's
-   * and refuses when they differ. Failing here beats building a path that folds to a
-   * root the chain never had and finding out after proving and paying.
-   */
-  const licTree = new LicenseTree();
-  const licenceTreeInSync = async (): Promise<boolean> => {
-    const chainRoot = await veilcoreApi.activeLicenseRoot();
-    if (toHex(licTree.root()) === toHex(chainRoot)) return true;
-    logger.error("This CLI's licence tree does not match the chain.");
-    logger.error(`  local: ${toHex(licTree.root())}`);
-    logger.error(`  chain: ${toHex(chainRoot)}`);
-    logger.error(
-      'Licence actions need a path into the active-licence tree, and this copy starts ' +
-        'empty. It is only usable against a contract deployed in this session with no ' +
-        'other party acting on it. Rebuild from chain history to do better.',
-    );
-    return false;
-  };
 
   let currentState: VeilcoreDerivedState | undefined;
   const stateObserver = {
@@ -383,16 +352,8 @@ const mainLoop = async (
               logger.error('Invalid input.');
               break;
             }
-            if (!(await licenceTreeInSync())) break;
             const lc = pureCircuits.licenseCommit(sec, rec);
-            const plan = licTree.planInsert(lc);
-            await veilcoreApi.countersignLicense(sec, rec, {
-              directions: plan.dirs,
-              siblings: plan.siblings,
-            });
-            // Only after the chain accepted it. A refused call must leave the local tree
-            // where it was, or every path built afterwards is wrong.
-            licTree.applyInsert(lc, plan.index);
+            await veilcoreApi.countersignLicense(sec, rec);
             logger.info(`Licence countersigned — now ACTIVE: ${toHex(lc)}`);
             break;
           }
@@ -414,17 +375,7 @@ const mainLoop = async (
               logger.error('Invalid record commitment.');
               break;
             }
-            if (!(await licenceTreeInSync())) break;
-            // A PENDING licence has no leaf and the circuit skips the tree for one, so a
-            // null path is what it gets. An ACTIVE one needs its real position.
-            let plan;
-            try {
-              plan = licTree.planRemove(lc);
-            } catch {
-              plan = { index: -1, dirs: [] as boolean[], siblings: [] as Uint8Array[] };
-            }
-            await veilcoreApi.revokeLicense(lc, issuer, { directions: plan.dirs, siblings: plan.siblings });
-            if (plan.index >= 0) licTree.applyRemove(lc, plan.index);
+            await veilcoreApi.revokeLicense(lc, issuer);
             logger.info('Licence revoked, cleared from live state and removed from the tree.');
             break;
           }
@@ -437,15 +388,6 @@ const mainLoop = async (
               logger.error('Invalid input.');
               break;
             }
-            if (!(await licenceTreeInSync())) break;
-            const lc = pureCircuits.licenseCommit(sec, rec);
-            let path;
-            try {
-              path = licTree.pathFor(lc);
-            } catch {
-              logger.error('No live licence with that secret against that record.');
-              break;
-            }
             // The VERIFIER picks the challenge: 32 random bytes, used once, never
             // published. It binds this presentation to them and to this record.
             const chHex = (await rli.question("Verifier's challenge in hex (32 bytes, from the verifier): ")).trim();
@@ -454,12 +396,7 @@ const mainLoop = async (
               logger.error('The challenge must be exactly 32 bytes of hex, chosen by the verifier.');
               break;
             }
-            const shown = await veilcoreApi.proveLicense(
-              sec,
-              rec,
-              { directions: path.dirs, siblings: path.siblings },
-              challenge,
-            );
+            const shown = await veilcoreApi.proveLicense(sec, rec, challenge);
             logger.info('Licence proof accepted.');
             logger.info(`Tell the verifier: transaction ${shown.txHash} at block ${shown.blockHeight}.`);
             logger.info(
@@ -539,9 +476,6 @@ const mainLoop = async (
               logger.error('No genetic secret in private state.');
               break;
             }
-            if (!(await licenceTreeInSync())) break;
-            // The outgoing leaf is replaced by the incoming one in place — the same
-            // agreement continuing with a party the issuer has just consented to.
             // The record the licence was ISSUED under — after a rotation that is your
             // original record, not your current one.
             const issHex = (await rli.question('Record it was issued under (blank = your current record): ')).trim();
@@ -550,12 +484,7 @@ const mainLoop = async (
               logger.error('Invalid record commitment.');
               break;
             }
-            const plan = licTree.planReplace(lc);
-            await veilcoreApi.approveTransfer(lc, issuer, enl, {
-              directions: plan.dirs,
-              siblings: plan.siblings,
-            });
-            licTree.applyReplace(lc, enl, plan.index);
+            await veilcoreApi.approveTransfer(lc, issuer, enl);
             logger.info('Transfer approved. The licence now belongs to the new holder.');
             break;
           }
@@ -636,7 +565,7 @@ const mainLoop = async (
             const nc = pureCircuits.commit(ns);
             const rec = await veilcoreApi.recoverRecordSecret(orig, nc, rs, ns);
             showSecret('YOUR NEW GENETIC SECRET — store it now:', toHex(ns));
-            logger.info(`Recovered. Retired head: ${toHex(rec.previousCommitment)}. New record: ${toHex(nc)}.`);
+            logger.info(`Recovered in transaction ${rec.txHash}. New record: ${toHex(nc)}.`);
             logger.info('Whoever held the old secret, including a thief, can no longer act for this record.');
             break;
           }

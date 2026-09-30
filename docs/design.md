@@ -173,17 +173,21 @@ exercise each one.
    start of a line (`checkLineage(ledger, record, recognisedRoots).accepted`). Anyone can
    anchor fresh material with no history, and a cycle has no root to check.
 5. **Presentations.** Send the licensee a fresh 32-byte random challenge, privately, and
-   use it once. The licensee gives you the presentation's transaction id. Read the
-   contract state **immediately after that transaction** (not later: a seal landing
-   after it would hide a revocation) and accept only if:
+   use it once. The licensee gives you the presentation's transaction id. Check that it
+   is a successful transaction containing exactly one `proveLicense` call **on this
+   contract's address** (not a later transaction, not a look-alike contract). Read the
+   contract state **recorded for that call** (not later: a seal landing after it would
+   hide a revocation) and accept only if:
    - its `lastPresentation` equals `presentationTag(c, challenge)` for some commitment
      `c` of the issuing identity (a licence issued after a rotation is tagged under the
      successor). Never take the tag from the licensee, who can compute any tag; and
    - its `lastPresentationRoot` is the licence tree's current root in that state, or
      `unsealedChanges` is false in it.
 
-   (`acceptPresentation`; `VeilcoreAPI.checkPresentation` does the lookup.) It proves
-   that someone holding the licence secret took part, not which party.
+   (`acceptPresentation`; `presentationState` in `api/src/presentation-lookup.ts` does
+   the lookup, and `VeilcoreAPI.checkPresentation` both.) It proves that someone holding
+   the licence secret took part, not which party. The published root also shows
+   roughly when the licensee last fetched their path.
 6. **Event cells are per transaction.** Each `last*` cell holds the value from the most
    recent transaction that wrote it. Read them from the indexer per transaction.
 7. **Batch roots are not possession.** `anchorBatch` is unauthenticated.

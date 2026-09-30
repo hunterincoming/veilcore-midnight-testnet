@@ -14,10 +14,11 @@ import { CompiledVeilcore } from '../../contract/src/veilcore';
 import { type VeilcorePrivateState, createVeilcorePrivateState } from '../../contract/src/witnesses.js';
 import { acceptPresentation, checkLineage, identityOf, isLive, type LineageReport } from '../../contract/src/verify.js';
 import { deployContract, findDeployedContract } from '@midnight-ntwrk/midnight-js-contracts';
-import { combineLatest, map, from, firstValueFrom, type Observable } from 'rxjs';
+import { combineLatest, map, from, type Observable } from 'rxjs';
 import { toHex } from '@midnight-ntwrk/midnight-js-utils';
 import { assertDeploymentRecordCurrent } from './deploy-guard.js';
 import { retireMaintenanceAuthority } from './maintenance.js';
+import { presentationState } from './presentation-lookup.js';
 import * as utils from './utils/index.js';
 import {
   type VeilcoreProviders,
@@ -344,27 +345,21 @@ export class VeilcoreAPI {
   }
 
   /**
-   * As a verifier, check a licence presentation (design.md rule 5) against the state
-   * right after the transaction `txId` the licensee gave you.
+   * As a verifier, check a licence presentation (design.md rule 5). `txId` is what the
+   * licensee gave you; it must be a successful proveLicense call on this contract, and
+   * the check is made on the state right after it (presentation-lookup.ts).
    */
   async checkPresentation(
+    indexerUri: string,
     txId: string,
     issuer: Uint8Array,
     challenge: Uint8Array,
   ): Promise<ReturnType<typeof acceptPresentation>> {
-    return acceptPresentation(await this.stateAfterTransaction(txId), issuer, challenge);
-  }
-
-  /** The contract state immediately after transaction `txId`, from the indexer. */
-  async stateAfterTransaction(txId: string): Promise<Veilcore.Ledger> {
-    const state = await firstValueFrom(
-      this.providers.publicDataProvider.contractStateObservable(this.deployedContractAddress, {
-        type: 'txId',
-        txId,
-        inclusive: true,
-      }),
+    return acceptPresentation(
+      await presentationState(indexerUri, this.deployedContractAddress, txId),
+      issuer,
+      challenge,
     );
-    return Veilcore.ledger(state.data);
   }
 
   // ─────────────────────────────────────────────────────────── plumbing

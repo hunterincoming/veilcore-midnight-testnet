@@ -135,6 +135,7 @@ export const deployOrJoin = async (
   rli: Interface,
   logger: Logger,
   zkConfigPath: string,
+  indexerUri: string,
 ): Promise<VeilcoreAPI | null> => {
   while (true) {
     const choice = (await rli.question(DEPLOY_OR_JOIN_QUESTION)).trim();
@@ -158,7 +159,7 @@ export const deployOrJoin = async (
           logger.error('The smoke test does not run on mainnet.');
           continue;
         }
-        const passed = await runSmoke(providers, logger);
+        const passed = await runSmoke(providers, logger, indexerUri);
         logger.info(passed ? 'Smoke test passed.' : 'Smoke test FAILED — see above.');
         return null;
       }
@@ -205,8 +206,9 @@ const mainLoop = async (
   rli: Interface,
   logger: Logger,
   zkConfigPath: string,
+  indexerUri: string,
 ): Promise<void> => {
-  const api = await deployOrJoin(providers, rli, logger, zkConfigPath);
+  const api = await deployOrJoin(providers, rli, logger, zkConfigPath, indexerUri);
   if (api === null) return;
 
   let derived: VeilcoreDerivedState | undefined;
@@ -390,7 +392,7 @@ const mainLoop = async (
             const txId = (await rli.question("The presentation's transaction id (from the licensee): ")).trim();
             const issuer = await ask32(rli, 'Issuer you asked about (any record of that identity, hex): ');
             const ch = await ask32(rli, 'The challenge you sent (hex): ');
-            const verdict = await api.checkPresentation(txId, issuer, ch);
+            const verdict = await api.checkPresentation(indexerUri, txId, issuer, ch);
             logger.info(`${verdict.accepted ? 'ACCEPTED' : 'NOT ACCEPTED'}: ${verdict.reason}.`);
             break;
           }
@@ -643,7 +645,7 @@ export const run = async (config: Config, testEnv: TestEnvironment, logger: Logg
       midnightProvider: walletProvider,
     };
 
-    await mainLoop(providers, rli, logger, config.zkConfigPath);
+    await mainLoop(providers, rli, logger, config.zkConfigPath, envConfiguration.indexer);
   } catch (e) {
     logError(logger, e);
     logger.info('Exiting...');

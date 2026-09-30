@@ -17,7 +17,7 @@ import type { VeilcoreProviders } from '../../api/src/veilcore-types.js';
 
 const same = (a: Uint8Array, b: Uint8Array): boolean => toHex(a) === toHex(b);
 
-export const runSmoke = async (providers: VeilcoreProviders, logger: Logger): Promise<boolean> => {
+export const runSmoke = async (providers: VeilcoreProviders, logger: Logger, indexerUri: string): Promise<boolean> => {
   let step = 0;
   const pass = (what: string): void => logger.info(`PASS ${++step}. ${what}`);
   const must = (ok: boolean, what: string): void => {
@@ -59,7 +59,7 @@ export const runSmoke = async (providers: VeilcoreProviders, logger: Logger): Pr
     const L1 = randomBytes(32);
     const lc1 = C.licenseCommit(L1, B);
     await vc.issueLicense(lc1);
-    await vc.countersignLicense(L1, B);
+    const activation = await vc.countersignLicense(L1, B);
     must(
       (await vc.currentLedger()).licenseStatusOf.member(C.licenseKey(lc1, B)),
       'issue + countersign: licence active',
@@ -71,12 +71,15 @@ export const runSmoke = async (providers: VeilcoreProviders, logger: Logger): Pr
       'proveLicense: the tag is on chain',
     );
     must(
-      (await vc.checkPresentation(shown.txId, B, ch)).accepted,
+      (await vc.checkPresentation(indexerUri, shown.txId, B, ch)).accepted,
       "the verifier's check, by transaction id, accepts it",
     );
     must(
-      !(await vc.checkPresentation(shown.txId, B, newPresentationChallenge())).accepted,
+      !(await vc.checkPresentation(indexerUri, shown.txId, B, newPresentationChallenge())).accepted,
       'and rejects it for any other challenge',
+    );
+    await refused('a verifier check pointed at a transaction that is not a presentation', () =>
+      vc.checkPresentation(indexerUri, activation.txId, B, ch),
     );
 
     const L2 = randomBytes(32);

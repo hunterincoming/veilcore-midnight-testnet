@@ -311,3 +311,15 @@ in the contract. Findings and fixes:
 | S4 | CLI and API lineage checks ignored `accepted` and recognised roots. | Both take recognised roots and report `accepted` and `cyclic`. |
 | P1 | A founding record with no parents was never accepted. | It is its own root. Tested. |
 | P3 | The API's seal lead (120 s) could miss slow inclusion. | 200 s. |
+
+
+---
+
+# Round 7: sixth independent review, of round 6's changes (30 Sep, evening)
+
+| # | Finding | Fix |
+|---|---|---|
+| M1 | A licensee could cite a later transaction (such as a seal) instead of the presentation, and have a revoked licence accepted. | The lookup requires the transaction to be a successful, single `proveLicense` call and reads the state recorded for that call. |
+| M2 | The midnight-js `txId` stream ignores the contract address, so a look-alike contract's state could be read. | Replaced with a direct indexer query that checks status, contract address and entry point, with a timeout (`api/src/presentation-lookup.ts`). Tested against a fake indexer for each impostor case; the preprod smoke test checks it for real. |
+| S1 | The lineage walk was recursive and overflowed on very long pedigrees. | Iterative, with an explicit stack. |
+| P1 | `lastPresentationRoot` hints when the licensee fetched their path. | Stated in rule 5. |

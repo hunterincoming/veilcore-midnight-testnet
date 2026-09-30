@@ -23,4 +23,5 @@ export * as utils from './utils/index.js';
 export * from './deploy-guard.js';
 export * from './veilcore-types.js';
 export * from './veilcore-api.js';
+export * from './presentation-lookup.js';
 export * from '../../contract/src/verify.js';

@@ -86,24 +86,30 @@ export const checkLineage = (
   const ancestors: Uint8Array[] = [];
   const roots: Uint8Array[] = [];
   let cyclic = false;
-  // Depth-first, tracking the current path: meeting an identity already on the path is a
-  // cycle; meeting one already finished by another branch is a shared ancestor.
-  const visit = (id: Uint8Array): void => {
-    const k = hex(id);
-    if (onPath.has(k)) {
-      cyclic = true;
-      return;
-    }
-    if (done.has(k)) return;
-    onPath.add(k);
+  // Depth-first with an explicit stack (a recursive walk overflows on long pedigrees),
+  // tracking the current path: meeting an identity already on the path is a cycle;
+  // meeting one another branch has finished is a shared ancestor.
+  type Frame = { id: Uint8Array; parents: Uint8Array[]; next: number };
+  const enter = (id: Uint8Array): Frame => {
+    onPath.add(hex(id));
     if (!same(id, identity)) ancestors.push(id);
     const parents = parentsOf(id);
     if (parents.length === 0) roots.push(id);
-    for (const p of parents) visit(p);
-    onPath.delete(k);
-    done.add(k);
+    return { id, parents, next: 0 };
   };
-  visit(identity);
+  const stack: Frame[] = [enter(identity)];
+  while (stack.length > 0) {
+    const top = stack[stack.length - 1];
+    if (top.next === top.parents.length) {
+      onPath.delete(hex(top.id));
+      done.add(hex(top.id));
+      stack.pop();
+      continue;
+    }
+    const p = top.parents[top.next++];
+    if (onPath.has(hex(p))) cyclic = true;
+    else if (!done.has(hex(p))) stack.push(enter(p));
+  }
   const owes = (id: Uint8Array): boolean =>
     ledger.obligationCountOf.member(id) &&
     ledger.obligationCountOf.lookup(id).read() > 0n;

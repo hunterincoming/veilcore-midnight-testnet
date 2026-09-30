@@ -97,14 +97,8 @@ describe("the licence lifecycle", () => {
     expect(hex(sim.state.lastPresentation)).toBe(
       hex(C.presentationTag(A_REC, ch)),
     );
-    expect(
-      acceptPresentation(sim.state, A_REC, ch, sim.state.lastPresentation)
-        .accepted,
-    ).toBe(true);
-    expect(
-      acceptPresentation(sim.state, B_REC, ch, sim.state.lastPresentation)
-        .accepted,
-    ).toBe(false);
+    expect(acceptPresentation(sim.state, A_REC, ch).accepted).toBe(true);
+    expect(acceptPresentation(sim.state, B_REC, ch).accepted).toBe(false);
   });
 
   it("a presentation names neither the licence nor the record, and two do not link", () => {
@@ -182,10 +176,7 @@ describe("who controls a licence", () => {
     countersign(L1, B_REC);
     const ch = secret("ask-about-A");
     present(L1, B_REC, ch);
-    expect(
-      acceptPresentation(sim.state, A_REC, ch, sim.state.lastPresentation)
-        .accepted,
-    ).toBe(true);
+    expect(acceptPresentation(sim.state, A_REC, ch).accepted).toBe(true);
   });
 
   it("a stranger, or a stranger's successor, cannot revoke", () => {
@@ -323,9 +314,9 @@ describe("revocation and sealing", () => {
     const ch = secret("c");
     present(L1, A_REC, ch, oldPath);
     // The verifier's rule 5 rejects it: a revocation was waiting for a seal.
-    expect(
-      acceptPresentation(sim.state, A_REC, ch, sim.state.lastPresentation),
-    ).toMatchObject({ accepted: false });
+    expect(acceptPresentation(sim.state, A_REC, ch)).toMatchObject({
+      accepted: false,
+    });
     seal();
     expect(() => present(L1, A_REC, secret("c2"), oldPath)).toThrow("stale");
   });
@@ -467,5 +458,59 @@ describe("slots", () => {
     present(L2, A_REC);
     expect(() => present(L1, A_REC, secret("c"), oldPath)).toThrow("stale");
     expect(() => present(L1, A_REC)).toThrow("No live licence");
+  });
+});
+
+describe("the verifier's presentation check (rule 5)", () => {
+  const activeA = (): Uint8Array => {
+    const lc = issue(A, L1);
+    countersign(L1, A_REC);
+    return lc;
+  };
+
+  it("reads the tag from chain state, so a licensee cannot hand over one of their own making", () => {
+    anchorA();
+    const ch = secret("verifier-challenge");
+    expect(acceptPresentation(sim.state, A_REC, ch)).toMatchObject({
+      accepted: false,
+    }); // nothing presented yet
+    activeA();
+    present(L1, A_REC, secret("some-other-challenge"));
+    expect(acceptPresentation(sim.state, A_REC, ch)).toMatchObject({
+      accepted: false,
+    });
+    present(L1, A_REC, ch);
+    expect(acceptPresentation(sim.state, A_REC, ch)).toMatchObject({
+      accepted: true,
+    });
+  });
+
+  it("a revoked licence presented before the seal is rejected on the state right after it, even if a seal follows", () => {
+    const lc = activeA();
+    const oldPath = sim.pathFor(L1, A_REC);
+    sim.call(as(A), "revokeLicense", lc, A_REC);
+    const ch = secret("c");
+    present(L1, A_REC, ch, oldPath);
+    const afterTx = sim.state;
+    seal(); // the licensee, or anyone, seals straight after
+    expect(acceptPresentation(afterTx, A_REC, ch)).toMatchObject({
+      accepted: false,
+    });
+  });
+
+  it("a live licence is accepted even while someone keeps a revocation waiting", () => {
+    activeA();
+    const M = secret("griefer"),
+      M_REC = C.commit(M);
+    const x = secret("throwaway");
+    const lc = issue(M, x);
+    countersign(x, M_REC);
+    sim.call(as(M), "revokeLicense", lc, M_REC);
+    expect(sim.state.unsealedChanges).toBe(true);
+    const ch = secret("c");
+    present(L1, A_REC, ch); // a fresh path, against the current root
+    expect(acceptPresentation(sim.state, A_REC, ch)).toMatchObject({
+      accepted: true,
+    });
   });
 });

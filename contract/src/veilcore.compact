@@ -59,6 +59,8 @@ export ledger lastRotatedFrom: Bytes<32>;
 export ledger lastRotatedTo: Bytes<32>;
 export ledger lastRecoveredOrigin: Bytes<32>;
 export ledger lastPresentation: Bytes<32>;
+/** The licence-tree root the last presentation proved against. */
+export ledger lastPresentationRoot: MerkleTreeDigest;
 export ledger lastActivatedLicense: Bytes<32>;
 export ledger lastActivatedRecord: Bytes<32>;
 export ledger lastDescentChild: Bytes<32>;
@@ -104,9 +106,9 @@ export ledger pendingObligations: Set<Bytes<32>>;
 /** obligationKey(...), in force. */
 export ledger openObligations: Set<Bytes<32>>;
 /**
- * Record identity -> number of obligations in force. A Counter, so concurrent accepts
- * and discharges on one record commute instead of failing each other; entries are
- * never removed, and a record owes something exactly when its count is above zero.
+ * Anchored identity -> number of obligations in force. Created at anchor and never
+ * removed, and a Counter, so concurrent accepts and discharges on one record commute
+ * instead of failing each other. A record owes something exactly when it is above zero.
  */
 export ledger obligationCountOf: Map<Bytes<32>, Counter>;
 
@@ -257,6 +259,7 @@ export circuit anchor(recoveryCommitment: Bytes<32>): [] {
   anchorSeq.increment(1);
   lastAnchor = c;
   recoveryOf.insert(c, rcv);
+  obligationCountOf.insert(c, default<Counter>);
 }
 
 /**
@@ -478,9 +481,10 @@ export circuit proveLicense(): [] {
   const path = licensePath();
   const leaf = licenseKey(licenseCommit(licenseSecret(), record), record);
   assert(disclose(path.leaf == leaf), "No live licence for that secret");
-  assert(activeLicenses.checkRoot(disclose(merkleTreePathRoot<24, Bytes<32>>(path))),
-         "No live licence for that secret, or the path is stale");
+  const root = disclose(merkleTreePathRoot<24, Bytes<32>>(path));
+  assert(activeLicenses.checkRoot(root), "No live licence for that secret, or the path is stale");
   presentationSeq.increment(1);
+  lastPresentationRoot = root;
   lastPresentation = disclose(presentationTag(record, challenge));
 }
 
@@ -523,9 +527,6 @@ export circuit withdrawParent(): [] {
 
 circuit addObligation(r: Bytes<32>, o: Bytes<32>, b: Bytes<32>, k: Bytes<32>): [] {
   openObligations.insert(k);
-  if (!obligationCountOf.member(r)) {
-    obligationCountOf.insert(r, default<Counter>);
-  }
   obligationCountOf.lookup(r).increment(1);
   obligationSeq.increment(1);
   lastObligationRecord = r;
@@ -574,11 +575,12 @@ export circuit acceptObligation(obligationCommitment: Bytes<32>, beneficiary: By
   addObligation(r, o, b, k);
 }
 
-/** The record's holder declines a proposed obligation, so proposals cannot pile up against it. */
+/** The record's holder declines a proposed obligation, clearing it from state. */
 export circuit rejectObligation(obligationCommitment: Bytes<32>, beneficiary: Bytes<32>): [] {
   const k = obligationKey(myIdentity(), disclose(obligationCommitment), anchoredIdentity(disclose(beneficiary)));
   assert(pendingObligations.member(k), "No such obligation proposed against your record");
   pendingObligations.remove(k);
+  obligationSeq.increment(1);
 }
 
 /** ONLY THE BENEFICIARY, under its current head, releases an obligation. */

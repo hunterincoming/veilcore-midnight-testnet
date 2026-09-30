@@ -1,11 +1,12 @@
-// Prints the SHA-256 of every proving and verifying key, for the deployment record.
+// Records the SHA-256 of every compiled artefact a deployment uses: the proving and
+// verifying keys, the circuits' ZKIR, and the contract code that builds the initial
+// state. Run AFTER a full `npm run compact` (not --skip-zk, which produces no keys).
+// Writes docs/fingerprints.md, the table the deployment record carries; a mainnet
+// deploy from the CLI refuses unless the local build matches it as committed
+// (bboard-cli/src/keys-check.ts). A reviewer reproduces it from the same commit with
+// the same compiler.
 //
-// Run AFTER a full `npm run compact` (not --skip-zk, which produces no keys). A
-// reviewer reproduces these by checking out the same commit, running the same
-// commands, and comparing. Also writes docs/fingerprints.md so the table is committed
-// next to the source it describes.
-//
-//   node contract/fingerprints.mjs
+//   npm run fingerprints
 // SPDX-License-Identifier: Apache-2.0
 import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync, existsSync, writeFileSync } from 'node:fs';
@@ -14,31 +15,31 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
+const managed = path.join(here, 'src', 'managed', 'veilcore');
 const sha = (f) => createHash('sha256').update(readFileSync(f)).digest('hex');
-let commit = 'unknown';
-try { commit = execSync('git rev-parse --short HEAD', { cwd: here }).toString().trim(); } catch {}
-let compiler = 'unknown';
-try { compiler = execSync('compact compile --version', { cwd: here }).toString().trim(); } catch {}
+const run = (cmd) => { try { return execSync(cmd, { cwd: here, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim(); } catch { return ''; } };
+const commit = run('git rev-parse --short HEAD') || 'unknown';
+const compiler = run('compact compile --version') || run('compactc --version') || 'unknown';
 
-const out = [`# Key fingerprints`, ``, `Commit \`${commit}\`, compiler \`${compiler}\`, built with \`npm run compact\`.`, ``];
-let missing = false;
-for (const contract of ['veilcore']) {
-  const dir = path.join(here, 'src', 'managed', contract, 'keys');
-  out.push(`## ${contract}`, '', '| Artefact | SHA-256 |', '|---|---|');
-  const files = existsSync(dir) ? readdirSync(dir).filter((f) => /\.(prover|verifier)$/.test(f)).sort() : [];
-  const circuits = existsSync(path.join(here, 'src', 'managed', contract, 'zkir'))
-    ? readdirSync(path.join(here, 'src', 'managed', contract, 'zkir')).filter((f) => f.endsWith('.zkir')).length : 0;
-  if (files.length === 0) { missing = true; out.push('| (no keys — run a full `npm run compact` first) | |'); }
-  else if (files.length !== 2 * circuits) { missing = true; out.push(`| (expected ${2 * circuits} keys for ${circuits} circuits, found ${files.length}) | |`); }
-  for (const f of files) {
-    const full = path.join(dir, f);
-    if (readFileSync(full).length === 0) { missing = true; out.push(`| \`keys/${f}\` | EMPTY — the build did not finish |`); continue; }
-    out.push(`| \`keys/${f}\` | \`${sha(full)}\` |`);
-  }
-  out.push('');
+/** The artefacts, as paths relative to managed/veilcore. Keep in step with keys-check.ts. */
+const list = (dir, re) => (existsSync(path.join(managed, dir)) ? readdirSync(path.join(managed, dir)).filter((f) => re.test(f)).sort().map((f) => `${dir}/${f}`) : []);
+const keys = list('keys', /\.(prover|verifier)$/);
+const zkir = list('zkir', /\.b?zkir$/);
+const circuits = zkir.filter((f) => f.endsWith('.zkir')).length;
+const files = [...keys, ...zkir, 'contract/index.js'];
+
+const out = ['# Build fingerprints', '', `Commit \`${commit}\`, compiler \`${compiler}\`, built with \`npm run compact\`.`, '', '| Artefact | SHA-256 |', '|---|---|'];
+const problems = [];
+if (keys.length === 0) problems.push('no keys: run a full npm run compact first');
+else if (keys.length !== 2 * circuits) problems.push(`expected ${2 * circuits} keys for ${circuits} circuits, found ${keys.length}`);
+if (compiler === 'unknown') problems.push('could not read the compiler version');
+for (const f of files) {
+  const full = path.join(managed, f);
+  if (!existsSync(full) || readFileSync(full).length === 0) { problems.push(`${f} is missing or empty`); continue; }
+  out.push(`| \`${f}\` | \`${sha(full)}\` |`);
 }
-const text = out.join('\n');
+const text = out.join('\n') + '\n';
 console.log(text);
-if (missing) { console.error('\nNOT COMPLETE: some keys are missing or empty. Nothing written.'); process.exit(1); }
-writeFileSync(path.join(here, '..', 'docs', 'fingerprints.md'), text + '\n');
-console.error('\nWritten to docs/fingerprints.md');
+if (problems.length) { console.error(`NOT COMPLETE: ${problems.join('; ')}. Nothing written.`); process.exit(1); }
+writeFileSync(path.join(here, '..', 'docs', 'fingerprints.md'), text);
+console.error('Written to docs/fingerprints.md. Commit and push it: a mainnet deploy checks the build against the committed copy.');

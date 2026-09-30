@@ -65,10 +65,18 @@ export const runSmoke = async (providers: VeilcoreProviders, logger: Logger): Pr
       'issue + countersign: licence active',
     );
     const ch = newPresentationChallenge();
-    await vc.proveLicense(L1, B, ch);
+    const shown = await vc.proveLicense(L1, B, ch);
     must(
       same((await vc.currentLedger()).lastPresentation, C.presentationTag(B, ch)),
-      'proveLicense: the verifier can check the tag',
+      'proveLicense: the tag is on chain',
+    );
+    must(
+      (await vc.checkPresentation(shown.txId, B, ch)).accepted,
+      "the verifier's check, by transaction id, accepts it",
+    );
+    must(
+      !(await vc.checkPresentation(shown.txId, B, newPresentationChallenge())).accepted,
+      'and rejects it for any other challenge',
     );
 
     const L2 = randomBytes(32);

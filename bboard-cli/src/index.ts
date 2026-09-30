@@ -18,7 +18,6 @@ import {
   type VeilcoreCircuitKeys,
   type SealResult,
   newPresentationChallenge,
-  acceptPresentation,
 } from '../../api/src/index';
 import { type WalletFacade } from '@midnight-ntwrk/wallet-sdk-facade';
 import { pureCircuits } from '../../contract/src/managed/veilcore/contract/index.js';
@@ -143,7 +142,7 @@ export const deployOrJoin = async (
       case '1': {
         if (getNetworkId() === 'mainnet') {
           const n = assertKeysMatchRecord(zkConfigPath, path.resolve(zkConfigPath, '..', '..', '..', '..'));
-          logger.info(`All ${n} key files match the committed fingerprints (docs/fingerprints.md).`);
+          logger.info(`All ${n} build artefacts match the committed fingerprints (docs/fingerprints.md).`);
         }
         const api = await VeilcoreAPI.deploy(providers, await askMaintenanceAuthority(rli, logger), logger);
         logger.info(`Deployed VeilCore contract at address: ${api.deployedContractAddress}`);
@@ -302,7 +301,7 @@ const mainLoop = async (
             const ch = await ask32(rli, "Verifier's challenge (hex, from the verifier's option 26): ");
             const shown = await api.proveLicense(secret, issuer, ch);
             tx(shown);
-            logger.info('The verifier checks that this transaction published presentationTag(issuer, challenge).');
+            logger.info(`Give the verifier this transaction id: ${shown.txId}`);
             break;
           }
           case '11': {
@@ -388,17 +387,11 @@ const mainLoop = async (
             break;
           }
           case '27': {
+            const txId = (await rli.question("The presentation's transaction id (from the licensee): ")).trim();
             const issuer = await ask32(rli, 'Issuer you asked about (any record of that identity, hex): ');
             const ch = await ask32(rli, 'The challenge you sent (hex): ');
-            const tag = await ask32Or(
-              rli,
-              'Tag their transaction published (hex; blank = the latest on chain): ',
-              new Uint8Array(0),
-            );
-            const ledger = await api.currentLedger();
-            const verdict = acceptPresentation(ledger, issuer, ch, tag.length === 32 ? tag : ledger.lastPresentation);
+            const verdict = await api.checkPresentation(txId, issuer, ch);
             logger.info(`${verdict.accepted ? 'ACCEPTED' : 'NOT ACCEPTED'}: ${verdict.reason}.`);
-            logger.info("Check against the state at the end of the presentation's block (design.md, rule 5).");
             break;
           }
           case '23': {
@@ -412,14 +405,32 @@ const mainLoop = async (
             break;
           }
           case '25': {
-            const report = await api.checkLineage(await ask32(rli, 'Record to check (hex): '));
+            const record = await ask32(rli, 'Record to check (hex): ');
+            const rootsText = (
+              await rli.question(
+                'Origins you recognise as the start of a line (hex, comma-separated; blank for none): ',
+              )
+            ).trim();
+            const recognised =
+              rootsText === ''
+                ? []
+                : rootsText.split(',').map((t) => {
+                    const v = parse32(t);
+                    if (v === null) throw new InputError(`Not a record: ${t.trim()}`);
+                    return v;
+                  });
+            const report = await api.checkLineage(record, recognised);
             logger.info(`Identity: ${toHex(report.identity)}`);
-            logger.info(
-              `Confirmed ancestors: ${report.ancestors.length}; with open obligations: ${report.encumbered.length}`,
-            );
+            logger.info(`Confirmed ancestors: ${report.ancestors.length}; owing: ${report.encumbered.length}`);
             report.encumbered.forEach((a) => logger.info(`  owes: ${toHex(a)}`));
-            report.roots.forEach((a) => logger.info(`  earliest known ancestor: ${toHex(a)}`));
-            logger.info(report.clean ? 'CLEAN: no ancestor on chain carries an open obligation.' : 'NOT CLEAN.');
+            report.roots.forEach((a) => logger.info(`  starts at: ${toHex(a)}`));
+            if (report.cyclic) logger.info('The pedigree loops back on itself.');
+            logger.info(report.clean ? 'CLEAN: nothing on chain is owed on this line.' : 'NOT CLEAN.');
+            logger.info(
+              report.accepted
+                ? 'ACCEPTED: clean, no loop, and every line starts at an origin you recognise.'
+                : 'NOT ACCEPTED: needs to be clean, loop-free, and start at origins you recognise (design.md, rule 4).',
+            );
             break;
           }
           case '28': {

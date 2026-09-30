@@ -294,3 +294,20 @@ in the contract. Findings and fixes:
 | S5 | Two post-seal tests could not fail (they used a fresh path, which does not exist after revocation). | Rewritten on the saved old path, asserting "stale". Mutation check: removing the seal's reset now fails five tests. |
 | S6 | Two seals could land about 301 s apart, because the seal time could be claimed in the past. | The seal takes an upper bound on the block time; the next needs block time ≥ that bound + 600 s. Tested at 600 and 601 s. |
 | — | `rotatedTo` was dead state; `LicenseState.NONE` never stored; pending obligations could pile up. | Removed, removed, `rejectObligation` added. |
+
+
+---
+
+# Round 6: fifth independent review, of round 5's changes (30 Sep, afternoon)
+
+| # | Finding | Fix |
+|---|---|---|
+| M1 | `acceptPresentation` took the tag as an argument, so a licensee could hand over a tag they computed themselves, with no licence. | The tag is read from chain state; the API looks the state up by transaction id. Tested. |
+| M2 | Judging on the state at the end of the block (or later) let a seal landing after the presentation hide a revocation. | Rule 5 judges on the state immediately after the presentation's own transaction. Tested with a seal following it. |
+| M3 | `checkLineage` called any shared ancestor (a backcross) a cycle. | Depth-first walk tracking the current path; shared ancestors are not cycles. Tested. |
+| S1 | Anyone could keep a revocation unsealed and so block every acceptance under rule 5. | `proveLicense` records the root it proved against (`lastPresentationRoot`); a presentation against the then-current root is accepted regardless. Tested with a griefer. |
+| S2 | The first obligation on a record still had a read race. | The counter is created at anchor; accepting only increments. Tested concurrently. |
+| S3 | Fingerprints covered keys only, not the compiled contract code or ZKIR. | Both added to `fingerprints.mjs` and the deploy check. CRLF tables handled. |
+| S4 | CLI and API lineage checks ignored `accepted` and recognised roots. | Both take recognised roots and report `accepted` and `cyclic`. |
+| P1 | A founding record with no parents was never accepted. | It is its own root. Tested. |
+| P3 | The API's seal lead (120 s) could miss slow inclusion. | 200 s. |

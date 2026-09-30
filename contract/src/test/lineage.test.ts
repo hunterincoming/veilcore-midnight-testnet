@@ -395,3 +395,39 @@ describe("the verifier's walk: cycles, the record itself, and recognised roots",
     expect(checkLineage(sim.state, G, [C.commit(B2)]).accepted).toBe(true); // any commitment of the identity
   });
 });
+
+describe("the verifier's walk: shared ancestors and founding records (third review)", () => {
+  const link = (child: Uint8Array, parent: Uint8Array): void => {
+    sim.call(as(child), "proposeParent", C.commit(parent));
+    sim.call(as(parent), "confirmParent", C.commit(child));
+  };
+
+  it("a backcross (two lines sharing an ancestor) is not a cycle", () => {
+    const R = secret("root-mother");
+    anchor(R);
+    link(GROWER, BREEDER);
+    link(GROWER, COMPETITOR); // a cross: two parents
+    link(BREEDER, R);
+    link(COMPETITOR, R); // both descend from R
+    const r = checkLineage(sim.state, G, [C.commit(R)]);
+    expect(r.cyclic).toBe(false);
+    expect(r.roots.map(hex)).toEqual([hex(C.commit(R))]);
+    expect(r.accepted).toBe(true);
+  });
+
+  it("a founding record with no parents is its own root", () => {
+    const r = checkLineage(sim.state, Br, [Br]);
+    expect(r.roots.map(hex)).toEqual([hex(Br)]);
+    expect(r.accepted).toBe(true);
+    expect(checkLineage(sim.state, Br).accepted).toBe(false);
+  });
+
+  it("the first two obligations on a record, accepted concurrently, both land", () => {
+    sim.call(as(BREEDER), "proposeObligation", G, ROYALTY);
+    sim.call(as(SECOND), "proposeObligation", G, ROYALTY);
+    const first = sim.prove(as(GROWER), "acceptObligation", ROYALTY, Br);
+    sim.call(as(GROWER), "acceptObligation", ROYALTY, S2);
+    sim.land(first);
+    expect(owes(G)).toBe(2n);
+  });
+});

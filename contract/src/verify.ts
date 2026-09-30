@@ -50,11 +50,14 @@ export const openObligations = (ledger: Ledger, record: Uint8Array): bigint => {
 export type LineageReport = {
   /** The identity checked. */
   readonly identity: Uint8Array;
-  /** Every ancestor identity reachable through confirmed parentage, nearest first. */
+  /** Every ancestor identity reachable through confirmed parentage. */
   readonly ancestors: readonly Uint8Array[];
-  /** Rule 4. Ancestors with no confirmed parent. Check these against origins you recognise. */
+  /**
+   * Rule 4. Where the pedigree starts: identities in it with no confirmed parent,
+   * including the record itself when it has none.
+   */
   readonly roots: readonly Uint8Array[];
-  /** Rule 4. The pedigree loops back on itself, so part of it ends in no root at all. */
+  /** Rule 4. Some identity is its own ancestor. A shared ancestor (a backcross) is not a cycle. */
   readonly cyclic: boolean;
   /** Rule 3. The record itself, and ancestors, carrying an obligation in force. */
   readonly encumbered: readonly Uint8Array[];
@@ -76,30 +79,31 @@ export const checkLineage = (
   recognisedRoots: readonly Uint8Array[] = [],
 ): LineageReport => {
   const identity = identityOf(ledger, record);
-  const seen = new Set<string>([hex(identity)]);
+  const parentsOf = (id: Uint8Array): Uint8Array[] =>
+    ledger.parentsOf.member(id) ? [...ledger.parentsOf.lookup(id)] : [];
+  const done = new Set<string>();
+  const onPath = new Set<string>();
   const ancestors: Uint8Array[] = [];
   const roots: Uint8Array[] = [];
   let cyclic = false;
-  let frontier: Uint8Array[] = [identity];
-  while (frontier.length > 0) {
-    const next: Uint8Array[] = [];
-    for (const child of frontier) {
-      const parents = ledger.parentsOf.member(child)
-        ? [...ledger.parentsOf.lookup(child)]
-        : [];
-      if (parents.length === 0 && !same(child, identity)) roots.push(child);
-      for (const parent of parents) {
-        if (seen.has(hex(parent))) {
-          cyclic = true;
-          continue;
-        }
-        seen.add(hex(parent));
-        ancestors.push(parent);
-        next.push(parent);
-      }
+  // Depth-first, tracking the current path: meeting an identity already on the path is a
+  // cycle; meeting one already finished by another branch is a shared ancestor.
+  const visit = (id: Uint8Array): void => {
+    const k = hex(id);
+    if (onPath.has(k)) {
+      cyclic = true;
+      return;
     }
-    frontier = next;
-  }
+    if (done.has(k)) return;
+    onPath.add(k);
+    if (!same(id, identity)) ancestors.push(id);
+    const parents = parentsOf(id);
+    if (parents.length === 0) roots.push(id);
+    for (const p of parents) visit(p);
+    onPath.delete(k);
+    done.add(k);
+  };
+  visit(identity);
   const owes = (id: Uint8Array): boolean =>
     ledger.obligationCountOf.member(id) &&
     ledger.obligationCountOf.lookup(id).read() > 0n;
@@ -121,37 +125,54 @@ export const checkLineage = (
 /**
  * Rule 5. Accept a licence presentation.
  *
- * `ledger` is the contract state at the END of the block holding the presentation
- * (from the indexer); `tag` is the lastPresentation that transaction published. The
- * verifier chose `challenge` (32 fresh random bytes, kept private) and asked about
- * `issuer`, any commitment of the licensing identity. A presentation that landed while
- * a revocation was waiting for a seal may use a revoked licence: reject it and ask for
- * a new one after the next seal.
+ * `afterTx` is the contract state IMMEDIATELY AFTER the presentation's own transaction,
+ * from the indexer by transaction id (VeilcoreAPI.stateAfterTransaction). The tag is
+ * read from that state, never taken from the licensee, who can compute any tag for a
+ * challenge they hold. The verifier chose `challenge` (32 fresh random bytes, sent
+ * privately) and asked about `issuer`, any commitment of the licensing identity.
+ *
+ * The presentation is accepted when the root it proved against is the tree's current
+ * root in that state (the leaf was live then, whatever was revoked earlier), or when no
+ * revocation was waiting for a seal (so every older root still accepted excludes revoked
+ * leaves).
  */
 export const acceptPresentation = (
-  ledger: Ledger,
+  afterTx: Ledger,
   issuer: Uint8Array,
   challenge: Uint8Array,
-  tag: Uint8Array,
 ): { readonly accepted: boolean; readonly reason: string } => {
   if (challenge.length !== 32 || challenge.every((b) => b === 0))
     return { accepted: false, reason: "not a usable challenge" };
-  const matches = commitmentsOf(ledger, issuer).some((c) =>
+  if (afterTx.presentationSeq === 0n)
+    return {
+      accepted: false,
+      reason: "no presentation has been made on this contract",
+    };
+  const tag = afterTx.lastPresentation;
+  const matches = commitmentsOf(afterTx, issuer).some((c) =>
     same(pureCircuits.presentationTag(c, challenge), tag),
   );
   if (!matches)
     return {
       accepted: false,
-      reason: "the tag does not answer this challenge for this issuer",
+      reason: "that transaction did not answer this challenge for this issuer",
     };
-  if (ledger.unsealedChanges)
+  const current =
+    afterTx.lastPresentationRoot.field === afterTx.activeLicenses.root().field;
+  if (current)
     return {
-      accepted: false,
+      accepted: true,
       reason:
-        "a revocation was waiting for a seal; ask again after the next seal",
+        "a live licence from this issuer, proved against the current root",
+    };
+  if (!afterTx.unsealedChanges)
+    return {
+      accepted: true,
+      reason: "a live licence from this issuer; no revocation was waiting",
     };
   return {
-    accepted: true,
-    reason: "a live licence from this issuer, as of this block",
+    accepted: false,
+    reason:
+      "proved against an older root while a revocation was waiting; ask again",
   };
 };

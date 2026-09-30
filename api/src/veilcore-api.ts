@@ -12,9 +12,9 @@ import { type Logger } from 'pino';
 import * as Veilcore from '../../contract/src/managed/veilcore/contract/index.js';
 import { CompiledVeilcore } from '../../contract/src/veilcore';
 import { type VeilcorePrivateState, createVeilcorePrivateState } from '../../contract/src/witnesses.js';
-import { checkLineage, identityOf, isLive, type LineageReport } from '../../contract/src/verify.js';
+import { acceptPresentation, checkLineage, identityOf, isLive, type LineageReport } from '../../contract/src/verify.js';
 import { deployContract, findDeployedContract } from '@midnight-ntwrk/midnight-js-contracts';
-import { combineLatest, map, from, type Observable } from 'rxjs';
+import { combineLatest, map, from, firstValueFrom, type Observable } from 'rxjs';
 import { toHex } from '@midnight-ntwrk/midnight-js-utils';
 import { assertDeploymentRecordCurrent } from './deploy-guard.js';
 import { retireMaintenanceAuthority } from './maintenance.js';
@@ -27,16 +27,17 @@ import {
   veilcorePrivateStateKey,
 } from './veilcore-types.js';
 
-export type TxRef = { readonly txHash: string; readonly blockHeight: number };
+/** A landed transaction. Give a verifier `txId`: it finds the state right after it. */
+export type TxRef = { readonly txId: string; readonly txHash: string; readonly blockHeight: number };
 
 /** Seconds between seals, as the contract enforces (SEAL_INTERVAL). */
 export const SEAL_INTERVAL_SECONDS = 600;
 /**
  * How far ahead of the clock a seal's bound is placed. The contract needs the bound
- * ahead of the landing block's time and at most 300 s ahead of it; 120 s covers proving
+ * ahead of the landing block's time and at most 300 s ahead of it; 200 s covers proving
  * and inclusion time and some clock skew either way.
  */
-const SEAL_AHEAD_SECONDS = 120;
+const SEAL_AHEAD_SECONDS = 200;
 /** Margin added to the earliest allowed seal time, for clock skew. */
 const SEAL_SKEW_SECONDS = 30;
 
@@ -338,8 +339,32 @@ export class VeilcoreAPI {
   }
 
   /** Walk a record's confirmed pedigree on chain and report open obligations. */
-  async checkLineage(record: Uint8Array): Promise<LineageReport> {
-    return checkLineage(await this.currentLedger(), record);
+  async checkLineage(record: Uint8Array, recognisedRoots: readonly Uint8Array[] = []): Promise<LineageReport> {
+    return checkLineage(await this.currentLedger(), record, recognisedRoots);
+  }
+
+  /**
+   * As a verifier, check a licence presentation (design.md rule 5) against the state
+   * right after the transaction `txId` the licensee gave you.
+   */
+  async checkPresentation(
+    txId: string,
+    issuer: Uint8Array,
+    challenge: Uint8Array,
+  ): Promise<ReturnType<typeof acceptPresentation>> {
+    return acceptPresentation(await this.stateAfterTransaction(txId), issuer, challenge);
+  }
+
+  /** The contract state immediately after transaction `txId`, from the indexer. */
+  async stateAfterTransaction(txId: string): Promise<Veilcore.Ledger> {
+    const state = await firstValueFrom(
+      this.providers.publicDataProvider.contractStateObservable(this.deployedContractAddress, {
+        type: 'txId',
+        txId,
+        inclusive: true,
+      }),
+    );
+    return Veilcore.ledger(state.data);
   }
 
   // ─────────────────────────────────────────────────────────── plumbing
@@ -396,9 +421,9 @@ export class VeilcoreAPI {
   }
 
   private logged(circuit: string, txData: { public: TxRef }): TxRef {
-    const { txHash, blockHeight } = txData.public;
+    const { txId, txHash, blockHeight } = txData.public;
     this.logger?.info({ transactionAdded: { circuit, txHash, blockHeight } });
-    return { txHash, blockHeight };
+    return { txId, txHash, blockHeight };
   }
 
   // ─────────────────────────────────────────────────────────── deploy and join

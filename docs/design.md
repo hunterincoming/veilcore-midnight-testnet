@@ -67,10 +67,11 @@ A record secret is 32 random bytes held by the record's holder. Its commitment i
 - A commitment **may act only while it is its identity's head**. The identity of any
   commitment is `originFor(x)`: `originOf(x)` if set, else `x`.
 - A rotation or recovery target must have no history, so two identities never merge.
-- **Only an anchored identity acts**, other than to anchor: ownership proofs, DNA
-  pairing, licensing and lineage all require one. An unanchored commitment therefore has
-  no events to carry into an identity it is later rotated into, and an anchored one can
-  never be a rotation target.
+- **Only an anchored identity acts as a record holder**: ownership proofs, DNA pairing,
+  issuing licences and lineage all require one. (Licensees, sealing, batch roots and
+  recovery act without a record.) An unanchored commitment therefore has no events to
+  carry into an identity it is later rotated into, and an anchored one can never be a
+  rotation target.
 - **Recovery writes the new head without reading the old one.** A thief holding the
   current secret cannot block it by rotating again. Whoever holds the recovery secret
   controls the identity, so it belongs offline. There is no waiting period.
@@ -172,13 +173,17 @@ exercise each one.
    start of a line (`checkLineage(ledger, record, recognisedRoots).accepted`). Anyone can
    anchor fresh material with no history, and a cycle has no root to check.
 5. **Presentations.** Send the licensee a fresh 32-byte random challenge, privately, and
-   use it once. Accept the presentation only if (a) the tag its transaction published is
-   `presentationTag(c, challenge)` for some commitment `c` of the issuing identity (a
-   licence issued after a rotation is tagged under the successor), and (b) in the state
-   at the end of its block, `unsealedChanges` is false. Otherwise ask for a new
-   presentation after the next seal: one that landed while a revocation was waiting may
-   use the revoked licence (`acceptPresentation`). It proves that someone holding the
-   licence secret took part, not which party.
+   use it once. The licensee gives you the presentation's transaction id. Read the
+   contract state **immediately after that transaction** (not later: a seal landing
+   after it would hide a revocation) and accept only if:
+   - its `lastPresentation` equals `presentationTag(c, challenge)` for some commitment
+     `c` of the issuing identity (a licence issued after a rotation is tagged under the
+     successor). Never take the tag from the licensee, who can compute any tag; and
+   - its `lastPresentationRoot` is the licence tree's current root in that state, or
+     `unsealedChanges` is false in it.
+
+   (`acceptPresentation`; `VeilcoreAPI.checkPresentation` does the lookup.) It proves
+   that someone holding the licence secret took part, not which party.
 6. **Event cells are per transaction.** Each `last*` cell holds the value from the most
    recent transaction that wrote it. Read them from the indexer per transaction.
 7. **Batch roots are not possession.** `anchorBatch` is unauthenticated.
@@ -226,8 +231,9 @@ the circuit set as changeable by VeilCore.
 - **Licence entries grow with use.** Anyone can issue licences to themselves at a fee per
   entry. The bound is economic, not structural. Identity maps grow by one entry per
   anchor, rotation or recovery. That is the price of a retired secret ceasing to work.
-- **The revocation window** is at least until the next seal: up to `SEAL_INTERVAL` plus
-  the time until someone seals. Rule 5 closes it for a careful verifier.
+- **The revocation window.** A revoked licence's old path verifies on chain until the
+  next seal: up to `SEAL_INTERVAL` plus the time until someone seals. A verifier
+  following rule 5 does not accept such a presentation.
 - **Record commitments are stable pseudonyms.** Actions under one record link to each
   other.
 - **Licences issued by a thief** before recovery stay PENDING under the identity. The
@@ -271,8 +277,9 @@ bboard-ui/                      the breeder-facing website
 ```
 
 Build: install the Compact toolchain, then `cd contract && npm run compact && npm test`.
-`npm run fingerprints` records the compiler version and the proving and verifying key
-hashes in `docs/fingerprints.md`, the table the deployment record carries. A mainnet
-deploy from the CLI is refused unless every local key matches that table as committed
+`npm run fingerprints` records the compiler version and the SHA-256 of every proving
+and verifying key, every circuit's ZKIR and the compiled contract code in
+`docs/fingerprints.md`, the table the deployment record carries. A mainnet deploy from
+the CLI is refused unless the local build matches that table as committed
 (`bboard-cli/src/keys-check.ts`), and unless the deployment record revision is declared
 (`api/src/deploy-guard.ts`).

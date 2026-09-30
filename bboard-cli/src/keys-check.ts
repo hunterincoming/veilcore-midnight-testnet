@@ -3,10 +3,9 @@
  * Before a mainnet deploy: are these the keys the deployment record describes?
  *
  * The deploy guard (api/src/deploy-guard.ts) only knows that a revision was declared.
- * This checks the build itself: every proving and verifying key in the local build
+ * This checks the build itself: every key, every circuit's ZKIR and the contract code
  * must match docs/fingerprints.md as COMMITTED, and that file must be unmodified. The
- * same table goes into the deployment record, so a deploy can only use the keys the
- * record names.
+ * same table goes into the deployment record, so a deploy can only use what it names.
  */
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
@@ -15,14 +14,25 @@ import path from 'node:path';
 
 const sha256 = (file: string): string => createHash('sha256').update(readFileSync(file)).digest('hex');
 
-/** Fingerprints listed in the committed table: key file name -> SHA-256. */
+/** Rows of the committed table: path under managed/veilcore -> SHA-256. */
 export const parseFingerprints = (text: string): Map<string, string> => {
   const out = new Map<string, string>();
-  for (const m of text.matchAll(/^\| `keys\/([^`]+)` \| `([0-9a-f]{64})` \|$/gm)) out.set(m[1], m[2]);
+  for (const m of text.replace(/\r/g, '').matchAll(/^\| `([^`]+)` \| `([0-9a-f]{64})` \|$/gm)) out.set(m[1], m[2]);
   return out;
 };
 
-/** Throws, naming the problem, unless the local keys are exactly the committed ones. */
+/** The artefacts a deployment uses, as fingerprints.mjs lists them. */
+const artefacts = (zkConfigPath: string): string[] => {
+  const list = (dir: string, re: RegExp): string[] =>
+    existsSync(path.join(zkConfigPath, dir))
+      ? readdirSync(path.join(zkConfigPath, dir))
+          .filter((f) => re.test(f))
+          .map((f) => `${dir}/${f}`)
+      : [];
+  return [...list('keys', /\.(prover|verifier)$/), ...list('zkir', /\.b?zkir$/), 'contract/index.js'];
+};
+
+/** Throws, naming the problem, unless the local build is exactly the committed one. */
 export const assertKeysMatchRecord = (zkConfigPath: string, repoRoot: string): number => {
   const table = path.join(repoRoot, 'docs', 'fingerprints.md');
   const git = (...args: string[]): string => execFileSync('git', args, { cwd: repoRoot, encoding: 'utf8' });
@@ -38,19 +48,19 @@ export const assertKeysMatchRecord = (zkConfigPath: string, repoRoot: string): n
     throw new Error('docs/fingerprints.md differs from the committed copy. Commit it, or rebuild to match it.');
   }
   const expected = parseFingerprints(committed);
-  const dir = path.join(zkConfigPath, 'keys');
-  const local = existsSync(dir) ? readdirSync(dir).filter((f) => /\.(prover|verifier)$/.test(f)) : [];
-  if (expected.size === 0) throw new Error('docs/fingerprints.md lists no keys.');
+  const local = artefacts(zkConfigPath);
+  if (expected.size === 0) throw new Error('docs/fingerprints.md lists nothing.');
   if (local.length !== expected.size) {
     throw new Error(
-      `The build has ${local.length} key files; the record lists ${expected.size}. Run a full npm run compact.`,
+      `The build has ${local.length} artefacts; the record lists ${expected.size}. Run a full npm run compact.`,
     );
   }
   for (const f of local) {
     const want = expected.get(f);
-    if (want === undefined) throw new Error(`keys/${f} is not in the record.`);
-    if (sha256(path.join(dir, f)) !== want)
-      throw new Error(`keys/${f} does not match the record. Rebuild with the recorded compiler version.`);
+    if (want === undefined) throw new Error(`${f} is not in the record.`);
+    if (!existsSync(path.join(zkConfigPath, f)) || sha256(path.join(zkConfigPath, f)) !== want) {
+      throw new Error(`${f} does not match the record. Rebuild with the recorded compiler version.`);
+    }
   }
   return local.length;
 };

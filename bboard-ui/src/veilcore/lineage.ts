@@ -17,16 +17,21 @@ export type DescentVerdict = {
   readonly generationsChecked?: number;
 };
 
+/**
+ * What the registry says about an obligation after a change. `status` is 'open' when
+ * it is in force (always, on your own record) and 'proposed' when it waits on the
+ * record holder's acceptance. `root` is a digest of the open set, not a Merkle root.
+ */
 export type ObligationResult = {
-  readonly oldRoot: string;
-  readonly newRoot: string;
+  readonly status?: string;
+  readonly root: string;
 };
 
 const isDescentVerdict = (v: unknown): v is DescentVerdict =>
   isObject(v) && isBoolean(v.ok) && optional(v.reason, isString) && optional(v.generationsChecked, isNumber);
 
 const isObligationResult = (v: unknown): v is ObligationResult =>
-  isObject(v) && isString(v.oldRoot) && isString(v.newRoot);
+  isObject(v) && isString(v.root) && optional(v.status, isString);
 
 /**
  * POST and hand back the body unnarrowed.
@@ -54,17 +59,50 @@ export const lineageRoot = async (): Promise<string | null> => {
   }
 };
 
-/** Declare that a record descends from a parent. Public — this is what makes claims checkable. */
-export const declareParent = async (child: string, parent: string): Promise<{ edge: string } | null> => {
+/**
+ * As the child's holder: name a parent. It is an edge only once the parent's holder
+ * confirms (confirmed: false), or at once when they transferred this material to you
+ * (confirmed: true). A one-sided declaration let a seller name any clean record.
+ */
+export const declareParent = async (
+  child: string,
+  parent: string,
+): Promise<{ edge: string; confirmed: boolean } | null> => {
   try {
     const body = await post('/lineage/descent', { child, parent });
-    return isObject(body) && isString(body.edge) ? { edge: body.edge } : null;
+    return isObject(body) && isString(body.edge) && isBoolean(body.confirmed)
+      ? { edge: body.edge, confirmed: body.confirmed }
+      : null;
   } catch {
     return null;
   }
 };
 
-/** Attach an obligation to a record you hold. */
+/** As the parent's holder: confirm being named as this child's parent. */
+export const confirmParent = async (child: string, parent: string): Promise<boolean> => {
+  try {
+    const body = await post('/lineage/descent/confirm', { child, parent });
+    return isObject(body) && body.confirmed === true;
+  } catch {
+    return false;
+  }
+};
+
+/** As a record's holder: accept an obligation someone proposed against it. */
+export const acceptObligation = async (
+  record: string,
+  obligation: string,
+  beneficiary: string,
+): Promise<ObligationResult | null> => {
+  try {
+    const body = await post('/lineage/obligations/accept', { record, obligation, beneficiary });
+    return isObligationResult(body) ? body : null;
+  } catch {
+    return null;
+  }
+};
+
+/** Attach an obligation. On a record you hold it is in force at once; on anyone else's it is a proposal. */
 export const encumber = async (record: string, obligation: string): Promise<ObligationResult | null> => {
   try {
     const body = await post('/lineage/obligations', { record, obligation });
@@ -74,7 +112,7 @@ export const encumber = async (record: string, obligation: string): Promise<Obli
   }
 };
 
-/** Clear an obligation. */
+/** Release an obligation in your favour, or withdraw your proposal. */
 export const discharge = async (record: string, obligation: string): Promise<ObligationResult | null> => {
   try {
     const res = await fetch(`${BASE}/lineage/obligations/${encodeURIComponent(record)}`, {

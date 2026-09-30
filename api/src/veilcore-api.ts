@@ -546,6 +546,18 @@ export class VeilcoreAPI implements DeployedVeilcoreAPI {
    * the ones a particular call needs. Set immediately before the call that reads
    * them.
    */
+  /** Act as the holder of this record secret from now on (tests, and recovering a client). */
+  async actAs(geneticSecret: Uint8Array): Promise<void> {
+    await this.patchPrivateState({ geneticSecret });
+  }
+
+  /** The chain as this client reads it now. */
+  async currentLedger(): Promise<Veilcore.Ledger> {
+    const contractState = await this.providers.publicDataProvider.queryContractState(this.deployedContractAddress);
+    if (contractState === null) throw new Error('the veilcore contract has no state at its address');
+    return Veilcore.ledger(contractState.data);
+  }
+
   private async patchPrivateState(patch: Partial<VeilcorePrivateState>): Promise<void> {
     const current = (await this.providers.privateStateProvider.get(veilcorePrivateStateKey)) as VeilcorePrivateState;
     await this.providers.privateStateProvider.set(veilcorePrivateStateKey, { ...current, ...patch });

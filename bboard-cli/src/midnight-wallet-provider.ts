@@ -13,6 +13,7 @@
  * limitations under the License.
  */
 
+import { DustAddress } from '@midnight-ntwrk/wallet-sdk-address-format';
 import { showSecret } from './secret-out';
 import {
   type CoinPublicKey,
@@ -46,6 +47,8 @@ export class MidnightWalletProvider implements MidnightProvider, WalletProvider 
   readonly unshieldedKeystore: UnshieldedKeystore;
   readonly zswapSecretKeys: ZswapSecretKeys;
   readonly dustSecretKey: DustSecretKey;
+  /** The HD master seed, used to key this wallet's private-state store. A secret. */
+  readonly masterSeed: string;
 
   private constructor(
     logger: Logger,
@@ -54,7 +57,9 @@ export class MidnightWalletProvider implements MidnightProvider, WalletProvider 
     zswapSecretKeys: ZswapSecretKeys,
     dustSecretKey: DustSecretKey,
     unshieldedKeystore: UnshieldedKeystore,
+    masterSeed: string,
   ) {
+    this.masterSeed = masterSeed;
     this.logger = logger;
     this.env = environmentConfiguration;
     this.wallet = wallet;
@@ -95,16 +100,37 @@ export class MidnightWalletProvider implements MidnightProvider, WalletProvider 
     return this.wallet.stop();
   }
 
-  static async build(logger: Logger, env: EnvironmentConfiguration, seed?: string): Promise<MidnightWalletProvider> {
+  /**
+   * The DUST address this wallet pays fees from, as a wallet app shows it (mn_dust1…).
+   * Not a secret. Computed from the keys alone, so it can be checked BEFORE a sync that
+   * may take hours: on mainnet, a wallet whose DUST address is not the one registered
+   * for DUST generation has nothing to pay with.
+   */
+  dustAddress(networkId: string): string {
+    return DustAddress.encodePublicKey(networkId, this.dustSecretKey.publicKey);
+  }
+
+  /**
+   * Build from a hex master seed, a 24-word recovery phrase (the same derivation
+   * Midnight wallets use), or neither for a fresh random wallet.
+   */
+  static async build(
+    logger: Logger,
+    env: EnvironmentConfiguration,
+    source: { seed?: string; mnemonic?: string } = {},
+  ): Promise<MidnightWalletProvider> {
+    const { seed, mnemonic } = source;
     const dustOptions: DustWalletOptions = {
       ledgerParams: LedgerParameters.initialParameters(),
       additionalFeeOverhead: env.walletNetworkId === 'undeployed' ? 500_000_000_000_000_000n : 1_000n,
       feeBlocksMargin: 5,
     };
     const builder = FluentWalletBuilder.forEnvironment(env).withDustOptions(dustOptions);
-    const buildResult = seed
-      ? await builder.withSeed(seed).buildWithoutStarting()
-      : await builder.withRandomSeed().buildWithoutStarting();
+    const buildResult = mnemonic
+      ? await builder.withMnemonic(mnemonic).buildWithoutStarting()
+      : seed
+        ? await builder.withSeed(seed).buildWithoutStarting()
+        : await builder.withRandomSeed().buildWithoutStarting();
     const { wallet, seeds, keystore } = buildResult as unknown as {
       wallet: WalletFacade;
       seeds: { masterSeed: string; shielded: Uint8Array; dust: Uint8Array };
@@ -112,7 +138,9 @@ export class MidnightWalletProvider implements MidnightProvider, WalletProvider 
     };
 
     const initialState = await getInitialShieldedState(logger, wallet.shielded);
-    showSecret('YOUR WALLET SEED:', seeds.masterSeed);
+    // A fresh wallet's seed is shown once so it can be kept. A wallet restored from a
+    // seed or a recovery phrase is not echoed back: its owner already holds it.
+    if (!seed && !mnemonic) showSecret('YOUR NEW WALLET SEED — SAVE IT:', seeds.masterSeed);
     logger.info(`Your address is: ${initialState.address.coinPublicKeyString()}`);
 
     return new MidnightWalletProvider(
@@ -122,6 +150,7 @@ export class MidnightWalletProvider implements MidnightProvider, WalletProvider 
       ZswapSecretKeys.fromSeed(seeds.shielded),
       DustSecretKey.fromSeed(seeds.dust),
       keystore,
+      seeds.masterSeed,
     );
   }
 }

@@ -29,6 +29,13 @@ export interface Config {
   readonly zkConfigPath: string;
   getEnvironment(logger: Logger): TestEnvironment;
   readonly generateDust: boolean;
+  /**
+   * Mainnet: fees are paid from DUST the wallet already has (NIGHT sits on Cardano and
+   * generates DUST cross-chain), so the CLI does not wait for NIGHT, never registers for
+   * DUST (re-registering is what created duplicate registrations before), and refuses
+   * a wallet whose DUST address is not the expected one.
+   */
+  readonly mainnet?: boolean;
 }
 
 export const currentDir = path.resolve(new URL(import.meta.url).pathname, '..');
@@ -69,6 +76,55 @@ export class PreprodRemoteConfig implements Config {
   logDir = path.resolve(currentDir, '..', 'logs', 'preprod-remote', `${new Date().toISOString()}.log`);
   zkConfigPath = path.resolve(currentDir, '..', '..', 'contract', 'src', 'managed', 'veilcore');
   generateDust = true;
+}
+
+/**
+ * MAINNET. Real value, no faucet, permanent contracts.
+ *
+ * Its own private-state store, so nothing from preview or preprod — keys, licence
+ * secrets, maintenance authorities — is ever mixed with mainnet state. Deploying is
+ * still refused by api/src/deploy-guard.ts unless VEILCORE_DEPLOYMENT_RECORD_REVISION
+ * declares the current revision as filed.
+ */
+export class MainnetConfig implements Config {
+  getEnvironment(logger: Logger): TestEnvironment {
+    setNetworkId('mainnet');
+    return new MainnetEnvironment(logger);
+  }
+  privateStateStoreName = 'veilcore-mainnet-private-state';
+  logDir = path.resolve(currentDir, '..', 'logs', 'mainnet', `${new Date().toISOString()}.log`);
+  zkConfigPath = path.resolve(currentDir, '..', '..', 'contract', 'src', 'managed', 'veilcore');
+  generateDust = false;
+  mainnet = true;
+}
+
+/** Endpoints from docs.midnight.network, "Networks and environments". No faucet. */
+export class MainnetEnvironment extends RemoteTestEnvironment {
+  constructor(logger: Logger) {
+    super(logger);
+  }
+
+  private getProofServerUrl(): string {
+    const container = this.proofServerContainer as { getUrl(): string } | undefined;
+    if (!container) {
+      throw new Error('Proof server container is not available.');
+    }
+    return container.getUrl();
+  }
+
+  getEnvironmentConfiguration(): EnvironmentConfiguration {
+    return {
+      walletNetworkId: 'mainnet',
+      networkId: 'mainnet',
+      indexer: 'https://indexer.mainnet.midnight.network/api/v4/graphql',
+      indexerWS: 'wss://indexer.mainnet.midnight.network/api/v4/graphql/ws',
+      node: 'https://rpc.mainnet.midnight.network',
+      nodeWS: 'wss://rpc.mainnet.midnight.network',
+      // There is no mainnet faucet. Empty, so the environment health check skips it.
+      faucet: '',
+      proofServer: this.getProofServerUrl(),
+    };
+  }
 }
 
 export class PreviewTestEnvironment extends RemoteTestEnvironment {

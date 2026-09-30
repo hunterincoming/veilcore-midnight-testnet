@@ -54,6 +54,8 @@ import { showSecret } from './secret-out';
 import { unshieldedToken } from '@midnight-ntwrk/midnight-js-protocol/ledger';
 import { syncWallet, waitForUnshieldedFunds } from './wallet-utils';
 import { generateDust } from './generate-dust';
+import { runSmoke } from './smoke';
+import { getNetworkId } from '@midnight-ntwrk/midnight-js-network-id';
 import { type VeilcorePrivateState, type LineagePrivateState } from '../../contract/src/witnesses.js';
 
 // @ts-expect-error: It's needed to enable WebSocket usage through apollo
@@ -95,6 +97,7 @@ You can do one of the following:
   2. Join an existing Veilcore contract
   3. Deploy a new Lineage contract
   4. Exit
+  5. Run the full smoke test (preprod or preview only; deploys fresh test contracts)
 Which would you like to do? `;
 
 // Exported so the deploy branches can be driven without a wallet, an indexer and a
@@ -169,6 +172,17 @@ export const deployOrJoin = async (
       case '4':
         logger.info('Exiting...');
         return null;
+      case '5': {
+        // Never on mainnet: it deploys throwaway contracts and spends DUST on them.
+        const network = getNetworkId();
+        if (network === 'mainnet') {
+          logger.error('The smoke test does not run on mainnet.');
+          continue;
+        }
+        const passed = await runSmoke(providers, lineageProviders, logger);
+        logger.info(passed ? 'Smoke test passed.' : 'Smoke test FAILED — see above.');
+        return null;
+      }
       default:
         logger.error(`Invalid choice: ${choice}`);
     }
@@ -624,22 +638,39 @@ const GENESIS_MINT_WALLET_SEED = '0000000000000000000000000000000000000000000000
 const WALLET_LOOP_QUESTION = `
 You can do one of the following:
   1. Build a fresh wallet
-  2. Build wallet from a seed
-  3. Exit
+  2. Build wallet from a hex seed
+  3. Build wallet from a 24-word recovery phrase (the one your wallet app shows)
+  4. Exit
 Which would you like to do? `;
 
-const buildWallet = async (config: Config, rli: Interface, logger: Logger): Promise<string | undefined> => {
+type WalletSource = { seed?: string; mnemonic?: string };
+
+const buildWallet = async (config: Config, rli: Interface, logger: Logger): Promise<WalletSource | undefined> => {
   if (config instanceof StandaloneConfig) {
-    return GENESIS_MINT_WALLET_SEED;
+    return { seed: GENESIS_MINT_WALLET_SEED };
   }
   while (true) {
     const choice = await rli.question(WALLET_LOOP_QUESTION);
     switch (choice) {
       case '1':
-        return toHex(randomBytes(32));
+        if (config.mainnet) {
+          // A fresh wallet has no DUST on mainnet and cannot get any from a faucet.
+          logger.error('On mainnet, use the wallet that holds your DUST (option 3).');
+          break;
+        }
+        return { seed: toHex(randomBytes(32)) };
       case '2':
-        return await rli.question('Enter your wallet seed: ');
-      case '3':
+        return { seed: (await rli.question('Enter your wallet seed (hex): ')).trim() };
+      case '3': {
+        logger.info('Type the 24 words separated by spaces. They are not logged or stored.');
+        const mnemonic = (await rli.question('Recovery phrase: ')).trim().toLowerCase().split(/\s+/).join(' ');
+        if (mnemonic.split(' ').length !== 24) {
+          logger.error('That is not 24 words.');
+          break;
+        }
+        return { mnemonic };
+      }
+      case '4':
         logger.info('Exiting...');
         return undefined;
       default:
@@ -661,25 +692,58 @@ export const run = async (config: Config, testEnv: TestEnvironment, logger: Logg
   try {
     const envConfiguration = await testEnv.start();
     logger.info(`Environment started with configuration: ${JSON.stringify(envConfiguration)}`);
-    const seed = await buildWallet(config, rli, logger);
-    if (seed === undefined) {
+    const source = await buildWallet(config, rli, logger);
+    if (source === undefined) {
       return;
     }
-    const walletProvider = await MidnightWalletProvider.build(logger, envConfiguration, seed);
+    const walletProvider = await MidnightWalletProvider.build(logger, envConfiguration, source);
     providersToBeStopped.push(walletProvider);
     const walletFacade: WalletFacade = walletProvider.wallet;
+    const seed = walletProvider.masterSeed;
+
+    // Shown for every network, and checked on mainnet BEFORE the sync, which can take
+    // hours: a wallet whose DUST address is not the registered one has nothing to pay
+    // fees with, and finding that out after the sync wastes the morning.
+    const dustAddress = walletProvider.dustAddress(envConfiguration.networkId);
+    logger.info(`This wallet's DUST address: ${dustAddress}`);
+    if (config.mainnet) {
+      const expected =
+        (process.env.VEILCORE_EXPECTED_DUST_ADDRESS ?? '').trim() ||
+        (await rli.question('Paste the DUST address your wallet app shows (mn_dust1…): ')).trim();
+      if (expected !== dustAddress) {
+        logger.error('That is not this wallet. The recovery phrase gives a different DUST address.');
+        logger.error('Nothing was sent. Check you used the phrase of the wallet whose DUST is registered.');
+        return;
+      }
+      logger.info('DUST address matches. Syncing with mainnet — this can take a long time.');
+    }
 
     await walletProvider.start();
 
-    const unshieldedState = await waitForUnshieldedFunds(logger, walletFacade, envConfiguration, unshieldedToken());
-    const nightBalance = unshieldedState.balances[unshieldedToken().raw];
-    if (nightBalance === undefined) {
-      logger.info('No funds received, exiting...');
-      return;
+    let unshieldedState;
+    if (config.mainnet) {
+      // NIGHT is on Cardano and generates DUST cross-chain, so there is no NIGHT here to
+      // wait for. What matters is DUST, read after a full sync.
+      const synced = await syncWallet(logger, walletFacade);
+      const dust = synced.dust.balance(new Date(Date.now())) || 0n;
+      if (dust === 0n) {
+        logger.error('This wallet has no DUST to pay fees with. Nothing was sent.');
+        return;
+      }
+      logger.info(`DUST available for fees: ${dust}`);
+    } else {
+      unshieldedState = await waitForUnshieldedFunds(logger, walletFacade, envConfiguration, unshieldedToken());
+      const nightBalance = unshieldedState.balances[unshieldedToken().raw];
+      if (nightBalance === undefined) {
+        logger.info('No funds received, exiting...');
+        return;
+      }
+      logger.info(`Your NIGHT wallet balance is: ${nightBalance}`);
     }
-    logger.info(`Your NIGHT wallet balance is: ${nightBalance}`);
 
-    if (config.generateDust) {
+    // Never on mainnet (config.generateDust is false there): re-registering NIGHT for
+    // DUST generation is what created duplicate registrations before.
+    if (config.generateDust && !config.mainnet && unshieldedState !== undefined) {
       const dustGeneration = await generateDust(logger, seed, unshieldedState, walletFacade);
       if (dustGeneration) {
         logger.info(`Submitted dust generation registration transaction: ${dustGeneration}`);

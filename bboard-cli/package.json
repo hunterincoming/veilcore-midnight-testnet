@@ -13,7 +13,8 @@
     "standalone": "node --experimental-specifier-resolution=node --loader ts-node/esm src/launcher/standalone.ts",
     "preview-remote": "node --experimental-specifier-resolution=node --loader ts-node/esm src/launcher/preview.ts",
     "preprod-remote": "node --experimental-specifier-resolution=node --loader ts-node/esm src/launcher/preprod.ts",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "mainnet": "node --experimental-specifier-resolution=node --loader ts-node/esm src/launcher/mainnet.ts"
   },
   "devDependencies": {
     "@types/json-schema": "^7.0.15",

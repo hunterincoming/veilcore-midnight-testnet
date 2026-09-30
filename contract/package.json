@@ -19,7 +19,8 @@
     "lint": "eslint src",
     "prepack": "npm build",
     "test": "for f in test-*.mjs *-checks.mjs verify-max-*.mjs attack-*.mjs; do echo \"--- $f\"; node \"$f\" || exit 1; done",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "fingerprints": "node fingerprints.mjs"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.5",

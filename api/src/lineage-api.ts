@@ -123,7 +123,12 @@ export class LineageAPI {
     return (await this.currentLedger()).obligationCountOf.member(recordCommitment);
   }
 
-  private async currentLedger(): Promise<Lineage.Ledger> {
+  /** Act as the holder of this record secret from now on. */
+  async actAs(geneticSecret: Uint8Array): Promise<void> {
+    await this.providers.privateStateProvider.set(lineagePrivateStateKey, createLineagePrivateState(geneticSecret));
+  }
+
+  async currentLedger(): Promise<Lineage.Ledger> {
     const contractState = await this.providers.publicDataProvider.queryContractState(this.deployedContractAddress);
     if (contractState === null) throw new Error('the lineage contract has no state at its address');
     return Lineage.ledger(contractState.data);

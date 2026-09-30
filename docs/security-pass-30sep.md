@@ -176,3 +176,33 @@ If you choose "with", keep the key off the laptop (see H4) and say so publicly. 
 5. **M2**, **M3**, **M4**, then the lows.
 6. Rerun the full test suite and add one regression test per finding.
 7. **Second pass:** get someone who didn't write this to attack it (Max, or Timur at Guvenkaya) before mainnet.
+
+
+---
+
+# Lineage contract pass (30 Sep, afternoon)
+
+Every attack was confirmed against the previous build first. The fixes live in
+`contract/attack-lineage-30sep.mjs`: 60+ checks, all refused.
+
+| # | Finding | Fix |
+|---|---|---|
+| LH1 | **Anyone could poison any record.** `encumber` was callable by anyone against anyone. The record then failed every clean proof, and only the attacker could release it. | Obligations need consent. The beneficiary proposes, the record holder accepts, and only the beneficiary releases. |
+| LH2 | **A squatter locked out the real claim.** One tree slot held one leaf. Grinding a secret into a victim's slot took about 81 seconds. | The tree is replaced by sets keyed by the whole obligation. There are no slots, and a record can carry several obligations. |
+| LH3 | **Stale-proof window.** Clean proofs accepted any of the last 8 roots, so a seller could beat a fresh encumbrance. | Clean proofs read the current state. |
+| LM1 | **Caller identity taken as an argument** in `proposeParent`, `confirmParent` and `withdrawParent`. | Derived from the secret, with one witness only. |
+| LM2 | **Empty inputs accepted.** An all-zero parent, record, obligation or ancestor went through. | All are refused. |
+| LM3 | **`lineage-checks.mjs` exited 0 even when it found something.** | It now fails the build. |
+
+**What we gave up:** nothing. The tree carried no privacy, because encumbrances and clean proofs already published the record. The prover keys get much smaller as a result, since there are no 24-level path folds. Confirm the sizes with the laptop build.
+
+**Still open for lineage:**
+
+- **The two contracts cannot read each other.** Rotating a secret in provenance gives a new commitment with a clean lineage history. The verifier rule in `docs/design.md` (rule 1) covers this: resolve every record through `originOf` / `rotatedTo`. The SDK verifier and the verify page must implement it.
+- **The registry's lineage service** (the separate `veilcore-api` repo on Railway) was built on the tree. It has to move to the consent-based model before this contract is deployed.
+
+# Both contracts: maintenance authority
+
+**MA1. "Deploying with NO maintenance authority" was false.** midnight-js does `signingKey ?? sampleSigningKey()`, so leaving the key out creates an authority with a random key, stored in the local signing-key database.
+
+Fixed in `api/src/maintenance.ts`. "No" now means: deploy, then immediately replace the authority with a key that is never stored, and delete the local copy. CLI menu 19 does the same later, after typing RETIRE. Both contracts' deploys ask the question.

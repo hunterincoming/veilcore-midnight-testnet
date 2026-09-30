@@ -102,6 +102,31 @@ Which would you like to do? `;
 // proof server. There is deliberately no mainnet Config — adding one is the reviewed
 // change the allowlist in deploy-guard.ts is there to force — so the only way to
 // exercise what this menu does on a refused network is to call it directly.
+/**
+ * Ask whether a deployment keeps a maintenance authority.
+ *
+ * There is no such thing as deploying WITHOUT one through midnight-js: omit the key
+ * and it samples one and saves it locally. So "no" means deploy, then retire the
+ * authority straight away (api/src/maintenance.ts). This used to print "Deploying
+ * with NO maintenance authority" over a deployment that had one.
+ */
+const askMaintenanceAuthority = async (rli: Interface, logger: Logger): Promise<string | null> => {
+  logger.info(
+    'A maintenance authority can insert and remove verifier keys, so it can disable any circuit in this contract.',
+  );
+  logger.info('Without one the contract can never be changed or repaired, by anyone, including us.');
+  logger.info('Sealed records verify either way — verification is SHA-256 and needs nothing from a chain.');
+  const answer = (await rli.question('Keep a maintenance authority? (y/N): ')).trim().toLowerCase();
+  if (answer === 'y' || answer === 'yes') {
+    const key = (await rli.question('Signing key (blank to generate one): ')).trim() || sampleSigningKey();
+    showSecret('MAINTENANCE AUTHORITY SIGNING KEY:', key);
+    logger.info('Whoever holds it controls what the contract accepts. Keep it offline. Menu 19 retires it later.');
+    return key;
+  }
+  logger.info('Deploying, then retiring the authority with a key that is never stored. This cannot be undone.');
+  return null;
+};
+
 export const deployOrJoin = async (
   providers: VeilcoreProviders,
   lineageProviders: LineageProviders,
@@ -112,30 +137,7 @@ export const deployOrJoin = async (
     const choice = await rli.question(DEPLOY_OR_JOIN_QUESTION);
     switch (choice) {
       case '1': {
-        // The authority decides which circuits the network accepts calls to, so
-        // it is asked rather than defaulted. Left to the SDK, a key is sampled
-        // and installed silently and the deployment acquires an authority
-        // nobody chose.
-        logger.info(
-          'A maintenance authority can insert and remove verifier keys, so it can disable any circuit in this contract.',
-        );
-        logger.info(
-          'Without one the contract is permanently non-upgradable, and cannot be repaired when the proof system changes.',
-        );
-        logger.info('Sealed records verify either way — verification is SHA-256 and needs nothing from a chain.');
-        const authority = (await rli.question('Deploy with a maintenance authority? (y/N): ')).trim().toLowerCase();
-
-        let signingKey: string | null = null;
-        if (authority === 'y' || authority === 'yes') {
-          signingKey = (await rli.question('Signing key (blank to generate one): ')).trim() || sampleSigningKey();
-          showSecret('MAINTENANCE AUTHORITY SIGNING KEY:', signingKey);
-          logger.info(
-            'Record this somewhere deliberate. Whoever holds it controls what the contract accepts, and losing it makes the contract permanently non-upgradable.',
-          );
-        } else {
-          logger.info('Deploying with NO maintenance authority. This cannot be undone.');
-        }
-
+        const signingKey = await askMaintenanceAuthority(rli, logger);
         const api = await VeilcoreAPI.deploy(providers, signingKey, logger);
         logger.info(`Deployed contract at address: ${api.deployedContractAddress}`);
         return api;
@@ -161,7 +163,7 @@ export const deployOrJoin = async (
         // It returns to the menu rather than becoming the session's contract: the rest
         // of this loop drives veilcore, and lineage is deployed once and then used by
         // the registry.
-        const api = await LineageAPI.deploy(lineageProviders, logger);
+        const api = await LineageAPI.deploy(lineageProviders, await askMaintenanceAuthority(rli, logger), logger);
         logger.info(`Deployed lineage contract at address: ${api.deployedContractAddress}`);
         continue;
       }
@@ -249,6 +251,7 @@ You can do one of the following:
   16. Make a licence secret and commitment (as the licensee)
   17. Recover a record with its recovery secret
   18. Replace a record's recovery secret
+  19. Retire this contract's maintenance authority (PERMANENT)
 Which would you like to do? `;
 
 const mainLoop = async (
@@ -635,6 +638,19 @@ const mainLoop = async (
             showSecret('YOUR NEW GENETIC SECRET — store it now:', toHex(ns));
             logger.info(`Recovered. Retired head: ${toHex(rec.previousCommitment)}. New record: ${toHex(nc)}.`);
             logger.info('Whoever held the old secret, including a thief, can no longer act for this record.');
+            break;
+          }
+          case '19': {
+            const confirm = (
+              await rli.question(
+                'Nobody, including you, will ever be able to change this contract. Type RETIRE to confirm: ',
+              )
+            ).trim();
+            if (confirm !== 'RETIRE') {
+              logger.info('Not retired.');
+              break;
+            }
+            await veilcoreApi.retireMaintenanceAuthority();
             break;
           }
           case '18': {

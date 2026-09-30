@@ -17,10 +17,7 @@
  */
 
 import { Ledger as VeilcoreLedger } from "./managed/veilcore/contract/index.js";
-import {
-  Ledger as LineageLedger,
-  pureCircuits as lineagePureCircuits,
-} from "./managed/lineage/contract/index.js";
+import { Ledger as LineageLedger } from "./managed/lineage/contract/index.js";
 import { WitnessContext } from "@midnight-ntwrk/midnight-js-protocol/compact-runtime";
 
 /* **********************************************************************
@@ -175,116 +172,19 @@ export const veilcoreWitnesses = {
 /* **********************************************************************
  * Lineage private state.
  *
- * The lineage contract needs more than a secret: the Merkle path for the slot
- * being proved, who is owed when an obligation is attached or released, what is
- * currently sitting in the slot, and the ancestor being claimed. None of it goes on
- * chain — the circuit folds the path and compares only the resulting root.
- *
- * These are set immediately before a call, from the off-chain tree in ./tree.mjs,
- * because a path is only valid against the root current at that moment. Calling
- * with a stale path fails the fold, which is the intended behaviour rather than an
- * error to work around.
+ * One secret. Since the 30 Sep security pass the lineage contract derives every
+ * caller — child, parent, record holder, beneficiary — from the caller's own
+ * record secret, and keeps obligations in sets rather than a Merkle tree, so there
+ * are no paths, slots or occupants to supply.
  */
 
 export type LineagePrivateState = {
   readonly geneticSecret: Uint8Array;
-  /** The secret behind an obligation's beneficiary. Only they may discharge. */
-  readonly beneficiarySecret: Uint8Array;
-  /** Sibling hashes for this record's slot, bottom-up. */
-  readonly siblings: Uint8Array[];
-  /** Direction bits for this record's slot, bottom-up. */
-  readonly directions: boolean[];
-  /**
-   * What occupies the slot being proved clean.
-   *
-   * A slot is derived from the first DEPTH bytes of a commitment, so another
-   * record's obligation can land in it — by collision, or because a squatter ground
-   * a secret until it did. A clean proof therefore shows the slot holds nothing
-   * binding THIS record rather than that it is empty, and the circuit rebuilds the
-   * occupant's leaf from these to fold the path.
-   */
-  readonly slotIsEmpty: boolean;
-  readonly slotOccupantRecord: Uint8Array;
-  readonly slotOccupantObligation: Uint8Array;
-  readonly slotOccupantBeneficiary: Uint8Array;
-  /** Claimed ancestors, innermost first. Padded to 4 with zero commitments. */
-  readonly ancestry: Uint8Array[];
 };
 
-/**
- * Depth from the compiled artifact, never a literal.
- *
- * This was a hardcoded 16 while the contract was generated at 24, which is a silent
- * break: the client would supply sixteen siblings, the circuit would expect
- * twenty-four, and every call would fail after proving and after paying.
- */
-const LINEAGE_DEPTH = lineagePureCircuits.slotBits(new Uint8Array(32)).length;
-const emptyPath = (depth = LINEAGE_DEPTH): Uint8Array[] =>
-  Array.from({ length: depth }, ZERO32);
-const emptyDirs = (depth = LINEAGE_DEPTH): boolean[] =>
-  Array.from({ length: depth }, () => false);
-
-/** A private state with no obligations and no claimed ancestry. */
 export const createLineagePrivateState = (
   geneticSecret: Uint8Array,
-): LineagePrivateState => ({
-  geneticSecret,
-  beneficiarySecret: geneticSecret,
-  siblings: emptyPath(),
-  directions: emptyDirs(),
-  slotIsEmpty: true,
-  slotOccupantRecord: ZERO32(),
-  slotOccupantObligation: ZERO32(),
-  slotOccupantBeneficiary: ZERO32(),
-  ancestry: Array.from({ length: 4 }, ZERO32),
-});
-
-/** Replace the path before a call, from the current off-chain tree. */
-export const withPath = (
-  state: LineagePrivateState,
-  siblings: Uint8Array[],
-  directions: boolean[],
-): LineagePrivateState => ({ ...state, siblings, directions });
-
-/** Name the beneficiary before encumbering or discharging. */
-export const withBeneficiary = (
-  state: LineagePrivateState,
-  beneficiarySecret: Uint8Array,
-): LineagePrivateState => ({ ...state, beneficiarySecret });
-
-/**
- * Describe the slot's current occupant before a clean proof.
- *
- * Takes what ObligationTree.occupantOf returns.
- */
-export const withOccupant = (
-  state: LineagePrivateState,
-  occupant: {
-    isEmpty: boolean;
-    record: Uint8Array;
-    obligation: Uint8Array;
-    beneficiary: Uint8Array;
-  },
-): LineagePrivateState => ({
-  ...state,
-  slotIsEmpty: occupant.isEmpty,
-  slotOccupantRecord: occupant.record,
-  slotOccupantObligation: occupant.obligation,
-  slotOccupantBeneficiary: occupant.beneficiary,
-});
-
-/**
- * Name the ancestor a clean proof concerns.
- *
- * Took a sibling path and direction bits per ancestor as well, for a
- * four-generation walk that was never built. Those witnesses are gone from the
- * contract: one proof covers one ancestor, and a verifier collects one per
- * generation rather than paying for a bundled walk in every prover key.
- */
-export const withAncestry = (
-  state: LineagePrivateState,
-  ancestry: Uint8Array[],
-): LineagePrivateState => ({ ...state, ancestry });
+): LineagePrivateState => ({ geneticSecret });
 
 type LC = WitnessContext<LineageLedger, LineagePrivateState>;
 
@@ -294,59 +194,5 @@ export const lineageWitnesses = {
   }: LC): [LineagePrivateState, Uint8Array] => [
     privateState,
     privateState.geneticSecret,
-  ],
-
-  beneficiarySecret: ({
-    privateState,
-  }: LC): [LineagePrivateState, Uint8Array] => [
-    privateState,
-    privateState.beneficiarySecret,
-  ],
-
-  merkleSiblings: ({
-    privateState,
-  }: LC): [LineagePrivateState, Uint8Array[]] => [
-    privateState,
-    privateState.siblings,
-  ],
-
-  merkleDirections: ({
-    privateState,
-  }: LC): [LineagePrivateState, boolean[]] => [
-    privateState,
-    privateState.directions,
-  ],
-
-  slotIsEmpty: ({ privateState }: LC): [LineagePrivateState, boolean] => [
-    privateState,
-    privateState.slotIsEmpty,
-  ],
-
-  slotOccupantRecord: ({
-    privateState,
-  }: LC): [LineagePrivateState, Uint8Array] => [
-    privateState,
-    privateState.slotOccupantRecord,
-  ],
-
-  slotOccupantObligation: ({
-    privateState,
-  }: LC): [LineagePrivateState, Uint8Array] => [
-    privateState,
-    privateState.slotOccupantObligation,
-  ],
-
-  slotOccupantBeneficiary: ({
-    privateState,
-  }: LC): [LineagePrivateState, Uint8Array] => [
-    privateState,
-    privateState.slotOccupantBeneficiary,
-  ],
-
-  ancestryChain: ({
-    privateState,
-  }: LC): [LineagePrivateState, Uint8Array[]] => [
-    privateState,
-    privateState.ancestry,
   ],
 };

@@ -21,7 +21,6 @@ import { createHash } from 'node:crypto';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const L = await import(pathToFileURL(path.join(here, 'src/managed/lineage/contract/index.js')).href);
-const tree = await import(pathToFileURL(path.join(here, 'src/tree.mjs')).href);
 const rt = await import('@midnight-ntwrk/compact-runtime');
 
 let bad = 0;
@@ -34,46 +33,28 @@ const sec = (s) => createHash('sha256').update(s).digest();
 const C = L.pureCircuits;
 const HOLDER = sec('holder');
 const BENEFICIARY = sec('beneficiary');
-const STRANGER = sec('stranger');
 
 const RECORD = C.commit(HOLDER);
 const OBLIGATION = sec('royalty-5pc');
 const BENEFICIARY_C = C.commit(BENEFICIARY);
 
-// A party: whose secret it holds, and whose beneficiary secret it can prove.
-const EMPTY_SLOT = { isEmpty: true, record: new Uint8Array(32), obligation: new Uint8Array(32), beneficiary: new Uint8Array(32) };
-const party = (own, ben = own, chain = [RECORD, RECORD, RECORD, RECORD], occupant = EMPTY_SLOT) => (sibs, dirs) =>
-  new L.Contract({
-    localGeneticSecret: (c) => [c.privateState, own],
-    beneficiarySecret: (c) => [c.privateState, ben],
-    slotIsEmpty: (c) => [c.privateState, occupant.isEmpty],
-    slotOccupantRecord: (c) => [c.privateState, occupant.record],
-    slotOccupantObligation: (c) => [c.privateState, occupant.obligation],
-    slotOccupantBeneficiary: (c) => [c.privateState, occupant.beneficiary],
-    merkleSiblings: (c) => [c.privateState, sibs],
-    merkleDirections: (c) => [c.privateState, dirs],
-    ancestryChain: (c) => [c.privateState, chain],
-  });
+// A party is whoever holds a secret. There is one witness; every circuit derives the
+// caller's record from it.
+const party = (own) => new L.Contract({ localGeneticSecret: (c) => [c.privateState, own] });
 
-const emptyCtx = () => {
-  const c = party(HOLDER)([], []);
-  return rt.createCircuitContext(
-    rt.sampleContractAddress(), COIN,
-    c.initialState(rt.createConstructorContext({}, COIN)).currentContractState, {},
-  );
-};
+const emptyCtx = () => rt.createCircuitContext(
+  rt.sampleContractAddress(), COIN,
+  party(HOLDER).initialState(rt.createConstructorContext({}, COIN)).currentContractState, {},
+);
 
-// The off-chain tree, kept in step with the contract.
-const t = new tree.ObligationTree();
 let ctx = emptyCtx();
-
-const call = (mk, circuit, sibs, dirs, ...args) => {
-  const r = mk(sibs, dirs).impureCircuits[circuit](ctx, ...args);
+const call = (who, circuit, ...args) => {
+  const r = party(who).impureCircuits[circuit](ctx, ...args);
   ctx = r.context;
   return r;
 };
-const refused = (mk, circuit, sibs, dirs, ...args) => {
-  try { call(mk, circuit, sibs, dirs, ...args); return ''; }
+const refused = (who, circuit, ...args) => {
+  try { call(who, circuit, ...args); return ''; }
   catch (e) { return String(e?.message ?? e); }
 };
 const state = () => L.ledger(ctx.currentQueryContext.state);
@@ -81,32 +62,30 @@ const state = () => L.ledger(ctx.currentQueryContext.state);
 // ── L2: can the encumbered party release themselves? ────────────────────────
 console.log('\n== L2. can a holder discharge their own obligation? ==');
 {
-  // The BENEFICIARY encumbers. Compute the leaf the way the contract will.
-  const leaf = C.obligationLeaf(RECORD, OBLIGATION, BENEFICIARY_C);
-  const dirs = C.slotBits(RECORD);
-  const sibs = t.siblingsFor(dirs);
+  // The BENEFICIARY initiates against a record they do not hold; the holder agrees.
+  // (Unilateral encumbrance by the beneficiary is gone on purpose — it let a
+  // stranger poison any record. attack-lineage-30sep.mjs section 1.)
+  const err = refused(BENEFICIARY, 'proposeObligation', RECORD, OBLIGATION);
+  note(err ? `proposal refused: ${err}` : 'proposed');
+  ok('a beneficiary can propose against a record they do not hold', err === '',
+     'if only the ENCUMBERED party could originate an obligation, only the person who\n' +
+     '     owed could record that they owed it');
+  const acc = refused(HOLDER, 'acceptObligation', OBLIGATION, BENEFICIARY_C);
+  ok('the holder\'s acceptance puts it in force', acc === '' && state().obligationCountOf.member(RECORD), acc);
 
-  const err = refused(party(STRANGER, BENEFICIARY), 'encumber', sibs, dirs, RECORD, OBLIGATION);
-  note(err ? `encumber refused: ${err}` : 'encumbered');
-  ok('a beneficiary can encumber a record they do not hold', err === '',
-     'encumber required the ENCUMBERED party\'s secret, so only the person who owed\n' +
-     '     could record that they owed it');
-
-  if (!err) {
-    t.leaves.set(tree.ObligationTree.key(dirs), leaf);
+  if (!err && !acc) {
     note(`lastBeneficiary: ${hex(state().lastBeneficiary).slice(0, 24)}…`);
     ok('the beneficiary is on chain', hex(state().lastBeneficiary) === hex(BENEFICIARY_C));
 
     // The holder tries to release themselves.
-    const sibs2 = t.siblingsFor(dirs);
-    const selfErr = refused(party(HOLDER, HOLDER), 'discharge', sibs2, dirs, RECORD, OBLIGATION);
+    const selfErr = refused(HOLDER, 'discharge', RECORD, OBLIGATION);
     note(selfErr ? `self-discharge refused: ${selfErr}` : 'the holder discharged their own obligation');
     ok('the encumbered holder cannot discharge', selfErr !== '',
        'the holder encumbered with a royalty removed it alone and proved clean in the\n' +
        '     next call — an obligation only the obligated can remove is not an obligation');
 
     // The beneficiary can.
-    const benErr = refused(party(STRANGER, BENEFICIARY), 'discharge', sibs2, dirs, RECORD, OBLIGATION);
+    const benErr = refused(BENEFICIARY, 'discharge', RECORD, OBLIGATION);
     note(benErr ? `beneficiary discharge refused: ${benErr}` : 'the beneficiary released it');
     ok('the beneficiary can discharge', benErr === '', benErr);
   }
@@ -116,24 +95,9 @@ console.log('\n== L2. can a holder discharge their own obligation? ==');
 console.log('\n== L6. does a clean proof name who made it? ==');
 {
   ctx = emptyCtx();
-  const t2 = new tree.ObligationTree();
   const ancestor = C.commit(sec('ancestor'));
-  const dirs = C.slotBits(ancestor);
-  const sibs = t2.siblingsFor(dirs);
 
-  const mk = (s, d) => new L.Contract({
-    localGeneticSecret: (c) => [c.privateState, HOLDER],
-    beneficiarySecret: (c) => [c.privateState, HOLDER],
-    slotIsEmpty: (c) => [c.privateState, true],
-    slotOccupantRecord: (c) => [c.privateState, new Uint8Array(32)],
-    slotOccupantObligation: (c) => [c.privateState, new Uint8Array(32)],
-    slotOccupantBeneficiary: (c) => [c.privateState, new Uint8Array(32)],
-    merkleSiblings: (c) => [c.privateState, s],
-    merkleDirections: (c) => [c.privateState, d],
-    ancestryChain: (c) => [c.privateState, [ancestor, ancestor, ancestor, ancestor]],
-  });
-
-  const err = refused(mk, 'proveAncestorClean', sibs, dirs);
+  const err = refused(HOLDER, 'proveAncestorClean', ancestor);
   note(err ? `refused: ${err}` : 'proved');
   ok('a clean proof succeeds for a clean ancestor', err === '', err);
 
@@ -143,23 +107,11 @@ console.log('\n== L6. does a clean proof name who made it? ==');
     ok('the proof names the party who made it',
        hex(state().lastCleanProofBy) === hex(RECORD),
        'the circuit computed the caller\'s commitment and discarded it, so the proof\n' +
-       '     restated public root state and named nobody — anyone could make it about anyone');
+       '     restated public state and named nobody — anyone could make it about anyone');
   }
 
   // A record cannot clear itself.
-  const selfMk = (s, d) => new L.Contract({
-    localGeneticSecret: (c) => [c.privateState, HOLDER],
-    beneficiarySecret: (c) => [c.privateState, HOLDER],
-    slotIsEmpty: (c) => [c.privateState, true],
-    slotOccupantRecord: (c) => [c.privateState, new Uint8Array(32)],
-    slotOccupantObligation: (c) => [c.privateState, new Uint8Array(32)],
-    slotOccupantBeneficiary: (c) => [c.privateState, new Uint8Array(32)],
-    merkleSiblings: (c) => [c.privateState, s],
-    merkleDirections: (c) => [c.privateState, d],
-    ancestryChain: (c) => [c.privateState, [RECORD, RECORD, RECORD, RECORD]],
-  });
-  const selfDirs = C.slotBits(RECORD);
-  const selfErr = refused(selfMk, 'proveAncestorClean', t2.siblingsFor(selfDirs), selfDirs);
+  const selfErr = refused(HOLDER, 'proveAncestorClean', RECORD);
   ok('a record is not its own ancestor', selfErr !== '', 'a record cleared itself');
 }
 
@@ -171,13 +123,9 @@ console.log('\n== L3. does an edge take the parent\'s agreement? ==');
   const strangerSecret = sec('a-clean-stranger');
   const seller = C.commit(sellerSecret);
   const stranger = C.commit(strangerSecret);
-  const realMother = C.commit(sec('the-encumbered-mother'));
-
-  const edges = (who, circuit, ...args) =>
-    refused(party(who, who), circuit, [], [], ...args);
 
   // The seller's real mother is encumbered, so they name a clean stranger instead.
-  const proposed = edges(sellerSecret, 'proposeParent', seller, stranger);
+  const proposed = refused(sellerSecret, 'proposeParent', stranger);
   note(proposed ? `proposal refused: ${proposed}` : 'the seller proposed the stranger as their parent');
   ok('anyone may still PROPOSE any parent', proposed === '',
      'proposing is an offer, not a claim — refusing it here would only move the\n' +
@@ -190,7 +138,7 @@ console.log('\n== L3. does an edge take the parent\'s agreement? ==');
      'a proposal that counted as an edge would be declareParent with extra steps');
 
   // The seller confirms it themselves. This is the whole attack.
-  const selfConfirm = edges(sellerSecret, 'confirmParent', seller, stranger);
+  const selfConfirm = refused(sellerSecret, 'confirmParent', seller);
   note(selfConfirm ? `self-confirmation refused: ${selfConfirm}` : 'the seller confirmed their own parentage');
   ok('THE SELLER CANNOT CONFIRM AN EDGE TO SOMEBODY ELSE', selfConfirm !== '',
      'declareParent asserted the CHILD\'s preimage and took the parent on their word,\n' +
@@ -198,11 +146,11 @@ console.log('\n== L3. does an edge take the parent\'s agreement? ==');
      '     record they liked and the edge was indistinguishable from a real one');
 
   // Nor can a third party who holds neither.
-  const byStrangerElse = edges(sec('unrelated'), 'confirmParent', seller, stranger);
+  const byStrangerElse = refused(sec('unrelated'), 'confirmParent', seller);
   ok('nor can a bystander confirm it', byStrangerElse !== '');
 
   // The named record itself can — that is what consent means.
-  const consented = edges(strangerSecret, 'confirmParent', seller, stranger);
+  const consented = refused(strangerSecret, 'confirmParent', seller);
   note(consented ? `refused: ${consented}` : 'the named parent agreed, and the edge exists');
   ok('the named parent can confirm, and only then is there an edge', consented === '',
      consented);
@@ -217,10 +165,10 @@ console.log('\n== L3. does an edge take the parent\'s agreement? ==');
   const child = C.commit(childSecret);
   const agreed = C.commit(sec('parent-who-agreed'));
   const other = C.commit(sec('parent-who-did-not'));
-  refused(party(childSecret, childSecret), 'proposeParent', [], [], child, agreed);
-  refused(party(childSecret, childSecret), 'withdrawParent', [], [], child);
-  refused(party(childSecret, childSecret), 'proposeParent', [], [], child, other);
-  const stale = edges(sec('parent-who-agreed'), 'confirmParent', child, agreed);
+  call(childSecret, 'proposeParent', agreed);
+  call(childSecret, 'withdrawParent');
+  call(childSecret, 'proposeParent', other);
+  const stale = refused(sec('parent-who-agreed'), 'confirmParent', child);
   ok('a confirmation lands on the parent that is actually proposed', stale !== '',
      'the parent agreed to one thing and the child re-proposed another underneath\n' +
      '     them — the same swap approveTransfer takes expectedNewLicense to stop');
@@ -234,7 +182,7 @@ console.log('\n== L3. does an edge take the parent\'s agreement? ==');
 }
 
 // ── L4: what cannot be fixed here ───────────────────────────────────────────
-console.log('\n== L4. a fresh secret is a clean slot, and no circuit stops that ==');
+console.log('\n== L4. a fresh secret is a clean record, and no circuit stops that ==');
 {
   const laundered = C.commit(sec('material-with-a-past'));
   const genuine = C.commit(sec('genuinely-new-accession'));

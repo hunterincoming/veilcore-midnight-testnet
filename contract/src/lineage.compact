@@ -1,282 +1,94 @@
 // Veilcore Lineage — heritable rights for self-replicating assets.
 // SPDX-License-Identifier: Apache-2.0
 //
-// GENERATED FILE — edit gen-lineage.mjs and re-run `node gen-lineage.mjs 24`.
-// Compact has no loops, so the Merkle fold and slot derivation are unrolled. At
-// depth 24 that is 24 levels; generating them removes a whole class of
-// hand-transcription errors.
+// Biological IP is a lineage, not an object: a cut becomes a mother becomes ten
+// thousand clones, and a claim made upstream should follow the material down. This
+// contract records two things and nothing else:
 //
-// Every IP registry on earth records objects: a patent, a work, a variety.
-// Biological IP is not an object, it is a lineage — a cut becomes a mother becomes
-// ten thousand clones, and every descendant carries a fractional claim from
-// upstream. Nothing records rights that inherit. This does.
+//   DESCENT      child -> parent edges that BOTH holders agreed to.
+//   OBLIGATIONS  claims against a record that BOTH the holder and the beneficiary
+//                agreed to, and that only the beneficiary can release.
 //
-// STATE MODEL
-// Every ledger field is a fixed single slot except pendingParentOf, which holds
-// parentage offered and not yet accepted and is cleared on confirmation or
-// withdrawal — bounded by open proposals rather than by cumulative usage, the same
-// bound licensing has. Obligations live in a sparse Merkle tree represented only by
-// its root; the tree is reconstructed off-chain from transaction history, as the
-// descent graph is, and the leaf inputs are published so that a third party can
-// actually do it.
+// A verifier walks confirmed edges in transaction history and requires a clean proof
+// for every ancestor it finds. The walk is the verifier's, never the prover's: a
+// pedigree handed over by the party who benefits from it is missing whatever was
+// inconvenient.
 //
-// SPARSE TREE — depth 24, 16777216 slots
-// Every record has a deterministic slot derived from its own commitment, so no
-// assignment or registry is needed and an unwritten slot is clean by default.
+// SECURITY PASS 30 SEP 2026. The previous design kept obligations in a depth-24
+// sparse Merkle tree with slots derived from commitments, and let ANY party encumber
+// ANY record. Confirmed against that build:
 //
-// A RECORD IS CLEAN WHEN ITS SLOT HOLDS NOTHING THAT BINDS IT — not when the slot
-// is empty. A slot is 24 bits of a commitment, so another record's obligation can
-// land in it, and requiring emptiness reported the second record as carrying an
-// obligation it never incurred. That happens to two honest records on a collision,
-// and it can be arranged deliberately: grinding a secret into a chosen slot costs
-// about 2^24 hashes, and a squatter who encumbers their own record there blocks
-// somebody else's sale. The leaf names the record it binds, so a clean proof shows
-// the occupant is somebody else.
+//   · anyone could encumber anyone. A competitor attached a claim to a stranger's
+//     record, the record failed every clean proof from then on, and only the
+//     competitor could release it. Poisoning a whole registry cost a fee per record.
+//   · a squatter's leaf occupied the victim's slot, so the real licensor's royalty
+//     could never be attached. Grinding a secret into a chosen slot took ~81 s.
+//   · readers accepted any of the last 8 roots, so a seller could present a proof
+//     prepared just before an encumbrance landed and defeat it.
 //
-// WHAT THAT DOES NOT FIX: the squatted record still cannot BE encumbered, because
-// one slot holds one leaf. Closing that needs a bucket leaf or a tree indexed by
-// the full commitment — a redesign rather than a check. verify-max-7.mjs runs the
-// attack and pins the remainder.
+// Obligations are now CONSENT-BASED (proposed by the beneficiary, accepted by the
+// holder, released by the beneficiary) and stored in sets keyed by the full
+// obligation, so there are no slots, no collisions, no grinding target and no stale
+// roots: a clean proof reads the current state when it executes. The tree carried
+// no privacy — encumbrances and clean proofs already published the record — so
+// nothing is lost by dropping it, and the prover keys shrink from ~76 MB to a size
+// a browser can load. Regression tests: contract/attack-lineage-30sep.mjs.
 //
-// SOUNDNESS
-// A new root is never supplied by the caller. It is derived in-circuit from the
-// current root plus a Merkle path given as a private witness, and the path is bound
-// to the record by its derived slot bits. A forged or borrowed path fails.
+// STATE MODEL. Every container is cleared by the circuit that ends what filled it:
+// pendingParentOf on confirm/withdraw, pendingObligations on accept/withdraw,
+// openObligations and obligationCountOf on discharge. State is bounded by OPEN
+// business — open proposals and unreleased obligations — never by cumulative usage.
 //
-// WHAT THIS CANNOT DO
-// A party can anchor material under a fresh secret and get a clean slot with no
-// history. No circuit can prevent that: the contract cannot tell a genuinely new
-// accession from a laundered one, because both look like a commitment nobody has
-// seen before. So absence of a dirty ancestor is not evidence of a clean line, and
-// a verifier who treats it that way is reading the wrong thing. What the contract
-// can support is a POSITIVE check — a confirmed path from the record to an origin
-// the verifier already recognises, with every node on it clean — and that is what
-// a registry consuming this should require.
-//
-// BOUNDARY
-// An edge takes both parties: the child offers and the named parent confirms under
-// their own secret. A seller can still name any record as their mother; what they
-// cannot do is make it stick, because that record has to agree. A verifier walks the
-// confirmed edges in transaction history and requires a clean proof for every
-// ancestor it finds — the walk is the verifier's, never the prover's, because a
-// pedigree branches and a chain handed over by the party who benefits from it is
-// missing whatever was inconvenient.
-//
-// WHAT AN EDGE STILL DOES NOT MEAN: that the child is biologically descended from
-// the parent. It means both holders said so. Two colluding parties can agree to
-// any edge they like, and the contract cannot tell breeding from agreement — that
-// is what the DNA pairing in the provenance contract narrows and does not close.
+// WHAT THIS CANNOT DO, AND THE VERIFIER RULE THAT COVERS IT.
+//   · A party can anchor material under a fresh secret and get a record with no
+//     history. Absence of a dirty ancestor is not evidence of a clean line; a
+//     registry should require a confirmed path to an origin IT recognises.
+//   · This contract cannot read the provenance contract, so it does not know about
+//     rotation there. A verifier MUST resolve every record through the provenance
+//     contract's originOf/rotatedTo and check obligations against EVERY commitment in
+//     that identity's chain, and MUST ignore an edge confirmed or a proof made under
+//     a commitment after the provenance contract retired it. Otherwise rotating a
+//     secret sheds its obligations.
+//   · An edge means both holders said so, not that the child is biologically
+//     descended from the parent. The DNA pairing in the provenance contract narrows
+//     that; it does not close it.
 
 pragma language_version 0.23;
 
 import CompactStandardLibrary;
 
-// Fixed single-slot fields. No growable container anywhere in this contract.
+// ─────────────────────────────────────────────────────────────── state
+
 export ledger descentSeq: Counter;
-export ledger lastDescent: Bytes<32>;
-
-// The edge hash alone lets a verifier TEST a pair they already suspect. It does not
-// let them ENUMERATE a record's parents, so the descent graph cannot be rebuilt from
-// chain data and every clean-descent answer depends on the registry that watched the
-// API calls. Child and parent go on chain so the graph is independently obtainable.
-export ledger lastDescentChild: Bytes<32>;
-export ledger lastDescentParent: Bytes<32>;
-
-/**
- * Parentage proposed by a child and not yet accepted by the parent.
- *
- * AN EDGE USED TO BE UNILATERAL. declareParent asserted the caller held the CHILD's
- * preimage and took the parent on their word, so a seller whose real mother was
- * encumbered could declare descent from any clean record they liked. The edge it
- * produced was indistinguishable from a real one — same circuit, same cells, same
- * hash — so a verifier walking the graph was walking a graph the seller had
- * written. Omission was closed by making the verifier walk it; substitution was
- * not, because the thing being walked was still the prover's claim.
- *
- * Naming a parent is now an offer. The propose/countersign shape is the licence
- * transfer flow: one party asks, the other agrees, and until both have acted
- * nothing is established.
- *
- * Cleared on confirmation and on withdrawal, so it is bounded by open proposals
- * rather than by cumulative usage — the same bound licensing has, and the same
- * remedy: the party who created the entry is the one who can clear it.
- */
-export ledger pendingParentOf: Map<Bytes<32>, Bytes<32>>;
-
-// Proposals and withdrawals move this; confirmations move descentSeq. One counter
-// per kind of event, because a reader rebuilding the graph counts edges and an
-// offer is not an edge.
 export ledger descentProposalSeq: Counter;
-
-// Same for the obligation tree. An encumbrance published only its new root, so a
-// third party saw a sequence of roots without the leaves that produced them: it could
-// build no sibling path and could not tell which records were encumbered.
-export ledger lastEncumberedRecord: Bytes<32>;
-export ledger lastObligation: Bytes<32>;
-
-// Who an encumbrance is in favour of. A third party rebuilding the tree needs it:
-// the leaf is a function of the beneficiary, so without it no sibling path can be
-// reconstructed and no discharge verified.
-export ledger lastBeneficiary: Bytes<32>;
-export ledger lastClearedAncestor: Bytes<32>;
-export ledger encumberSeq: Counter;
+export ledger obligationSeq: Counter;
 export ledger cleanProofSeq: Counter;
 
-// Who made a clean proof. Without it the circuit computed the caller's commitment
-// and discarded it, so the proof restated public root state and named nobody.
+// Every event names its parties in a cell so the graph and the obligation set can be
+// rebuilt from chain data by anyone, without the registry that made the calls.
+export ledger lastDescent: Bytes<32>;
+export ledger lastDescentChild: Bytes<32>;
+export ledger lastDescentParent: Bytes<32>;
+export ledger lastObligationRecord: Bytes<32>;
+export ledger lastObligation: Bytes<32>;
+export ledger lastBeneficiary: Bytes<32>;
 export ledger lastCleanProofBy: Bytes<32>;
-export ledger encumberedRoot: Bytes<32>;
+export ledger lastClearedAncestor: Bytes<32>;
 
-/**
- * The 7 roots before the current one.
- *
- * ONE GLOBAL ROOT MADE EVERY PROOF RACE EVERY OTHER TRANSACTION. encumber,
- * discharge and proveAncestorClean all asserted the single current root, so any
- * unrelated update landing between proving and inclusion invalidated every proof
- * in flight — and a party toggling an obligation on its own record each block
- * starved everyone else for the cost of the transactions.
- *
- * A reader collects one proof per generation and a busy registry moves the root
- * between them, so the failure was not a corner case. Writers still need the
- * current root, because two writers folding against different roots would produce
- * two incompatible trees; a READER only needs a root the chain published recently.
- *
- * WHAT IT COSTS, PLAINLY. A freshly attached obligation is not binding on a proof
- * that cites a root from before it. A seller who watches for an encumbrance and
- * submits a proof they prepared a moment earlier defeats it, and keeps defeating it
- * until 7 further updates have pushed that root off the ring. The window
- * cuts both ways and this is the other edge of it.
- *
- * That is why lastProofRoot exists. A verifier deciding anything that matters
- * requires lastProofRoot == encumberedRoot and accepts that a busy or hostile
- * registry may make a proof take several attempts; one who does not care about the
- * last few updates takes the older root and cannot be starved. The contract
- * publishes what is needed to make that choice instead of making it for everyone.
- * verify-max-8.mjs runs both sides.
- */
-export ledger recentRoot1: Bytes<32>;
-export ledger recentRoot2: Bytes<32>;
-export ledger recentRoot3: Bytes<32>;
-export ledger recentRoot4: Bytes<32>;
-export ledger recentRoot5: Bytes<32>;
-export ledger recentRoot6: Bytes<32>;
-export ledger recentRoot7: Bytes<32>;
+/** Child -> the parent it proposed. Cleared on confirmation or withdrawal. */
+export ledger pendingParentOf: Map<Bytes<32>, Bytes<32>>;
 
-// Which root the last clean proof was folded against. Without it a verifier
-// reading a proof cannot tell how stale the tree behind it was.
-export ledger lastProofRoot: Bytes<32>;
+/** obligationKey(record, obligation, beneficiary) of proposals not yet accepted. */
+export ledger pendingObligations: Set<Bytes<32>>;
+/** obligationKey(...) of obligations in force. */
+export ledger openObligations: Set<Bytes<32>>;
+/** Record -> how many obligations are in force against it. Absent means none. */
+export ledger obligationCountOf: Map<Bytes<32>, Uint<32>>;
 
-/**
- * Set the obligation tree to its empty root.
- *
- * Without this the root starts at the default Bytes<32>, which is all zeros — and
- * all zeros is not the root of an empty tree, it is an unset cell. Every encumber
- * then fails "Slot is not clean" and every proveAncestorClean fails "This ancestor
- * carries an unmet obligation", because both compare a correctly folded root
- * against a value no fold can produce. The contract deployed dead.
- *
- * The suite did not catch it. The tree tests compare pure circuits against an empty
- * root computed off-chain, and nothing ran encumber against a freshly constructed
- * state. One harness did call proveAncestorClean on the initial state, got the
- * refusal, and reported it as expected — a test that saw the bug and called it
- * correct.
- *
- * The fold pairs the null leaf with itself at every level, which is what an empty
- * sparse tree is.
- */
-constructor() {
-  const nullLeaf = default<Bytes<32>>;
-  const e0 = merkleStep(nullLeaf, nullLeaf, false);
-  const e1 = merkleStep(e0, e0, false);
-  const e2 = merkleStep(e1, e1, false);
-  const e3 = merkleStep(e2, e2, false);
-  const e4 = merkleStep(e3, e3, false);
-  const e5 = merkleStep(e4, e4, false);
-  const e6 = merkleStep(e5, e5, false);
-  const e7 = merkleStep(e6, e6, false);
-  const e8 = merkleStep(e7, e7, false);
-  const e9 = merkleStep(e8, e8, false);
-  const e10 = merkleStep(e9, e9, false);
-  const e11 = merkleStep(e10, e10, false);
-  const e12 = merkleStep(e11, e11, false);
-  const e13 = merkleStep(e12, e12, false);
-  const e14 = merkleStep(e13, e13, false);
-  const e15 = merkleStep(e14, e14, false);
-  const e16 = merkleStep(e15, e15, false);
-  const e17 = merkleStep(e16, e16, false);
-  const e18 = merkleStep(e17, e17, false);
-  const e19 = merkleStep(e18, e18, false);
-  const e20 = merkleStep(e19, e19, false);
-  const e21 = merkleStep(e20, e20, false);
-  const e22 = merkleStep(e21, e21, false);
-  const e23 = merkleStep(e22, e22, false);
-  encumberedRoot = e23;
-  // The whole ring starts at the empty root for the same reason the current one
-  // does: a default Bytes<32> is an unset cell, not a tree, and a reader accepting
-  // it would accept a proof folded against nothing.
-  recentRoot1 = e23;
-  recentRoot2 = e23;
-  recentRoot3 = e23;
-  recentRoot4 = e23;
-  recentRoot5 = e23;
-  recentRoot6 = e23;
-  recentRoot7 = e23;
-  lastProofRoot = e23;
-}
-
+/** The caller's record secret: a child, a parent, a holder or a beneficiary. */
 witness localGeneticSecret(): Bytes<32>;
 
-/**
- * The secret behind an obligation's beneficiary.
- *
- * An obligation used to be a leaf the encumbered party could remove alone, which
- * made it a note-to-self rather than a claim: the holder of an encumbered record
- * discharged their own royalty and proved clean in the next call. The beneficiary
- * is now inside the leaf and discharge proves their secret, so the party who is
- * owed decides when they stop being owed.
- */
-witness beneficiarySecret(): Bytes<32>;
-witness merkleSiblings(): Vector<24, Bytes<32>>;
-witness merkleDirections(): Vector<24, Boolean>;
-// One ancestor per proof, by design: a verifier collects one proof per generation
-// rather than paying for a bundled walk in every prover key. ancestryChain is a
-// fixed vector so the caller names which ancestor this proof concerns; only
-// element 0 is read.
-//
-// ancestrySiblings and ancestryDirections were declared for a four-generation walk
-// that was never built. They are removed rather than left in place: an unread
-// witness still shapes the interface a caller has to satisfy, and a declaration
-// that describes behaviour the circuit does not have is worse than a missing
-// feature, because a reader plans around it.
-witness ancestryChain(): Vector<4, Bytes<32>>;
-
-/**
- * Whatever is sitting in the ancestor's slot, and what it is made of.
- *
- * SLOT SQUATTING. A slot is derived from the first 24 bytes of a commitment, one
- * bit each, so finding a secret whose commitment lands in a chosen slot costs about
- * 2^24 hashes — measured at 27.4 million in 81 seconds on one core. A squatter
- * grinds such a secret, encumbers THEIR OWN record, and the leaf lands in the
- * victim's slot. The victim's clean proof then failed, because it asserted the slot
- * held the null leaf, and the contract reported an obligation the victim had never
- * incurred. Two honest records colliding produced exactly the same false
- * encumbrance, and depth only changes the grinding cost.
- *
- * The leaf already names the record it binds. So a clean proof no longer requires
- * an EMPTY slot, it requires a slot holding nothing that binds THIS ancestor: the
- * null leaf, or a well-formed obligation against somebody else. The occupant's
- * three fields are witnesses so the fold can reproduce the real leaf; forging them
- * needs a hash collision, because the same bytes have to fold to the published root.
- *
- * NOT FIXED BY THIS: the victim still cannot BE encumbered, because encumber
- * asserts the slot is clean and one slot holds one leaf. That needs a bucket leaf
- * or an indexed tree keyed by the full commitment, and it is a redesign of the tree
- * rather than a check. verify-max-7.mjs runs the attack and pins that half.
- */
-witness slotIsEmpty(): Boolean;
-witness slotOccupantRecord(): Bytes<32>;
-witness slotOccupantObligation(): Bytes<32>;
-witness slotOccupantBeneficiary(): Bytes<32>;
+// ─────────────────────────────────────────────────────────────── pure
 
 export circuit commit(secret: Bytes<32>): Bytes<32> {
   return persistentHash<Vector<2, Bytes<32>>>([pad(32, "veilcore:commit"), secret]);
@@ -286,15 +98,8 @@ export circuit descentEdge(child: Bytes<32>, parent: Bytes<32>): Bytes<32> {
   return persistentHash<Vector<3, Bytes<32>>>([pad(32, "veilcore:descent"), child, parent]);
 }
 
-/**
- * The leaf for an obligation on a record, naming who is owed.
- *
- * The beneficiary is inside the hash. Without it the leaf was a function of the
- * encumbered record and the obligation alone, so the encumbered party could
- * reconstruct it and discharge themselves — an obligation nobody but the obligated
- * could remove is not an obligation.
- */
-export circuit obligationLeaf(
+/** One obligation: on which record, what it is, and who it is owed to. */
+export circuit obligationKey(
   recordCommitment: Bytes<32>,
   obligationCommitment: Bytes<32>,
   beneficiaryCommitment: Bytes<32>,
@@ -304,185 +109,28 @@ export circuit obligationLeaf(
   ]);
 }
 
-export circuit merkleStep(node: Bytes<32>, sibling: Bytes<32>, siblingIsLeft: Boolean): Bytes<32> {
-  const left = siblingIsLeft ? sibling : node;
-  const right = siblingIsLeft ? node : sibling;
-  return persistentHash<Vector<3, Bytes<32>>>([pad(32, "veilcore:node"), left, right]);
-}
-
-export circuit merkleRoot(
-  leaf: Bytes<32>,
-  siblings: Vector<24, Bytes<32>>,
-  dirs: Vector<24, Boolean>,
-): Bytes<32> {
-  const n0 = merkleStep(leaf, siblings[0], dirs[0]);
-  const n1 = merkleStep(n0, siblings[1], dirs[1]);
-  const n2 = merkleStep(n1, siblings[2], dirs[2]);
-  const n3 = merkleStep(n2, siblings[3], dirs[3]);
-  const n4 = merkleStep(n3, siblings[4], dirs[4]);
-  const n5 = merkleStep(n4, siblings[5], dirs[5]);
-  const n6 = merkleStep(n5, siblings[6], dirs[6]);
-  const n7 = merkleStep(n6, siblings[7], dirs[7]);
-  const n8 = merkleStep(n7, siblings[8], dirs[8]);
-  const n9 = merkleStep(n8, siblings[9], dirs[9]);
-  const n10 = merkleStep(n9, siblings[10], dirs[10]);
-  const n11 = merkleStep(n10, siblings[11], dirs[11]);
-  const n12 = merkleStep(n11, siblings[12], dirs[12]);
-  const n13 = merkleStep(n12, siblings[13], dirs[13]);
-  const n14 = merkleStep(n13, siblings[14], dirs[14]);
-  const n15 = merkleStep(n14, siblings[15], dirs[15]);
-  const n16 = merkleStep(n15, siblings[16], dirs[16]);
-  const n17 = merkleStep(n16, siblings[17], dirs[17]);
-  const n18 = merkleStep(n17, siblings[18], dirs[18]);
-  const n19 = merkleStep(n18, siblings[19], dirs[19]);
-  const n20 = merkleStep(n19, siblings[20], dirs[20]);
-  const n21 = merkleStep(n20, siblings[21], dirs[21]);
-  const n22 = merkleStep(n21, siblings[22], dirs[22]);
-  const n23 = merkleStep(n22, siblings[23], dirs[23]);
-  return n23;
-}
-
-// One byte per level, high bit taken. Hash output is uniform, so slots distribute
-// evenly across the tree.
-export circuit slotBits(recordCommitment: Bytes<32>): Vector<24, Boolean> {
-  return [
-    (recordCommitment[0] as Uint<8>) > 127,
-    (recordCommitment[1] as Uint<8>) > 127,
-    (recordCommitment[2] as Uint<8>) > 127,
-    (recordCommitment[3] as Uint<8>) > 127,
-    (recordCommitment[4] as Uint<8>) > 127,
-    (recordCommitment[5] as Uint<8>) > 127,
-    (recordCommitment[6] as Uint<8>) > 127,
-    (recordCommitment[7] as Uint<8>) > 127,
-    (recordCommitment[8] as Uint<8>) > 127,
-    (recordCommitment[9] as Uint<8>) > 127,
-    (recordCommitment[10] as Uint<8>) > 127,
-    (recordCommitment[11] as Uint<8>) > 127,
-    (recordCommitment[12] as Uint<8>) > 127,
-    (recordCommitment[13] as Uint<8>) > 127,
-    (recordCommitment[14] as Uint<8>) > 127,
-    (recordCommitment[15] as Uint<8>) > 127,
-    (recordCommitment[16] as Uint<8>) > 127,
-    (recordCommitment[17] as Uint<8>) > 127,
-    (recordCommitment[18] as Uint<8>) > 127,
-    (recordCommitment[19] as Uint<8>) > 127,
-    (recordCommitment[20] as Uint<8>) > 127,
-    (recordCommitment[21] as Uint<8>) > 127,
-    (recordCommitment[22] as Uint<8>) > 127,
-    (recordCommitment[23] as Uint<8>) > 127,
-  ];
-}
-
-// A path's direction bits are its slot position. Checking them against the derived
-// bits is what binds a path to one record — without it, any clean slot's path would
-// satisfy any record's proof.
-export circuit assertPathBelongsTo(recordCommitment: Bytes<32>, dirs: Vector<24, Boolean>): [] {
-  const bits = slotBits(recordCommitment);
-  assert(disclose(dirs[0] == bits[0]), "Merkle path does not belong to this record");
-  assert(disclose(dirs[1] == bits[1]), "Merkle path does not belong to this record");
-  assert(disclose(dirs[2] == bits[2]), "Merkle path does not belong to this record");
-  assert(disclose(dirs[3] == bits[3]), "Merkle path does not belong to this record");
-  assert(disclose(dirs[4] == bits[4]), "Merkle path does not belong to this record");
-  assert(disclose(dirs[5] == bits[5]), "Merkle path does not belong to this record");
-  assert(disclose(dirs[6] == bits[6]), "Merkle path does not belong to this record");
-  assert(disclose(dirs[7] == bits[7]), "Merkle path does not belong to this record");
-  assert(disclose(dirs[8] == bits[8]), "Merkle path does not belong to this record");
-  assert(disclose(dirs[9] == bits[9]), "Merkle path does not belong to this record");
-  assert(disclose(dirs[10] == bits[10]), "Merkle path does not belong to this record");
-  assert(disclose(dirs[11] == bits[11]), "Merkle path does not belong to this record");
-  assert(disclose(dirs[12] == bits[12]), "Merkle path does not belong to this record");
-  assert(disclose(dirs[13] == bits[13]), "Merkle path does not belong to this record");
-  assert(disclose(dirs[14] == bits[14]), "Merkle path does not belong to this record");
-  assert(disclose(dirs[15] == bits[15]), "Merkle path does not belong to this record");
-  assert(disclose(dirs[16] == bits[16]), "Merkle path does not belong to this record");
-  assert(disclose(dirs[17] == bits[17]), "Merkle path does not belong to this record");
-  assert(disclose(dirs[18] == bits[18]), "Merkle path does not belong to this record");
-  assert(disclose(dirs[19] == bits[19]), "Merkle path does not belong to this record");
-  assert(disclose(dirs[20] == bits[20]), "Merkle path does not belong to this record");
-  assert(disclose(dirs[21] == bits[21]), "Merkle path does not belong to this record");
-  assert(disclose(dirs[22] == bits[22]), "Merkle path does not belong to this record");
-  assert(disclose(dirs[23] == bits[23]), "Merkle path does not belong to this record");
-}
-
-// Verify the current leaf and compute the replacement in one traversal. The
-// siblings are identical for both — only the leaf differs — so folding twice
-// doubles the constraint count for no benefit. Returns the new root; the caller
-// asserts the old one matches.
-export circuit replaceLeaf(
-  oldLeaf: Bytes<32>,
-  newLeaf: Bytes<32>,
-  siblings: Vector<24, Bytes<32>>,
-  dirs: Vector<24, Boolean>,
-): Vector<2, Bytes<32>> {
-  const o0 = merkleStep(oldLeaf, siblings[0], dirs[0]);
-  const w0 = merkleStep(newLeaf, siblings[0], dirs[0]);
-  const o1 = merkleStep(o0, siblings[1], dirs[1]);
-  const w1 = merkleStep(w0, siblings[1], dirs[1]);
-  const o2 = merkleStep(o1, siblings[2], dirs[2]);
-  const w2 = merkleStep(w1, siblings[2], dirs[2]);
-  const o3 = merkleStep(o2, siblings[3], dirs[3]);
-  const w3 = merkleStep(w2, siblings[3], dirs[3]);
-  const o4 = merkleStep(o3, siblings[4], dirs[4]);
-  const w4 = merkleStep(w3, siblings[4], dirs[4]);
-  const o5 = merkleStep(o4, siblings[5], dirs[5]);
-  const w5 = merkleStep(w4, siblings[5], dirs[5]);
-  const o6 = merkleStep(o5, siblings[6], dirs[6]);
-  const w6 = merkleStep(w5, siblings[6], dirs[6]);
-  const o7 = merkleStep(o6, siblings[7], dirs[7]);
-  const w7 = merkleStep(w6, siblings[7], dirs[7]);
-  const o8 = merkleStep(o7, siblings[8], dirs[8]);
-  const w8 = merkleStep(w7, siblings[8], dirs[8]);
-  const o9 = merkleStep(o8, siblings[9], dirs[9]);
-  const w9 = merkleStep(w8, siblings[9], dirs[9]);
-  const o10 = merkleStep(o9, siblings[10], dirs[10]);
-  const w10 = merkleStep(w9, siblings[10], dirs[10]);
-  const o11 = merkleStep(o10, siblings[11], dirs[11]);
-  const w11 = merkleStep(w10, siblings[11], dirs[11]);
-  const o12 = merkleStep(o11, siblings[12], dirs[12]);
-  const w12 = merkleStep(w11, siblings[12], dirs[12]);
-  const o13 = merkleStep(o12, siblings[13], dirs[13]);
-  const w13 = merkleStep(w12, siblings[13], dirs[13]);
-  const o14 = merkleStep(o13, siblings[14], dirs[14]);
-  const w14 = merkleStep(w13, siblings[14], dirs[14]);
-  const o15 = merkleStep(o14, siblings[15], dirs[15]);
-  const w15 = merkleStep(w14, siblings[15], dirs[15]);
-  const o16 = merkleStep(o15, siblings[16], dirs[16]);
-  const w16 = merkleStep(w15, siblings[16], dirs[16]);
-  const o17 = merkleStep(o16, siblings[17], dirs[17]);
-  const w17 = merkleStep(w16, siblings[17], dirs[17]);
-  const o18 = merkleStep(o17, siblings[18], dirs[18]);
-  const w18 = merkleStep(w17, siblings[18], dirs[18]);
-  const o19 = merkleStep(o18, siblings[19], dirs[19]);
-  const w19 = merkleStep(w18, siblings[19], dirs[19]);
-  const o20 = merkleStep(o19, siblings[20], dirs[20]);
-  const w20 = merkleStep(w19, siblings[20], dirs[20]);
-  const o21 = merkleStep(o20, siblings[21], dirs[21]);
-  const w21 = merkleStep(w20, siblings[21], dirs[21]);
-  const o22 = merkleStep(o21, siblings[22], dirs[22]);
-  const w22 = merkleStep(w21, siblings[22], dirs[22]);
-  const o23 = merkleStep(o22, siblings[23], dirs[23]);
-  const w23 = merkleStep(w22, siblings[23], dirs[23]);
-  return [o23, w23];
-}
+// ─────────────────────────────────────────────────────────────── caller
 
 /**
- * Offer a parent. THE CHILD'S HOLDER ASKS; nothing is established yet.
- *
- * Replaces declareParent, which did the whole thing in one call on the child's word
- * alone. A proposal is visible — the map key is public — so a parent can see an
- * offer standing against them, and so can anyone else; an unconfirmed proposal is
- * exactly as good as the assertion it is, which is to say not evidence.
- *
- * ONE LIVE PROPOSAL PER CHILD. A cross has two parents, so declaring both is two
- * rounds rather than one: propose, confirm, propose, confirm. That is the same
- * serialisation proposeTransfer accepts for the same reason — replacing a standing
- * offer is a withdrawal followed by a new one, and both need the proposer.
+ * The caller's record, DERIVED from their secret. Never an argument: a circuit that
+ * takes the caller's identity as an argument is safe only for as long as nobody
+ * edits away the comparison that checks it.
  */
-export circuit proposeParent(childCommitment: Bytes<32>, parentCommitment: Bytes<32>): [] {
-  assert(childCommitment == commit(localGeneticSecret()),
-         "Only the record holder can propose its parentage");
-  const c = disclose(childCommitment);
+circuit self(): Bytes<32> {
+  return disclose(commit(localGeneticSecret()));
+}
+
+// ─────────────────────────────────────────────────────────────── descent
+
+/**
+ * The child's holder names a parent. An offer, not an edge: nothing is established
+ * until the parent's holder confirms. One live proposal per child, so a cross is two
+ * rounds.
+ */
+export circuit proposeParent(parentCommitment: Bytes<32>): [] {
+  const c = self();
   const p = disclose(parentCommitment);
+  assert(p != default<Bytes<32>>, "The parent cannot be empty");
   assert(c != p, "A record is not its own parent");
   assert(!pendingParentOf.member(c), "This record already has a parentage proposal outstanding");
   descentProposalSeq.increment(1);
@@ -490,34 +138,18 @@ export circuit proposeParent(childCommitment: Bytes<32>, parentCommitment: Bytes
 }
 
 /**
- * Accept being named as a parent. ONLY THE PARENT'S HOLDER.
+ * The parent's holder accepts being named, for a SPECIFIC child. The stored proposal
+ * must still name the caller, so a child who re-proposes elsewhere between the
+ * parent's decision and this transaction gets a refusal, not an edge.
  *
- * This is the half that closes substitution. A seller can still NAME any record;
- * what they cannot do is make the naming stick, because the record they named has
- * to prove its own secret here. Pointing at a convenient clean stranger now needs
- * that stranger's cooperation.
- *
- * The parent confirms a SPECIFIC CHILD, and the stored proposal has to still name
- * them — the same reason approveTransfer takes expectedNewLicense rather than
- * approving whatever is pending at execution time. A child who withdraws and
- * re-proposes to somebody else between the parent's decision and their transaction
- * gets a refusal, not a confirmation the parent did not mean to give.
- *
- * WHAT THIS COSTS, and it is a real cost: a record whose parent has no holder — a
- * landrace, an accession from a collection that never joined, a breeder who has
- * gone — can never have that edge confirmed. Descent through such a record is not
- * expressible. That is the price of an edge meaning both parties agreed, and it is
- * why a registry should require a confirmed path to an origin IT recognises rather
- * than treating a sparse graph as a clean one.
+ * A record whose parent has no holder (a landrace, a lapsed breeder) can never have
+ * that edge confirmed. That is the price of an edge meaning both parties agreed.
  */
-export circuit confirmParent(childCommitment: Bytes<32>, parentCommitment: Bytes<32>): [] {
+export circuit confirmParent(childCommitment: Bytes<32>): [] {
+  const p = self();
   const c = disclose(childCommitment);
-  const p = disclose(parentCommitment);
   assert(pendingParentOf.member(c), "No parentage proposed for that record");
-  assert(parentCommitment == commit(localGeneticSecret()),
-         "Only the named parent's holder can confirm an edge to it");
-  assert(pendingParentOf.lookup(c) == p, "That is not the parent proposed for this record");
-
+  assert(pendingParentOf.lookup(c) == p, "You are not the parent proposed for this record");
   pendingParentOf.remove(c);
   descentSeq.increment(1);
   lastDescent = descentEdge(c, p);
@@ -525,192 +157,107 @@ export circuit confirmParent(childCommitment: Bytes<32>, parentCommitment: Bytes
   lastDescentParent = p;
 }
 
-/** Retract a proposal. The proposer only, the same as withdrawTransfer. */
-export circuit withdrawParent(childCommitment: Bytes<32>): [] {
-  assert(childCommitment == commit(localGeneticSecret()),
-         "Only the record holder can withdraw its own proposal");
-  const c = disclose(childCommitment);
-  assert(pendingParentOf.member(c), "No parentage proposed for that record");
+/** The child's holder retracts their own proposal. */
+export circuit withdrawParent(): [] {
+  const c = self();
+  assert(pendingParentOf.member(c), "No parentage proposed for your record");
   descentProposalSeq.increment(1);
   pendingParentOf.remove(c);
 }
 
+// ─────────────────────────────────────────────────────────────── obligations
+
 /**
- * Attach an obligation to a record, in favour of a named beneficiary.
+ * The BENEFICIARY proposes a claim against a record. It binds nobody until the
+ * record's holder accepts it.
  *
- * Called BY THE BENEFICIARY, not by the encumbered party. The holder of a record
- * has no reason to encumber it and every reason not to, so a circuit only they
- * could call made the whole mechanism voluntary. The beneficiary proves their own
- * secret here and again at discharge.
- *
- * Note what this does not establish: that the beneficiary is entitled to anything.
- * Anyone may encumber any record, and a verifier reads an encumbrance as "somebody
- * asserts a claim against this" rather than as a finding. The contract records the
- * assertion and who made it; whether it is owed is for the parties.
+ * Unilateral encumbrance is what let a stranger poison any record. A claim the
+ * holder never agreed to is a dispute, and disputes belong off chain; what goes on
+ * chain is an obligation both parties signed, the same shape as a licence and its
+ * countersignature. The holder's leverage to refuse is real, and so is the
+ * beneficiary's: they confirm parentage (and sell material) only once it is accepted.
  */
-export circuit encumber(recordCommitment: Bytes<32>, obligationCommitment: Bytes<32>): [] {
-  const beneficiary = commit(beneficiarySecret());
+export circuit proposeObligation(recordCommitment: Bytes<32>, obligationCommitment: Bytes<32>): [] {
+  const b = self();
+  const r = disclose(recordCommitment);
+  const o = disclose(obligationCommitment);
+  assert(r != default<Bytes<32>>, "The record cannot be empty");
+  assert(o != default<Bytes<32>>, "The obligation cannot be empty");
+  assert(r != b, "A record cannot owe itself");
+  const k = obligationKey(r, o, b);
+  assert(!pendingObligations.member(k), "That obligation is already proposed");
+  assert(!openObligations.member(k), "That obligation is already in force");
+  pendingObligations.insert(k);
+}
 
-  const siblings = merkleSiblings();
-  const dirs = merkleDirections();
-  const nullLeaf = default<Bytes<32>>;
-
-  assertPathBelongsTo(recordCommitment, dirs);
-
-  const rc = disclose(recordCommitment);
-  const oc = disclose(obligationCommitment);
-  const bc = disclose(beneficiary);
-  const roots = replaceLeaf(nullLeaf, obligationLeaf(rc, oc, bc), siblings, dirs);
-
-  assert(disclose(roots[0]) == encumberedRoot, "Slot is not clean, or the Merkle path is invalid");
-  encumberSeq.increment(1);
-  // A WRITER STILL NEEDS THE CURRENT ROOT — asserted above. Two writers folding
-  // against different roots would each produce a valid-looking new root for a
-  // different tree, and the second to land would silently drop the first's leaf.
-  // Only readers get the ring.
-  recentRoot7 = recentRoot6;
-  recentRoot6 = recentRoot5;
-  recentRoot5 = recentRoot4;
-  recentRoot4 = recentRoot3;
-  recentRoot3 = recentRoot2;
-  recentRoot2 = recentRoot1;
-  recentRoot1 = encumberedRoot;
-  encumberedRoot = disclose(roots[1]);
-  lastEncumberedRecord = rc;
-  lastObligation = oc;
-  lastBeneficiary = bc;
+/** The beneficiary retracts a proposal the holder has not accepted. */
+export circuit withdrawObligation(recordCommitment: Bytes<32>, obligationCommitment: Bytes<32>): [] {
+  const k = obligationKey(disclose(recordCommitment), disclose(obligationCommitment), self());
+  assert(pendingObligations.member(k), "No such proposal from you");
+  pendingObligations.remove(k);
 }
 
 /**
- * Clear an obligation. ONLY THE BENEFICIARY.
- *
- * This used to require the encumbered record's secret, which meant the party who
- * owed discharged the debt: encumber a record with a royalty, discharge it in the
- * next block, prove clean in the one after. The beneficiary's secret is what
- * releases it now, because being released is their decision.
+ * The record's holder accepts a proposed obligation, naming the beneficiary they
+ * agreed with. From here only the beneficiary can release it.
  */
+export circuit acceptObligation(obligationCommitment: Bytes<32>, beneficiaryCommitment: Bytes<32>): [] {
+  const r = self();
+  const o = disclose(obligationCommitment);
+  const b = disclose(beneficiaryCommitment);
+  const k = obligationKey(r, o, b);
+  assert(pendingObligations.member(k), "No such obligation proposed against your record");
+  pendingObligations.remove(k);
+  openObligations.insert(k);
+  const n = obligationCountOf.member(r) ? obligationCountOf.lookup(r) : 0 as Uint<32>;
+  obligationCountOf.insert(r, (n + 1) as Uint<32>);
+  obligationSeq.increment(1);
+  lastObligationRecord = r;
+  lastObligation = o;
+  lastBeneficiary = b;
+}
+
+/** ONLY THE BENEFICIARY releases an obligation. Being released is their decision. */
 export circuit discharge(recordCommitment: Bytes<32>, obligationCommitment: Bytes<32>): [] {
-  const beneficiary = commit(beneficiarySecret());
-
-  const siblings = merkleSiblings();
-  const dirs = merkleDirections();
-  const rc = disclose(recordCommitment);
-  const oc = disclose(obligationCommitment);
-
-  assertPathBelongsTo(recordCommitment, dirs);
-
-  const nullLeaf = default<Bytes<32>>;
-  const bc = disclose(beneficiary);
-  // The fold only reproduces the current root if the beneficiary in the leaf is the
-  // one calling, so a stranger's discharge fails here rather than needing a
-  // separate check.
-  const roots = replaceLeaf(obligationLeaf(rc, oc, bc), nullLeaf, siblings, dirs);
-
-  assert(disclose(roots[0]) == encumberedRoot, "No such obligation at this slot, or the Merkle path is invalid");
-  encumberSeq.increment(1);
-  recentRoot7 = recentRoot6;
-  recentRoot6 = recentRoot5;
-  recentRoot5 = recentRoot4;
-  recentRoot4 = recentRoot3;
-  recentRoot3 = recentRoot2;
-  recentRoot2 = recentRoot1;
-  recentRoot1 = encumberedRoot;
-  encumberedRoot = disclose(roots[1]);
-  lastEncumberedRecord = rc;
-  lastObligation = oc;
-  lastBeneficiary = bc;
+  const b = self();
+  const r = disclose(recordCommitment);
+  const o = disclose(obligationCommitment);
+  const k = obligationKey(r, o, b);
+  assert(openObligations.member(k), "No such obligation in your favour");
+  openObligations.remove(k);
+  const n = obligationCountOf.lookup(r);
+  if (n == 1) {
+    obligationCountOf.remove(r);
+  } else {
+    obligationCountOf.insert(r, (n - 1) as Uint<32>);
+  }
+  obligationSeq.increment(1);
+  lastObligationRecord = r;
+  lastObligation = o;
+  lastBeneficiary = b;
 }
 
-// Prove one ancestor is clean. One Merkle path per proof, not five in one circuit:
-// each path costs DEPTH hashes, and bundling them makes the prover key unusable in
-// a browser. A verifier collects one proof per generation.
-//
-// WHAT THIS PROVES, AND WHAT IT DOES NOT.
-//
-// It proves that a named commitment occupies a clean slot. It does not prove that
-// commitment is an ancestor of the caller — nothing in contract state records the
-// descent graph, so no circuit can check it. The join is the verifier's: they take
-// the descent edges confirmed through proposeParent/confirmParent, and check that
-// each parent in the chain has a clean proof naming it. That division is deliberate
-// and it is what the file header describes.
-//
-// THE ANCESTOR COMMITMENT IS DISCLOSED, and an earlier version of this circuit hid
-// it. Hiding it was not privacy, it was the proof having no subject: a verifier
-// could see that somebody proved something clean and could not tell what, so they
-// could not perform the join above, and a caller whose real parent was encumbered
-// could supply any commitment with a clean slot and the proof would pass.
-//
-// Disclosing it costs nothing a holder wants to keep. A commitment is a hash and
-// means nothing without the record behind it — the breeding programme, the
-// counterparties and the generation count stay private, which is the privacy the
-// format actually promises. What it does cost is correlation: an observer can see
-// the same commitment cleared repeatedly. A holder who minds that rotates the
-// record's secret and clears under the new commitment.
+// ─────────────────────────────────────────────────────────────── clean proofs
+
 /**
- * Is this a root the chain published recently?
+ * Prove one ancestor carries no obligation in force, as of this transaction.
  *
- * A reader's proof is built, then included some blocks later. Against a single
- * global root any unrelated encumbrance in between invalidated it, so a verifier
- * collecting one proof per generation on a busy registry could be starved
- * indefinitely — deliberately, by anyone willing to pay for a transaction a block.
+ * The ancestor is public: a clean proof with no subject cannot be joined to the
+ * descent graph, and a hidden subject let a caller whose real parent was encumbered
+ * prove any clean record instead. The caller is named too, so the proof is a
+ * statement somebody made. It reads the CURRENT set when it executes: there is no
+ * window in which a proof prepared before an encumbrance still passes after it.
+ *
+ * It does not prove the ancestor is the caller's ancestor. That join is the
+ * verifier's, over confirmed edges, and so is resolving rotations (header).
  */
-// The argument must already be disclosed by the caller. The root of a valid path is a
-// value the chain published, so disclosing it gives nothing away — and comparing a
-// witness-derived value against ledger cells is a disclosure the compiler is right
-// to refuse until it is declared.
-export circuit rootIsRecent(folded: Bytes<32>): Boolean {
-  // Declared here as well as at the call site: a parameter of an exported circuit
-  // is witness-derived as far as the compiler is concerned, whatever the caller did
-  // with it, and comparing it against a ledger cell is a disclosure either way.
-  const f = disclose(folded);
-  return f == encumberedRoot
-             || f == recentRoot1
-             || f == recentRoot2
-             || f == recentRoot3
-             || f == recentRoot4
-             || f == recentRoot5
-             || f == recentRoot6
-             || f == recentRoot7;
-}
-
-export circuit proveAncestorClean(): [] {
-  const self = commit(localGeneticSecret());
-  const nullLeaf = default<Bytes<32>>;
-
-  const siblings = merkleSiblings();
-  const dirs = merkleDirections();
-  const chain = ancestryChain();
-
-  const ancestor = disclose(chain[0]);
-  // The proof is bound to the caller. The value was computed and never used, so the
-  // circuit proved a fact about public root state that anyone could prove about
-  // anybody — a clean proof with no claimant is a statement nobody made.
-  assert(self != ancestor, "A record is not its own ancestor");
-  lastCleanProofBy = disclose(self);
-  assertPathBelongsTo(ancestor, dirs);
-
-  // WHAT IS ACTUALLY IN THE SLOT. One extra hash, and still one fold: the leaf is
-  // either the null leaf or an obligation binding a DIFFERENT record, which says
-  // nothing about this ancestor. Lying about which costs a hash collision — the
-  // bytes chosen here have to fold to a root the chain published.
-  const empty = disclose(slotIsEmpty());
-  const occRecord = slotOccupantRecord();
-  const occupant = empty
-    ? nullLeaf
-    : obligationLeaf(occRecord, slotOccupantObligation(), slotOccupantBeneficiary());
-  // A leaf that names the ancestor IS this ancestor's obligation, so it is refused
-  // here rather than by the fold.
-  assert(empty || disclose(occRecord != ancestor),
-         "This ancestor carries an unmet obligation");
-
-  const folded = disclose(merkleRoot(occupant, siblings, dirs));
-  assert(rootIsRecent(folded), "This ancestor carries an unmet obligation");
-
-  // Which root this proof was folded against, so a verifier can see how stale it is.
-  lastProofRoot = folded;
+export circuit proveAncestorClean(ancestorCommitment: Bytes<32>): [] {
+  const me = self();
+  const a = disclose(ancestorCommitment);
+  assert(a != default<Bytes<32>>, "The ancestor cannot be empty");
+  assert(me != a, "A record is not its own ancestor");
+  assert(!obligationCountOf.member(a), "This ancestor carries an unmet obligation");
   cleanProofSeq.increment(1);
-  // Its own slot, because lastDescent holds edge hashes and the two are
-  // indistinguishable as bytes. One field with two meanings is a field a reader
-  // cannot use.
-  lastClearedAncestor = ancestor;
+  lastCleanProofBy = me;
+  lastClearedAncestor = a;
 }

@@ -1,64 +1,84 @@
 // Multi-generation descent. The single-generation demo proves an obligation blocks
 // a daughter. The real claim is that it reaches every descendant, however far down —
 // and that a clean line stays clean regardless of what happens elsewhere.
-import { ObligationTree, EMPTY_ROOT } from './src/tree.mjs';
-import { pureCircuits as C } from './src/managed/lineage/contract/index.js';
+//
+// Runs against the compiled contract: edges are confirmed on chain by both holders,
+// obligations are proposed by the beneficiary and accepted by the holder, and
+// "clean" means proveAncestorClean succeeds for a buyer asking about that record.
+import { createHash } from 'node:crypto';
+import * as L from './src/managed/lineage/contract/index.js';
+import * as rt from '@midnight-ntwrk/compact-runtime';
 
-// Obligations name who is owed. The beneficiary is part of the leaf, so the
-// encumbered party cannot reconstruct it and release themselves — which is what
-// made an obligation a note-to-self before.
-const BENEFICIARY = C.commit(new Uint8Array(32).fill(0xBE));
-
-const hex = (u) => Buffer.from(u).toString('hex');
-const secret = (s) => { const a = new Uint8Array(32); for (let i=0;i<s.length&&i<32;i++) a[i]=s.charCodeAt(i); a[31]=s.length; return a; };
+const C = L.pureCircuits;
+const COIN = '0'.repeat(64);
+const sec = (s) => createHash('sha256').update(s).digest();
 let fails = 0;
 const check = (name, ok) => { console.log(ok ? ' PASS' : ' FAIL', name); if (!ok) fails++; };
 
-const tree = new ObligationTree();
-const clean = (rec) => {
-  const d = C.slotBits(rec);
-  return hex(C.merkleRoot(new Uint8Array(32), tree.siblingsFor(d), d)) === hex(tree.root());
-};
+const party = (own) => new L.Contract({ localGeneticSecret: (c) => [c.privateState, own] });
+let ctx = rt.createCircuitContext(rt.sampleContractAddress(), COIN,
+  party(sec('deployer')).initialState(rt.createConstructorContext({}, COIN)).currentContractState, {});
+const run = (who, circuit, ...args) => { ctx = party(who).impureCircuits[circuit](ctx, ...args).context; };
+const tryRun = (who, circuit, ...args) => { try { run(who, circuit, ...args); return ''; } catch (e) { return String(e?.message ?? e); } };
+const state = () => L.ledger(ctx.currentQueryContext.state);
+
+// Obligations name who is owed. Only the beneficiary can release, so the
+// encumbered party cannot release themselves.
+const BENEFICIARY = sec('beneficiary');
+const BUYER = sec('buyer');
+
+// A record is clean if a buyer's clean proof about it executes.
+const clean = (rec) => tryRun(BUYER, 'proveAncestorClean', rec) === '';
 // A lineage is clean only if every generation is.
 const lineageClean = (chain) => chain.every(clean);
 
-// Four generations: G0 → G1 → G2 → G3
-const gen = ['g0-landrace', 'g1-selection', 'g2-backcross', 'g3-production'].map((n) => C.commit(secret(n)));
-for (let i = 1; i < gen.length; i++) C.descentEdge(gen[i], gen[i - 1]);
-console.log('four generations, three declared edges\n');
+const encumber = (rec, recSecret, obl) => {
+  run(BENEFICIARY, 'proposeObligation', rec, obl);
+  run(recSecret, 'acceptObligation', obl, C.commit(BENEFICIARY));
+};
+const discharge = (rec, obl) => run(BENEFICIARY, 'discharge', rec, obl);
+
+// Four generations: G0 → G1 → G2 → G3, each edge proposed by the child and
+// confirmed by the parent.
+const genSec = ['g0-landrace', 'g1-selection', 'g2-backcross', 'g3-production'].map(sec);
+const gen = genSec.map((s) => C.commit(s));
+for (let i = 1; i < gen.length; i++) {
+  run(genSec[i], 'proposeParent', gen[i - 1]);
+  run(genSec[i - 1], 'confirmParent', gen[i]);
+}
+check('three edges confirmed on chain', state().descentSeq === 3n);
+console.log('four generations, three confirmed edges\n');
 
 check('a fresh lineage is clean at every generation', lineageClean(gen));
 
 // Encumber the root ancestor.
-const obl = C.commit(secret('breeder-share'));
-tree.encumber(gen[0], obl, BENEFICIARY);
+const obl = sec('breeder-share');
+encumber(gen[0], genSec[0], obl);
 
 check('the encumbered ancestor itself is blocked', !clean(gen[0]));
 check('generation 3 is blocked through three levels of descent', !lineageClean(gen));
-check('generation 3 own slot still reads clean in isolation', clean(gen[3]));
+check('generation 3 own record still reads clean in isolation', clean(gen[3]));
 console.log('   ↑ this is why a per-record check is not enough — descent must be walked\n');
 
 // An unrelated lineage must be unaffected.
-const other = ['x0-unrelated', 'x1-unrelated'].map((n) => C.commit(secret(n)));
+const other = ['x0-unrelated', 'x1-unrelated'].map((n) => C.commit(sec(n)));
 check('an unrelated lineage stays clean', lineageClean(other));
 
 // Discharge restores the whole line.
-tree.discharge(gen[0], obl, BENEFICIARY);
+discharge(gen[0], obl);
 check('discharging the ancestor clears every descendant', lineageClean(gen));
-check('the registry returns to the empty root', hex(tree.root()) === hex(EMPTY_ROOT));
+check('the registry returns to empty',
+  state().openObligations.isEmpty() && state().obligationCountOf.isEmpty() && state().pendingObligations.isEmpty());
 
 // Two obligations at different depths.
-const o1 = C.commit(secret('share-a'));
-const o2 = C.commit(secret('share-b'));
-tree.encumber(gen[0], o1, BENEFICIARY);
-tree.encumber(gen[2], o2, BENEFICIARY);
+const o1 = sec('share-a');
+const o2 = sec('share-b');
+encumber(gen[0], genSec[0], o1);
+encumber(gen[2], genSec[2], o2);
 check('two obligations at different depths both block', !lineageClean(gen));
-tree.discharge(gen[0], o1, BENEFICIARY);
-// Named "clearing only the deeper one" while it discharged gen[0], the founding
-// ancestor, and left gen[2] outstanding — the shallower of the two in descent
-// terms. The name now says which one is actually cleared.
+discharge(gen[0], o1);
 check('clearing the founding ancestor alone leaves the line blocked', !lineageClean(gen));
-tree.discharge(gen[2], o2, BENEFICIARY);
+discharge(gen[2], o2);
 check('clearing both releases the line', lineageClean(gen));
 
 console.log(fails === 0 ? '\nAll generation tests passed.' : `\n${fails} FAILURES`);

@@ -9,6 +9,7 @@ import { CompiledVeilcore } from '../../contract/src/veilcore';
 import { type VeilcorePrivateState, createVeilcorePrivateState } from '../../contract/src/witnesses.js';
 import { deployContract, findDeployedContract } from '@midnight-ntwrk/midnight-js-contracts';
 import { assertDeploymentRecordCurrent } from './deploy-guard.js';
+import { retireMaintenanceAuthority } from './maintenance.js';
 import { type SigningKey } from '@midnight-ntwrk/midnight-js-protocol/compact-runtime';
 import { combineLatest, map, from, type Observable } from 'rxjs';
 import { toHex } from '@midnight-ntwrk/midnight-js-utils';
@@ -624,7 +625,7 @@ export class VeilcoreAPI implements DeployedVeilcoreAPI {
 
     logger?.info(
       signingKey === null
-        ? 'deployContract — NO maintenance authority, permanently non-upgradable'
+        ? 'deployContract — then retiring the maintenance authority (see maintenance.ts)'
         : 'deployContract — with the maintenance authority supplied',
     );
 
@@ -641,7 +642,21 @@ export class VeilcoreAPI implements DeployedVeilcoreAPI {
       },
     });
 
-    return new VeilcoreAPI(deployedVeilcoreContract, providers, logger);
+    const api = new VeilcoreAPI(deployedVeilcoreContract, providers, logger);
+    // `null` used to mean "omit the key", which midnight-js turns into a randomly
+    // sampled authority saved locally. Retire it so null means what it says.
+    if (signingKey === null) await api.retireMaintenanceAuthority();
+    return api;
+  }
+
+  /** Give up the maintenance authority permanently. See api/src/maintenance.ts. */
+  async retireMaintenanceAuthority(): Promise<void> {
+    await retireMaintenanceAuthority(
+      this.deployedContract,
+      this.providers.privateStateProvider,
+      this.deployedContractAddress,
+      this.logger,
+    );
   }
 
   static async join(

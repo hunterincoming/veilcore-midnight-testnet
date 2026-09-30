@@ -6,52 +6,60 @@
 // yet. This can.
 //
 // Two mechanisms, and both are necessary:
-//   the Merkle proof shows a claimed ancestor carries no obligation
+//   the clean proof shows a claimed ancestor carries no obligation
 //   the descent graph shows the claimed ancestor is the real one
 //
-// Runs the contract's real circuits, so every hash is what the chain computes.
+// Runs the contract's real circuits in the simulator, so every hash and every
+// refusal is what the chain computes.
 // SPDX-License-Identifier: Apache-2.0
 
-import { ObligationTree, EMPTY_ROOT } from './src/tree.mjs';
+import { createHash } from 'node:crypto';
 import { DescentGraph } from './src/descent.mjs';
-import { pureCircuits as C } from './src/managed/lineage/contract/index.js';
+import * as L from './src/managed/lineage/contract/index.js';
+import * as rt from '@midnight-ntwrk/compact-runtime';
 
-// Obligations name who is owed. The beneficiary is part of the leaf, so the
-// encumbered party cannot reconstruct it and release themselves — which is what
-// made an obligation a note-to-self before.
-const BENEFICIARY = C.commit(new Uint8Array(32).fill(0xBE));
-
+const C = L.pureCircuits;
+const COIN = '0'.repeat(64);
+const sec = (s) => createHash('sha256').update(s).digest();
 const hex = (u) => Buffer.from(u).toString('hex');
 const short = (u) => hex(u).slice(0, 16) + '…';
-const secret = (s) => { const a = new Uint8Array(32); for (let i=0;i<s.length&&i<32;i++) a[i]=s.charCodeAt(i); a[31]=s.length; return a; };
 const line = (s = '') => console.log(s);
 const rule = () => line('─'.repeat(74));
 
-const tree = new ObligationTree();
-const graph = new DescentGraph();
+// The chain.
+const party = (own) => new L.Contract({ localGeneticSecret: (c) => [c.privateState, own] });
+let ctx = rt.createCircuitContext(rt.sampleContractAddress(), COIN,
+  party(sec('deployer')).initialState(rt.createConstructorContext({}, COIN)).currentContractState, {});
+const run = (who, circuit, ...args) => { ctx = party(who).impureCircuits[circuit](ctx, ...args).context; };
+const tryRun = (who, circuit, ...args) => { try { run(who, circuit, ...args); return ''; } catch (e) { return String(e?.message ?? e); } };
+const state = () => L.ledger(ctx.currentQueryContext.state);
 
-const merkleClean = (rec) => {
-  const d = C.slotBits(rec);
-  return hex(C.merkleRoot(new Uint8Array(32), tree.siblingsFor(d), d)) === hex(tree.root());
+// The buyer's view of descent, rebuilt from the edge cells the chain publishes.
+const graph = new DescentGraph();
+const confirmEdge = (childSecret, parentSecret) => {
+  run(childSecret, 'proposeParent', C.commit(parentSecret));
+  run(parentSecret, 'confirmParent', C.commit(childSecret));
+  const s = state();
+  graph.observe(s.lastDescentChild, s.lastDescentParent);
 };
+
+const BUYER = sec('buyer');
+const cleanProof = (rec) => tryRun(BUYER, 'proveAncestorClean', rec) === '';
 
 /**
  * A full verification: the chain must be genuine AND every link unencumbered.
  *
- * Omission used to be caught by comparing the claimed chain's LENGTH against
- * requiredChainLength. That could not work on a pedigree that branches — a cross
- * has a seed parent and a pollen parent, so a transitive ancestor count is not a
- * length any single valid chain can meet — and the buyer was still taking the
- * seller's word for which ancestors existed. verifyDescent walks the declared
- * graph itself and requires every ancestor it finds to have been proven clean.
+ * verifyDescent walks the confirmed graph itself and requires every ancestor it
+ * finds to have been proven clean, so the buyer is not taking the seller's word for
+ * which ancestors exist.
  */
 const verify = (record, claimedChain) => {
   const genuine = graph.verifyChain(record, claimedChain);
   if (!genuine.ok) return { ok: false, why: `ancestry rejected — ${genuine.reason}` };
-  if (!merkleClean(record)) return { ok: false, why: 'this record carries an unmet obligation' };
+  if (!cleanProof(record)) return { ok: false, why: 'this record carries an unmet obligation' };
   // The buyer clears the ancestors it has proofs for, then makes the graph prove
   // nothing was left out.
-  const provenClean = claimedChain.filter(merkleClean).map(hex);
+  const provenClean = claimedChain.filter(cleanProof).map(hex);
   const walked = graph.verifyDescent(record, provenClean);
   if (!walked.ok) return { ok: false, why: walked.reason };
   return { ok: true, ancestorsChecked: walked.ancestorsChecked };
@@ -61,29 +69,32 @@ const report = (label, r) => line(`   ${label.padEnd(34)} ${r.ok ? 'ACCEPTED' : 
 
 rule();
 line('VEILCORE — HERITABLE RIGHTS');
-line('Obligations that inherit through descent, proven without revealing lineage.');
+line('Obligations that inherit through descent, proven without revealing genetics or terms.');
 rule();
 line();
 
 line('1. A breeder holds a cultivar and licenses it with a royalty on offspring.');
-const mother = C.commit(secret('mother-gelato-41'));
-const daughter = C.commit(secret('daughter-tc-batch-114'));
-const stranger = C.commit(secret('unrelated-clean-record'));
-const royalty = C.commit(secret('royalty-8pct-to-breeder'));
+const MOTHER = sec('mother-gelato-41'), DAUGHTER = sec('daughter-tc-batch-114');
+const BREEDER = sec('breeder'), STRANGER = sec('unrelated-clean-record');
+const mother = C.commit(MOTHER);
+const daughter = C.commit(DAUGHTER);
+const stranger = C.commit(STRANGER);
+const royalty = sec('royalty-8pct-to-breeder');
 
 line(`   Mother     ${short(mother)}`);
 line(`   Daughter   ${short(daughter)}`);
-line(`   Registry   ${short(tree.root())}  (empty)`);
+line(`   Obligations in force: ${state().openObligations.size()}`);
 line();
 
-line('2. The lab propagates. The parent link is declared on chain.');
-graph.observe(daughter, mother);
-line(`   Descent edge  ${short(C.descentEdge(daughter, mother))}  (public, permanent)`);
+line('2. The lab propagates. The daughter proposes the parent link; the mother confirms.');
+confirmEdge(DAUGHTER, MOTHER);
+line(`   Descent edge  ${short(state().lastDescent)}  (public, permanent)`);
 line();
 
-line('3. The royalty is attached to the mother.');
-const e = tree.encumber(mother, royalty, BENEFICIARY);
-line(`   Root  ${short(e.oldRoot)}  →  ${short(e.newRoot)}`);
+line('3. The breeder proposes the royalty against the mother; her holder accepts it.');
+run(BREEDER, 'proposeObligation', mother, royalty);
+run(MOTHER, 'acceptObligation', royalty, C.commit(BREEDER));
+line(`   Obligations in force: ${state().openObligations.size()}  (owed to ${short(state().lastBeneficiary)})`);
 line();
 
 line('4. A buyer asks the daughter to prove clean descent.');
@@ -94,18 +105,19 @@ line();
 
 line('5. The seller tries to route around it by naming a clean stranger as parent.');
 report('spoofed ancestry', verify(daughter, [stranger]));
-line('   The Merkle proof for the stranger would have verified — the descent graph');
-line('   is what catches this. Neither mechanism is sufficient alone.');
+line('   The clean proof for the stranger would have verified — the descent graph');
+line('   is what catches this, and the stranger never confirmed an edge to it.');
+line('   Neither mechanism is sufficient alone.');
 line();
 
 line('6. The seller tries omitting the ancestry entirely.');
 report('empty claim', verify(daughter, []));
 line();
 
-line('7. The royalty is paid and the obligation discharged.');
-const d = tree.discharge(mother, royalty, BENEFICIARY);
-line(`   Root  ${short(d.oldRoot)}  →  ${short(d.newRoot)}`);
-line(`   Back to empty: ${hex(d.newRoot) === hex(EMPTY_ROOT) ? 'yes' : 'no'}`);
+line('7. The royalty is paid and the breeder discharges the obligation.');
+line(`   The holder cannot do it: ${tryRun(MOTHER, 'discharge', mother, royalty) ? 'refused' : 'ALLOWED'}`);
+run(BREEDER, 'discharge', mother, royalty);
+line(`   Back to empty: ${state().openObligations.isEmpty() && state().obligationCountOf.isEmpty() ? 'yes' : 'no'}`);
 line();
 report('honest claim, obligation cleared', verify(daughter, [mother]));
 line();
@@ -117,15 +129,19 @@ line();
 line('WHAT WAS NEVER DISCLOSED');
 line('  · the genetics — no sequence data exists anywhere in this system');
 line('  · the terms — the royalty is a commitment, never a value');
-line('  · the depth — every proof costs the same regardless of generations');
+line('  · the secrets — every party acts under a secret only its commitment reveals');
 line();
-line('WHAT IS DISCLOSED, AND WAS LISTED HERE AS PRIVATE');
-line('  · which ancestor was cleared. proveAncestorClean discloses it, deliberately:');
-line('    a proof whose subject is hidden is a proof a verifier cannot join to a');
-line('    descent edge, and any clean commitment would satisfy it. A commitment is');
-line('    a hash, so what it costs is correlation, not genetics.');
+line('WHAT IS DISCLOSED');
+line('  · which ancestor was cleared, and by whom. A proof whose subject is hidden');
+line('    is a proof a verifier cannot join to a descent edge. A commitment is a hash,');
+line('    so what it costs is correlation, not genetics.');
+line('  · both ends of every confirmed edge, and the record, obligation commitment');
+line('    and beneficiary of every accepted or discharged obligation — so anyone can');
+line('    rebuild the graph and the obligation set without the registry.');
 line();
 line('WHAT THE CHAIN HOLDS');
-line('  · four counters and one 32-byte root — state does not grow with usage');
-line(`  · current root  ${hex(tree.root()).slice(0, 32)}…`);
+line('  · four counters and the last event\'s cells');
+line('  · open proposals and obligations in force — bounded by open business, not by');
+line('    usage: every entry is removed by the circuit that ends it');
+line(`  · right now: ${state().openObligations.size()} open, ${state().pendingObligations.size()} proposed, ${state().pendingParentOf.size()} parentage offers pending`);
 rule();

@@ -13,7 +13,6 @@ import { createHash } from 'node:crypto';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const L = await import(pathToFileURL(path.join(here, 'src/managed/lineage/contract/index.js')).href);
 const V = await import(pathToFileURL(path.join(here, 'src/managed/veilcore/contract/index.js')).href);
-const tree = await import(pathToFileURL(path.join(here, 'src/tree.mjs')).href);
 const rt = await import('@midnight-ntwrk/compact-runtime');
 
 let bad = 0;
@@ -22,73 +21,60 @@ const note = (s) => console.log(`     ${s}`);
 const hex = (b) => Buffer.from(b).toString('hex');
 const COIN = '0'.repeat(64);
 
-// ── finding 1: the tree deploys usable ──────────────────────────────────────
-console.log('\n== 1. does lineage deploy with a live tree? ==');
+// ── finding 1: obligations work on a fresh deployment ───────────────────────
+console.log('\n== 1. can an obligation be put in force on a freshly deployed contract? ==');
 {
   const secret = createHash('sha256').update('holder').digest();
   const benSecret = createHash('sha256').update('beneficiary').digest();
-  const t = new tree.ObligationTree();
   const rec = V.pureCircuits.commit(secret);
   const obl = createHash('sha256').update('royalty').digest();
-  // An obligation names who is owed, so the leaf — and therefore the path — is a
-  // function of the beneficiary as well. Building the path without one produced a
-  // leaf the circuit would never compute.
+  // An obligation names who is owed, and only they can release it.
   const ben = L.pureCircuits.commit(benSecret);
-  const p = t.encumber(rec, obl, ben);
 
-  const contract = new L.Contract({
-    localGeneticSecret: (c) => [c.privateState, secret],
-    beneficiarySecret: (c) => [c.privateState, benSecret],
-    // Read only by proveAncestorClean, which this section does not call; supplied
-    // because a missing witness stops the Contract being constructed at all.
-    slotIsEmpty: (c) => [c.privateState, true],
-    slotOccupantRecord: (c) => [c.privateState, new Uint8Array(32)],
-    slotOccupantObligation: (c) => [c.privateState, new Uint8Array(32)],
-    slotOccupantBeneficiary: (c) => [c.privateState, new Uint8Array(32)],
-    merkleSiblings: (c) => [c.privateState, p.siblings],
-    merkleDirections: (c) => [c.privateState, p.dirs],
-    ancestryChain: (c) => [c.privateState, [rec, rec, rec, rec]],
-  });
+  const holder = new L.Contract({ localGeneticSecret: (c) => [c.privateState, secret] });
+  const beneficiary = new L.Contract({ localGeneticSecret: (c) => [c.privateState, benSecret] });
 
-  const ctor = contract.initialState(rt.createConstructorContext({}, COIN));
-  const state = L.ledger(ctor.currentContractState.data);
-  note(`deployed root : ${hex(state.encumberedRoot).slice(0, 32)}…`);
-  note(`empty tree    : ${hex(tree.EMPTY_ROOT).slice(0, 32)}…`);
-  ok('the deployed root is the empty tree root',
-     hex(state.encumberedRoot) === hex(tree.EMPTY_ROOT),
-     'it deploys to a value no fold can produce, so nothing can ever succeed');
+  // Removed: "the deployed root is the empty tree root" — there is no root; the obligation sets deploy empty.
+  const ctor = holder.initialState(rt.createConstructorContext({}, COIN));
+  const deployed = L.ledger(ctor.currentContractState.data);
+  ok('the obligation sets deploy empty',
+     deployed.openObligations.isEmpty() && deployed.pendingObligations.isEmpty() && deployed.obligationCountOf.isEmpty());
 
-  // The thing that has never worked.
+  // The thing that had never worked: an obligation reaching the chain at all. It is
+  // two transactions now — the beneficiary proposes, the holder accepts.
   const ctx = rt.createCircuitContext(rt.sampleContractAddress(), COIN, ctor.currentContractState, {});
   let err = '';
   let after = null;
   try {
-    const r = contract.impureCircuits.encumber(ctx, rec, obl);
-    after = L.ledger(r.context.currentQueryContext.state);
+    const r1 = beneficiary.impureCircuits.proposeObligation(ctx, rec, obl);
+    const r2 = holder.impureCircuits.acceptObligation(r1.context, obl, ben);
+    after = L.ledger(r2.context.currentQueryContext.state);
   } catch (e) { err = String(e?.message ?? e); }
 
-  if (err) note(`encumber refused: ${err}`);
-  ok('encumber succeeds against a freshly deployed contract', err === '',
-     'this call has never succeeded in any deployment of this contract');
+  if (err) note(`propose/accept refused: ${err}`);
+  ok('an obligation is put in force against a freshly deployed contract', err === '',
+     'this call had never succeeded in any deployment of this contract');
 
   if (after) {
-    note(`root moved to : ${hex(after.encumberedRoot).slice(0, 32)}…`);
-    ok('the root changed', hex(after.encumberedRoot) !== hex(tree.EMPTY_ROOT));
+    // Removed: "the root changed" — there is no root; the check below is what an obligation in force now looks like.
+    ok('the obligation is in force',
+       after.openObligations.member(L.pureCircuits.obligationKey(rec, obl, ben)) &&
+       after.obligationCountOf.lookup(rec) === 1n);
 
     // ── finding 2, lineage side ───────────────────────────────────────────
-    console.log('\n== 2a. can a third party rebuild the tree from chain state? ==');
-    note(`lastEncumberedRecord: ${hex(after.lastEncumberedRecord).slice(0, 24)}…`);
+    console.log('\n== 2a. can a third party rebuild the obligation set from chain state? ==');
+    note(`lastObligationRecord: ${hex(after.lastObligationRecord).slice(0, 24)}…`);
     note(`lastObligation      : ${hex(after.lastObligation).slice(0, 24)}…`);
     ok('the encumbered record is on chain',
-       hex(after.lastEncumberedRecord) === hex(rec),
-       'only the root was published, so nobody could tell which record was encumbered');
+       hex(after.lastObligationRecord) === hex(rec),
+       'if only a digest were published, nobody could tell which record was encumbered');
     ok('the obligation is on chain',
        hex(after.lastObligation) === hex(obl),
-       'without the leaf inputs a third party cannot rebuild a sibling path');
+       'without the key inputs a third party cannot rebuild the set or check a discharge');
     ok('the beneficiary is on chain',
        hex(after.lastBeneficiary) === hex(ben),
-       'the leaf is a function of the beneficiary too, so without it no sibling path\n' +
-       '     can be reconstructed and no discharge verified');
+       'the key is a function of the beneficiary too, so without it no one can say\n' +
+       '     who may release the obligation or verify that a discharge was theirs');
   }
 }
 
@@ -102,33 +88,13 @@ console.log('\n== 2b. can a third party enumerate a parent? ==');
   // the chain once that holder confirms it under their own secret.
   const parent = L.pureCircuits.commit(parentSecret);
 
-  const contract = new L.Contract({
-    localGeneticSecret: (c) => [c.privateState, secret],
-    beneficiarySecret: (c) => [c.privateState, secret],
-    slotIsEmpty: (c) => [c.privateState, true],
-    slotOccupantRecord: (c) => [c.privateState, new Uint8Array(32)],
-    slotOccupantObligation: (c) => [c.privateState, new Uint8Array(32)],
-    slotOccupantBeneficiary: (c) => [c.privateState, new Uint8Array(32)],
-    merkleSiblings: (c) => [c.privateState, []],
-    merkleDirections: (c) => [c.privateState, []],
-    ancestryChain: (c) => [c.privateState, [child, child, child, child]],
-  });
-  const parentContract = new L.Contract({
-    localGeneticSecret: (c) => [c.privateState, parentSecret],
-    beneficiarySecret: (c) => [c.privateState, parentSecret],
-    slotIsEmpty: (c) => [c.privateState, true],
-    slotOccupantRecord: (c) => [c.privateState, new Uint8Array(32)],
-    slotOccupantObligation: (c) => [c.privateState, new Uint8Array(32)],
-    slotOccupantBeneficiary: (c) => [c.privateState, new Uint8Array(32)],
-    merkleSiblings: (c) => [c.privateState, []],
-    merkleDirections: (c) => [c.privateState, []],
-    ancestryChain: (c) => [c.privateState, [child, child, child, child]],
-  });
+  const contract = new L.Contract({ localGeneticSecret: (c) => [c.privateState, secret] });
+  const parentContract = new L.Contract({ localGeneticSecret: (c) => [c.privateState, parentSecret] });
 
   const ctor = contract.initialState(rt.createConstructorContext({}, COIN));
   let ctx = rt.createCircuitContext(rt.sampleContractAddress(), COIN, ctor.currentContractState, {});
-  ctx = contract.impureCircuits.proposeParent(ctx, child, parent).context;
-  const r = parentContract.impureCircuits.confirmParent(ctx, child, parent);
+  ctx = contract.impureCircuits.proposeParent(ctx, parent).context;
+  const r = parentContract.impureCircuits.confirmParent(ctx, child);
   const st = L.ledger(r.context.currentQueryContext.state);
 
   note(`lastDescentChild : ${hex(st.lastDescentChild).slice(0, 24)}…`);

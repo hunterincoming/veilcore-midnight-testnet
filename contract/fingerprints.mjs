@@ -1,7 +1,7 @@
 // Prints the SHA-256 of every proving and verifying key, for the deployment record.
 //
 // Run AFTER a full `npm run compact` (not --skip-zk, which produces no keys). A
-// reviewer reproduces these by checking out the same commit, running the same two
+// reviewer reproduces these by checking out the same commit, running the same
 // commands, and comparing. Also writes docs/fingerprints.md so the table is committed
 // next to the source it describes.
 //
@@ -20,11 +20,14 @@ try { commit = execSync('git rev-parse --short HEAD', { cwd: here }).toString().
 
 const out = [`# Key fingerprints`, ``, `Commit \`${commit}\`, built with \`npm run compact\`.`, ``];
 let missing = false;
-for (const contract of ['veilcore', 'lineage']) {
+for (const contract of ['veilcore']) {
   const dir = path.join(here, 'src', 'managed', contract, 'keys');
   out.push(`## ${contract}`, '', '| Artefact | SHA-256 |', '|---|---|');
   const files = existsSync(dir) ? readdirSync(dir).filter((f) => /\.(prover|verifier)$/.test(f)).sort() : [];
+  const circuits = existsSync(path.join(here, 'src', 'managed', contract, 'zkir'))
+    ? readdirSync(path.join(here, 'src', 'managed', contract, 'zkir')).filter((f) => f.endsWith('.zkir')).length : 0;
   if (files.length === 0) { missing = true; out.push('| (no keys — run a full `npm run compact` first) | |'); }
+  else if (files.length !== 2 * circuits) { missing = true; out.push(`| (expected ${2 * circuits} keys for ${circuits} circuits, found ${files.length}) | |`); }
   for (const f of files) {
     const full = path.join(dir, f);
     if (readFileSync(full).length === 0) { missing = true; out.push(`| \`keys/${f}\` | EMPTY — the build did not finish |`); continue; }

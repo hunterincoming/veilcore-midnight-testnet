@@ -1,0 +1,81 @@
+{
+  "protocolVersion": 1,
+  "hash": "SHA-256 over the concatenation of 32-byte elements: first the tag (UTF-8, right-padded with zero bytes to 32), then each input in order. Identical to Compact persistentHash<Vector<n, Bytes<32>>> for these types.",
+  "inputs": {
+    "s1": "d2917839602d04dcdd9f570d7acd471e4433bb91b17edb6f51904ef8a2b0d16a",
+    "s2": "18bc28bc2feb83c05c28cc04bdda0aab7d88f668c329f7c8ae19574a79c67e8e",
+    "s3": "1c2a98a182af6fee2dece33938396d45bd76b72c869ef8f4af6b8af975be02b1",
+    "zero": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "vectors": [
+    {
+      "circuit": "commit",
+      "tag": "veilcore:v1:commit",
+      "args": [
+        "s1"
+      ],
+      "out": "80ffc834e847d281ceba9a196e5643e68bbd9951b81cc81892035b5bd748930b"
+    },
+    {
+      "circuit": "commit",
+      "tag": "veilcore:v1:commit",
+      "args": [
+        "zero"
+      ],
+      "out": "ee1f2db06b290ce047a8e47b0488f414abd63ea18bc941d26010cdbea4b6a7a3"
+    },
+    {
+      "circuit": "recoveryCommit",
+      "tag": "veilcore:v1:recover",
+      "args": [
+        "s3"
+      ],
+      "out": "9adeb22d7e8e1ebc6963df120c7c4734a78cfeedc0a84422e9994a2b54fc677a"
+    },
+    {
+      "circuit": "recoveryCommit",
+      "tag": "veilcore:v1:recover",
+      "args": [
+        "zero"
+      ],
+      "out": "5051b39f700982cac3f9d64e5831a970ee913e3c90b4c98518915afb1218765e"
+    },
+    {
+      "circuit": "licenseCommit",
+      "tag": "veilcore:v1:license",
+      "args": [
+        "s2",
+        "commit(s1)"
+      ],
+      "out": "69fcd56a3e631b583f8c2606e7830564d31e9bd4fbc068fcb6a45b6f6657fa14"
+    },
+    {
+      "circuit": "licenseKey",
+      "tag": "veilcore:v1:lickey",
+      "args": [
+        "licenseCommit(s2, commit(s1))",
+        "commit(s1)"
+      ],
+      "out": "dee0f5e0fcea41b6f4ed6425e0ec843e66eb6a2a7997072c309d2dc27f19ea1a"
+    },
+    {
+      "circuit": "presentationTag",
+      "tag": "veilcore:v1:present",
+      "args": [
+        "commit(s1)",
+        "s3"
+      ],
+      "out": "9eacaafea49aed209849093ec0cdda489da2b9826fd9c9704e5663013462fcdb"
+    },
+    {
+      "circuit": "obligationKey",
+      "tag": "veilcore:v1:obligation",
+      "args": [
+        "commit(s1)",
+        "s2",
+        "commit(s3)"
+      ],
+      "out": "a81042757459e8b0e14612cbd10ed18a9b7c3c9b354005145bb84d286ba000c8"
+    }
+  ]
+}

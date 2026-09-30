@@ -1,5 +1,10 @@
 # VeilCore contract: attack pass, 30 Sep 2026
 
+> **Note, 30 Sep (round 4).** The contracts were merged into one, `veilcore.compact`, and
+> the hand-rolled test scripts named below (`attack-30sep.mjs`, `attack-lineage-30sep.mjs`,
+> `verify-max-*.mjs`) were replaced by the Vitest suites in `contract/src/test/`, which
+> cover every attack listed here. See round 4 at the end.
+
 **Scope:** `contract/src/veilcore.compact` at f652ae2 (the contract going to preprod and then mainnet), its witnesses, and the CLI that deploys it.
 **Out of scope for now:** `lineage.compact`, which gets its own deployment and its own pass later.
 
@@ -242,3 +247,29 @@ A fresh reviewer attacked the fixed build and found **no critical or high issues
 | L2 | The revoke comment overclaimed. A licensee can make one revoke of a pending licence fail by countersigning first. | **Comment corrected.** It can't be repeated. |
 | — | The deploy comment said "empty committee". | **Corrected.** |
 | — | Rotating into an unanchored record that has issued licences merges them into the mover's identity. | **Documented.** The mover holds that record's secret, so it's the same person. |
+
+
+---
+
+# Round 4: third independent review, at the "standards body" bar (30 Sep, morning)
+
+A fresh reviewer, told to review as a senior Midnight engineer and a standards body
+would, attacked the fixed build and the registry service. Every finding below was
+confirmed before it was fixed.
+
+| # | Finding | Fix |
+|---|---|---|
+| 1 | **Lineage could not cope with rotation or recovery.** It knew parties only by raw commitment. A beneficiary who rotated or recovered could never release what they were owed; a holder who rotated passed a clean check. State layout made it unpatchable after deploy. | **Merged lineage into `veilcore.compact`, keyed by identity (origin).** Only anchored identities take part, so an encumbered identity cannot be merged into another. Tests: `lineage.test.ts`, "obligations survive rotation and recovery". |
+| 2 | **Anyone could cancel every licence presentation in flight,** once per block, by revoking a throwaway licence of their own: every revocation reset the tree's history. | **Revocation no longer resets history.** `sealRevocations` does, at most once per 600 s and only when something is waiting. A seal keeps the current root, so it only cancels presentations proved against an older one. Tests: `licences.test.ts`, "revocation and sealing". |
+| 3 | **The registry's lineage answers were not backed by the chain,** and its header said they were. | Responses labelled registry-attested; header corrected (veilcore-api repo). The contract now holds the pedigree in state (`parentsOf`), and `verify.ts` checks lineage from chain state alone. |
+| 4 | **The deploy prompt defaulted to retiring the maintenance authority,** making any flaw permanent. | Defaults to keep; retiring needs typing RETIRE. Governance statement in `design.md`. |
+| 5 | A recovery secret stayed in private state if the transaction failed. | Cleared in `finally`, as are the incoming and challenge secrets. |
+| 6 | A mempool watcher could take a licensee's slot first. | The client retries with a new random slot. |
+| 7 | No versioning, no test vectors, no normative verifier spec. | Tags are `veilcore:v1:*`; `protocolVersion` is on chain; `contract/vectors/v1.json` is checked against the contract and against plain SHA-256; "Verifier rules" in `design.md` are normative. |
+| 9 | Licences a thief issued before recovery stay pending. | Documented under "Known limits". |
+| — | `assertLive` and `licenseStatus` were public circuits for no reason (the second leaked what was looked up). `proveAncestorClean` proved a public fact. | Removed. 23 circuits. |
+| — | Stale comments, changelog-style headers, 19 ad-hoc test scripts, typing gaps, a broken `prepack`, a CLI that turned mistyped hex into wrong bytes. | Cleaned up. Tests are Vitest with a simulator, as in Midnight's examples. The CLI refuses anything but 64 hex characters. |
+
+Not changed: finding 8 (anyone holding a record's body can store a copy in the registry
+and make its holder ambiguous there). It affects the registry service only, not the
+contract, and is tracked for the registry.

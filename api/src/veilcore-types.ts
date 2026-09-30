@@ -1,4 +1,4 @@
-// Veilcore common types. Mirrors ./common-types.ts (bboard) for the veilcore contract.
+// Types for the VeilCore contract client.
 // SPDX-License-Identifier: Apache-2.0
 
 import { type MidnightProviders } from '@midnight-ntwrk/midnight-js-types';
@@ -25,18 +25,15 @@ export type VeilcoreProviders = MidnightProviders<VeilcoreCircuitKeys, VeilcoreP
 /** A {@link VeilcoreContract} that has been deployed to the network. */
 export type DeployedVeilcoreContract = FoundContract<VeilcoreContract>;
 
-/** A single anchored strain: its commitment (hex) and logical timestamp. */
-export type AnchoredStrain = {
-  readonly commitment: string;
-  readonly timestamp: bigint;
-};
-
-/** Derived state combining the public ledger with this DApp's private state. */
+/** Derived state combining the public ledger with this client's private state. */
 export type VeilcoreDerivedState = {
   readonly anchorCount: bigint;
-  readonly anchors: readonly AnchoredStrain[];
-  /** Hex of commit(geneticSecret) for this wallet's private strain. */
+  /** Hex of commit(geneticSecret): the record this client acts as. */
   readonly myCommitment: string;
-  /** Whether this wallet's own commitment is anchored on-chain. */
-  readonly iOwnAnchor: boolean;
+  /** Hex of the identity (origin) that record belongs to. */
+  readonly myIdentity: string;
+  /** Whether that identity is anchored. */
+  readonly iAmAnchored: boolean;
+  /** Whether this client's record is its identity's current head. */
+  readonly iAmLive: boolean;
 };

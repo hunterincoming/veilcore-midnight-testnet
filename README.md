@@ -26,8 +26,8 @@ This is the application — the contract, the API, the CLI and the web app.
 The record format itself is a separate, open specification with independent implementations in TypeScript, Python and Rust: **[veilcore-sdk](https://github.com/hunterincoming/veilcore-sdk)**. Verification needs SHA-256 and nothing from this repository or from us.
 
 ```
-contract/     # Compact contracts (veilcore.compact, lineage.compact) + generated bindings
-api/          # VeilcoreAPI and lineage API — deploy, anchor, licence lifecycle
+contract/     # The Compact contract (veilcore.compact), verifier rules (verify.ts), tests, hash vectors
+api/          # VeilcoreAPI: records, licences and lineage from a client
 bboard-cli/   # CLI for wallet sync and deployment
 bboard-ui/    # The web app — React + Vite
 ```
@@ -57,8 +57,8 @@ curl --proto '=https' --tlsv1.2 -LsSf \
 # open a new terminal, then:
 compact update
 
-# 2. Compile the contracts (generates contract/src/managed/)
-cd contract && npm run compact
+# 2. Compile the contract (generates contract/src/managed/) and run its tests
+cd contract && npm run compact && npm test
 
 # 3. Build in order
 cd contract && npm run build
@@ -68,23 +68,26 @@ cd ../bboard-ui && npm run build
 
 ## Current status
 
-**The contract is deployed on preprod and has been independently attacked.**
+**One contract, `contract/src/veilcore.compact`, protocol version 1, going to mainnet.**
+It covers records, licences and lineage in 23 circuits. The design, the normative
+verifier rules and the trust model are in [`docs/design.md`](docs/design.md).
 
-`fb9c55944908c466dcea7b9807f00ea727b37cebec13870080016ddc5a9d721d` — twelve circuits covering anchoring, DNA pairing, the licence lifecycle and assignment.
+It has been through four adversarial passes, the last three on 30 September 2026, two of
+them by reviewers who had not seen the fixes. Every finding was first confirmed as a
+working attack, then fixed, and each attack is a regression test
+(`cd contract && npm test`). The history is in
+[`docs/security-pass-30sep.md`](docs/security-pass-30sep.md). These were adversarial
+reviews, not a formal security audit, and we do not call them one.
 
-**The source in this repository is ahead of that deployment.** Going through Midnight's security guide before mainnet, `proveOwnership` and `pairDna` computed their commitments into locals that were never written to the ledger, which raised the question of whether a verifier could reach the value at all. The compiled IR settles it: the commitment is hashed in-circuit over the `veilcore:commit` domain separator and declared as a public input to the proof, so it is bound to the transaction and visible to anyone verifying it. Reading it meant parsing proof internals, so both circuits now return it and the API hands it back with the transaction hash. Same guarantee, reachable without a ZKIR dump. A key-rotation circuit was added, because a witness secret cannot be recovered from the chain and a holder who lost theirs had no remedy. That makes thirteen circuits, and the deployed address above predates all of it.
+Every hash the contract uses is plain SHA-256 over a tag and its inputs, with published
+test vectors (`contract/vectors/v1.json`), so a verifier can check them in any language.
 
-An outside developer compiled it, deployed it, and replayed every call as an attacker. Four authorisation gaps were found and fixed. A fifth, found on a subsequent read-through, was in transfer: reassigning a holder field moved nothing, because a licence's identity is the secret behind its commitment and a secret cannot be un-known — the outgoing party kept every power they had. Transfer was rewritten as assignment: the old licence ends and a new one begins under a commitment the incoming party generated.
+**The web app runs real hashing against simulated settlement** until it is pointed at a
+deployed contract. The CLI in `bboard-cli/` talks to a deployed contract, and its preprod
+smoke test runs every flow with real proofs.
 
-All of it is kept as regression tests in `contract/test-contract.mjs`, which `npm test` runs.
-
-That was an adversarial review, not a formal security audit. We will not call it one.
-
-**The web app runs real hashing against simulated settlement.** Commitment hashing and the `commit` circuit run genuinely, in the browser. Nothing the app does is submitted to a live network yet, and every screen where that matters says so. The CLI in `bboard-cli/` is what talks to a deployed contract.
-
-**Nothing is deployed to mainnet.**
-
-**MPS-0037**, the proposal for obligations that inherit through descent, is merged into Midnight's standards repository.
+**MPS-0037**, the proposal for obligations that inherit through descent, is merged into
+Midnight's standards repository.
 
 ## What VeilCore does not claim
 

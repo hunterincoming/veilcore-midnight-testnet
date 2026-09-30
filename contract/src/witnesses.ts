@@ -13,14 +13,13 @@
 // limitations under the License.
 
 /*
- * Private state and witness functions for the VeilCore and lineage contracts.
+ * Private state and witness functions for the VeilCore contract.
  */
 
 import {
   Ledger as VeilcoreLedger,
   pureCircuits as veilcorePureCircuits,
 } from "./managed/veilcore/contract/index.js";
-import { Ledger as LineageLedger } from "./managed/lineage/contract/index.js";
 import {
   WitnessContext,
   type MerkleTreePath,
@@ -165,33 +164,5 @@ export const veilcoreWitnesses = {
   }: VC): [VeilcorePrivateState, Uint8Array] => [
     privateState,
     privateState.presentationChallenge,
-  ],
-};
-
-/* **********************************************************************
- * Lineage private state.
- *
- * One secret. Since the 30 Sep security pass the lineage contract derives every
- * caller — child, parent, record holder, beneficiary — from the caller's own
- * record secret, and keeps obligations in sets rather than a Merkle tree, so there
- * are no paths, slots or occupants to supply.
- */
-
-export type LineagePrivateState = {
-  readonly geneticSecret: Uint8Array;
-};
-
-export const createLineagePrivateState = (
-  geneticSecret: Uint8Array,
-): LineagePrivateState => ({ geneticSecret });
-
-type LC = WitnessContext<LineageLedger, LineagePrivateState>;
-
-export const lineageWitnesses = {
-  localGeneticSecret: ({
-    privateState,
-  }: LC): [LineagePrivateState, Uint8Array] => [
-    privateState,
-    privateState.geneticSecret,
   ],
 };

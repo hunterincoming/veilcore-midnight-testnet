@@ -1,26 +1,11 @@
-// This file is part of midnightntwrk/example-bboard.
-// Copyright (C) Midnight Foundation
 // SPDX-License-Identifier: Apache-2.0
-// Licensed under the Apache License, Version 2.0 (the "License");
-// You may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Wallet and network scaffolding adapted from midnightntwrk/example-bboard (Apache-2.0).
 //
-// http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// The VeilCore command-line client: deploy or join the contract, then act on records,
+// licences and lineage. Secrets are shown with showSecret (screen only, never logged).
 
-/*
- * Main driver for the Veilcore CLI: anchor a genetics commitment and prove
- * ownership of a previously-anchored strain in zero knowledge. The wallet /
- * sync / dust scaffolding is unchanged from the bboard example.
- */
-
+import { createHash } from 'node:crypto';
 import { createInterface, type Interface } from 'node:readline/promises';
-import path from 'node:path';
 import { stdin as input, stdout as output } from 'node:process';
 import { Buffer } from 'node:buffer';
 import { WebSocket } from 'ws';
@@ -29,23 +14,20 @@ import {
   type VeilcoreDerivedState,
   veilcorePrivateStateKey,
   type VeilcoreProviders,
-  type DeployedVeilcoreContract,
   type VeilcorePrivateStateId,
-  LineageAPI,
-  type LineageProviders,
-  type LineagePrivateStateId,
-  type LineageCircuitKeys,
+  type VeilcoreCircuitKeys,
+  type SealResult,
+  newPresentationChallenge,
 } from '../../api/src/index';
 import { type WalletFacade } from '@midnight-ntwrk/wallet-sdk-facade';
-import { ledger, type Ledger, pureCircuits } from '../../contract/src/managed/veilcore/contract/index.js';
+import { pureCircuits } from '../../contract/src/managed/veilcore/contract/index.js';
 import { NodeZkConfigProvider } from '@midnight-ntwrk/midnight-js-node-zk-config-provider';
 import { indexerPublicDataProvider } from '@midnight-ntwrk/midnight-js-indexer-public-data-provider';
 import { httpClientProofProvider } from '@midnight-ntwrk/midnight-js-http-client-proof-provider';
 import { type Logger } from 'pino';
 import { type Config, StandaloneConfig } from './config.js';
 import { levelPrivateStateProvider } from '@midnight-ntwrk/midnight-js-level-private-state-provider';
-import { type ContractAddress } from '@midnight-ntwrk/midnight-js-protocol/compact-runtime';
-import { assertIsContractAddress, toHex } from '@midnight-ntwrk/midnight-js-utils';
+import { toHex } from '@midnight-ntwrk/midnight-js-utils';
 import { sampleSigningKey } from '@midnight-ntwrk/midnight-js-protocol/compact-runtime';
 import { TestEnvironment } from '@midnight-ntwrk/testkit-js';
 import { MidnightWalletProvider } from './midnight-wallet-provider';
@@ -56,133 +38,125 @@ import { syncWallet, waitForUnshieldedFunds } from './wallet-utils';
 import { generateDust } from './generate-dust';
 import { runSmoke } from './smoke';
 import { getNetworkId } from '@midnight-ntwrk/midnight-js-network-id';
-import { type VeilcorePrivateState, type LineagePrivateState } from '../../contract/src/witnesses.js';
+import { type VeilcorePrivateState } from '../../contract/src/witnesses.js';
 
 // @ts-expect-error: It's needed to enable WebSocket usage through apollo
 globalThis.WebSocket = WebSocket;
 
-/* **********************************************************************
- * getVeilcoreLedgerState: queries the current ledger state (the anchored
- * commitments) for a specific veilcore contract.
- */
+const C = pureCircuits;
 
-export const getVeilcoreLedgerState = async (
-  providers: VeilcoreProviders,
-  contractAddress: ContractAddress,
-): Promise<Ledger | null> => {
-  assertIsContractAddress(contractAddress);
-  const contractState = await providers.publicDataProvider.queryContractState(contractAddress);
-  return contractState != null ? ledger(contractState.data) : null;
+/** 32 bytes from exactly 64 hex characters, or null. Anything else is a typo, not a value. */
+export const parse32 = (text: string): Uint8Array | null => {
+  const t = text.trim().replace(/^0x/, '').toLowerCase();
+  return /^[0-9a-f]{64}$/.test(t) ? new Uint8Array(Buffer.from(t, 'hex')) : null;
+};
+
+class InputError extends Error {}
+
+/** Ask for a 32-byte value in hex; refuses anything else. */
+const ask32 = async (rli: Interface, prompt: string): Promise<Uint8Array> => {
+  const v = parse32(await rli.question(prompt));
+  if (v === null) throw new InputError('That is not 64 hex characters (32 bytes). Nothing was sent.');
+  return v;
+};
+
+/** A 32-byte value, or blank for a default. */
+const ask32Or = async (rli: Interface, prompt: string, fallback: Uint8Array): Promise<Uint8Array> => {
+  const raw = (await rli.question(prompt)).trim();
+  if (raw === '') return fallback;
+  const v = parse32(raw);
+  if (v === null) throw new InputError('That is not 64 hex characters (32 bytes). Nothing was sent.');
+  return v;
+};
+
+/** Obligation terms: a 64-hex commitment as given, or any text, committed by SHA-256. */
+const askObligation = async (rli: Interface, logger: Logger): Promise<Uint8Array> => {
+  const raw = (await rli.question('Obligation: 64-hex commitment, or the terms as text: ')).trim();
+  const asHex = parse32(raw);
+  if (asHex !== null) return asHex;
+  if (raw === '') throw new InputError('An obligation cannot be empty.');
+  const c = new Uint8Array(createHash('sha256').update(raw, 'utf8').digest());
+  logger.info(`Obligation commitment (SHA-256 of the text): ${toHex(c)}`);
+  return c;
+};
+
+const mySecret = async (providers: VeilcoreProviders): Promise<Uint8Array> => {
+  const s = (await providers.privateStateProvider.get(veilcorePrivateStateKey))?.geneticSecret;
+  if (s === undefined) throw new InputError('No record secret in private state.');
+  return s;
+};
+
+const describeSeal = (r: SealResult, logger: Logger): void => {
+  if (r.sealed) logger.info('Sealed: presentations proved before this can no longer be used.');
+  else if (r.waiting && r.sealableAt !== undefined)
+    logger.info(
+      `Older presentations stay usable until the next seal, possible from ${new Date(r.sealableAt * 1000).toISOString()}. ` +
+        'Anyone can make it: choose "Seal waiting revocations" then.',
+    );
 };
 
 /* **********************************************************************
- * getGeneticSecret: reads this wallet's private genetic preimage from the
- * private state provider. The commitment to this secret is what gets anchored.
- */
-
-const getGeneticSecret = async (providers: VeilcoreProviders): Promise<Uint8Array | null> => {
-  const privateState = await providers.privateStateProvider.get(veilcorePrivateStateKey);
-  return privateState?.geneticSecret ?? null;
-};
-
-const hexToBytes = (hex: string): Uint8Array => new Uint8Array(Buffer.from(hex.replace(/^0x/, ''), 'hex'));
-
-/* **********************************************************************
- * deployOrJoin: deploy a new veilcore contract or join an existing one.
+ * Deploy or join.
  */
 
 const DEPLOY_OR_JOIN_QUESTION = `
-You can do one of the following:
-  1. Deploy a new Veilcore contract
-  2. Join an existing Veilcore contract
-  3. Deploy a new Lineage contract
+  1. Deploy a new VeilCore contract
+  2. Join an existing VeilCore contract
+  3. Run the full smoke test (preprod or preview only; deploys a fresh test contract)
   4. Exit
-  5. Run the full smoke test (preprod or preview only; deploys fresh test contracts)
 Which would you like to do? `;
 
-// Exported so the deploy branches can be driven without a wallet, an indexer and a
-// proof server. There is deliberately no mainnet Config — adding one is the reviewed
-// change the allowlist in deploy-guard.ts is there to force — so the only way to
-// exercise what this menu does on a refused network is to call it directly.
 /**
- * Ask whether a deployment keeps a maintenance authority.
- *
- * There is no such thing as deploying WITHOUT one through midnight-js: omit the key
- * and it samples one and saves it locally. So "no" means deploy, then retire the
- * authority straight away (api/src/maintenance.ts). This used to print "Deploying
- * with NO maintenance authority" over a deployment that had one.
+ * Keep the maintenance authority, or retire it. midnight-js always installs one, so
+ * "no" means deploy and then retire it (api/src/maintenance.ts). Keeping it is the
+ * default: it is the only way to repair a deployed contract, and it can be retired later.
  */
 const askMaintenanceAuthority = async (rli: Interface, logger: Logger): Promise<string | null> => {
-  logger.info(
-    'A maintenance authority can insert and remove verifier keys, so it can disable any circuit in this contract.',
-  );
-  logger.info('Without one the contract can never be changed or repaired, by anyone, including us.');
-  logger.info('Sealed records verify either way — verification is SHA-256 and needs nothing from a chain.');
-  const answer = (await rli.question('Keep a maintenance authority? (y/N): ')).trim().toLowerCase();
-  if (answer === 'y' || answer === 'yes') {
-    const key = (await rli.question('Signing key (blank to generate one): ')).trim() || sampleSigningKey();
-    showSecret('MAINTENANCE AUTHORITY SIGNING KEY:', key);
-    logger.info('Whoever holds it controls what the contract accepts. Keep it offline. Menu 19 retires it later.');
-    return key;
+  logger.info('The maintenance authority can add and remove verifier keys: it can repair, or disable, any circuit.');
+  logger.info('Retired, the contract can never be changed by anyone. Sealed records verify by SHA-256 either way.');
+  const answer = (await rli.question('Keep a maintenance authority? (Y/n): ')).trim().toLowerCase();
+  if (answer === 'n' || answer === 'no') {
+    const sure = (await rli.question('Retiring is permanent. Type RETIRE to confirm: ')).trim();
+    if (sure === 'RETIRE') {
+      logger.info('Deploying, then retiring the authority with a key that is never stored.');
+      return null;
+    }
+    logger.info('Not retired. Keeping the authority.');
   }
-  logger.info('Deploying, then retiring the authority with a key that is never stored. This cannot be undone.');
-  return null;
+  const key = (await rli.question('Signing key (blank to generate one): ')).trim() || sampleSigningKey();
+  showSecret('MAINTENANCE AUTHORITY SIGNING KEY — write it down now and keep it offline:', key);
+  return key;
 };
 
 export const deployOrJoin = async (
   providers: VeilcoreProviders,
-  lineageProviders: LineageProviders,
   rli: Interface,
   logger: Logger,
 ): Promise<VeilcoreAPI | null> => {
   while (true) {
-    const choice = await rli.question(DEPLOY_OR_JOIN_QUESTION);
+    const choice = (await rli.question(DEPLOY_OR_JOIN_QUESTION)).trim();
     switch (choice) {
       case '1': {
-        const signingKey = await askMaintenanceAuthority(rli, logger);
-        const api = await VeilcoreAPI.deploy(providers, signingKey, logger);
-        logger.info(`Deployed contract at address: ${api.deployedContractAddress}`);
+        const api = await VeilcoreAPI.deploy(providers, await askMaintenanceAuthority(rli, logger), logger);
+        logger.info(`Deployed VeilCore contract at address: ${api.deployedContractAddress}`);
         return api;
       }
       case '2': {
-        const api = await VeilcoreAPI.join(
-          providers,
-          await rli.question('What is the contract address (in hex)? '),
-          logger,
-        );
+        const api = await VeilcoreAPI.join(providers, (await rli.question('Contract address (hex): ')).trim(), logger);
         logger.info(`Joined contract at address: ${api.deployedContractAddress}`);
         return api;
       }
       case '3': {
-        // The second contract, on the same deployment-record gate as the first.
-        //
-        // Until this branch existed, `LineageAPI.deploy` was guarded and unreachable:
-        // nothing in either repository called it, so deploying lineage meant doing it
-        // by hand, which is how a guard gets bypassed without anyone deciding to. The
-        // registry service cannot deploy it — it has no wallet, no network id and no
-        // midnight-js-contracts — so this CLI is where the deploy belongs.
-        //
-        // It returns to the menu rather than becoming the session's contract: the rest
-        // of this loop drives veilcore, and lineage is deployed once and then used by
-        // the registry.
-        const api = await LineageAPI.deploy(lineageProviders, await askMaintenanceAuthority(rli, logger), logger);
-        logger.info(`Deployed lineage contract at address: ${api.deployedContractAddress}`);
-        continue;
-      }
-      case '4':
-        logger.info('Exiting...');
-        return null;
-      case '5': {
-        // Never on mainnet: it deploys throwaway contracts and spends DUST on them.
-        const network = getNetworkId();
-        if (network === 'mainnet') {
+        if (getNetworkId() === 'mainnet') {
           logger.error('The smoke test does not run on mainnet.');
           continue;
         }
-        const passed = await runSmoke(providers, lineageProviders, logger);
+        const passed = await runSmoke(providers, logger);
         logger.info(passed ? 'Smoke test passed.' : 'Smoke test FAILED — see above.');
         return null;
       }
+      case '4':
+        return null;
       default:
         logger.error(`Invalid choice: ${choice}`);
     }
@@ -190,432 +164,270 @@ export const deployOrJoin = async (
 };
 
 /* **********************************************************************
- * displayLedgerState: shows the anchored commitments (public, known to all).
- */
-
-const displayLedgerState = async (
-  providers: VeilcoreProviders,
-  deployedContract: DeployedVeilcoreContract,
-  logger: Logger,
-): Promise<void> => {
-  const contractAddress = deployedContract.deployTxData.public.contractAddress;
-  const ledgerState = await getVeilcoreLedgerState(providers, contractAddress);
-  if (ledgerState === null) {
-    logger.info(`There is no Veilcore contract deployed at ${contractAddress}`);
-    return;
-  }
-  // V2: anchoring writes no per-record ledger state. Anchors live in transaction
-  // history; the ledger holds only counters and the most recent commitment.
-  logger.info(`Total anchors: ${ledgerState.anchorSeq}`);
-  logger.info(`Total possession proofs: ${ledgerState.proofSeq}`);
-  logger.info(`Most recent commitment: ${toHex(ledgerState.lastAnchor)}`);
-};
-
-/* **********************************************************************
- * displayPrivateState: shows the hex of this wallet's genetic secret.
- */
-
-const displayPrivateState = async (providers: VeilcoreProviders, logger: Logger): Promise<void> => {
-  const geneticSecret = await getGeneticSecret(providers);
-  if (geneticSecret === null) {
-    logger.info(`There is no existing Veilcore private state`);
-  } else {
-    showSecret('YOUR GENETIC SECRET:', toHex(geneticSecret));
-    logger.info(`Your commitment is:     ${toHex(pureCircuits.commit(geneticSecret))}`);
-  }
-};
-
-/* **********************************************************************
- * displayDerivedState: combines ledger + private state to show whether this
- * wallet's own strain is anchored.
- */
-
-const displayDerivedState = (state: VeilcoreDerivedState | undefined, logger: Logger) => {
-  if (state === undefined) {
-    logger.info(`No Veilcore state currently available`);
-    return;
-  }
-  logger.info(`Total strains anchored: ${state.anchorCount}`);
-  logger.info(`Your commitment is:     ${state.myCommitment}`);
-  logger.info(`Your strain anchored:   ${state.iOwnAnchor ? 'yes' : 'no'}`);
-};
-
-/* **********************************************************************
- * mainLoop: the interactive Veilcore menu.
+ * The main menu.
  */
 
 const MAIN_LOOP_QUESTION = `
-You can do one of the following:
-  1. Anchor your strain (record its genetics commitment on-chain)
-  2. Prove ownership of an anchored strain (zero-knowledge)
-  3. Display the current ledger state (known by everyone)
-  4. Issue a licence against your record
-  5. Countersign a licence (as the licensee)
-  6. Revoke a licence you issued
-  7. Prove you hold an active licence
-  8. Display the current private state (known only to this DApp instance)
-  9. Display the current derived state (known only to this DApp instance)
-  10. Anchor a batch root (one transaction covers every record in the batch)
-  11. Propose transferring a licence to a new holder
-  12. Approve a proposed transfer (as the issuer)
-  13. Withdraw a proposed transfer
-  14. Rotate a record to a new secret
-  15. Exit
-  16. Make a licence secret and commitment (as the licensee)
-  17. Recover a record with its recovery secret
-  18. Replace a record's recovery secret
-  19. Retire this contract's maintenance authority (PERMANENT)
+ Records                                 Licences
+  1. Anchor your record                   7. Make a licence secret (as licensee)
+  2. Prove ownership                      8. Issue a licence
+  3. Pair a DNA report fingerprint        9. Countersign a licence (as licensee)
+  4. Rotate to a new secret              10. Prove you hold a licence
+  5. Recover with the recovery secret    11. Propose a transfer (as holder)
+  6. Replace the recovery secret         12. Approve a transfer (as issuer)
+                                         13. Withdraw a transfer proposal
+ Lineage                                 14. Revoke a licence
+ 16. Propose a parent (as child)         15. Seal waiting revocations
+ 17. Confirm a child (as parent)
+ 18. Withdraw your parent proposal       Other
+ 19. Place an obligation on your record  25. Anchor a batch root
+ 20. Propose an obligation (beneficiary) 26. Show the contract state
+ 21. Accept an obligation (as holder)    27. Show your record and identity
+ 22. Withdraw an obligation proposal     28. Show your record secret
+ 23. Release an obligation (beneficiary) 29. Retire the maintenance authority (PERMANENT)
+ 24. Check a record's lineage             0. Exit
 Which would you like to do? `;
 
-const mainLoop = async (
-  providers: VeilcoreProviders,
-  lineageProviders: LineageProviders,
-  rli: Interface,
-  logger: Logger,
-): Promise<void> => {
-  const veilcoreApi = await deployOrJoin(providers, lineageProviders, rli, logger);
-  if (veilcoreApi === null) {
-    return;
-  }
+const mainLoop = async (providers: VeilcoreProviders, rli: Interface, logger: Logger): Promise<void> => {
+  const api = await deployOrJoin(providers, rli, logger);
+  if (api === null) return;
 
-  let currentState: VeilcoreDerivedState | undefined;
-  const stateObserver = {
-    next: (state: VeilcoreDerivedState) => (currentState = state),
-  };
-  const subscription = veilcoreApi.state$.subscribe(stateObserver);
+  let derived: VeilcoreDerivedState | undefined;
+  const subscription = api.state$.subscribe({ next: (s) => (derived = s) });
+  const tx = (r: { txHash: string; blockHeight: number }): void =>
+    logger.info(`Transaction ${r.txHash} at block ${r.blockHeight}.`);
   try {
     while (true) {
-      const choice = await rli.question(MAIN_LOOP_QUESTION);
+      const choice = (await rli.question(MAIN_LOOP_QUESTION)).trim();
       try {
         switch (choice) {
           case '1': {
-            // Anchor the commitment of this wallet's private genetic secret. Only the
-            // commitment (a hash) is sent on-chain; the preimage stays a private witness.
-            const geneticSecret = await getGeneticSecret(providers);
-            if (geneticSecret === null) {
-              logger.error('No genetic secret in private state; cannot anchor.');
-              break;
-            }
-            const commitment = pureCircuits.commit(geneticSecret);
-            // A RECOVERY SECRET IS CHOSEN NOW OR NEVER. It cannot be added later,
-            // because by the time a holder knows they need one they no longer hold the
-            // secret that would authorise adding it. It is generated here and printed
-            // once — the CLI does not store it, and a record whose recovery secret is
-            // lost along with its genetic secret is gone for good.
-            const recoverySecret = randomBytes(32);
-            // Its own domain tag: a recovery commitment must never double as a record.
-            const recoveryCommitment = pureCircuits.recoveryCommit(recoverySecret);
-            await veilcoreApi.anchor(recoveryCommitment);
-            logger.info(`Anchored strain commitment: ${toHex(commitment)}`);
-            showSecret('RECOVERY SECRET — SAVE THIS NOW, IT IS NOT STORED AND NOT SHOWN AGAIN:', toHex(recoverySecret));
-            logger.info(
-              'It moves this record even if the genetic secret is lost OR STOLEN, so it is the ' +
-                'master key: keep it offline and apart from the genetic secret.',
-            );
+            // A recovery secret is chosen now or never: by the time a holder needs one, they
+            // no longer hold the secret that would authorise adding it.
+            const recovery = randomBytes(32);
+            tx(await api.anchor(C.recoveryCommit(recovery)));
+            logger.info(`Anchored record: ${toHex(C.commit(await mySecret(providers)))}`);
+            showSecret('RECOVERY SECRET — SAVE THIS NOW, IT IS NOT STORED AND NOT SHOWN AGAIN:', toHex(recovery));
+            logger.info('It moves this record even if the record secret is lost OR STOLEN. Keep it offline.');
             break;
           }
           case '2': {
-            // Prove knowledge of the secret behind an anchored commitment, without
-            // revealing it. Blank input uses this wallet's own genetic secret.
-            // V2: the circuit proves knowledge of the wallet's own genetic secret and
-            // discloses the commitment in a dated transaction. A verifier compares it
-            // against the earlier anchor off-chain.
-            const proof = await veilcoreApi.proveOwnership();
-            logger.info(`Prior-possession proof submitted for commitment: ${toHex(proof.commitment)}`);
-            logger.info(`Transaction ${proof.txHash} at block ${proof.blockHeight}.`);
-            logger.info(
-              'Give a verifier both. They compare the commitment against the earlier anchor transaction — telling them a proof happened without saying which record it concerns proves nothing.',
-            );
+            const p = await api.proveOwnership();
+            logger.info(`Ownership proved for record ${toHex(p.commitment)}.`);
+            tx(p);
             break;
           }
-          case '3':
-            await displayLedgerState(providers, veilcoreApi.deployedContract, logger);
+          case '3': {
+            const dna = await ask32(rli, 'DNA report fingerprint (hex): ');
+            tx(await api.pairDna(dna));
             break;
+          }
           case '4': {
-            const geneticSecret = await getGeneticSecret(providers);
-            if (geneticSecret === null) {
-              logger.error('No genetic secret in private state; cannot issue.');
-              break;
-            }
-            // The LICENSEE generates the licence secret and sends only its commitment
-            // (menu 16). An issuer who knows the secret can countersign for them, which is
-            // a licence issued to nobody. This used to ask the issuer for the SECRET and
-            // commit it with the record tag, which made a licence that could never be
-            // countersigned at all.
-            const lcHex = (await rli.question("Licensee's licence commitment in hex (from their menu 16): ")).trim();
-            const licenseCommitment = hexToBytes(lcHex);
-            if (licenseCommitment === null) {
-              logger.error('Invalid licence commitment.');
-              break;
-            }
-            logger.info(`Issuing against your record ${toHex(pureCircuits.commit(geneticSecret))}`);
-            await veilcoreApi.issueLicense(licenseCommitment);
-            logger.info(`Licence issued (PENDING): ${toHex(licenseCommitment)}`);
+            const next = randomBytes(32);
+            showSecret('YOUR NEW RECORD SECRET — store it now, before the rotation is sent:', toHex(next));
+            await rli.question('Press Enter once it is stored. ');
+            const r = await api.rotateRecordSecret(C.commit(next), next);
+            logger.info(`Rotated from ${toHex(r.previousCommitment)} to ${toHex(C.commit(next))}.`);
+            tx(r);
+            logger.info('Licences, parentage and obligations stay with your identity.');
             break;
           }
           case '5': {
-            // The licensee supplies their SECRET, not the commitment. The commitment is
-            // derived in-circuit from that secret and the issuing record, so a licence a
-            // sniper registered first under their own record is a different value and the
-            // countersignature cannot land on it.
-            const secHex = (await rli.question('Enter YOUR licence secret in hex: ')).trim();
-            const recHex = (await rli.question('Issuing record commitment in hex: ')).trim();
-            const sec = hexToBytes(secHex);
-            const rec = hexToBytes(recHex);
-            if (sec === null || rec === null) {
-              logger.error('Invalid input.');
-              break;
-            }
-            const lc = pureCircuits.licenseCommit(sec, rec);
-            await veilcoreApi.countersignLicense(sec, rec);
-            logger.info(`Licence countersigned — now ACTIVE: ${toHex(lc)}`);
+            const origin = await ask32(rli, 'ORIGINAL anchored record (hex): ');
+            const recovery = await ask32(rli, 'Recovery secret (hex): ');
+            const next = randomBytes(32);
+            showSecret('YOUR NEW RECORD SECRET — store it now, before the recovery is sent:', toHex(next));
+            await rli.question('Press Enter once it is stored. ');
+            tx(await api.recoverRecordSecret(origin, C.commit(next), recovery, next));
+            logger.info('Recovered. Whoever held an earlier secret, including a thief, can no longer act.');
             break;
           }
           case '6': {
-            const entered = (await rli.question('Enter the licence commitment to revoke: ')).trim();
-            const lc = hexToBytes(entered);
-            if (lc === null) {
-              logger.error('Invalid licence commitment.');
-              break;
-            }
-            const issuerHex = (await rli.question('Record it was issued under (blank = your current record): ')).trim();
-            const ownSecret = await getGeneticSecret(providers);
-            if (ownSecret === null) {
-              logger.error('No genetic secret in private state.');
-              break;
-            }
-            const issuer = issuerHex === '' ? pureCircuits.commit(ownSecret) : hexToBytes(issuerHex);
-            if (issuer === null) {
-              logger.error('Invalid record commitment.');
-              break;
-            }
-            await veilcoreApi.revokeLicense(lc, issuer);
-            logger.info('Licence revoked, cleared from live state and removed from the tree.');
+            const origin = await ask32(rli, 'ORIGINAL anchored record (hex): ');
+            const current = await ask32(rli, 'CURRENT recovery secret (hex): ');
+            const next = randomBytes(32);
+            showSecret('NEW RECOVERY SECRET — store it now, before it is sent:', toHex(next));
+            await rli.question('Press Enter once it is stored. ');
+            tx(await api.replaceRecoveryCommitment(origin, C.recoveryCommit(next), current));
+            logger.info('Replaced. The old recovery secret no longer works.');
             break;
           }
           case '7': {
-            const entered = (await rli.question('Enter your licence secret in hex: ')).trim();
-            const recHex = (await rli.question('Issuing record commitment in hex: ')).trim();
-            const sec = hexToBytes(entered);
-            const rec = hexToBytes(recHex);
-            if (sec === null || rec === null) {
-              logger.error('Invalid input.');
-              break;
-            }
-            // The VERIFIER picks the challenge: 32 random bytes, used once, never
-            // published. It binds this presentation to them and to this record.
-            const chHex = (await rli.question("Verifier's challenge in hex (32 bytes, from the verifier): ")).trim();
-            const challenge = hexToBytes(chHex);
-            if (challenge === null || challenge.length !== 32) {
-              logger.error('The challenge must be exactly 32 bytes of hex, chosen by the verifier.');
-              break;
-            }
-            const shown = await veilcoreApi.proveLicense(sec, rec, challenge);
-            logger.info('Licence proof accepted.');
-            logger.info(`Tell the verifier: transaction ${shown.txHash} at block ${shown.blockHeight}.`);
-            logger.info(
-              'They check that its lastPresentation equals presentationTag(record, their challenge). ' +
-                'To anyone without the challenge it names nothing.',
+            const issuer = await ask32(rli, "Issuer's record (hex): ");
+            const secret = randomBytes(32);
+            showSecret(
+              'YOUR LICENCE SECRET — keep it; you need it to countersign, present and transfer:',
+              toHex(secret),
             );
+            logger.info(`Send the issuer this licence commitment: ${toHex(C.licenseCommit(secret, issuer))}`);
             break;
           }
-          case '8':
-            await displayPrivateState(providers, logger);
+          case '8': {
+            const lc = await ask32(rli, "Licensee's licence commitment (hex, from their option 7): ");
+            tx(await api.issueLicense(lc));
+            logger.info("Licence issued, pending the licensee's countersignature.");
             break;
-          case '9':
-            displayDerivedState(currentState, logger);
+          }
+          case '9': {
+            const secret = await ask32(rli, 'YOUR licence secret (hex): ');
+            const issuer = await ask32(rli, "Issuer's record (hex): ");
+            tx(await api.countersignLicense(secret, issuer));
+            logger.info(`Licence active: ${toHex(C.licenseCommit(secret, issuer))}`);
             break;
+          }
           case '10': {
-            // A batch root aggregates many record commitments. Anchoring it timestamps
-            // every record in the batch in a single transaction, which is what lets a
-            // holder settle on chain without running a wallet.
-            const entered = (await rli.question('Enter the batch root in hex: ')).trim();
-            const root = hexToBytes(entered);
-            if (root === null) {
-              logger.error('Invalid root.');
-              break;
-            }
-            const anchored = await veilcoreApi.anchorBatch(root);
-            logger.info('Batch root anchored. Every record in that batch is now timestamped.');
-            logger.info(`txHash: ${anchored.txHash}`);
-            logger.info(`blockHeight: ${anchored.blockHeight}`);
-            logger.info('Record this against the batch so proofs reference a transaction anyone can look up.');
+            const secret = await ask32(rli, 'YOUR licence secret (hex): ');
+            const issuer = await ask32(rli, "Issuer's record (hex): ");
+            const challenge = await ask32Or(
+              rli,
+              "Verifier's challenge (hex; blank to make one to send them): ",
+              new Uint8Array(0),
+            );
+            const ch = challenge.length === 32 ? challenge : newPresentationChallenge();
+            if (challenge.length !== 32)
+              showSecret('CHALLENGE — give this to the verifier privately; never publish it:', toHex(ch));
+            const shown = await api.proveLicense(secret, issuer, ch);
+            tx(shown);
+            logger.info('The verifier checks that this transaction published presentationTag(issuer, challenge).');
             break;
           }
           case '11': {
-            // A licence is not a bearer instrument. Proposing is only half the act —
-            // the issuer must approve, which is what makes it permissioned rather than
-            // freely transferable.
-            // The holder proves the licence secret rather than naming its commitment:
-            // taking the commitment as an argument let any observer write into the
-            // pending slot and replace a proposal the issuer had already agreed to.
-            const secHex = (await rli.question('YOUR licence secret in hex: ')).trim();
-            const recHex = (await rli.question('Issuing record commitment: ')).trim();
-            const nhHex = (await rli.question("Incoming party's NEW licence commitment: ")).trim();
-            const sec = hexToBytes(secHex);
-            const rec = hexToBytes(recHex);
-            const nh = hexToBytes(nhHex);
-            if (sec === null || rec === null || nh === null) {
-              logger.error('Invalid input.');
-              break;
-            }
-            await veilcoreApi.proposeTransfer(sec, rec, nh);
-            logger.info('Transfer proposed. Nothing moves until the issuer approves.');
-            logger.info(
-              'The incoming party generated that commitment from a secret you have never ' +
-                'seen — which is what ends your rights when the assignment completes.',
-            );
+            const secret = await ask32(rli, 'YOUR licence secret (hex): ');
+            const issuer = await ask32(rli, "Issuer's record (hex): ");
+            const incoming = await ask32(rli, "Incoming holder's licence commitment (hex, from their option 7): ");
+            tx(await api.proposeTransfer(secret, issuer, incoming));
+            logger.info('Proposed. Nothing moves until the issuer approves.');
             break;
           }
           case '12': {
-            const lcHex = (await rli.question('Licence commitment: ')).trim();
-            const lc = hexToBytes(lcHex);
-            if (lc === null) {
-              logger.error('Invalid licence commitment.');
-              break;
-            }
-            // The issuer names the recipient they agreed to. This is deliberately not
-            // read back from the ledger: the circuit compares it against what is
-            // pending, so an approval cannot land on a proposal that was swapped
-            // between the agreement and this call. Reading it here would approve
-            // whatever is pending, which is the thing the check exists to stop.
-            const enlHex = (await rli.question('New holder commitment you are approving: ')).trim();
-            const enl = hexToBytes(enlHex);
-            if (enl === null) {
-              logger.error('Invalid new holder commitment.');
-              break;
-            }
-            const geneticSecret = await getGeneticSecret(providers);
-            if (geneticSecret === null) {
-              logger.error('No genetic secret in private state.');
-              break;
-            }
-            // The record the licence was ISSUED under — after a rotation that is your
-            // original record, not your current one.
-            const issHex = (await rli.question('Record it was issued under (blank = your current record): ')).trim();
-            const issuer = issHex === '' ? pureCircuits.commit(geneticSecret) : hexToBytes(issHex);
-            if (issuer === null) {
-              logger.error('Invalid record commitment.');
-              break;
-            }
-            await veilcoreApi.approveTransfer(lc, issuer, enl);
-            logger.info('Transfer approved. The licence now belongs to the new holder.');
+            const lc = await ask32(rli, 'Current licence commitment (hex): ');
+            const incoming = await ask32(rli, 'Incoming holder commitment you agreed to (hex): ');
+            const issuer = await ask32Or(
+              rli,
+              'Record it was issued under (hex; blank = your current record): ',
+              C.commit(await mySecret(providers)),
+            );
+            const r = await api.approveTransfer(lc, issuer, incoming);
+            tx(r);
+            describeSeal(r, logger);
             break;
           }
           case '13': {
-            // Derived, not accepted, for the same reason as proposing: taking the
-            // commitment let any observer cancel any pending transfer and block a
-            // licence from moving indefinitely.
-            const secHex = (await rli.question('YOUR licence secret in hex: ')).trim();
-            const recHex = (await rli.question('Issuing record commitment: ')).trim();
-            const sec = hexToBytes(secHex);
-            const rec = hexToBytes(recHex);
-            if (sec === null || rec === null) {
-              logger.error('Invalid input.');
-              break;
-            }
-            await veilcoreApi.withdrawTransfer(sec, rec);
-            logger.info('Transfer proposal withdrawn.');
+            const secret = await ask32(rli, 'YOUR licence secret (hex): ');
+            const issuer = await ask32(rli, "Issuer's record (hex): ");
+            tx(await api.withdrawTransfer(secret, issuer));
             break;
           }
           case '14': {
-            // A witness secret cannot be recovered from the chain. Without this, a
-            // holder who loses theirs loses every record keyed to it permanently.
-            // The incoming commitment is generated by the holder from a secret they
-            // created themselves, so nothing secret crosses the wire.
-            // BOTH SIDES ARE PROVED NOW. The incoming commitment used to be taken on
-            // trust, which let a holder rotate onto a record belonging to somebody else,
-            // so the new SECRET is supplied and the circuit derives the commitment from
-            // it. Nothing secret crosses the wire — this is the holder's own machine.
-            const nsHex = (await rli.question('New record SECRET in hex: ')).trim();
-            const ns = hexToBytes(nsHex);
-            if (ns === null) {
-              logger.error('Invalid secret.');
-              break;
-            }
-            const nc = pureCircuits.commit(ns);
-            const rot = await veilcoreApi.rotateRecordSecret(nc, ns);
-            logger.info(`Rotated. Previous commitment: ${toHex(rot.previousCommitment)}`);
-            logger.info(`Transaction ${rot.txHash} at block ${rot.blockHeight}.`);
+            const lc = await ask32(rli, 'Licence commitment to revoke (hex): ');
+            const issuer = await ask32Or(
+              rli,
+              'Record it was issued under (hex; blank = your current record): ',
+              C.commit(await mySecret(providers)),
+            );
+            const r = await api.revokeLicense(lc, issuer);
+            tx(r);
+            logger.info('Revoked.');
+            describeSeal(r, logger);
+            break;
+          }
+          case '15': {
+            const r = await api.sealRevocations();
+            if (!r.sealed && !r.waiting) logger.info('Nothing is waiting to be sealed.');
+            describeSeal(r, logger);
+            break;
+          }
+          case '16':
+            tx(await api.proposeParent(await ask32(rli, "Parent's record (hex): ")));
+            logger.info("Proposed. The edge exists once the parent's holder confirms.");
+            break;
+          case '17':
+            tx(await api.confirmParent(await ask32(rli, "Child's record (hex): ")));
+            break;
+          case '18':
+            tx(await api.withdrawParent());
+            break;
+          case '19':
+            tx(await api.encumberOwnRecord(await askObligation(rli, logger)));
+            logger.info('In force. Descendants will not check clean until you release it.');
+            break;
+          case '20': {
+            const record = await ask32(rli, "Holder's record (hex): ");
+            tx(await api.proposeObligation(record, await askObligation(rli, logger)));
+            logger.info('Proposed. It binds nobody until the holder accepts.');
+            break;
+          }
+          case '21': {
+            const obligation = await askObligation(rli, logger);
+            tx(await api.acceptObligation(obligation, await ask32(rli, "Beneficiary's record (hex): ")));
+            break;
+          }
+          case '22': {
+            const record = await ask32(rli, "Holder's record (hex): ");
+            tx(await api.withdrawObligation(record, await askObligation(rli, logger)));
+            break;
+          }
+          case '23': {
+            const record = await ask32(rli, "Holder's record (hex): ");
+            tx(await api.discharge(record, await askObligation(rli, logger)));
+            break;
+          }
+          case '24': {
+            const report = await api.checkLineage(await ask32(rli, 'Record to check (hex): '));
+            logger.info(`Identity: ${toHex(report.identity)}`);
             logger.info(
-              'Licences issued under any earlier record of yours stay under your control. When revoking ' +
-                'or approving one, give the record it was ISSUED under.',
+              `Confirmed ancestors: ${report.ancestors.length}; with open obligations: ${report.encumbered.length}`,
             );
-            logger.info('This client now acts under the new secret. Store it: it is not shown again.');
+            report.encumbered.forEach((a) => logger.info(`  owes: ${toHex(a)}`));
+            report.roots.forEach((a) => logger.info(`  earliest known ancestor: ${toHex(a)}`));
+            logger.info(report.clean ? 'CLEAN: no ancestor on chain carries an open obligation.' : 'NOT CLEAN.');
             break;
           }
-          case '15':
-            logger.info('Exiting...');
-            return;
-          case '16': {
-            // The licensee's side of issuing. The secret never leaves this machine; the
-            // commitment is what goes to the issuer.
-            const recHex = (await rli.question("Issuer's record commitment in hex: ")).trim();
-            const rec = hexToBytes(recHex);
-            if (rec === null) {
-              logger.error('Invalid record commitment.');
-              break;
-            }
-            const licSecret = randomBytes(32);
-            showSecret(
-              'YOUR LICENCE SECRET — keep it; you need it to countersign, present and transfer:',
-              toHex(licSecret),
-            );
+          case '25': {
+            const root = await ask32(rli, 'Batch root (hex): ');
+            tx(await api.anchorBatch(root));
+            logger.info('Anchored. This proves the batch existed at this time, not who held its records.');
+            break;
+          }
+          case '26': {
+            const l = await api.currentLedger();
             logger.info(
-              `Send the issuer this licence commitment: ${toHex(pureCircuits.licenseCommit(licSecret, rec))}`,
+              `Protocol version ${l.protocolVersion}. Anchors ${l.anchorSeq}, ownership proofs ${l.proofSeq}, presentations ${l.presentationSeq}.`,
             );
+            logger.info(`Parentage edges ${l.descentSeq}, obligation changes ${l.obligationSeq}, seals ${l.sealSeq}.`);
+            logger.info(`Revocations waiting for a seal: ${l.unsealedChanges ? 'yes' : 'no'}.`);
             break;
           }
-          case '17': {
-            const origHex = (await rli.question('ORIGINAL anchored record commitment: ')).trim();
-            const rsHex = (await rli.question('Recovery secret in hex: ')).trim();
-            const orig = hexToBytes(origHex);
-            const rs = hexToBytes(rsHex);
-            if (orig === null || rs === null) {
-              logger.error('Invalid input.');
-              break;
+          case '27':
+            if (derived === undefined) logger.info('No state yet.');
+            else {
+              logger.info(`Your record:   ${derived.myCommitment}`);
+              logger.info(`Your identity: ${derived.myIdentity}`);
+              logger.info(
+                `Anchored: ${derived.iAmAnchored ? 'yes' : 'no'}. Current: ${derived.iAmLive ? 'yes' : 'no (rotated or recovered away)'}.`,
+              );
             }
-            const ns = randomBytes(32);
-            const nc = pureCircuits.commit(ns);
-            const rec = await veilcoreApi.recoverRecordSecret(orig, nc, rs, ns);
-            showSecret('YOUR NEW GENETIC SECRET — store it now:', toHex(ns));
-            logger.info(`Recovered in transaction ${rec.txHash}. New record: ${toHex(nc)}.`);
-            logger.info('Whoever held the old secret, including a thief, can no longer act for this record.');
             break;
-          }
-          case '19': {
-            const confirm = (
+          case '28':
+            showSecret('YOUR RECORD SECRET:', toHex(await mySecret(providers)));
+            break;
+          case '29': {
+            const sure = (
               await rli.question(
                 'Nobody, including you, will ever be able to change this contract. Type RETIRE to confirm: ',
               )
             ).trim();
-            if (confirm !== 'RETIRE') {
-              logger.info('Not retired.');
-              break;
-            }
-            await veilcoreApi.retireMaintenanceAuthority();
+            if (sure === 'RETIRE') await api.retireMaintenanceAuthority();
+            else logger.info('Not retired.');
             break;
           }
-          case '18': {
-            const origHex = (await rli.question('ORIGINAL anchored record commitment: ')).trim();
-            const rsHex = (await rli.question('CURRENT recovery secret in hex: ')).trim();
-            const orig = hexToBytes(origHex);
-            const rs = hexToBytes(rsHex);
-            if (orig === null || rs === null) {
-              logger.error('Invalid input.');
-              break;
-            }
-            const next = randomBytes(32);
-            await veilcoreApi.replaceRecoveryCommitment(orig, pureCircuits.recoveryCommit(next), rs);
-            showSecret('NEW RECOVERY SECRET — SAVE THIS NOW, the old one no longer works:', toHex(next));
-            break;
-          }
+          case '0':
+            return;
           default:
             logger.error(`Invalid choice: ${choice}`);
         }
       } catch (e) {
         logError(logger, e);
-        logger.info('Returning to main menu...');
       }
     }
   } finally {
@@ -751,7 +563,7 @@ export const run = async (config: Config, testEnv: TestEnvironment, logger: Logg
       }
     }
 
-    const zkConfigProvider = new NodeZkConfigProvider<'anchor' | 'proveOwnership'>(config.zkConfigPath);
+    const zkConfigProvider = new NodeZkConfigProvider<VeilcoreCircuitKeys>(config.zkConfigPath);
     const providers: VeilcoreProviders = {
       privateStateProvider: levelPrivateStateProvider<VeilcorePrivateStateId, VeilcorePrivateState>({
         privateStateStoreName: config.privateStateStoreName,
@@ -781,37 +593,7 @@ export const run = async (config: Config, testEnv: TestEnvironment, logger: Logg
       midnightProvider: walletProvider,
     };
 
-    // The same wallet, indexer and proof server, pointed at the other contract's
-    // circuits and its own private state. zkConfigPath names managed/veilcore in all
-    // three configs, so the sibling directory is derived rather than added to each.
-    const lineageZkConfigProvider = new NodeZkConfigProvider<LineageCircuitKeys>(
-      path.resolve(config.zkConfigPath, '..', 'lineage'),
-    );
-    const lineageProviders: LineageProviders = {
-      privateStateProvider: levelPrivateStateProvider<LineagePrivateStateId, LineagePrivateState>({
-        privateStateStoreName: `${config.privateStateStoreName}-lineage`,
-        signingKeyStoreName: `${config.privateStateStoreName}-lineage-signing-keys`,
-        privateStoragePasswordProvider: () => {
-          const password = process.env.VEILCORE_PRIVATE_STATE_PASSWORD;
-          if (!password) {
-            throw new Error(
-              'VEILCORE_PRIVATE_STATE_PASSWORD is not set. It encrypts private state and the ' +
-                'maintenance authority signing key. Sixteen characters or more, with at least ' +
-                'three of uppercase, lowercase, digits and symbols.',
-            );
-          }
-          return password;
-        },
-        accountId: seed,
-      }),
-      publicDataProvider: indexerPublicDataProvider(envConfiguration.indexer, envConfiguration.indexerWS),
-      zkConfigProvider: lineageZkConfigProvider,
-      proofProvider: httpClientProofProvider(envConfiguration.proofServer, lineageZkConfigProvider),
-      walletProvider: walletProvider,
-      midnightProvider: walletProvider,
-    };
-
-    await mainLoop(providers, lineageProviders, rli, logger);
+    await mainLoop(providers, rli, logger);
   } catch (e) {
     logError(logger, e);
     logger.info('Exiting...');

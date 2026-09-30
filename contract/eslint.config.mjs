@@ -41,14 +41,7 @@ const config = tseslint.config(
       parserOptions: {
         ecmaVersion: "latest",
         sourceType: "module",
-        // descent.mjs is plain JavaScript and is not part of the TypeScript program,
-        // so the project service refuses to parse it and the whole lint fails.
-        // Naming it here lets it be linted without being compiled.
-        projectService: {
-          allowDefaultProject: [
-            "src/descent.mjs",
-          ],
-        },
+        projectService: true,
         tsconfigRootDir: import.meta.dirname,
       },
     },

@@ -80,7 +80,7 @@ describe("obligations need the holder's consent", () => {
     sim.call(as(BREEDER), "discharge", G, ROYALTY);
     expect(owes(G)).toBe(1n);
     sim.call(as(SECOND), "discharge", G, ROYALTY);
-    expect(sim.state.obligationCountOf.member(G)).toBe(false);
+    expect(owes(G)).toBe(0n);
     expect(() => sim.call(as(SECOND), "discharge", G, ROYALTY)).toThrow(
       "in your favour",
     );
@@ -299,5 +299,99 @@ describe("the verifier's walk (verify.ts)", () => {
     expect(checkLineage(sim.state, G).clean).toBe(false);
     sim.call(as(BREEDER), "discharge", Br, ROYALTY);
     expect(checkLineage(sim.state, G).clean).toBe(true);
+  });
+});
+
+describe("contention and clean-up (second independent review)", () => {
+  it("a discharge proved before the holder adds another obligation still lands (counts commute)", () => {
+    sim.call(as(BREEDER), "proposeObligation", G, ROYALTY);
+    sim.call(as(GROWER), "acceptObligation", ROYALTY, Br);
+    const release = sim.prove(as(BREEDER), "discharge", G, ROYALTY);
+    sim.call(as(GROWER), "encumberOwnRecord", secret("growers-own"));
+    sim.land(release);
+    expect(owes(G)).toBe(1n);
+  });
+
+  it("an accept proved before another beneficiary's discharge still lands", () => {
+    sim.call(as(BREEDER), "proposeObligation", G, ROYALTY);
+    sim.call(as(GROWER), "acceptObligation", ROYALTY, Br);
+    sim.call(as(SECOND), "proposeObligation", G, ROYALTY);
+    const accept = sim.prove(as(GROWER), "acceptObligation", ROYALTY, S2);
+    sim.call(as(BREEDER), "discharge", G, ROYALTY);
+    sim.land(accept);
+    expect(owes(G)).toBe(1n);
+  });
+
+  it("the holder can reject proposals, so they cannot pile up; nobody else can", () => {
+    sim.call(as(COMPETITOR), "proposeObligation", G, FAKE);
+    expect(() => sim.call(as(BREEDER), "rejectObligation", FAKE, Co)).toThrow(
+      "No such obligation proposed",
+    );
+    sim.call(as(GROWER), "rejectObligation", FAKE, Co);
+    expect(
+      sim.state.pendingObligations.member(C.obligationKey(G, FAKE, Co)),
+    ).toBe(false);
+    expect(() => sim.call(as(GROWER), "acceptObligation", FAKE, Co)).toThrow(
+      "No such obligation proposed",
+    );
+  });
+});
+
+describe("known limit: what a thief does with a stolen secret before recovery stays", () => {
+  // docs/design.md, "Known limits". Recovery stops a thief from acting again; it does
+  // not undo what they did while they held the current secret. This test pins that
+  // down so the documentation cannot drift from the behaviour.
+  it("an obligation the thief accepted on the victim's record outlives recovery", () => {
+    const T = secret("thief"),
+      Tr = C.commit(T);
+    anchor(T);
+    sim.call(as(T), "proposeObligation", Br, FAKE);
+    sim.call(as(BREEDER), "acceptObligation", FAKE, Tr); // the thief, holding BREEDER's secret
+    const NEW = secret("breeder-new");
+    sim.call(
+      as(secret("x"), { incoming: NEW, recovery: recoveryOf(BREEDER) }),
+      "recoverRecordSecret",
+      Br,
+      C.commit(NEW),
+    );
+    expect(owes(Br)).toBe(1n);
+    expect(() => sim.call(as(NEW), "discharge", Br, FAKE)).toThrow(
+      "in your favour",
+    );
+  });
+});
+
+describe("the verifier's walk: cycles, the record itself, and recognised roots", () => {
+  const link = (child: Uint8Array, parent: Uint8Array): void => {
+    sim.call(as(child), "proposeParent", C.commit(parent));
+    sim.call(as(parent), "confirmParent", C.commit(child));
+  };
+
+  it("flags a pedigree that loops, which has no root to check", () => {
+    link(GROWER, BREEDER);
+    link(BREEDER, COMPETITOR);
+    link(COMPETITOR, BREEDER);
+    const r = checkLineage(sim.state, G, [Br, Co]);
+    expect(r.cyclic).toBe(true);
+    expect(r.roots).toEqual([]);
+    expect(r.accepted).toBe(false);
+  });
+
+  it("counts an obligation on the record itself, not only on ancestors", () => {
+    link(GROWER, BREEDER);
+    sim.call(as(GROWER), "encumberOwnRecord", ROYALTY);
+    const r = checkLineage(sim.state, G, [Br]);
+    expect(r.encumbered.map(hex)).toEqual([hex(G)]);
+    expect(r.clean).toBe(false);
+  });
+
+  it("accepts only when every root is one the verifier recognises", () => {
+    link(GROWER, BREEDER);
+    expect(checkLineage(sim.state, G).accepted).toBe(false);
+    expect(checkLineage(sim.state, G, [Co]).accepted).toBe(false);
+    expect(checkLineage(sim.state, G, [Br]).accepted).toBe(true);
+    const B2 = secret("breeder-2");
+    rotate(BREEDER, B2);
+    expect(checkLineage(sim.state, G, [C.commit(B2)]).accepted).toBe(true); // any commitment of the identity
   });
 });

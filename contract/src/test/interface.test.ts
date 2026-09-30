@@ -91,6 +91,7 @@ describe("circuits", () => {
         "proposeTransfer",
         "proveLicense",
         "proveOwnership",
+        "rejectObligation",
         "recoverRecordSecret",
         "replaceRecoveryCommitment",
         "revokeLicense",

@@ -31,8 +31,14 @@ export type TxRef = { readonly txHash: string; readonly blockHeight: number };
 
 /** Seconds between seals, as the contract enforces (SEAL_INTERVAL). */
 export const SEAL_INTERVAL_SECONDS = 600;
-/** How far behind the chain's clock a seal's claimed time is placed, to absorb clock skew. */
-const SEAL_LAG_SECONDS = 60;
+/**
+ * How far ahead of the clock a seal's bound is placed. The contract needs the bound
+ * ahead of the landing block's time and at most 300 s ahead of it; 120 s covers proving
+ * and inclusion time and some clock skew either way.
+ */
+const SEAL_AHEAD_SECONDS = 120;
+/** Margin added to the earliest allowed seal time, for clock skew. */
+const SEAL_SKEW_SECONDS = 30;
 
 /** A verifier's presentation challenge: 32 fresh random bytes, used once, never published. */
 export const newPresentationChallenge = (): Uint8Array => utils.randomBytes(32);
@@ -256,12 +262,14 @@ export class VeilcoreAPI {
   async sealRevocations(): Promise<SealResult> {
     const ledger = await this.currentLedger();
     if (!ledger.unsealedChanges) return { sealed: false, waiting: false };
-    const now = BigInt(Math.floor(Date.now() / 1000) - SEAL_LAG_SECONDS);
-    const earliest = ledger.lastSealTime + BigInt(SEAL_INTERVAL_SECONDS);
-    if (now < earliest)
-      return { sealed: false, waiting: true, sealableAt: Number(earliest + BigInt(SEAL_LAG_SECONDS)) };
+    const now = BigInt(Math.floor(Date.now() / 1000));
+    const earliest = ledger.lastSealTime + BigInt(SEAL_INTERVAL_SECONDS + SEAL_SKEW_SECONDS);
+    if (now < earliest) return { sealed: false, waiting: true, sealableAt: Number(earliest) };
     try {
-      this.logged('sealRevocations', await this.deployedContract.callTx.sealRevocations(now));
+      this.logged(
+        'sealRevocations',
+        await this.deployedContract.callTx.sealRevocations(now + BigInt(SEAL_AHEAD_SECONDS)),
+      );
       return { sealed: true, waiting: false };
     } catch (e) {
       // Someone else sealed first, or the clock disagreed: the revocation stands either way.
@@ -313,6 +321,14 @@ export class VeilcoreAPI {
     return this.logged(
       'acceptObligation',
       await this.deployedContract.callTx.acceptObligation(obligationCommitment, beneficiary),
+    );
+  }
+
+  /** As the record's holder, decline an obligation proposed by `beneficiary`. */
+  async rejectObligation(obligationCommitment: Uint8Array, beneficiary: Uint8Array): Promise<TxRef> {
+    return this.logged(
+      'rejectObligation',
+      await this.deployedContract.callTx.rejectObligation(obligationCommitment, beneficiary),
     );
   }
 

@@ -17,8 +17,10 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const sha = (f) => createHash('sha256').update(readFileSync(f)).digest('hex');
 let commit = 'unknown';
 try { commit = execSync('git rev-parse --short HEAD', { cwd: here }).toString().trim(); } catch {}
+let compiler = 'unknown';
+try { compiler = execSync('compact compile --version', { cwd: here }).toString().trim(); } catch {}
 
-const out = [`# Key fingerprints`, ``, `Commit \`${commit}\`, built with \`npm run compact\`.`, ``];
+const out = [`# Key fingerprints`, ``, `Commit \`${commit}\`, compiler \`${compiler}\`, built with \`npm run compact\`.`, ``];
 let missing = false;
 for (const contract of ['veilcore']) {
   const dir = path.join(here, 'src', 'managed', contract, 'keys');

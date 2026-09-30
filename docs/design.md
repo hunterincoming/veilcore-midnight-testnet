@@ -28,7 +28,7 @@ key. A verifier checks all of it from chain state alone (`contract/src/verify.ts
 - **Zero custody.** Genetic data never leaves the holder. Only commitments reach the chain.
 - **Bounded state.** Containers are cleared by the circuit that ends what filled them.
   What grows permanently is listed under "Known limits".
-- **Browser-viable proving.** 23 circuits, each under 700 ZKIR operations.
+- **Browser-viable proving.** 24 circuits, each under 700 ZKIR operations.
 - **Independent verification.** Every hash is plain SHA-256 (next section), so a
   verifier needs no Midnight tooling to recompute one.
 
@@ -67,6 +67,10 @@ A record secret is 32 random bytes held by the record's holder. Its commitment i
 - A commitment **may act only while it is its identity's head**. The identity of any
   commitment is `originFor(x)`: `originOf(x)` if set, else `x`.
 - A rotation or recovery target must have no history, so two identities never merge.
+- **Only an anchored identity acts**, other than to anchor: ownership proofs, DNA
+  pairing, licensing and lineage all require one. An unanchored commitment therefore has
+  no events to carry into an identity it is later rotated into, and an anchored one can
+  never be a rotation target.
 - **Recovery writes the new head without reading the old one.** A thief holding the
   current secret cannot block it by rotating again. Whoever holds the recovery secret
   controls the identity, so it belongs offline. There is no waiting period.
@@ -93,7 +97,8 @@ any secret, as an argument (checked by `src/test/interface.test.ts`).
 
 1. The **licensee** makes a licence secret and sends the issuer
    `licenseCommit(secret, issuerRecord)`. The issuer never holds the secret.
-2. `issueLicense(lc)`: the issuer records it, PENDING, keyed `licenseKey(lc, issuer)`.
+2. `issueLicense(lc)`: the issuer (an anchored identity) records it, PENDING, keyed
+   `licenseKey(lc, issuer)`.
 3. `countersignLicense(issuer, slot)`: the licensee proves the secret. The key becomes a
    leaf of `activeLicenses` at a random free index, so activations do not contend.
 4. `proveLicense()`: the licensee proves to one verifier that they hold a live licence
@@ -109,10 +114,11 @@ any secret, as an argument (checked by `src/test/interface.test.ts`).
 
 **Revocation takes effect in two steps.** The licence is removed at once: it cannot be
 transferred, and no new path to it exists. Paths proved against earlier roots keep
-verifying until the next **seal**. `sealRevocations(now)` drops every root except the
-current one. Anyone may call it, only when a revocation or transfer is waiting, and at
-most once every 600 seconds (`SEAL_INTERVAL`). `now` must be within 300 seconds of the
-block time.
+verifying until the next **seal**. `sealRevocations(bound)` drops every root except the
+current one. Anyone may call it, only when a revocation or transfer is waiting, and only
+once the block time is at least 600 seconds (`SEAL_INTERVAL`) past the previous seal's
+`bound`. `bound` must be ahead of the block time by at most 300 seconds, so two seals are
+always at least 600 seconds of block time apart.
 
 Why not drop old roots on every revocation, as version 0 did: then anyone could revoke
 a throwaway licence of their own each block and cancel every presentation in flight.
@@ -139,37 +145,42 @@ beneficiary identity)`. The obligation commitment is a hash of the terms, kept o
   example a breeder marking a licensed mother.
 - **Only the beneficiary's current head can release it** (`discharge`). After recovery,
   a thief holding an old secret cannot.
-- `obligationCountOf(identity)` counts obligations in force.
+- The holder can reject a proposal (`rejectObligation`), so proposals cannot pile up
+  against a record.
+- `obligationCountOf(identity)` counts obligations in force. It is a `Counter`, so
+  concurrent accepts and discharges on one record commute rather than failing each other.
 
-**Only anchored identities take part.** An anchored record can never be a rotation
-target, so an encumbered identity cannot be merged into another to shed what it owes.
+**Only anchored identities take part**, so an encumbered identity cannot be merged into
+another to shed what it owes.
 
 ---
 
 ## Verifier rules
 
-These are normative. `contract/src/verify.ts` implements them.
+These are normative. `contract/src/verify.ts` implements rules 1 to 5, and the tests
+exercise each one.
 
 1. **Resolve identity.** A commitment's identity is `originFor(x)`. It may act only if
    `headOf(identity) = x`, or it is an un-moved origin. Judge every action by the
-   identity, not the commitment presented.
+   identity, not the commitment presented (`identityOf`, `isLive`, `commitmentsOf`).
 2. **Walk the pedigree yourself.** Start from the record's identity and follow
-   `parentsOf` upward. Never accept a pedigree from the party it benefits. Visit each
-   identity once, since cycles are possible.
-3. **Clean means no ancestor on chain owes anything.** A record's lineage is clean when
-   no ancestor has `obligationCountOf > 0`.
-4. **Clean is not complete.** A pedigree stops where a parent never confirmed. Check the
-   roots of the walk (ancestors with no confirmed parent) against origins you recognise.
-   Anyone can anchor fresh material with no history.
-5. **Presentations.** Choose a fresh 32-byte random challenge per presentation and keep
-   it private. Accept a presentation only if its transaction published
-   `presentationTag(issuer, challenge)` and succeeded. It proves that someone holding the
-   licence secret took part, not which party. If a revocation must bind immediately,
-   also require that no seal was pending (`unsealedChanges = false`) when it landed, or
-   wait for the next seal.
+   `parentsOf` upward. Never accept a pedigree from the party it benefits.
+3. **Clean means nothing owes.** A lineage is clean when neither the record's identity
+   nor any ancestor has `obligationCountOf > 0` (`checkLineage().clean`).
+4. **Clean is not complete.** Accept a lineage only if it is clean, has no cycle, and
+   every root (ancestor with no confirmed parent) is an identity you recognise as the
+   start of a line (`checkLineage(ledger, record, recognisedRoots).accepted`). Anyone can
+   anchor fresh material with no history, and a cycle has no root to check.
+5. **Presentations.** Send the licensee a fresh 32-byte random challenge, privately, and
+   use it once. Accept the presentation only if (a) the tag its transaction published is
+   `presentationTag(c, challenge)` for some commitment `c` of the issuing identity (a
+   licence issued after a rotation is tagged under the successor), and (b) in the state
+   at the end of its block, `unsealedChanges` is false. Otherwise ask for a new
+   presentation after the next seal: one that landed while a revocation was waiting may
+   use the revoked licence (`acceptPresentation`). It proves that someone holding the
+   licence secret took part, not which party.
 6. **Event cells are per transaction.** Each `last*` cell holds the value from the most
-   recent transaction that wrote it. Read them from the indexer per transaction, not from
-   the latest state.
+   recent transaction that wrote it. Read them from the indexer per transaction.
 7. **Batch roots are not possession.** `anchorBatch` is unauthenticated.
 
 ## Trust model
@@ -201,12 +212,24 @@ the circuit set as changeable by VeilCore.
 
 ## Known limits
 
+- **What a thief does before recovery stands.** Someone holding an identity's current
+  secret acts as that identity until recovery: they can revoke its licences, accept
+  obligations on it (including ones owed to themselves), and confirm parentage.
+  Recovery stops them from then on; it does not undo those acts, and no one can remove a
+  confirmed edge. Disputes of that kind are for the parties and, while it is held, the
+  maintenance authority, which could add a remedy circuit. Keep secrets on devices you
+  control and the recovery secret offline.
+- **Licence activity is public apart from presentations.** Issue, countersign, transfer
+  and revoke publish the licence commitment and the issuer. Only a presentation hides
+  them. Whether fee payments can link a presentation to its countersign is an open
+  question for the Midnight wallet, not this contract.
 - **Licence entries grow with use.** Anyone can issue licences to themselves at a fee per
   entry. The bound is economic, not structural. Identity maps grow by one entry per
   anchor, rotation or recovery. That is the price of a retired secret ceasing to work.
-- **The revocation window** is up to `SEAL_INTERVAL` plus the time until someone seals.
+- **The revocation window** is at least until the next seal: up to `SEAL_INTERVAL` plus
+  the time until someone seals. Rule 5 closes it for a careful verifier.
 - **Record commitments are stable pseudonyms.** Actions under one record link to each
-  other. Presentations do not link to the record except for the verifier.
+  other.
 - **Licences issued by a thief** before recovery stay PENDING under the identity. The
   owner learns their commitments when they are countersigned (`lastActivatedLicense`)
   and can revoke them then.
@@ -248,5 +271,8 @@ bboard-ui/                      the breeder-facing website
 ```
 
 Build: install the Compact toolchain, then `cd contract && npm run compact && npm test`.
-`npm run fingerprints` records the proving and verifying key hashes for the deployment
-record.
+`npm run fingerprints` records the compiler version and the proving and verifying key
+hashes in `docs/fingerprints.md`, the table the deployment record carries. A mainnet
+deploy from the CLI is refused unless every local key matches that table as committed
+(`bboard-cli/src/keys-check.ts`), and unless the deployment record revision is declared
+(`api/src/deploy-guard.ts`).

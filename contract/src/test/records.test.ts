@@ -45,9 +45,10 @@ describe("anchoring and ownership", () => {
 
   it("pairs a DNA fingerprint to the caller's record, not anyone else's", () => {
     anchorA();
+    sim.call(as(D), "anchor", C.recoveryCommit(secret("rd")));
     sim.call(as(D), "pairDna", secret("dna"));
     expect(hex(sim.state.lastPairedRecord)).toBe(hex(D_REC));
-    expect(hex(sim.state.lastAnchor)).toBe(hex(A_REC));
+    expect(hex(sim.state.lastAnchor)).toBe(hex(D_REC)); // pairDna did not write the anchor cell
   });
 
   it("refuses empty inputs everywhere", () => {
@@ -105,8 +106,19 @@ describe("rotation", () => {
     ).toThrow("hold the secret");
   });
 
-  it("refuses an unanchored record, which could never be recovered", () => {
-    sim.call(as(D), "issueLicense", C.licenseCommit(secret("l"), D_REC));
+  it("an unanchored record can do nothing but anchor, so it carries no history into an identity", () => {
+    expect(() => sim.call(as(D), "proveOwnership")).toThrow(
+      "only for anchored records",
+    );
+    expect(() => sim.call(as(D), "pairDna", secret("dna"))).toThrow(
+      "only for anchored records",
+    );
+    expect(() =>
+      sim.call(as(D), "issueLicense", C.licenseCommit(secret("l"), D_REC)),
+    ).toThrow("only for anchored records");
+    expect(() => sim.call(as(D), "encumberOwnRecord", secret("o"))).toThrow(
+      "only for anchored records",
+    );
     expect(() =>
       sim.call(as(D, { incoming: B }), "rotateRecordSecret", B_REC),
     ).toThrow("Anchor this record before rotating it");

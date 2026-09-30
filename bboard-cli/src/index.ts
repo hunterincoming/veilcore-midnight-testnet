@@ -18,6 +18,7 @@ import {
   type VeilcoreCircuitKeys,
   type SealResult,
   newPresentationChallenge,
+  acceptPresentation,
 } from '../../api/src/index';
 import { type WalletFacade } from '@midnight-ntwrk/wallet-sdk-facade';
 import { pureCircuits } from '../../contract/src/managed/veilcore/contract/index.js';
@@ -37,6 +38,8 @@ import { unshieldedToken } from '@midnight-ntwrk/midnight-js-protocol/ledger';
 import { syncWallet, waitForUnshieldedFunds } from './wallet-utils';
 import { generateDust } from './generate-dust';
 import { runSmoke } from './smoke';
+import { assertKeysMatchRecord } from './keys-check';
+import path from 'node:path';
 import { getNetworkId } from '@midnight-ntwrk/midnight-js-network-id';
 import { type VeilcorePrivateState } from '../../contract/src/witnesses.js';
 
@@ -132,11 +135,16 @@ export const deployOrJoin = async (
   providers: VeilcoreProviders,
   rli: Interface,
   logger: Logger,
+  zkConfigPath: string,
 ): Promise<VeilcoreAPI | null> => {
   while (true) {
     const choice = (await rli.question(DEPLOY_OR_JOIN_QUESTION)).trim();
     switch (choice) {
       case '1': {
+        if (getNetworkId() === 'mainnet') {
+          const n = assertKeysMatchRecord(zkConfigPath, path.resolve(zkConfigPath, '..', '..', '..', '..'));
+          logger.info(`All ${n} key files match the committed fingerprints (docs/fingerprints.md).`);
+        }
         const api = await VeilcoreAPI.deploy(providers, await askMaintenanceAuthority(rli, logger), logger);
         logger.info(`Deployed VeilCore contract at address: ${api.deployedContractAddress}`);
         return api;
@@ -168,28 +176,38 @@ export const deployOrJoin = async (
  */
 
 const MAIN_LOOP_QUESTION = `
- Records                                 Licences
-  1. Anchor your record                   7. Make a licence secret (as licensee)
-  2. Prove ownership                      8. Issue a licence
-  3. Pair a DNA report fingerprint        9. Countersign a licence (as licensee)
-  4. Rotate to a new secret              10. Prove you hold a licence
-  5. Recover with the recovery secret    11. Propose a transfer (as holder)
-  6. Replace the recovery secret         12. Approve a transfer (as issuer)
-                                         13. Withdraw a transfer proposal
- Lineage                                 14. Revoke a licence
- 16. Propose a parent (as child)         15. Seal waiting revocations
- 17. Confirm a child (as parent)
- 18. Withdraw your parent proposal       Other
- 19. Place an obligation on your record  25. Anchor a batch root
- 20. Propose an obligation (beneficiary) 26. Show the contract state
- 21. Accept an obligation (as holder)    27. Show your record and identity
- 22. Withdraw an obligation proposal     28. Show your record secret
- 23. Release an obligation (beneficiary) 29. Retire the maintenance authority (PERMANENT)
- 24. Check a record's lineage             0. Exit
+ Records                                  Lineage
+  1. Anchor your record                   16. Propose a parent (as child)
+  2. Prove ownership                      17. Confirm a child (as parent)
+  3. Pair a DNA report fingerprint        18. Withdraw your parent proposal
+  4. Rotate to a new secret               19. Place an obligation on your record
+  5. Recover with the recovery secret     20. Propose an obligation (as beneficiary)
+  6. Replace the recovery secret          21. Accept an obligation (as holder)
+                                          22. Reject an obligation (as holder)
+ Licences                                 23. Withdraw an obligation proposal
+  7. Make a licence secret (as licensee)  24. Release an obligation (as beneficiary)
+  8. Issue a licence                      25. Check a record's lineage
+  9. Countersign a licence (as licensee)
+ 10. Prove you hold a licence             Verifier
+ 11. Propose a transfer (as holder)       26. Make a challenge for a licensee
+ 12. Approve a transfer (as issuer)       27. Check a licence presentation
+ 13. Withdraw a transfer proposal
+ 14. Revoke a licence                     Other
+ 15. Seal waiting revocations             28. Anchor a batch root
+                                          29. Show the contract state
+                                          30. Show your record and identity
+                                          31. Show your record secret
+                                          32. Retire the maintenance authority (PERMANENT)
+                                           0. Exit
 Which would you like to do? `;
 
-const mainLoop = async (providers: VeilcoreProviders, rli: Interface, logger: Logger): Promise<void> => {
-  const api = await deployOrJoin(providers, rli, logger);
+const mainLoop = async (
+  providers: VeilcoreProviders,
+  rli: Interface,
+  logger: Logger,
+  zkConfigPath: string,
+): Promise<void> => {
+  const api = await deployOrJoin(providers, rli, logger, zkConfigPath);
   if (api === null) return;
 
   let derived: VeilcoreDerivedState | undefined;
@@ -239,7 +257,10 @@ const mainLoop = async (providers: VeilcoreProviders, rli: Interface, logger: Lo
             showSecret('YOUR NEW RECORD SECRET — store it now, before the recovery is sent:', toHex(next));
             await rli.question('Press Enter once it is stored. ');
             tx(await api.recoverRecordSecret(origin, C.commit(next), recovery, next));
-            logger.info('Recovered. Whoever held an earlier secret, including a thief, can no longer act.');
+            logger.info('Recovered. Whoever held an earlier secret, including a thief, can no longer act from now on.');
+            logger.info(
+              'What they did before this (licences revoked, obligations accepted) stands. See design.md, Known limits.',
+            );
             break;
           }
           case '6': {
@@ -278,14 +299,7 @@ const mainLoop = async (providers: VeilcoreProviders, rli: Interface, logger: Lo
           case '10': {
             const secret = await ask32(rli, 'YOUR licence secret (hex): ');
             const issuer = await ask32(rli, "Issuer's record (hex): ");
-            const challenge = await ask32Or(
-              rli,
-              "Verifier's challenge (hex; blank to make one to send them): ",
-              new Uint8Array(0),
-            );
-            const ch = challenge.length === 32 ? challenge : newPresentationChallenge();
-            if (challenge.length !== 32)
-              showSecret('CHALLENGE — give this to the verifier privately; never publish it:', toHex(ch));
+            const ch = await ask32(rli, "Verifier's challenge (hex, from the verifier's option 26): ");
             const shown = await api.proveLicense(secret, issuer, ch);
             tx(shown);
             logger.info('The verifier checks that this transaction published presentationTag(issuer, challenge).');
@@ -363,16 +377,41 @@ const mainLoop = async (providers: VeilcoreProviders, rli: Interface, logger: Lo
             break;
           }
           case '22': {
-            const record = await ask32(rli, "Holder's record (hex): ");
-            tx(await api.withdrawObligation(record, await askObligation(rli, logger)));
+            const obligation = await askObligation(rli, logger);
+            tx(await api.rejectObligation(obligation, await ask32(rli, "Beneficiary's record (hex): ")));
+            break;
+          }
+          case '26': {
+            const ch = newPresentationChallenge();
+            showSecret('CHALLENGE — send it to the licensee privately, use it once, never publish it:', toHex(ch));
+            logger.info('Keep it: you need it to check their presentation (option 27).');
+            break;
+          }
+          case '27': {
+            const issuer = await ask32(rli, 'Issuer you asked about (any record of that identity, hex): ');
+            const ch = await ask32(rli, 'The challenge you sent (hex): ');
+            const tag = await ask32Or(
+              rli,
+              'Tag their transaction published (hex; blank = the latest on chain): ',
+              new Uint8Array(0),
+            );
+            const ledger = await api.currentLedger();
+            const verdict = acceptPresentation(ledger, issuer, ch, tag.length === 32 ? tag : ledger.lastPresentation);
+            logger.info(`${verdict.accepted ? 'ACCEPTED' : 'NOT ACCEPTED'}: ${verdict.reason}.`);
+            logger.info("Check against the state at the end of the presentation's block (design.md, rule 5).");
             break;
           }
           case '23': {
             const record = await ask32(rli, "Holder's record (hex): ");
-            tx(await api.discharge(record, await askObligation(rli, logger)));
+            tx(await api.withdrawObligation(record, await askObligation(rli, logger)));
             break;
           }
           case '24': {
+            const record = await ask32(rli, "Holder's record (hex): ");
+            tx(await api.discharge(record, await askObligation(rli, logger)));
+            break;
+          }
+          case '25': {
             const report = await api.checkLineage(await ask32(rli, 'Record to check (hex): '));
             logger.info(`Identity: ${toHex(report.identity)}`);
             logger.info(
@@ -383,13 +422,13 @@ const mainLoop = async (providers: VeilcoreProviders, rli: Interface, logger: Lo
             logger.info(report.clean ? 'CLEAN: no ancestor on chain carries an open obligation.' : 'NOT CLEAN.');
             break;
           }
-          case '25': {
+          case '28': {
             const root = await ask32(rli, 'Batch root (hex): ');
             tx(await api.anchorBatch(root));
             logger.info('Anchored. This proves the batch existed at this time, not who held its records.');
             break;
           }
-          case '26': {
+          case '29': {
             const l = await api.currentLedger();
             logger.info(
               `Protocol version ${l.protocolVersion}. Anchors ${l.anchorSeq}, ownership proofs ${l.proofSeq}, presentations ${l.presentationSeq}.`,
@@ -398,7 +437,7 @@ const mainLoop = async (providers: VeilcoreProviders, rli: Interface, logger: Lo
             logger.info(`Revocations waiting for a seal: ${l.unsealedChanges ? 'yes' : 'no'}.`);
             break;
           }
-          case '27':
+          case '30':
             if (derived === undefined) logger.info('No state yet.');
             else {
               logger.info(`Your record:   ${derived.myCommitment}`);
@@ -408,10 +447,10 @@ const mainLoop = async (providers: VeilcoreProviders, rli: Interface, logger: Lo
               );
             }
             break;
-          case '28':
+          case '31':
             showSecret('YOUR RECORD SECRET:', toHex(await mySecret(providers)));
             break;
-          case '29': {
+          case '32': {
             const sure = (
               await rli.question(
                 'Nobody, including you, will ever be able to change this contract. Type RETIRE to confirm: ',
@@ -593,7 +632,7 @@ export const run = async (config: Config, testEnv: TestEnvironment, logger: Logg
       midnightProvider: walletProvider,
     };
 
-    await mainLoop(providers, rli, logger);
+    await mainLoop(providers, rli, logger, config.zkConfigPath);
   } catch (e) {
     logError(logger, e);
     logger.info('Exiting...');

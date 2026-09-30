@@ -273,3 +273,24 @@ confirmed before it was fixed.
 Not changed: finding 8 (anyone holding a record's body can store a copy in the registry
 and make its holder ambiguous there). It affects the registry service only, not the
 contract, and is tracked for the registry.
+
+
+---
+
+# Round 5: fourth independent review (30 Sep, afternoon)
+
+A fresh reviewer attacked the merged contract. No forgery or starvation issue was found
+in the contract. Findings and fixes:
+
+| # | Finding | Fix |
+|---|---|---|
+| M1 | Verifier rule 5 accepted a presentation that landed while a revocation was unsealed, if the verifier "waited". | Rule rewritten: judge against the state at the end of the presentation's block; reject if `unsealedChanges`. `verify.ts` `acceptPresentation` implements it; tested. |
+| M2 | What a thief does with a stolen current secret before recovery (revocations, accepted obligations, confirmed edges) survives recovery, undocumented. | Documented under Known limits; a test pins the behaviour; the CLI says so after recovery. |
+| M3 | The deploy guard trusted a declared number; nothing tied the deployed keys to the record. | Mainnet deploy refused unless every key matches the committed `docs/fingerprints.md`, which now also records the compiler version. |
+| S1 | `checkLineage` reported cycles with no roots as passable, and ignored an obligation on the record itself. | Reports `cyclic`, includes the record, and `accepted` requires recognised roots. Tested. |
+| S2 | Rotating into an unanchored commitment carried its earlier events into the identity. | Only anchored identities can act, other than to anchor. |
+| S3 | The CLI let the licensee make the verifier's challenge. | Removed; the verifier makes it (option 26) and checks the presentation (option 27). |
+| S4 | The obligation count was read-modify-write, so accepts and discharges on one record failed each other. | `Map<Bytes<32>, Counter>`; concurrent calls commute. Tested with prove/land. |
+| S5 | Two post-seal tests could not fail (they used a fresh path, which does not exist after revocation). | Rewritten on the saved old path, asserting "stale". Mutation check: removing the seal's reset now fails five tests. |
+| S6 | Two seals could land about 301 s apart, because the seal time could be claimed in the past. | The seal takes an upper bound on the block time; the next needs block time ≥ that bound + 600 s. Tested at 600 and 601 s. |
+| — | `rotatedTo` was dead state; `LicenseState.NONE` never stored; pending obligations could pile up. | Removed, removed, `rejectObligation` added. |

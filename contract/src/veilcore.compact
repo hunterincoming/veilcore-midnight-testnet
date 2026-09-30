@@ -16,9 +16,11 @@
 // seal (sealRevocations), which anyone may call once SEAL_INTERVAL has passed.
 //
 // LINEAGE. A descent edge exists only when both holders agreed; an obligation binds a
-// record only when its holder agreed, and only its beneficiary can release it. Lineage
-// is for anchored identities only, which is what keeps an identity from being merged
-// into another to shed what it owes.
+// record only when its holder agreed, and only its beneficiary can release it.
+//
+// ANCHORED IDENTITIES ONLY act, other than to anchor: ownership, DNA pairing, licensing
+// and lineage all require one. An anchored record can never be a rotation target, so
+// an identity cannot be merged into another to shed what it owes or borrow history.
 //
 // Design, verifier rules and the attack history: docs/design.md, docs/security-pass-30sep.md.
 
@@ -26,7 +28,7 @@ pragma language_version 0.23;
 
 import CompactStandardLibrary;
 
-export enum LicenseState { NONE, PENDING, ACTIVE }
+export enum LicenseState { PENDING, ACTIVE }
 
 // ─────────────────────────────────────────────────────────────── state
 
@@ -65,8 +67,6 @@ export ledger lastObligationRecord: Bytes<32>;
 export ledger lastObligation: Bytes<32>;
 export ledger lastBeneficiary: Bytes<32>;
 
-/** Retired record -> the record a ROTATION moved it to. Recovery does not write here. */
-export ledger rotatedTo: Map<Bytes<32>, Bytes<32>>;
 /** Successor -> its origin. */
 export ledger originOf: Map<Bytes<32>, Bytes<32>>;
 /** Moved origin -> its current head. The one source of truth for liveness. */
@@ -88,7 +88,10 @@ export ledger licenseSlotOf: Map<Bytes<32>, Uint<64>>;
  * block every activation with one transaction per block).
  */
 export ledger licenseAtSlot: Map<Uint<64>, Bytes<32>>;
-/** Block time (seconds) of the last seal, and whether anything is waiting for one. */
+/**
+ * An upper bound on the block time (seconds) of the last seal, and whether anything is
+ * waiting for one. The next seal needs a block time at least SEAL_INTERVAL after it.
+ */
 export ledger lastSealTime: Uint<64>;
 export ledger unsealedChanges: Boolean;
 
@@ -100,8 +103,12 @@ export ledger parentsOf: Map<Bytes<32>, Set<Bytes<32>>>;
 export ledger pendingObligations: Set<Bytes<32>>;
 /** obligationKey(...), in force. */
 export ledger openObligations: Set<Bytes<32>>;
-/** Record identity -> number of obligations in force. Absent means none. */
-export ledger obligationCountOf: Map<Bytes<32>, Uint<32>>;
+/**
+ * Record identity -> number of obligations in force. A Counter, so concurrent accepts
+ * and discharges on one record commute instead of failing each other; entries are
+ * never removed, and a record owes something exactly when its count is above zero.
+ */
+export ledger obligationCountOf: Map<Bytes<32>, Counter>;
 
 constructor() {
   protocolVersion = 1;
@@ -127,7 +134,7 @@ witness presentationChallenge(): Bytes<32>;
 
 /** Minimum seconds between seals: the most often anyone can invalidate old roots. */
 circuit SEAL_INTERVAL(): Uint<64> { return 600; }
-/** How far behind the block time a seal's claimed time may be. */
+/** How far ahead of the block time a seal's bound may be. */
 circuit SEAL_SLACK(): Uint<64> { return 300; }
 
 /** Commitment to a record secret. Every kind of value has its own tag. */
@@ -194,7 +201,14 @@ circuit anchoredIdentity(record: Bytes<32>): Bytes<32> {
   return o;
 }
 
-/** The caller's identity, for lineage. */
+/** The caller's live record, required to belong to an anchored identity. */
+circuit anchoredSelf(): Bytes<32> {
+  const me = liveSelf();
+  anchoredIdentity(me);
+  return me;
+}
+
+/** The caller's identity. */
 circuit myIdentity(): Bytes<32> {
   return anchoredIdentity(liveSelf());
 }
@@ -207,11 +221,10 @@ circuit assertSameIdentity(me: Bytes<32>, issuer: Bytes<32>): [] {
 
 /**
  * A rotation or recovery target must have no history, so two identities can never be
- * merged. An unanchored record that issued licences can still be moved into: the mover
- * holds its secret, and its licences follow.
+ * merged. Only anchor can act under an unanchored commitment, so an unused one has no
+ * events to carry into the identity either.
  */
 circuit assertUnused(record: Bytes<32>): [] {
-  assert(!rotatedTo.member(record), "That commitment has been retired");
   assert(!originOf.member(record), "That commitment is already a successor");
   assert(!recoveryOf.member(record), "That commitment is already an anchored record");
   assert(!headOf.member(record), "That commitment is already an origin with history");
@@ -257,17 +270,17 @@ export circuit anchorBatch(root: Bytes<32>): [] {
   lastBatchRoot = r;
 }
 
-/** Prove present possession of a live record. */
+/** Prove present possession of a live, anchored record. */
 export circuit proveOwnership(): Bytes<32> {
-  const c = liveSelf();
+  const c = anchoredSelf();
   proofSeq.increment(1);
   lastOwnershipProof = c;
   return c;
 }
 
-/** Bind a DNA report fingerprint to the caller's own live record. */
+/** Bind a DNA report fingerprint to the caller's own live, anchored record. */
 export circuit pairDna(dnaCommitment: Bytes<32>): Bytes<32> {
-  const rc = liveSelf();
+  const rc = anchoredSelf();
   const dc = disclose(dnaCommitment);
   assertNonEmpty(dc);
   pairSeq.increment(1);
@@ -285,7 +298,6 @@ export circuit rotateRecordSecret(newRecordCommitment: Bytes<32>): Bytes<32> {
   assert(old != fresh, "The new commitment must differ from the old one");
   assert(fresh == commit(incomingGeneticSecret()), "You must hold the secret behind the new commitment");
   assertUnused(fresh);
-  rotatedTo.insert(old, fresh);
   originOf.insert(fresh, origin);
   headOf.insert(origin, fresh);
   rotationSeq.increment(1);
@@ -328,11 +340,11 @@ export circuit replaceRecoveryCommitment(recordCommitment: Bytes<32>, newRecover
 // ─────────────────────────────────────────────────────────────── licences
 
 /**
- * Issue a licence against the caller's live record. Starts PENDING. The LICENSEE makes
- * the licence secret and hands over only licenseCommit(secret, issuing record).
+ * Issue a licence against the caller's live, anchored record. Starts PENDING. The
+ * LICENSEE makes the licence secret and hands over only licenseCommit(secret, record).
  */
 export circuit issueLicense(licenseCommitment: Bytes<32>): [] {
-  const me = liveSelf();
+  const me = anchoredSelf();
   const lc = disclose(licenseCommitment);
   assertNonEmpty(lc);
   const k = licenseKey(lc, me);
@@ -436,16 +448,17 @@ export circuit revokeLicense(licenseCommitment: Bytes<32>, issuingRecord: Bytes<
 
 /**
  * Drop every older root, so paths proved before a revocation or transfer stop verifying.
- * Anyone may call it, at most once per SEAL_INTERVAL and only when a revocation or
- * transfer is waiting: that caps how often anyone can force presentations in flight
- * to be re-proved. `now` is the caller's reading of the block time, checked against it.
+ * Anyone may call it when a revocation or transfer is waiting, once the block time is
+ * SEAL_INTERVAL past the previous seal: that caps how often anyone can force
+ * presentations in flight to be re-proved. `bound` is an upper bound on the block time,
+ * at most SEAL_SLACK ahead of it; the next seal is measured from it.
  */
-export circuit sealRevocations(now: Uint<64>): [] {
-  const t = disclose(now);
+export circuit sealRevocations(bound: Uint<64>): [] {
+  const t = disclose(bound);
   assert(unsealedChanges, "No revocation or transfer is waiting to be sealed");
-  assert(t >= lastSealTime + SEAL_INTERVAL(), "Too soon since the last seal");
-  assert(blockTimeGte(t), "That time is in the future");
-  assert(blockTimeLt((t + SEAL_SLACK()) as Uint<64>), "That time is too far in the past");
+  assert(blockTimeGte((lastSealTime + SEAL_INTERVAL()) as Uint<64>), "Too soon since the last seal");
+  assert(blockTimeLt(t), "That time is not ahead of the block time");
+  assert(t >= SEAL_SLACK() && blockTimeGte((t - SEAL_SLACK()) as Uint<64>), "That time is too far ahead");
   activeLicenses.resetHistory();
   lastSealTime = t;
   unsealedChanges = false;
@@ -510,8 +523,10 @@ export circuit withdrawParent(): [] {
 
 circuit addObligation(r: Bytes<32>, o: Bytes<32>, b: Bytes<32>, k: Bytes<32>): [] {
   openObligations.insert(k);
-  const n = obligationCountOf.member(r) ? obligationCountOf.lookup(r) : 0 as Uint<32>;
-  obligationCountOf.insert(r, (n + 1) as Uint<32>);
+  if (!obligationCountOf.member(r)) {
+    obligationCountOf.insert(r, default<Counter>);
+  }
+  obligationCountOf.lookup(r).increment(1);
   obligationSeq.increment(1);
   lastObligationRecord = r;
   lastObligation = o;
@@ -559,6 +574,13 @@ export circuit acceptObligation(obligationCommitment: Bytes<32>, beneficiary: By
   addObligation(r, o, b, k);
 }
 
+/** The record's holder declines a proposed obligation, so proposals cannot pile up against it. */
+export circuit rejectObligation(obligationCommitment: Bytes<32>, beneficiary: Bytes<32>): [] {
+  const k = obligationKey(myIdentity(), disclose(obligationCommitment), anchoredIdentity(disclose(beneficiary)));
+  assert(pendingObligations.member(k), "No such obligation proposed against your record");
+  pendingObligations.remove(k);
+}
+
 /** ONLY THE BENEFICIARY, under its current head, releases an obligation. */
 export circuit discharge(record: Bytes<32>, obligationCommitment: Bytes<32>): [] {
   const b = myIdentity();
@@ -567,12 +589,7 @@ export circuit discharge(record: Bytes<32>, obligationCommitment: Bytes<32>): []
   const k = obligationKey(r, o, b);
   assert(openObligations.member(k), "No such obligation in your favour");
   openObligations.remove(k);
-  const n = obligationCountOf.lookup(r);
-  if (n == 1) {
-    obligationCountOf.remove(r);
-  } else {
-    obligationCountOf.insert(r, (n - 1) as Uint<32>);
-  }
+  obligationCountOf.lookup(r).decrement(1);
   obligationSeq.increment(1);
   lastObligationRecord = r;
   lastObligation = o;

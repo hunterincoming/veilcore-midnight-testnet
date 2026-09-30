@@ -69,10 +69,10 @@ cd ../bboard-ui && npm run build
 ## Current status
 
 **One contract, `contract/src/veilcore.compact`, protocol version 1, going to mainnet.**
-It covers records, licences and lineage in 23 circuits. The design, the normative
+It covers records, licences and lineage in 24 circuits. The design, the normative
 verifier rules and the trust model are in [`docs/design.md`](docs/design.md).
 
-It has been through four adversarial passes, the last three on 30 September 2026, two of
+It has been through five adversarial passes, the last four on 30 September 2026, three of
 them by reviewers who had not seen the fixes. Every finding was first confirmed as a
 working attack, then fixed, and each attack is a regression test
 (`cd contract && npm test`). The history is in

@@ -189,6 +189,29 @@ const Audience: React.FC<{ who: string; line: string; to: string; label: string 
   </Box>
 );
 
+const Person: React.FC<{ name: string; role: string; bio: string; extra?: string }> = ({ name, role, bio, extra }) => (
+  <Box sx={{ py: 3.5, borderTop: '1px solid', borderColor: 'rgba(255,255,255,0.07)' }}>
+    <Stack direction={{ xs: 'column', md: 'row' }} spacing={{ xs: 1, md: 4 }} sx={{ alignItems: { md: 'baseline' } }}>
+      <Box sx={{ minWidth: { md: 210 } }}>
+        <Typography variant="subtitle1">{name}</Typography>
+        <Typography variant="body2" sx={{ color: TEAL_DIM }}>
+          {role}
+        </Typography>
+      </Box>
+      <Box sx={{ flex: 1 }}>
+        <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 620, lineHeight: 1.7 }}>
+          {bio}
+        </Typography>
+        {extra && (
+          <Typography variant="body2" sx={{ color: TEAL_DIM, mt: 1 }}>
+            {extra}
+          </Typography>
+        )}
+      </Box>
+    </Stack>
+  </Box>
+);
+
 /* --------------------------------------------------------------- page ----- */
 
 export const Landing: React.FC = () => (
@@ -289,6 +312,21 @@ export const Landing: React.FC = () => (
         line="Verification is free, needs no account, and always will be. If we disappear, records already issued keep verifying against the ledger with open-source software."
         to="/docs/integrate"
         label="How verification works"
+      />
+    </Box>
+
+    <Rule eyebrow="Who is building it" />
+    <Box sx={{ pt: 1 }}>
+      <Person
+        name="Makoto (Mako) Steiner"
+        role="Co-founder & CEO"
+        bio="Makoto (Mako) Steiner is VeilCore's co-founder and CEO, leading commercial strategy, fundraising, and VeilCore's relationships with partners, institutions, and investors worldwide. He studied Environmental Studies at Denison University and is based in Tokyo."
+        extra="Languages: English, Japanese"
+      />
+      <Person
+        name="Hunter Roberts"
+        role="Co-founder & COO"
+        bio="Hunter Roberts is VeilCore's co-founder and COO, leading product and the VeilCore protocol, from the record format to the contracts on Midnight. He comes from hands-on plant work: tissue culture, sterile lab operations and cultivation facility build-outs. He is Midnight Foundation's Nightforce Leader (US) and is based in New Jersey."
       />
     </Box>
   </Container>

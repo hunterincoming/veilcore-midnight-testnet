@@ -42,6 +42,7 @@ const witnesses = (secret, incoming = secret, recovery = secret) => ({
   licenseRecord: (ctx) => [ctx.privateState, licPath.record],
   licenseSiblings: (ctx) => [ctx.privateState, licPath.siblings],
   licenseDirections: (ctx) => [ctx.privateState, licPath.dirs],
+  presentationChallenge: (ctx) => [ctx.privateState, licPath.secret],
 });
 
 // No licence circuit that moves a leaf runs in this file — section 3 only issues,
@@ -103,7 +104,7 @@ console.log('\n== 2. does pairDna bind the record to the DNA report on chain? ==
   const rc = pureCircuits.commit(BREEDER);
   const dc = b32(0x44);
 
-  const r = contract.impureCircuits.pairDna(ctx, rc, dc);
+  const r = contract.impureCircuits.pairDna(ctx, dc);
   const after = ledger(r.context.currentQueryContext.state);
 
   note(`record commitment: ${hex(rc).slice(0, 24)}…`);
@@ -111,7 +112,8 @@ console.log('\n== 2. does pairDna bind the record to the DNA report on chain? ==
   note(`lastAnchor holds:  ${hex(after.lastAnchor).slice(0, 24)}…`);
 
   note(`lastPairedRecord:  ${hex(after.lastPairedRecord).slice(0, 24)}…`);
-  ok('lastAnchor holds the DNA commitment', same(after.lastAnchor, dc));
+  note(`lastPairedDna:     ${hex(after.lastPairedDna).slice(0, 24)}…`);
+  ok('the DNA commitment reaches its own public cell', same(after.lastPairedDna, dc));
   // Was asserted on r.result, for the same reason and with the same defect as 1.
   ok('the record commitment also reaches a public position', same(after.lastPairedRecord, rc),
      'only the DNA side is public — the pairing is not checkable on chain');
@@ -133,7 +135,7 @@ console.log('\n== 3. can a stranger grow licence state without bound? ==');
     // licenseCommit, not commit: records and licences no longer share a domain
     // tag, and the commitment is bound to the record it is issued against.
     const lc = pureCircuits.licenseCommit(b32(i + 1), griefRecord);
-    cur = contract.impureCircuits.issueLicense(cur, griefRecord, lc).context;
+    cur = contract.impureCircuits.issueLicense(cur, lc).context;
   }
 
   const after = ledger(cur.currentQueryContext.state);

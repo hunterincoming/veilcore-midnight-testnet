@@ -50,6 +50,7 @@ import { sampleSigningKey } from '@midnight-ntwrk/midnight-js-protocol/compact-r
 import { TestEnvironment } from '@midnight-ntwrk/testkit-js';
 import { MidnightWalletProvider } from './midnight-wallet-provider';
 import { randomBytes } from '../../api/src/utils';
+import { showSecret } from './secret-out';
 import { LicenseTree } from '../../contract/src/license-tree.mjs';
 import { unshieldedToken } from '@midnight-ntwrk/midnight-js-protocol/ledger';
 import { syncWallet, waitForUnshieldedFunds } from './wallet-utils';
@@ -127,7 +128,7 @@ export const deployOrJoin = async (
         let signingKey: string | null = null;
         if (authority === 'y' || authority === 'yes') {
           signingKey = (await rli.question('Signing key (blank to generate one): ')).trim() || sampleSigningKey();
-          logger.info(`Maintenance authority signing key: ${signingKey}`);
+          showSecret('MAINTENANCE AUTHORITY SIGNING KEY:', signingKey);
           logger.info(
             'Record this somewhere deliberate. Whoever holds it controls what the contract accepts, and losing it makes the contract permanently non-upgradable.',
           );
@@ -204,7 +205,7 @@ const displayPrivateState = async (providers: VeilcoreProviders, logger: Logger)
   if (geneticSecret === null) {
     logger.info(`There is no existing Veilcore private state`);
   } else {
-    logger.info(`Your genetic secret is: ${toHex(geneticSecret)}`);
+    showSecret('YOUR GENETIC SECRET:', toHex(geneticSecret));
     logger.info(`Your commitment is:     ${toHex(pureCircuits.commit(geneticSecret))}`);
   }
 };
@@ -245,6 +246,9 @@ You can do one of the following:
   13. Withdraw a proposed transfer
   14. Rotate a record to a new secret
   15. Exit
+  16. Make a licence secret and commitment (as the licensee)
+  17. Recover a record with its recovery secret
+  18. Replace a record's recovery secret
 Which would you like to do? `;
 
 const mainLoop = async (
@@ -313,16 +317,14 @@ const mainLoop = async (
             // once — the CLI does not store it, and a record whose recovery secret is
             // lost along with its genetic secret is gone for good.
             const recoverySecret = randomBytes(32);
-            const recoveryCommitment = pureCircuits.commit(recoverySecret);
-            await veilcoreApi.anchor(commitment, recoveryCommitment);
+            // Its own domain tag: a recovery commitment must never double as a record.
+            const recoveryCommitment = pureCircuits.recoveryCommit(recoverySecret);
+            await veilcoreApi.anchor(recoveryCommitment);
             logger.info(`Anchored strain commitment: ${toHex(commitment)}`);
-            logger.info('');
-            logger.info('  RECOVERY SECRET — SAVE THIS NOW, IT IS NOT STORED AND NOT SHOWN AGAIN:');
-            logger.info(`  ${toHex(recoverySecret)}`);
-            logger.info('');
+            showSecret('RECOVERY SECRET — SAVE THIS NOW, IT IS NOT STORED AND NOT SHOWN AGAIN:', toHex(recoverySecret));
             logger.info(
-              'It is the only way to move this record if the genetic secret is lost. ' +
-                'Keep it apart from that secret — a place that loses both loses the record.',
+              'It moves this record even if the genetic secret is lost OR STOLEN, so it is the ' +
+                'master key: keep it offline and apart from the genetic secret.',
             );
             break;
           }
@@ -349,17 +351,19 @@ const mainLoop = async (
               logger.error('No genetic secret in private state; cannot issue.');
               break;
             }
-            const licSecret = (
-              await rli.question('Enter a licence secret in hex (the licensee will hold this): ')
-            ).trim();
-            const lic = hexToBytes(licSecret);
-            if (lic === null) {
-              logger.error('Invalid licence secret.');
+            // The LICENSEE generates the licence secret and sends only its commitment
+            // (menu 16). An issuer who knows the secret can countersign for them, which is
+            // a licence issued to nobody. This used to ask the issuer for the SECRET and
+            // commit it with the record tag, which made a licence that could never be
+            // countersigned at all.
+            const lcHex = (await rli.question("Licensee's licence commitment in hex (from their menu 16): ")).trim();
+            const licenseCommitment = hexToBytes(lcHex);
+            if (licenseCommitment === null) {
+              logger.error('Invalid licence commitment.');
               break;
             }
-            const recordCommitment = pureCircuits.commit(geneticSecret);
-            const licenseCommitment = pureCircuits.commit(lic);
-            await veilcoreApi.issueLicense(recordCommitment, licenseCommitment);
+            logger.info(`Issuing against your record ${toHex(pureCircuits.commit(geneticSecret))}`);
+            await veilcoreApi.issueLicense(licenseCommitment);
             logger.info(`Licence issued (PENDING): ${toHex(licenseCommitment)}`);
             break;
           }
@@ -396,6 +400,17 @@ const mainLoop = async (
               logger.error('Invalid licence commitment.');
               break;
             }
+            const issuerHex = (await rli.question('Record it was issued under (blank = your current record): ')).trim();
+            const ownSecret = await getGeneticSecret(providers);
+            if (ownSecret === null) {
+              logger.error('No genetic secret in private state.');
+              break;
+            }
+            const issuer = issuerHex === '' ? pureCircuits.commit(ownSecret) : hexToBytes(issuerHex);
+            if (issuer === null) {
+              logger.error('Invalid record commitment.');
+              break;
+            }
             if (!(await licenceTreeInSync())) break;
             // A PENDING licence has no leaf and the circuit skips the tree for one, so a
             // null path is what it gets. An ACTIVE one needs its real position.
@@ -405,7 +420,7 @@ const mainLoop = async (
             } catch {
               plan = { index: -1, dirs: [] as boolean[], siblings: [] as Uint8Array[] };
             }
-            await veilcoreApi.revokeLicense(lc, { directions: plan.dirs, siblings: plan.siblings });
+            await veilcoreApi.revokeLicense(lc, issuer, { directions: plan.dirs, siblings: plan.siblings });
             if (plan.index >= 0) licTree.applyRemove(lc, plan.index);
             logger.info('Licence revoked, cleared from live state and removed from the tree.');
             break;
@@ -428,12 +443,26 @@ const mainLoop = async (
               logger.error('No live licence with that secret against that record.');
               break;
             }
-            // The record commitment is entered here but never leaves this process: the
-            // circuit takes no arguments at all, so the secret, the record and the
-            // position are witnesses. Two presentations are byte-identical on chain.
-            await veilcoreApi.proveLicense(sec, rec, { directions: path.dirs, siblings: path.siblings });
-            logger.info('Licence proof accepted — you hold a live licence.');
-            logger.info('The transaction names neither the licence nor the record it was issued against.');
+            // The VERIFIER picks the challenge: 32 random bytes, used once, never
+            // published. It binds this presentation to them and to this record.
+            const chHex = (await rli.question("Verifier's challenge in hex (32 bytes, from the verifier): ")).trim();
+            const challenge = hexToBytes(chHex);
+            if (challenge === null || challenge.length !== 32) {
+              logger.error('The challenge must be exactly 32 bytes of hex, chosen by the verifier.');
+              break;
+            }
+            const shown = await veilcoreApi.proveLicense(
+              sec,
+              rec,
+              { directions: path.dirs, siblings: path.siblings },
+              challenge,
+            );
+            logger.info('Licence proof accepted.');
+            logger.info(`Tell the verifier: transaction ${shown.txHash} at block ${shown.blockHeight}.`);
+            logger.info(
+              'They check that its lastPresentation equals presentationTag(record, their challenge). ' +
+                'To anyone without the challenge it names nothing.',
+            );
             break;
           }
           case '8':
@@ -510,8 +539,16 @@ const mainLoop = async (
             if (!(await licenceTreeInSync())) break;
             // The outgoing leaf is replaced by the incoming one in place — the same
             // agreement continuing with a party the issuer has just consented to.
+            // The record the licence was ISSUED under — after a rotation that is your
+            // original record, not your current one.
+            const issHex = (await rli.question('Record it was issued under (blank = your current record): ')).trim();
+            const issuer = issHex === '' ? pureCircuits.commit(geneticSecret) : hexToBytes(issHex);
+            if (issuer === null) {
+              logger.error('Invalid record commitment.');
+              break;
+            }
             const plan = licTree.planReplace(lc);
-            await veilcoreApi.approveTransfer(lc, pureCircuits.commit(geneticSecret), enl, {
+            await veilcoreApi.approveTransfer(lc, issuer, enl, {
               directions: plan.dirs,
               siblings: plan.siblings,
             });
@@ -555,13 +592,65 @@ const mainLoop = async (
             logger.info(`Rotated. Previous commitment: ${toHex(rot.previousCommitment)}`);
             logger.info(`Transaction ${rot.txHash} at block ${rot.blockHeight}.`);
             logger.info(
-              'Licences issued against the old record are not moved. Re-key them through transfer, where the issuer approves.',
+              'Licences issued under any earlier record of yours stay under your control. When revoking ' +
+                'or approving one, give the record it was ISSUED under.',
             );
+            logger.info('This client now acts under the new secret. Store it: it is not shown again.');
             break;
           }
           case '15':
             logger.info('Exiting...');
             return;
+          case '16': {
+            // The licensee's side of issuing. The secret never leaves this machine; the
+            // commitment is what goes to the issuer.
+            const recHex = (await rli.question("Issuer's record commitment in hex: ")).trim();
+            const rec = hexToBytes(recHex);
+            if (rec === null) {
+              logger.error('Invalid record commitment.');
+              break;
+            }
+            const licSecret = randomBytes(32);
+            showSecret(
+              'YOUR LICENCE SECRET — keep it; you need it to countersign, present and transfer:',
+              toHex(licSecret),
+            );
+            logger.info(
+              `Send the issuer this licence commitment: ${toHex(pureCircuits.licenseCommit(licSecret, rec))}`,
+            );
+            break;
+          }
+          case '17': {
+            const origHex = (await rli.question('ORIGINAL anchored record commitment: ')).trim();
+            const rsHex = (await rli.question('Recovery secret in hex: ')).trim();
+            const orig = hexToBytes(origHex);
+            const rs = hexToBytes(rsHex);
+            if (orig === null || rs === null) {
+              logger.error('Invalid input.');
+              break;
+            }
+            const ns = randomBytes(32);
+            const nc = pureCircuits.commit(ns);
+            const rec = await veilcoreApi.recoverRecordSecret(orig, nc, rs, ns);
+            showSecret('YOUR NEW GENETIC SECRET — store it now:', toHex(ns));
+            logger.info(`Recovered. Retired head: ${toHex(rec.previousCommitment)}. New record: ${toHex(nc)}.`);
+            logger.info('Whoever held the old secret, including a thief, can no longer act for this record.');
+            break;
+          }
+          case '18': {
+            const origHex = (await rli.question('ORIGINAL anchored record commitment: ')).trim();
+            const rsHex = (await rli.question('CURRENT recovery secret in hex: ')).trim();
+            const orig = hexToBytes(origHex);
+            const rs = hexToBytes(rsHex);
+            if (orig === null || rs === null) {
+              logger.error('Invalid input.');
+              break;
+            }
+            const next = randomBytes(32);
+            await veilcoreApi.replaceRecoveryCommitment(orig, pureCircuits.recoveryCommit(next), rs);
+            showSecret('NEW RECOVERY SECRET — SAVE THIS NOW, the old one no longer works:', toHex(next));
+            break;
+          }
           default:
             logger.error(`Invalid choice: ${choice}`);
         }

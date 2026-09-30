@@ -46,6 +46,7 @@ const party = (secret) => new V.Contract({
   licenseRecord: (c) => [c.privateState, licPath.record],
   licenseSiblings: (c) => [c.privateState, licPath.siblings],
   licenseDirections: (c) => [c.privateState, licPath.dirs],
+  presentationChallenge: (c) => [c.privateState, licPath.challenge ?? sec('challenge')],
 });
 
 let ctx = rt.createCircuitContext(
@@ -112,10 +113,11 @@ const licensed = (plan, apply, secret, name, ...args) => {
 };
 const countersign = (who, secret, record) => {
   const lc = C.licenseCommit(secret, record);
+  licPath = { ...NO_PATH, secret };
   return licensed(() => licTree.planInsert(lc), (i) => licTree.applyInsert(lc, i),
-                  who, 'countersignLicense', secret, record);
+                  who, 'countersignLicense', record);
 };
-const present = (who, secret, record) => {
+const present = (who, secret, record, challenge = sec('challenge')) => {
   const lc = C.licenseCommit(secret, record);
   let p;
   try { p = licTree.pathFor(lc); }
@@ -123,7 +125,7 @@ const present = (who, secret, record) => {
     p = { siblings: Array.from({ length: DEPTH }, () => new Uint8Array(32)),
           dirs: Array.from({ length: DEPTH }, () => false) };
   }
-  licPath = { secret, record, siblings: p.siblings, dirs: p.dirs };
+  licPath = { ...NO_PATH, secret, record, siblings: p.siblings, dirs: p.dirs, challenge };
   try { return run(who, 'proveLicense'); } finally { licPath = NO_PATH; }
 };
 const presentRefused = (who, secret, record) => {
@@ -146,8 +148,8 @@ console.log('\n== 0. the tree deploys usable ==');
      '     repeated in a second contract');
 }
 
-run(BREEDER, 'anchor', BREEDER_REC, C.commit(sec('breeder-recovery')));
-run(OTHER_BREEDER, 'anchor', OTHER_REC, C.commit(sec('other-recovery')));
+run(BREEDER, 'anchor', C.recoveryCommit(sec('breeder-recovery')));
+run(OTHER_BREEDER, 'anchor', C.recoveryCommit(sec('other-recovery')));
 
 const AL = sec('alice-licence');
 const BL = sec('bob-licence');
@@ -156,9 +158,9 @@ const alice = C.licenseCommit(AL, BREEDER_REC);
 const bob = C.licenseCommit(BL, BREEDER_REC);
 const carol = C.licenseCommit(CL, OTHER_REC);
 
-run(BREEDER, 'issueLicense', BREEDER_REC, alice);
-run(BREEDER, 'issueLicense', BREEDER_REC, bob);
-run(OTHER_BREEDER, 'issueLicense', OTHER_REC, carol);
+run(BREEDER, 'issueLicense', alice);
+run(BREEDER, 'issueLicense', bob);
+run(OTHER_BREEDER, 'issueLicense', carol);
 countersign(sec('alice'), AL, BREEDER_REC);
 countersign(sec('bob'), BL, BREEDER_REC);
 countersign(sec('carol'), CL, OTHER_REC);
@@ -177,7 +179,7 @@ console.log('\n== 1. does a live licence still prove, and a dead one still fail?
 
   // A licence that was issued but never accepted is not presentable.
   const dangling = sec('never-countersigned');
-  run(BREEDER, 'issueLicense', BREEDER_REC, C.licenseCommit(dangling, BREEDER_REC));
+  run(BREEDER, 'issueLicense', C.licenseCommit(dangling, BREEDER_REC));
   ok('a PENDING licence cannot be presented',
      presentRefused(sec('nobody'), dangling, BREEDER_REC) !== '',
      'the tree holds the ACTIVE set, so a licence the licensee never accepted has no\n' +
@@ -207,9 +209,13 @@ console.log('\n== 2. does a presentation name the licence or the breeder? ==');
   // this file exists to catch. It is the tree root the proof was compared against —
   // already in a ledger cell, identical for every presentation, and therefore
   // carrying nothing about which licence was shown.
+  // Since the 30 Sep security pass a presentation ALSO publishes its tag,
+  // presentationTag(record, challenge): the thing a verifier checks. It is a hash
+  // under a secret challenge, so it names nothing to anyone without that challenge.
   const only = [...presentations[0].public];
-  ok('the one value it does publish is the tree root everyone shares',
-     only.length === 1 && only[0] === hex(state().activeLicenseRoot),
+  const expectedTag = hex(C.presentationTag(BREEDER_REC, sec('challenge')));
+  ok('it publishes exactly the shared tree root and the presentation tag',
+     only.length === 2 && only.includes(hex(state().activeLicenseRoot)) && only.includes(expectedTag),
      `unaccounted value(s) in the transcript: ${only.join(', ')}`);
 
   // THE CONTROL. If this fails, the scanner is not finding values that are really
@@ -231,21 +237,30 @@ console.log('\n== 2. does a presentation name the licence or the breeder? ==');
 console.log('\n== 3. can an observer link two presentations? ==');
 {
   const before = calls.length;
-  present(sec('alice'), AL, BREEDER_REC);   // the same licence, shown twice
-  present(sec('alice'), AL, BREEDER_REC);
-  present(sec('bob'), BL, BREEDER_REC);     // a different licence, same breeder
-  present(sec('carol'), CL, OTHER_REC);     // a different breeder entirely
-  const four = calls.slice(before).map((c) => c.shape);
+  present(sec('alice'), AL, BREEDER_REC, sec('ch-1'));   // the same licence, shown twice
+  present(sec('alice'), AL, BREEDER_REC, sec('ch-2'));
+  present(sec('bob'), BL, BREEDER_REC, sec('ch-3'));     // a different licence, same breeder
+  present(sec('carol'), CL, OTHER_REC, sec('ch-4'));     // a different breeder entirely
+  // Each verifier supplies a FRESH random challenge, as the protocol requires.
+  const four = calls.slice(before);
+  const root = hex(state().activeLicenseRoot);
+  const tags = four.map((c) => [...c.public].filter((v) => v !== root));
 
   note('two presentations of ONE licence, one of another, one from another breeder');
-  const [a1, a2, b1, c1] = four;
-  ok('the same licence shown twice produces identical transcripts', a1 === a2,
-     'if they differed, the difference would be the thing that identifies the licence');
-  ok('a different licence from the same breeder is indistinguishable', a1 === b1,
-     'two presentations linked to each other and to the breeder through the map key');
-  ok('a licence from a different breeder is indistinguishable too', a1 === c1,
-     'the transcript would otherwise partition presentations by issuer');
-  note('every presentation is the same bytes, so the set of them carries only a count');
+  ok('each presentation publishes the shared root and one tag, nothing else',
+     four.every((c, i) => c.public.has(root) && c.public.size === 2 && tags[i].length === 1));
+  const flat = tags.map((t) => t[0]);
+  ok('no two presentations share a tag, even of the same licence', new Set(flat).size === 4,
+     'a repeated value would link the presentations that carry it');
+  ok('the tag is not any licence commitment or record',
+     flat.every((t) => ![alice, bob, carol, BREEDER_REC, OTHER_REC].map(hex).includes(t)));
+  ok('the verifier who chose the challenge can check each tag',
+     flat[0] === hex(C.presentationTag(BREEDER_REC, sec('ch-1'))) &&
+     flat[3] === hex(C.presentationTag(OTHER_REC, sec('ch-4'))));
+  note('the tags are hashes under challenges only each verifier holds, so the set of');
+  note('them carries only a count. A REUSED or PUBLIC challenge breaks this: it lets');
+  note('anyone test each issuing record against the tag. Verifiers must use fresh');
+  note('random challenges, and the SDK must generate them.');
 }
 
 // ── 4. revocation still bites ───────────────────────────────────────────────
@@ -255,7 +270,7 @@ console.log('\n== 4. does a revoked licence stop proving? ==');
 
   const p = licTree.planRemove(bob);
   licPath = { ...licPath, siblings: p.siblings, dirs: p.dirs };
-  const err = refused(BREEDER, 'revokeLicense', bob);
+  const err = refused(BREEDER, 'revokeLicense', bob, BREEDER_REC);
   licPath = NO_PATH;
   ok('the breeder revokes', err === '', err);
   licTree.applyRemove(bob, p.index);

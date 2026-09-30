@@ -40,6 +40,7 @@ const party = (own, incoming = own, recovery = own) =>
     licenseRecord: (c) => [c.privateState, licPath.record],
     licenseSiblings: (c) => [c.privateState, licPath.siblings],
     licenseDirections: (c) => [c.privateState, licPath.dirs],
+    presentationChallenge: (c) => [c.privateState, sec('challenge')],
   });
 
 const licTree = new LicenseTree();
@@ -74,7 +75,7 @@ const state = () => V.ledger(ctx.currentQueryContext.state);
 // ── the unproven target ─────────────────────────────────────────────────────
 console.log('\n== can a holder rotate into a commitment they do not hold? ==');
 {
-  run(party(OLD, NEW, RECOVERY), 'anchor', OLD_REC, commit(RECOVERY));
+  run(party(OLD, NEW, RECOVERY), 'anchor', V.pureCircuits.recoveryCommit(RECOVERY));
 
   // A stranger's commitment. The rotating party does not hold its secret.
   const strangersRecord = commit(STRANGER);
@@ -90,19 +91,19 @@ console.log('\n== after rotating, does the old secret still act? ==');
 {
   ctx = fresh();
   const holder = party(OLD, NEW, RECOVERY);
-  run(holder, 'anchor', OLD_REC, commit(RECOVERY));
+  run(holder, 'anchor', V.pureCircuits.recoveryCommit(RECOVERY));
 
   // A licence issued under the old record, before the rotation.
   const lSecret = sec('licence');
   const lc = licenseCommit(lSecret, OLD_REC);
-  run(holder, 'issueLicense', OLD_REC, lc);
+  run(holder, 'issueLicense', lc);
 
   run(holder, 'rotateRecordSecret', NEW_REC);
   ok('the rotation is recorded', state().rotatedTo.member(OLD_REC) &&
      hex(state().rotatedTo.lookup(OLD_REC)) === hex(NEW_REC));
 
   // The old secret tries to carry on.
-  const issueErr = refused(party(OLD), 'issueLicense', OLD_REC, licenseCommit(sec('l2'), OLD_REC));
+  const issueErr = refused(party(OLD), 'issueLicense', licenseCommit(sec('l2'), OLD_REC));
   note(issueErr ? `old secret issuing: ${issueErr}` : 'old secret issued a licence');
   ok('the retired secret cannot issue', issueErr !== '',
      'a secret cannot be un-known, so only the contract declining to listen ends the\n' +
@@ -112,7 +113,7 @@ console.log('\n== after rotating, does the old secret still act? ==');
   ok('the retired secret cannot pair DNA', pairErr !== '');
 
   // And the successor can revoke what the old record issued.
-  const revokeErr = refused(party(NEW, NEW, RECOVERY), 'revokeLicense', lc);
+  const revokeErr = refused(party(NEW, NEW, RECOVERY), 'revokeLicense', lc, OLD_REC);
   note(revokeErr ? `successor revoking: ${revokeErr}` : 'successor revoked it');
   ok('the successor can revoke a licence the old record issued', revokeErr === '',
      'the new record could not touch agreements made under the old one, so escaping a\n' +
@@ -123,7 +124,7 @@ console.log('\n== after rotating, does the old secret still act? ==');
 console.log('\n== can a holder who lost their secret move the record? ==');
 {
   ctx = fresh();
-  run(party(OLD, NEW, RECOVERY), 'anchor', OLD_REC, commit(RECOVERY));
+  run(party(OLD, NEW, RECOVERY), 'anchor', V.pureCircuits.recoveryCommit(RECOVERY));
 
   // This party does NOT hold OLD. It holds the recovery secret and the new secret.
   const lost = party(sec('unrelated'), NEW, RECOVERY);
@@ -137,7 +138,7 @@ console.log('\n== can a holder who lost their secret move the record? ==');
 
   // A stranger's recovery secret does not work.
   ctx = fresh();
-  run(party(OLD, NEW, RECOVERY), 'anchor', OLD_REC, commit(RECOVERY));
+  run(party(OLD, NEW, RECOVERY), 'anchor', V.pureCircuits.recoveryCommit(RECOVERY));
   const wrong = party(sec('unrelated'), NEW, sec('wrong-recovery'));
   const wrongErr = refused(wrong, 'recoverRecordSecret', OLD_REC, NEW_REC);
   ok('the wrong recovery secret is refused', wrongErr !== '', wrongErr);

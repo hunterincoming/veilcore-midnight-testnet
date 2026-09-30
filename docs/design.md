@@ -53,26 +53,29 @@ nobody uses.
 ### Ledger state
 
 ```
-anchorSeq           Counter
-lastAnchor          Bytes<32>     // proven anchors only
-proofSeq            Counter
-batchSeq            Counter
-lastBatchRoot       Bytes<32>     // unauthenticated, see below
-transferSeq         Counter
-lastOwnershipProof  Bytes<32>
-lastPairedRecord    Bytes<32>
-lastRotatedFrom     Bytes<32>
-lastRotatedTo       Bytes<32>
-activeLicenseRoot   Bytes<32>     // root of the active-licence tree
-licenseStatusOf     Map<Bytes<32>, LicenseState>   // live licences only
-licenseRecordOf     Map<Bytes<32>, Bytes<32>>      // live licences only
-pendingTransferOf   Map<Bytes<32>, Bytes<32>>      // cleared on approve/withdraw
-rotatedTo           Map<Bytes<32>, Bytes<32>>      // set-once, never cleared
-recoveryOf          Map<Bytes<32>, Bytes<32>>      // one per anchored record
+anchorSeq, proofSeq, batchSeq, transferSeq,
+pairSeq, rotationSeq, presentationSeq          Counter
+lastAnchor            Bytes<32>   // proven anchors only
+lastBatchRoot         Bytes<32>   // unauthenticated, see below
+lastOwnershipProof    Bytes<32>
+lastPairedRecord      Bytes<32>
+lastPairedDna         Bytes<32>
+lastRotatedFrom       Bytes<32>
+lastRotatedTo         Bytes<32>
+lastPresentation      Bytes<32>   // presentationTag(record, challenge)
+lastActivatedLicense  Bytes<32>   // so anyone can rebuild the licence tree
+lastActivatedRecord   Bytes<32>
+activeLicenseRoot     Bytes<32>   // root of the active-licence tree
+licenseStatusOf     Map<Bytes<32>, LicenseState>   // key = licenseKey(licence, issuer); live only
+pendingTransferOf   Map<Bytes<32>, Bytes<32>>      // key = licenseKey; cleared on approve/withdraw
+rotatedTo           Map<Bytes<32>, Bytes<32>>      // retired record -> next; never cleared
+originOf            Map<Bytes<32>, Bytes<32>>      // successor -> origin; never cleared
+headOf              Map<Bytes<32>, Bytes<32>>      // rotated origin -> current head
+recoveryOf          Map<Bytes<32>, Bytes<32>>      // origin -> recovery commitment
 ```
 
-Eleven fixed slots, three maps cleared by the circuit that filled them, and two that
-grow permanently.
+Fixed slots, two licence maps cleared by the circuits that filled them, and four
+identity maps that grow by one entry per anchor, rotation or recovery.
 
 **A value a verifier needs has to be written to a ledger cell.** Returning it from a
 circuit does not publish it: the return travels in the call's communication commitment,
@@ -82,14 +85,44 @@ rotation and described that as publishing them. The four `last*` cells above are
 actually reaches a third party.
 
 **`lastAnchor` holds proven anchors only.** `anchor` proves the preimage of what it
-writes there; `rotateRecordSecret` and `pairDna` do not, so they write their own cells.
+writes there; `rotateRecordSecret` and `pairDna` do not, so they write their own cells
+(`pairDna` wrote the DNA side into `lastAnchor` until 30 Sep 2026).
 A reader treating one cell's history as dated possession would otherwise collect claims
 nobody established.
 
-**`rotatedTo` and `recoveryOf` are unbounded by design.** One entry per rotation and one
-per anchored record, never cleared. That is the price of the two guarantees they carry —
-that a retired secret stops working, and that a lost secret is not final — and neither
-can be kept without remembering something.
+**The identity maps are unbounded by design.** One entry per anchored record and a few
+per rotation or recovery, never cleared. That is the price of the guarantees they carry —
+that a retired secret stops working, and that a lost or stolen secret is not final.
+
+### Identity: origins, heads and recovery (security pass, 30 Sep 2026)
+
+Every circuit that acts for a record **derives the caller's record from their secret**
+and requires it to be live. None takes the caller's record as an argument.
+
+A record is an **origin** (anchored, nobody rotated into it) or a **successor**. Rotation
+and recovery write `originOf(successor) = origin` and `headOf(origin) = successor`.
+Authority over a licence is decided by comparing **origins**, so it survives any number
+of rotations. The previous one-hop check (`rotatedTo(issuer) == me`) meant that after a
+second rotation nobody could ever revoke a licence the first record issued, and after
+one rotation no transfer of an earlier licence could be approved.
+
+A rotation or recovery target must have no history: not retired, not a successor, not
+anchored, not an origin with rotations. Anything else would overwrite an origin and
+orphan the licences under it.
+
+**Recovery is the master key.** `recoverRecordSecret(origin, new)` works whether or not
+the identity has been rotated since, and retires whatever the current head is. It used
+to require the record to be live, so a thief holding the primary secret could rotate
+first and keep the record for good. The recovery commitment sits on the origin, so a
+rotation no longer drops it, and `replaceRecoveryCommitment` (gated by the current
+recovery secret) replaces a recovery secret that may have leaked. Recovery commitments
+use their own domain tag (`veilcore:recover`); sharing the record tag made every
+recovery commitment a valid record as well.
+
+What this does not do: a party holding the **recovery** secret controls the record
+outright. There is no waiting period in which the primary secret can object. That is
+the chosen trade: recovery beats theft of the primary, so the recovery secret belongs
+offline.
 
 ### Why anchoring stores nothing
 
@@ -125,16 +158,36 @@ The mitigation is an on-chain expiry field permitting a permissionless sweep.
 
 **A licence commitment is bound to its issuing record.** `licenseCommit(secret, record)`
 puts the record inside the hash, so the same secret under a different issuer is a
-different licence. Without that binding a sniper who read a pending `issueLicense` out
-of the transcript could register the commitment first under their own record, and the
-licensee's countersignature would land on the sniper's entry.
+different licence.
 
-**Presentation goes through a tree, not a map.** `proveLicense` takes no arguments at
-all: the licence secret, the record and the path are private witnesses, and the only
-public statement is that some leaf of `activeLicenseRoot` was opened by someone who
-knows what is behind it. A map lookup would put its key in the transcript, and
-`licenseRecordOf` maps that key straight to the breeder — so every presentation named
-the issuer and repeated presentations linked to each other.
+**Licence entries are keyed by `licenseKey(licence, issuer)`.** Binding the commitment
+stopped a sniper *capturing* a licence but not *blocking* one: `issueLicense` cannot check
+that a commitment was built against the caller's record, so a sniper who read a pending
+issue could insert the same commitment under their own record first and the breeder's
+call failed with "already exists". With the issuer in the key the sniper's entry is a
+different entry. It can never be activated, since activation needs a secret whose
+licence commitment under the sniper's record is that value.
+
+**Licence secrets are witnesses.** `countersignLicense`, `proposeTransfer` and
+`withdrawTransfer` read `licenseSecret()` instead of taking the secret as an argument.
+
+**Presentation goes through a tree, not a map, and is bound to a challenge.**
+`proveLicense` takes no arguments: the licence secret, the record, the path and the
+verifier's challenge are witnesses. It publishes one value,
+`presentationTag(record, challenge)`. The verifier chose the challenge and knows which
+record they asked about, so they recompute the tag and find it in the transaction; to
+anyone else it is random and links to nothing.
+
+Before 30 Sep 2026 the only public statement was that *some* leaf of the global tree had
+been opened. That named no record, so a licence for one variety passed a check about
+another, and it bound no challenge, so every successful presentation was byte-identical
+and anyone could point a verifier at somebody else's. **The challenge must be 32 random
+bytes, chosen by the verifier, used once and never published.** A public or reused
+challenge lets anyone test every issuing record against the tag.
+
+Activation publishes the licence and its issuer (`lastActivatedLicense`,
+`lastActivatedRecord`) because the ledger holds only the tree's root and every holder
+needs the other leaves to build their own path.
 
 The tree holds the **ACTIVE** set: `countersignLicense` inserts, `revokeLicense` removes,
 `approveTransfer` replaces the outgoing leaf with the incoming one in the same slot. A

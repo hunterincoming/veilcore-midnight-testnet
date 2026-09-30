@@ -4,35 +4,36 @@
 // Only commitments (domain-separated hashes) are ever stored on-chain. Genetic
 // preimages, license terms, and counterparties stay off-chain as private witnesses.
 //
-// STATE MODEL. Anchoring writes no growable state — the commitment lives in the
-// transaction, and the chain already retains transaction history. Licensing holds
-// only LIVE agreements; terminal licences are removed, so the maps track open
-// business rather than accumulating every licence ever issued.
+// STATE MODEL. Anchoring writes one recovery entry per record. Licensing holds only
+// LIVE agreements; terminal licences are removed. The bound on licence state is
+// economic, not structural: anyone can hold a secret, so anyone can issue licences
+// to themselves and pay a fee per entry. The active-licence tree is the one
+// structural limit: 65,536 concurrent active licences.
 //
-// That is not the same as being bounded against an adversary, and the earlier
-// wording claimed more than it could. `issueLicense` requires owning a record,
-// but a record is owned by committing a secret and anyone can choose one. A party
-// with no material can therefore issue licences to themselves and grow the maps,
-// paying a fee per entry. The bound is economic, not structural. Stated plainly
-// here because a reader who takes "bounded by design" at face value will not look.
+// Four maps grow permanently: `recoveryOf` (one entry per anchored record),
+// `rotatedTo`, `originOf` and `headOf` (one entry each per rotation or recovery).
+// That is the price of a lost secret not being final and a retired secret
+// ceasing to work.
 //
-// The active-licence tree adds one root cell and no growable state at all: it holds
-// live licences only, and a slot freed by revocation or assignment is reusable. Its
-// capacity is 65,536 CONCURRENT active licences, which is a hard ceiling rather than
-// an economic one — the one place in this contract where a limit is structural.
+// IDENTITY. A record is an ORIGIN (a commitment nobody rotated into) or a SUCCESSOR
+// (one a rotation or recovery moved to). Every successor points at its origin in
+// `originOf`, and every rotated origin points at its current head in `headOf`. Control
+// of a licence is decided by comparing ORIGINS, never by following one hop: a
+// one-hop check lost control of every licence after the second rotation.
 //
-// Two maps now grow permanently and are not bounded by open business at all:
-// `recoveryOf` gains an entry per anchored record, `rotatedTo` an entry per
-// rotation, and neither is ever cleared. That is the price of the two guarantees
-// they carry — that a lost secret is not final, and that a retired secret stops
-// working — and neither can be kept without remembering something. An entry is
-// 64 bytes and a holder pays a transaction fee to create one.
+// SECURITY PASS 30 SEP 2026. Every circuit that acts for a record now DERIVES the
+// caller's record from their secret rather than taking it as an argument; every
+// licence secret is a witness rather than an argument; recovery overrides a thief
+// who rotated first; licence entries are keyed by (licence, issuer) so a squatter
+// cannot block an issue; and a licence presentation is bound to the issuing record
+// and a verifier-chosen challenge. Each change has a regression test in
+// contract/attack-30sep.mjs.
 
 pragma language_version 0.23;
 
 import CompactStandardLibrary;
 
-// Lifecycle status for a license commitment.
+// Lifecycle status for a license.
 export enum LicenseState { NONE, PENDING, ACTIVE, REVOKED }
 
 // Fixed single-slot fields. No growable container.
@@ -42,93 +43,88 @@ export ledger proofSeq: Counter;
 export ledger batchSeq: Counter;
 export ledger lastBatchRoot: Bytes<32>;
 export ledger transferSeq: Counter;
+export ledger pairSeq: Counter;
+export ledger rotationSeq: Counter;
+export ledger presentationSeq: Counter;
 
-// A value a verifier needs has to be written to the ledger. Returning it from an
-// exported circuit does not put it on chain: the return travels in the call's
-// communication commitment, which is blinded with randomness, so it reaches the
-// caller's own DApp and nobody else. An earlier revision of this contract returned
-// these values and described that as publishing them. It was not.
-//
-// Separate cells rather than reusing lastAnchor: `anchor` proves the preimage of
-// what it writes there, and these circuits do not, so a reader treating that cell's
-// history as anchors would otherwise collect possession dates nobody proved.
+// A value a verifier needs has to be written to the ledger: a circuit's return value
+// travels in the blinded communication commitment and reaches only the caller.
+// Separate cells so no cell mixes proved and unproved values.
 export ledger lastOwnershipProof: Bytes<32>;
 export ledger lastPairedRecord: Bytes<32>;
+export ledger lastPairedDna: Bytes<32>;
 export ledger lastRotatedFrom: Bytes<32>;
 export ledger lastRotatedTo: Bytes<32>;
+export ledger lastPresentation: Bytes<32>;
+// Published on activation so anyone can rebuild the active-licence tree: the ledger
+// holds only its root, and a holder needs every other leaf to build their own path.
+export ledger lastActivatedLicense: Bytes<32>;
+export ledger lastActivatedRecord: Bytes<32>;
 
-/**
- * Where a retired record went. Set once per record and never cleared.
- *
- * Every circuit gated on holding a record consults this. Without it a rotation
- * changed nothing that mattered: the old secret still issued licences, still
- * revoked them, and still paired DNA, while the new record could not revoke
- * anything issued under the old one. A holder rotating away from a compromised
- * secret was left with two working identities instead of one.
- */
+/** Retired record -> the record it moved to. Set once, never cleared. */
 export ledger rotatedTo: Map<Bytes<32>, Bytes<32>>;
-
-/**
- * The recovery commitment for a record, set at anchor time.
- *
- * Absent for records anchored before this existed; those keep the old behaviour,
- * where a lost secret is final.
- */
+/** Successor -> the origin record it descends from. */
+export ledger originOf: Map<Bytes<32>, Bytes<32>>;
+/** Rotated origin -> its current live head. What recovery retires. */
+export ledger headOf: Map<Bytes<32>, Bytes<32>>;
+/** Origin record -> its recovery commitment. Set at anchor time. */
 export ledger recoveryOf: Map<Bytes<32>, Bytes<32>>;
-/** Transfers proposed but not yet approved. Cleared on approval or withdrawal. */
-export ledger pendingTransferOf: Map<Bytes<32>, Bytes<32>>;
-// Live licences only. Removed on revocation and on assignment, so bounded by open
-// agreements. The KEY IS THE HOLDER: only a party who knows the secret behind a
-// commitment can act on that licence, so no separate holder field is needed and none
-// can drift out of step with who actually controls it.
+
+// Licence entries are keyed by licenseKey(licence, issuing record), not by the
+// licence commitment alone. With the commitment alone as key, anyone who saw a
+// pending issue could insert the same commitment under their own record first
+// and the breeder's issue failed with "already exists" for as long as they kept
+// doing it. The issuer is inside the key, so a squatter's entry is a different
+// entry and blocks nothing.
 export ledger licenseStatusOf: Map<Bytes<32>, LicenseState>;
-export ledger licenseRecordOf: Map<Bytes<32>, Bytes<32>>;
+/** Licence key -> the incoming party's licence commitment. */
+export ledger pendingTransferOf: Map<Bytes<32>, Bytes<32>>;
 
 // The caller's private genetic secret, supplied by the wallet's private state.
 witness localGeneticSecret(): Bytes<32>;
-
-/** The secret a rotation is moving TO. Proved, not taken on trust. */
+/** The secret a rotation or recovery is moving TO. Proved, not taken on trust. */
 witness incomingGeneticSecret(): Bytes<32>;
-
-/**
- * A second secret, chosen at anchor time and kept apart from the first.
- *
- * Its commitment is published when the record is anchored, and it is the only way
- * to move a record whose primary secret is gone. Without it "rotate before you lose
- * it" is the whole remedy, which is no remedy: nobody rotates in anticipation of an
- * accident they have not had.
- */
+/** The recovery secret: chosen at anchor time, kept apart, ideally offline. */
 witness recoverySecret(): Bytes<32>;
+/**
+ * The verifier's challenge for a licence presentation.
+ *
+ * MUST be 32 random bytes chosen by the verifier and never published. The
+ * presentation discloses hash(record, challenge); a public or guessable
+ * challenge lets anyone test every issuing record against it and learn whose
+ * licence was shown.
+ */
+witness presentationChallenge(): Bytes<32>;
 
 // Domain-separated commitment to a genetic secret. RECORDS ONLY.
-//
-// This tag used to serve licences as well, which made a licence commitment and a
-// record commitment the same function of a secret. A licensee could therefore load
-// their licence secret as a genetic secret, anchor the licence as a record of their
-// own, and issue sublicences against it without the breeder being party to any of
-// it. Two kinds of thing must not share a domain.
 export circuit commit(secret: Bytes<32>): Bytes<32> {
   return persistentHash<Vector<2, Bytes<32>>>([pad(32, "veilcore:commit"), secret]);
 }
 
 /**
- * Commitment to a licence secret, BOUND TO THE RECORD IT IS ISSUED AGAINST.
+ * Commitment to a RECOVERY secret. Its own domain.
  *
- * The record is inside the hash, not alongside it. A licence commitment therefore
- * only exists in the context of one issuing record, which closes two attacks that
- * an unbound commitment left open:
- *
- * A sniper who reads a pending issueLicense out of the transcript and issues that
- * commitment first under their own record now produces a DIFFERENT value, so their
- * entry does not collide with the breeder's and the licensee's countersignature
- * does not land on it.
- *
- * And an outgoing licensee who re-issues an assigned licence's old commitment under
- * a record they control also produces a different value, so the resurrected entry
- * is not the licence anyone agreed to and proveLicense against it fails.
+ * Recovery commitments used the record tag, which made every recovery commitment a
+ * valid record commitment too: the holder of a recovery secret could anchor it as a
+ * record of its own and issue licences under it. Two kinds of thing, two tags.
  */
+export circuit recoveryCommit(secret: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<2, Bytes<32>>>([pad(32, "veilcore:recover"), secret]);
+}
+
+/** Commitment to a licence secret, bound to the record it is issued against. */
 export circuit licenseCommit(secret: Bytes<32>, recordCommitment: Bytes<32>): Bytes<32> {
   return persistentHash<Vector<3, Bytes<32>>>([pad(32, "veilcore:license"), secret, recordCommitment]);
+}
+
+/** The map key for a licence: the licence AND the record that issued it. */
+export circuit licenseKey(licenseCommitment: Bytes<32>, recordCommitment: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<3, Bytes<32>>>([pad(32, "veilcore:lickey"), licenseCommitment, recordCommitment]);
+}
+
+/** What a licence presentation publishes. Only someone knowing the challenge can check it. */
+export circuit presentationTag(recordCommitment: Bytes<32>, challenge: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<3, Bytes<32>>>([pad(32, "veilcore:present"), recordCommitment, challenge]);
 }
 
 // ─────────────────────────────────────────────────── the active-licence tree
@@ -274,57 +270,90 @@ constructor() {
   activeLicenseRoot = l15;
 }
 
-/**
- * Refuse a record that has been rotated away from.
- *
- * Called by every circuit that acts on the strength of holding a record. A retired
- * identity keeps its secret — a secret cannot be un-known — so the only thing that
- * can stop it acting is the contract declining to listen.
- */
+// ─────────────────────────────────────────────────────────────── identity
+
+/** Refuse a record that has been rotated away from. */
 export circuit assertLive(recordCommitment: Bytes<32>): [] {
   assert(!rotatedTo.member(disclose(recordCommitment)),
          "This record was rotated to a new secret; act under the new one");
 }
 
-// Anchor a record. The caller proves they hold the preimage; the commitment is
-// disclosed into the transaction. No per-record state is written.
-export circuit anchor(commitment: Bytes<32>, recoveryCommitment: Bytes<32>): [] {
-  assert(commitment == commit(localGeneticSecret()), "Commitment does not match your genetic secret");
-  // Taken at anchor time because it cannot be added later by anyone who has already
-  // lost the secret that would authorise adding it.
-  assert(recoveryCommitment != commitment, "The recovery commitment must differ from the record");
-  const c = disclose(commitment);
-  assert(!recoveryOf.member(c), "This record is already anchored");
-  anchorSeq.increment(1);
-  lastAnchor = c;
-  recoveryOf.insert(c, disclose(recoveryCommitment));
+/**
+ * The caller's record, DERIVED from their secret and required to be live.
+ *
+ * Never an argument. A circuit that takes the caller's record as an argument and
+ * compares it to their secret is correct only as long as nobody edits the comparison
+ * away; deriving it leaves nothing to get wrong.
+ */
+circuit liveSelf(): Bytes<32> {
+  const me = disclose(commit(localGeneticSecret()));
+  assertLive(me);
+  return me;
 }
 
-// Prove prior possession. Discloses the commitment in a dated transaction that
-// only the holder of the preimage could produce. A verifier checks this proof
-// against the earlier anchor transaction off-chain; the interval between them is
-// the evidence. No per-record state is written.
+/** The origin a record descends from; an origin is its own. */
+circuit originFor(record: Bytes<32>): Bytes<32> {
+  return originOf.member(record) ? originOf.lookup(record) : record;
+}
+
+/** Refuse unless `me` is the same identity as `issuer`, across any number of rotations. */
+circuit assertSameIdentity(me: Bytes<32>, issuer: Bytes<32>): [] {
+  assert(originFor(me) == originFor(issuer),
+         "Only the issuing record, or the record it was rotated or recovered to, can do this");
+}
+
 /**
- * Anchor a batch root.
+ * A rotation or recovery target must be a commitment with no history at all.
  *
- * A batch root aggregates many record commitments, so one transaction timestamps
- * thousands of records and no holder needs a wallet of their own.
+ * Moving into an existing successor would overwrite its origin and orphan every
+ * licence it controlled; moving into an anchored or retired record would merge two
+ * identities. A target nobody has used has none of those problems.
+ */
+circuit assertUnused(record: Bytes<32>): [] {
+  assert(!rotatedTo.member(record), "That commitment has been retired");
+  assert(!originOf.member(record), "That commitment is already a successor");
+  assert(!recoveryOf.member(record), "That commitment is already an anchored record");
+  assert(!headOf.member(record), "That commitment is already an origin with history");
+}
+
+/** Move identity `origin` from its current head to `fresh`. */
+circuit moveHead(origin: Bytes<32>, head: Bytes<32>, fresh: Bytes<32>): [] {
+  rotatedTo.insert(head, fresh);
+  originOf.insert(fresh, origin);
+  headOf.insert(origin, fresh);
+  rotationSeq.increment(1);
+  lastRotatedFrom = head;
+  lastRotatedTo = fresh;
+}
+
+// ─────────────────────────────────────────────────────────────── records
+
+/**
+ * Anchor a record: the caller's own, derived from their secret.
  *
- * Unlike `anchor`, there is no preimage to prove: a root is a public value derived from
- * commitments the registry already holds, and nobody knows a secret behind it. The
- * privacy that matters was already applied when each record was committed — the root
- * reveals nothing about what it contains.
+ * The recovery commitment is fixed now: by the time a holder needs it they no longer
+ * hold the secret that would authorise adding it. Build it with recoveryCommit, from
+ * a secret that is NOT the genetic secret and is stored apart from it.
+ */
+export circuit anchor(recoveryCommitment: Bytes<32>): [] {
+  const c = liveSelf();
+  assert(!originOf.member(c), "This commitment is a successor; its origin is already anchored");
+  assert(!recoveryOf.member(c), "This record is already anchored");
+  const rcv = disclose(recoveryCommitment);
+  assert(rcv != c, "The recovery commitment must differ from the record");
+  anchorSeq.increment(1);
+  lastAnchor = c;
+  recoveryOf.insert(c, rcv);
+}
+
+/**
+ * Anchor a batch root. UNAUTHENTICATED, deliberately: anyone may anchor any root.
  *
- * State stays bounded: the root is disclosed into the transaction and only a counter
- * and one slot are written, the same pattern as `anchor`.
- *
- * ⚠️ THIS CIRCUIT IS UNAUTHENTICATED, deliberately. Anyone may anchor any root, and
- * `lastBatchRoot` therefore holds whichever root was written most recently by anyone
- * at all. It is a convenience slot, not a statement about who anchored. An inclusion
- * proof is checked by folding the path and comparing against the root recorded in the
- * transaction the holder cites — never against this slot, which a later caller can
- * overwrite. Reading `lastBatchRoot` as authoritative would turn a scratch value into
- * evidence, which is the failure this contract exists to avoid.
+ * A root proves that a set of commitments existed at a time, not who held them. A
+ * commitment is visible in its own pending anchor transaction, so anyone can put it
+ * in a batch in the same block. A batch inclusion is therefore never a possession
+ * proof, and `lastBatchRoot` is a scratch slot, never evidence: check inclusion
+ * against the root in the transaction the holder cites.
  */
 export circuit anchorBatch(root: Bytes<32>): [] {
   const r = disclose(root);
@@ -332,81 +361,114 @@ export circuit anchorBatch(root: Bytes<32>): [] {
   lastBatchRoot = r;
 }
 
+/**
+ * Prove present possession: a dated transaction only the holder of a LIVE record's
+ * secret could produce. A retired secret is refused: after a rotation away from a
+ * stolen secret, the thief must not go on producing possession proofs.
+ */
 export circuit proveOwnership(): Bytes<32> {
-  // WRITTEN to the ledger, not merely returned. The return value goes into the
-  // call's communication commitment, which is blinded, so it is visible to the
-  // caller and to nobody reading the chain — an earlier revision returned it and
-  // called that publishing. A prior-possession proof that a third party cannot
-  // tie to a record establishes nothing, which is the whole claim this circuit
-  // exists to support.
-  const c = disclose(commit(localGeneticSecret()));
+  const c = liveSelf();
   proofSeq.increment(1);
   lastOwnershipProof = c;
   return c;
 }
 
-
-// Bind a DNA report fingerprint to a record you own. The binding is the
-// transaction; no state is written.
-export circuit pairDna(recordCommitment: Bytes<32>, dnaCommitment: Bytes<32>): Bytes<32> {
-  assert(recordCommitment == commit(localGeneticSecret()), "Only the record owner can pair DNA");
-  assertLive(recordCommitment);
-  const rc = disclose(recordCommitment);
+/** Bind a DNA report fingerprint to the caller's own live record. */
+export circuit pairDna(dnaCommitment: Bytes<32>): Bytes<32> {
+  const rc = liveSelf();
   const dc = disclose(dnaCommitment);
-  anchorSeq.increment(1);
-  // The pairing is the point, so both halves have to be public. Writing only the
-  // DNA side published a fingerprint attached to nothing: an observer learned
-  // that somebody paired a report, not to which record. The record commitment is
-  // returned so the transaction carries both and the binding is checkable.
-  // Both halves written. lastAnchor held the DNA side only, so the chain showed a
-  // fingerprint attached to nothing and the pairing — which is the point of the
-  // circuit — was not public. The record side goes in its own cell because
-  // `anchor` proves a preimage for what it writes to lastAnchor and this does not.
-  lastAnchor = dc;
+  pairSeq.increment(1);
   lastPairedRecord = rc;
+  lastPairedDna = dc;
   return rc;
 }
 
 /**
- * Issue a licence against a record the caller owns. Starts PENDING (issuer signed).
+ * Move the caller's live record to a new secret, and retire the old one.
  *
- * THE LICENSEE GENERATES THE LICENCE SECRET and gives the issuer only its commitment.
- * The contract cannot check this, and it is what makes countersignature meaningful: an
- * issuer who generates the secret themselves can also countersign, which is a licence
- * issued to nobody. Stated here because it is a requirement on the parties rather than
- * something a circuit can enforce.
+ * The identity (origin) carries over, so every licence issued under any earlier
+ * record of this identity stays under control, and the recovery commitment on the
+ * origin keeps protecting the new head.
  */
-export circuit issueLicense(recordCommitment: Bytes<32>, licenseCommitment: Bytes<32>): [] {
-  assert(recordCommitment == commit(localGeneticSecret()), "Only the record owner can issue a license");
-  assertLive(recordCommitment);
-  const rc = disclose(recordCommitment);
-  const lc = disclose(licenseCommitment);
-  assert(!licenseStatusOf.member(lc), "License already exists");
-  licenseStatusOf.insert(lc, LicenseState.PENDING);
-  licenseRecordOf.insert(lc, rc);
+export circuit rotateRecordSecret(newRecordCommitment: Bytes<32>): Bytes<32> {
+  const old = liveSelf();
+  const fresh = disclose(newRecordCommitment);
+  assert(old != fresh, "The new commitment must differ from the old one");
+  assert(fresh == commit(incomingGeneticSecret()),
+         "You must hold the secret behind the new commitment");
+  assertUnused(fresh);
+  moveHead(originFor(old), old, fresh);
+  return old;
 }
 
-// The licensee's counter-signature activates a pending license.
-export circuit countersignLicense(secret: Bytes<32>, recordCommitment: Bytes<32>): [] {
-  // The commitment is DERIVED from the licensee's secret AND the record it was
-  // issued against. Deriving it from the secret alone meant the same secret
-  // produced the same commitment whoever issued it, so a licence a sniper had
-  // registered first under their own record was the same key the licensee
-  // countersigned — and the licence went active under the sniper.
-  //
-  // Naming the record here is what makes the countersignature an agreement with a
-  // specific breeder rather than with whoever got the key into the map first.
-  const rc = disclose(recordCommitment);
-  const lc = disclose(licenseCommit(secret, rc));
-  assert(licenseStatusOf.member(lc), "No such license against that record");
-  assert(licenseStatusOf.lookup(lc) == LicenseState.PENDING, "License is not pending");
-  assert(licenseRecordOf.lookup(lc) == rc, "This license was not issued against that record");
-  licenseStatusOf.insert(lc, LicenseState.ACTIVE);
+/**
+ * Move an identity using its recovery secret. Works whether or not the identity has
+ * been rotated since, INCLUDING by a thief.
+ *
+ * The recovery secret is the master key. Recovery used to require the record to be
+ * live, so a thief who stole the primary secret and rotated first kept the record
+ * for good, and recovery only ever helped against loss. Now recovery retires whatever
+ * the current head is, thief's or not. The flip side: whoever holds the recovery
+ * secret controls the record, so it belongs offline.
+ */
+export circuit recoverRecordSecret(recordCommitment: Bytes<32>, newRecordCommitment: Bytes<32>): Bytes<32> {
+  const origin = disclose(recordCommitment);
+  assert(recoveryOf.member(origin), "Recovery is only for an anchored origin record");
+  assert(recoveryOf.lookup(origin) == recoveryCommit(recoverySecret()),
+         "That is not the recovery secret for this record");
+  const fresh = disclose(newRecordCommitment);
+  assert(fresh == commit(incomingGeneticSecret()),
+         "You must hold the secret behind the new commitment");
+  assertUnused(fresh);
+  const head = headOf.member(origin) ? headOf.lookup(origin) : origin;
+  moveHead(origin, head, fresh);
+  return head;
+}
 
-  // ACTIVATION IS WHAT PUTS A LICENCE IN THE TREE. A pending licence is one the
-  // issuer has signed and nobody has accepted, so there is nothing to present yet;
-  // countersigning is the moment it becomes provable, and the tree holds exactly
-  // the set proveLicense is allowed to open.
+/** Replace a recovery commitment, e.g. after the recovery secret may have leaked. */
+export circuit replaceRecoveryCommitment(recordCommitment: Bytes<32>, newRecoveryCommitment: Bytes<32>): [] {
+  const origin = disclose(recordCommitment);
+  assert(recoveryOf.member(origin), "Recovery is only for an anchored origin record");
+  assert(recoveryOf.lookup(origin) == recoveryCommit(recoverySecret()),
+         "That is not the recovery secret for this record");
+  const next = disclose(newRecoveryCommitment);
+  assert(next != recoveryOf.lookup(origin), "The new recovery commitment must differ");
+  recoveryOf.insert(origin, next);
+}
+
+// ─────────────────────────────────────────────────────────────── licences
+
+/**
+ * Issue a licence against the caller's own live record. Starts PENDING.
+ *
+ * THE LICENSEE GENERATES THE LICENCE SECRET and hands over only licenseCommit(secret,
+ * issuer record). The contract cannot check this; an issuer who knows the secret can
+ * also countersign, which is a licence issued to nobody.
+ */
+export circuit issueLicense(licenseCommitment: Bytes<32>): [] {
+  const me = liveSelf();
+  const lc = disclose(licenseCommitment);
+  const k = licenseKey(lc, me);
+  assert(!licenseStatusOf.member(k), "License already exists");
+  licenseStatusOf.insert(k, LicenseState.PENDING);
+}
+
+/**
+ * The licensee accepts a pending licence. The secret is a witness (licenseSecret),
+ * never an argument; the record is the issuer's, which is public.
+ */
+export circuit countersignLicense(recordCommitment: Bytes<32>): [] {
+  const rc = disclose(recordCommitment);
+  const lc = licenseCommit(licenseSecret(), rc);
+  const k = disclose(licenseKey(lc, rc));
+  assert(licenseStatusOf.member(k), "No such license against that record");
+  assert(licenseStatusOf.lookup(k) == LicenseState.PENDING, "License is not pending");
+  licenseStatusOf.insert(k, LicenseState.ACTIVE);
+  lastActivatedLicense = disclose(lc);
+  lastActivatedRecord = rc;
+
+  // Activation puts the licence in the tree: the tree holds exactly the set
+  // proveLicense may open.
   const nullLeaf = default<Bytes<32>>;
   const roots = licenseReplaceLeaf(nullLeaf, lc, licenseSiblings(), licenseDirections());
   assert(disclose(roots[0]) == activeLicenseRoot,
@@ -414,138 +476,81 @@ export circuit countersignLicense(secret: Bytes<32>, recordCommitment: Bytes<32>
   activeLicenseRoot = disclose(roots[1]);
 }
 
-
-// Only the issuing record owner can revoke. Revocation is disclosed into the
-// transaction and the live entry is removed, keeping state bounded.
 /**
- * Propose transferring a licence to a new holder.
+ * The holder proposes moving the licence to a new party. The issuer must approve.
  *
- * A licence is not a bearer instrument. The USDA's own plant variety licence template
- * grants a "nontransferable" licence, and permits sublicensing only "subject to the
- * prior submission to and approval by USDA of the proposed sublicense". A freely
- * transferable token would be a cleaner object and the wrong one — it would let a
- * licensee hand rights to a party the breeder never agreed to.
- *
- * So transfer is a two-party act, the same shape as countersigning: the holder proposes
- * and the issuer approves. Until both happen, nothing moves.
+ * The incoming party generates their own secret and hands over only
+ * licenseCommit(theirSecret, issuer record).
  */
-export circuit proposeTransfer(secret: Bytes<32>, recordCommitment: Bytes<32>, newLicenseCommitment: Bytes<32>): [] {
-  // Derived, not accepted. Only the holder of the licence secret may propose
-  // assigning it. Taking the commitment as an argument let anyone write into
-  // the pending slot, and because insert overwrites, a stranger could replace a
-  // proposal the issuer had already agreed to out of band.
-  //
-  // The incoming party generates their OWN secret and hands over only its
-  // commitment. That is what makes the assignment real: after approval the
-  // licence lives under a key the outgoing party has never seen.
+export circuit proposeTransfer(recordCommitment: Bytes<32>, newLicenseCommitment: Bytes<32>): [] {
   const rc = disclose(recordCommitment);
-  const lc = disclose(licenseCommit(secret, rc));
-  assert(licenseStatusOf.member(lc), "No such license against that record");
-  assert(licenseStatusOf.lookup(lc) == LicenseState.ACTIVE, "Only an active license can be transferred");
-  assert(licenseRecordOf.lookup(lc) == rc, "This license was not issued against that record");
-  // One live proposal at a time. Replacing a standing proposal is a withdrawal
-  // followed by a new one, both of which the holder must authorise.
-  assert(!pendingTransferOf.member(lc), "A transfer is already proposed for this license");
+  const k = disclose(licenseKey(licenseCommit(licenseSecret(), rc), rc));
+  assert(licenseStatusOf.member(k), "No such license against that record");
+  assert(licenseStatusOf.lookup(k) == LicenseState.ACTIVE, "Only an active license can be transferred");
+  assert(!pendingTransferOf.member(k), "A transfer is already proposed for this license");
   const nlc = disclose(newLicenseCommitment);
-  assert(!licenseStatusOf.member(nlc), "That licence commitment is already in use");
+  assert(!licenseStatusOf.member(licenseKey(nlc, rc)), "That licence commitment is already in use");
   transferSeq.increment(1);
-  pendingTransferOf.insert(lc, nlc);
+  pendingTransferOf.insert(k, nlc);
 }
 
 /**
- * The issuer approves a proposed transfer.
+ * The issuer, or whoever the issuer's identity now lives under, approves a transfer
+ * to the party they name.
  *
- * Only the party who issued the licence can approve. This is the approval gate that
- * makes the licence permissioned rather than a bearer token, and it is what stops a
- * licensee routing rights to someone the breeder would have refused.
+ * `issuingRecord` is the record the licence was issued under, which after a rotation
+ * is not the caller's. It is checked, not trusted: it has to be the same identity as
+ * the caller, and the licence has to exist under it.
  */
-export circuit approveTransfer(licenseCommitment: Bytes<32>, recordCommitment: Bytes<32>, expectedNewLicense: Bytes<32>): [] {
+export circuit approveTransfer(licenseCommitment: Bytes<32>, issuingRecord: Bytes<32>, expectedNewLicense: Bytes<32>): [] {
+  const me = liveSelf();
+  const rc = disclose(issuingRecord);
+  assertSameIdentity(me, rc);
   const lc = disclose(licenseCommitment);
-  assert(pendingTransferOf.member(lc), "No transfer proposed for this license");
-  assert(recordCommitment == commit(localGeneticSecret()), "Only the issuing record holder can approve");
-  assertLive(recordCommitment);
-  assert(licenseRecordOf.lookup(lc) == disclose(recordCommitment), "This license was not issued against your record");
-
-  // The issuer approves a PARTY, not a slot. Without this the approval lands on
-  // whatever is pending at execution time, so a proposal seen and agreed out of
-  // band can be replaced between agreement and approval, and the licence moves
-  // to someone the issuer never saw. Naming the recipient is what makes the
-  // approval gate above mean anything.
-  const nlc = pendingTransferOf.lookup(lc);
+  const k = licenseKey(lc, rc);
+  assert(pendingTransferOf.member(k), "No transfer proposed for this license");
+  // The issuer approves a PARTY, not whatever is pending at execution time.
+  const nlc = pendingTransferOf.lookup(k);
   assert(nlc == disclose(expectedNewLicense), "The pending recipient is not the one you approved");
+  const nk = licenseKey(nlc, rc);
+  assert(!licenseStatusOf.member(nk), "That licence commitment is already in use");
 
-  // The old licence ENDS and a new one BEGINS. Reassigning a holder field would
-  // move nothing: the outgoing party still knows the old secret, so they could
-  // still prove the licence and still propose further assignments, and the
-  // incoming party could do nothing at all. Removing the old key is what ends
-  // the outgoing party's rights, which is what "non-delegable" requires.
-  //
-  // The new licence starts ACTIVE rather than PENDING: it is not a fresh
-  // agreement awaiting countersignature but the same agreement continuing with
-  // a party the issuer has just consented to, and the incoming party
-  // demonstrated consent by generating the secret.
-  licenseStatusOf.remove(lc);
-  licenseRecordOf.remove(lc);
-  pendingTransferOf.remove(lc);
-  licenseStatusOf.insert(nlc, LicenseState.ACTIVE);
-  licenseRecordOf.insert(nlc, disclose(recordCommitment));
+  // The old licence ends and the same agreement continues under a key the outgoing
+  // party has never seen. It stays under the ORIGINAL issuing record, because the
+  // incoming party built their commitment against it.
+  licenseStatusOf.remove(k);
+  pendingTransferOf.remove(k);
+  licenseStatusOf.insert(nk, LicenseState.ACTIVE);
   transferSeq.increment(1);
 
-  // The outgoing leaf is REPLACED by the incoming one, in place. One fold rather
-  // than a removal and an insertion: the agreement continues, so the slot it
-  // occupies continues with it, and the outgoing party's leaf stops being openable
-  // at the same instant the incoming party's starts.
   const roots = licenseReplaceLeaf(lc, nlc, licenseSiblings(), licenseDirections());
   assert(disclose(roots[0]) == activeLicenseRoot,
          "That licence is not at the position given, or the path is invalid");
   activeLicenseRoot = disclose(roots[1]);
 }
 
-/** Withdraw a proposed transfer. Either the proposal expires or it is retracted. */
-export circuit withdrawTransfer(secret: Bytes<32>, recordCommitment: Bytes<32>): [] {
-  // Derived, not accepted. Withdrawal is the holder cancelling their own
-  // proposal, so the caller proves they hold the licence secret. Taking the
-  // commitment as an argument let any observer cancel any pending transfer and
-  // block a licence from moving indefinitely.
-  const lc = disclose(licenseCommit(secret, disclose(recordCommitment)));
-  assert(pendingTransferOf.member(lc), "No transfer proposed for this license");
-  pendingTransferOf.remove(lc);
+/** The holder withdraws their own proposal. Proposals do not expire on their own. */
+export circuit withdrawTransfer(recordCommitment: Bytes<32>): [] {
+  const rc = disclose(recordCommitment);
+  const k = disclose(licenseKey(licenseCommit(licenseSecret(), rc), rc));
+  assert(pendingTransferOf.member(k), "No transfer proposed for this license");
+  pendingTransferOf.remove(k);
   transferSeq.increment(1);
 }
 
-export circuit revokeLicense(licenseCommitment: Bytes<32>): [] {
+/** The issuer, or its successor across any number of rotations, revokes a licence. */
+export circuit revokeLicense(licenseCommitment: Bytes<32>, issuingRecord: Bytes<32>): [] {
+  const me = liveSelf();
+  const rc = disclose(issuingRecord);
+  assertSameIdentity(me, rc);
   const lc = disclose(licenseCommitment);
-  assert(licenseStatusOf.member(lc), "No such license");
-  // The successor may revoke. A rotation that left the new record unable to revoke
-  // licences issued under the old one meant a holder escaping a compromised secret
-  // gave up control of every agreement they had already made.
-  // Disclosed once, up front. A commitment is public by construction — it is a map
-  // key elsewhere in this contract — but the compiler tracks it as witness-derived
-  // until said otherwise, and a comparison that branches on it would leak a bit
-  // about the secret if it were not declared.
-  const me = disclose(commit(localGeneticSecret()));
-  const issuer = licenseRecordOf.lookup(lc);
-  assert(issuer == me || (rotatedTo.member(issuer) && rotatedTo.lookup(issuer) == me),
-         "Only the issuer, or the record they rotated to, can revoke");
-  assertLive(me);
-  // Read before the removal below, and before the tree is touched. Only an ACTIVE
-  // licence has a leaf: a PENDING one was issued and never accepted, so there is
-  // nothing in the tree to take out and requiring a path for it would make a
-  // pending licence unrevokable. Both states are public, so branching on this
-  // leaks nothing that the maps do not already show.
-  const wasActive = licenseStatusOf.lookup(lc) == LicenseState.ACTIVE;
-  licenseStatusOf.remove(lc);
-  licenseRecordOf.remove(lc);
-  // A revoked licence must leave nothing behind. Without this, the pending
-  // entry outlives the licence: state grows without bound, and a later
-  // approveTransfer passes the member check then fails inside the record
-  // lookup, so the error does not describe what happened.
-  if (pendingTransferOf.member(lc)) { pendingTransferOf.remove(lc); }
-
-  // AND IT MUST LEAVE THE TREE, or revocation would remove a licence from the maps
-  // while leaving it presentable — proveLicense opens the tree, not the map, so a
-  // leaf left behind is a revoked licence that still proves. Removing it is the
-  // whole revocation as far as a verifier is concerned.
+  const k = licenseKey(lc, rc);
+  assert(licenseStatusOf.member(k), "No such license");
+  // Only an ACTIVE licence has a leaf; a pending one was never accepted.
+  const wasActive = licenseStatusOf.lookup(k) == LicenseState.ACTIVE;
+  licenseStatusOf.remove(k);
+  if (pendingTransferOf.member(k)) { pendingTransferOf.remove(k); }
+  // Leaving the leaf would leave a revoked licence that still proves.
   if (wasActive) {
     const nullLeaf = default<Bytes<32>>;
     const roots = licenseReplaceLeaf(lc, nullLeaf, licenseSiblings(), licenseDirections());
@@ -556,134 +561,37 @@ export circuit revokeLicense(licenseCommitment: Bytes<32>): [] {
 }
 
 /**
- * Move a record to a new secret, and retire the old one.
+ * A licensee proves to ONE verifier that they hold a live licence from ONE record.
  *
- * Both sides are proved. The incoming commitment used to be an argument taken on
- * trust, which let a holder rotate "into" a commitment belonging to someone else —
- * naming a target is not the same as holding it.
+ * All inputs are witnesses. Publishes presentationTag(record, challenge) and nothing
+ * else. The verifier, who chose the challenge and knows which record they asked
+ * about, recomputes the tag and finds it in this transaction. To anyone else it is
+ * a random value: it names no record and links to no other presentation.
  *
- * The retirement is the part that was missing. A secret cannot be un-known, so
- * rotating away from a compromised one did nothing on its own: the old secret went
- * on issuing licences, revoking them and pairing DNA, and the new record could not
- * revoke anything the old one had issued. Recording the rotation and having every
- * record-gated circuit consult it is what actually ends the old identity.
+ * What the old version proved: that SOME leaf in the global tree was opened. It
+ * named no record, so a licence for one variety passed a check about another, and it
+ * bound no challenge, so every successful presentation looked identical and anyone
+ * could point a verifier at someone else's.
  *
- * This does NOT help a holder who has lost their secret — it requires that secret.
- * That case is `recoverRecordSecret`.
- */
-export circuit rotateRecordSecret(newRecordCommitment: Bytes<32>): Bytes<32> {
-  const old = disclose(commit(localGeneticSecret()));
-  const fresh = disclose(newRecordCommitment);
-  assert(old != fresh, "The new commitment must differ from the old one");
-  assert(fresh == commit(incomingGeneticSecret()),
-         "You must hold the secret behind the new commitment");
-  assertLive(old);
-  assert(!rotatedTo.member(fresh), "That commitment has itself been retired");
-
-  anchorSeq.increment(1);
-  lastRotatedFrom = old;
-  lastRotatedTo = fresh;
-  rotatedTo.insert(old, fresh);
-  return old;
-}
-
-/**
- * Move a record whose primary secret is gone.
- *
- * The checklist item is that no role may be permanently lockable by a single lost
- * secret. Rotation does not satisfy it: rotation requires the secret. This does,
- * because it is gated by a different one, chosen when the record was anchored and
- * kept apart from the first.
- *
- * The recovery commitment is published at anchor time and cannot be added
- * afterwards — by the time a holder knows they need one, they no longer hold the
- * secret that would authorise adding it. A record anchored without one is
- * unrecoverable, and that is a property of when it was anchored rather than
- * something a holder can fix later.
- */
-export circuit recoverRecordSecret(recordCommitment: Bytes<32>, newRecordCommitment: Bytes<32>): Bytes<32> {
-  const rec = disclose(recordCommitment);
-  assert(recoveryOf.member(rec), "This record was anchored without a recovery commitment");
-  assert(recoveryOf.lookup(rec) == commit(recoverySecret()),
-         "That is not the recovery secret for this record");
-  assertLive(rec);
-
-  const fresh = disclose(newRecordCommitment);
-  assert(rec != fresh, "The new commitment must differ from the old one");
-  assert(fresh == commit(incomingGeneticSecret()),
-         "You must hold the secret behind the new commitment");
-
-  anchorSeq.increment(1);
-  lastRotatedFrom = rec;
-  lastRotatedTo = fresh;
-  rotatedTo.insert(rec, fresh);
-  return rec;
-}
-
-
-/**
- * A licensee proves they hold a live licence, naming nothing.
- *
- * NO ARGUMENTS, DELIBERATELY. Every input here is a witness, and the only public
- * output is that the assertion held. What the chain sees is: somebody opened a leaf
- * of the current active-licence tree.
- *
- * What it used to see. The commitment was derived and then used as a key into
- * licenseStatusOf, and a map lookup puts its key in the public transcript.
- * licenseRecordOf maps that key straight to the issuing record, so every
- * presentation named the breeder — and because the key is the same key every time,
- * two presentations of one licence linked to each other and to every other
- * presentation of any licence from that breeder. The comment above this circuit
- * said it revealed no counterparty. It revealed the counterparty every time.
- *
- * Both halves still hold:
- *   · only the holder can pass — the leaf is rebuilt from their own secret, so
- *     opening a leaf requires knowing what is behind it;
- *   · only a LIVE licence can pass — the tree holds exactly the active set.
- *     countersignLicense inserts, revokeLicense removes, approveTransfer moves the
- *     leaf to the incoming party. A revoked licence has no leaf to open, and a
- *     pending one was never inserted.
- *
- * What it still leaks: that a presentation happened, and when. Unlinkable, not
- * invisible. Hiding the fact of a presentation is a different mechanism again.
+ * Still true: a presentation is visible as having happened, and when. And a licensee
+ * who hands their challenge to another licensee of the same record can have them
+ * present instead; nothing short of identifying the licensee stops that.
  */
 export circuit proveLicense(): [] {
-  const leaf = licenseCommit(licenseSecret(), licenseRecord());
-  // The comparison is disclosed — that is the proof's public statement — while the
-  // leaf, the path and the position it sits at are not.
+  const record = licenseRecord();
+  const leaf = licenseCommit(licenseSecret(), record);
   assert(disclose(licenseMerkleRoot(leaf, licenseSiblings(), licenseDirections()) == activeLicenseRoot),
          "No live licence for that secret");
+  presentationSeq.increment(1);
+  lastPresentation = disclose(presentationTag(record, presentationChallenge()));
 }
 
 /**
- * Public status lookup for a live licence. THIS ONE NAMES THE ISSUER.
- *
- * It takes the licence commitment as a PUBLIC ARGUMENT, by design: the caller is
- * asking about a licence they already know, and a status lookup that hid which
- * licence it concerned would answer nothing. The map lookups below put that key in
- * the public transcript, and `licenseRecordOf` maps it straight to the issuing
- * record — so every call links a licence to the breeder who issued it, and repeated
- * calls about the same licence link to each other.
- *
- * NOT INTERCHANGEABLE WITH proveLicense, and the names invite exactly that mistake.
- * Picking by name, `licenseStatus` reads like the safe read-only one and
- * `proveLicense` like the heavyweight one. It is the other way round:
- *
- *   licenseStatus(lc)   asks a PUBLIC question — which licence, and therefore whose
- *   proveLicense()      takes no arguments at all and names nothing
- *
- * Use this to display or audit a licence whose identity is already in the open
- * between the parties. Use `proveLicense` whenever a holder is showing a stranger
- * that they hold something, which is the case that repeats and the case that links.
- *
- * The RETURNED state reaches the caller's own DApp and not the chain — a return
- * travels in the blinded communication commitment. So the answer is not public; the
- * question is. That is the opposite of the property a reader usually assumes from a
- * lookup, and it is why the old one-line comment calling this "privacy-safe" was
- * removed rather than reworded.
+ * Public status lookup. THIS ONE NAMES THE LICENCE AND ITS ISSUER, both as public
+ * arguments, and repeated calls link. Use proveLicense to show a stranger a licence.
  */
-export circuit licenseStatus(licenseCommitment: Bytes<32>): LicenseState {
-  const lc = disclose(licenseCommitment);
-  assert(licenseStatusOf.member(lc), "No such live license");
-  return licenseStatusOf.lookup(lc);
+export circuit licenseStatus(licenseCommitment: Bytes<32>, issuingRecord: Bytes<32>): LicenseState {
+  const k = licenseKey(disclose(licenseCommitment), disclose(issuingRecord));
+  assert(licenseStatusOf.member(k), "No such live license");
+  return licenseStatusOf.lookup(k);
 }

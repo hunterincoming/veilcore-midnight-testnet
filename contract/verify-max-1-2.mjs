@@ -154,6 +154,7 @@ console.log('\n== 2c. is a prior-possession proof checkable by a third party? ==
     licenseRecord: (c) => [c.privateState, new Uint8Array(32)],
     licenseSiblings: (c) => [c.privateState, []],
     licenseDirections: (c) => [c.privateState, []],
+    presentationChallenge: (c) => [c.privateState, new Uint8Array(32)],
   });
   const ctor = contract.initialState(rt.createConstructorContext({}, COIN));
   const ctx = rt.createCircuitContext(rt.sampleContractAddress(), COIN, ctor.currentContractState, {});
@@ -171,10 +172,10 @@ console.log('\n== 2c. is a prior-possession proof checkable by a third party? ==
 
   // pairDna
   const dna = createHash('sha256').update('lab-report').digest();
-  const r2 = contract.impureCircuits.pairDna(r.context, expected, dna);
+  const r2 = contract.impureCircuits.pairDna(r.context, dna);
   const st2 = V.ledger(r2.context.currentQueryContext.state);
   ok('a DNA pairing names both halves on chain',
-     hex(st2.lastPairedRecord) === hex(expected) && hex(st2.lastAnchor) === hex(dna),
+     hex(st2.lastPairedRecord) === hex(expected) && hex(st2.lastPairedDna) === hex(dna),
      'only the DNA side was published, so the chain showed a fingerprint attached\n     to nothing');
 
   // rotation
@@ -193,7 +194,7 @@ console.log('\n== 2c. is a prior-possession proof checkable by a third party? ==
   // finding 10
   console.log('\n== 10. does lastAnchor hold only proven anchors? ==');
   ok('a rotation does not write into lastAnchor',
-     hex(st3.lastAnchor) === hex(dna),
+     hex(st3.lastAnchor) === hex(st2.lastAnchor) && hex(st3.lastAnchor) !== hex(fresh),
      'rotateRecordSecret wrote a commitment nobody proved into the same cell anchor\n' +
      '     uses, so a reader taking that history as dated possession collects claims\n' +
      '     nobody established');

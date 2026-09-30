@@ -13,6 +13,7 @@
  * limitations under the License.
  */
 
+import { showSecret } from './secret-out';
 import {
   type CoinPublicKey,
   DustSecretKey,
@@ -111,9 +112,8 @@ export class MidnightWalletProvider implements MidnightProvider, WalletProvider 
     };
 
     const initialState = await getInitialShieldedState(logger, wallet.shielded);
-    logger.info(
-      `Your wallet seed is: ${seeds.masterSeed} and your address is: ${initialState.address.coinPublicKeyString()}`,
-    );
+    showSecret('YOUR WALLET SEED:', seeds.masterSeed);
+    logger.info(`Your address is: ${initialState.address.coinPublicKeyString()}`);
 
     return new MidnightWalletProvider(
       logger,

@@ -51,11 +51,12 @@ const witnesses = (secret, incoming = secret, recovery = secret) => ({
   licenseRecord: (ctx) => [ctx.privateState, licPath.record],
   licenseSiblings: (ctx) => [ctx.privateState, licPath.siblings],
   licenseDirections: (ctx) => [ctx.privateState, licPath.dirs],
+  presentationChallenge: (ctx) => [ctx.privateState, licPath.challenge],
 });
 
 // The caller's own copy of the tree, kept in step with the chain.
 const licTree = new LicenseTree();
-const NO_PATH = { secret: new Uint8Array(32), record: new Uint8Array(32), siblings: [], dirs: [] };
+const NO_PATH = { secret: new Uint8Array(32), record: new Uint8Array(32), siblings: [], dirs: [], challenge: new Uint8Array(32).fill(0xC4) };
 let licPath = NO_PATH;
 
 const BREEDER = b32(0x11);
@@ -83,7 +84,11 @@ const RECORD = commit(BREEDER);
 // A record's recovery commitment is fixed at anchor time: by the time a holder
 // knows they need one, they no longer hold the secret that would authorise adding
 // it. Anchoring without one is a choice to make the record unrecoverable.
-const BREEDER_RECOVERY = commit(b32(0xB1));
+const BREEDER_RECOVERY = pureCircuits.recoveryCommit(b32(0xB1));
+// Licence entries are keyed by (licence, issuing record).
+const K = (lc, record = RECORD) => pureCircuits.licenseKey(lc, record);
+/** Run a call as the holder of a licence secret: the secret is a witness now, never an argument. */
+const asHolder = (secret, fn) => { licPath = { ...NO_PATH, secret }; try { return fn(); } finally { licPath = NO_PATH; } };
 const LICENSE_SECRET = b32(0x33);    // the licence secret, held by the licensee
 const LICENSE2_SECRET = b32(0x34);
 const LICENSE = licenseCommit(LICENSE_SECRET, RECORD);
@@ -122,15 +127,16 @@ const licensed = (plan, apply, party, name, ...args) => {
 
 const countersign = (party, secret, record) => {
   const lc = licenseCommit(secret, record);
+  licPath = { ...NO_PATH, secret };
   return licensed(() => licTree.planInsert(lc), (i) => licTree.applyInsert(lc, i),
-                  party, 'countersignLicense', secret, record);
+                  party, 'countersignLicense', record);
 };
 const approve = (party, lc, record, nlc) =>
   licensed(() => licTree.planReplace(lc), (i) => licTree.applyReplace(lc, nlc, i),
            party, 'approveTransfer', lc, record, nlc);
 const revoke = (party, lc) =>
   licensed(() => licTree.planRemove(lc), (i) => licTree.applyRemove(lc, i),
-           party, 'revokeLicense', lc);
+           party, 'revokeLicense', lc, RECORD);
 
 /**
  * Present a licence. Takes no circuit arguments at all: the secret, the record and
@@ -144,17 +150,17 @@ const present = (party, secret, record) => {
   try { p = licTree.pathFor(lc); }
   catch { p = { siblings: Array.from({ length: 16 }, () => new Uint8Array(32)),
                 dirs: Array.from({ length: 16 }, () => false) }; }
-  licPath = { secret, record, siblings: p.siblings, dirs: p.dirs };
+  licPath = { ...NO_PATH, secret, record, siblings: p.siblings, dirs: p.dirs };
   try { return run(party, 'proveLicense'); } finally { licPath = NO_PATH; }
 };
 
 console.log('\n== 1. the intended flows ==\n');
 
-run(breeder, 'anchor', RECORD, BREEDER_RECOVERY);
+run(breeder, 'anchor', BREEDER_RECOVERY);
 ok('anchor: counter moved', state().anchorSeq === 1n, `anchorSeq=${state().anchorSeq}`);
 ok('anchor: lastAnchor is the record commitment', same(state().lastAnchor, RECORD));
-ok('anchor: a commitment you hold no preimage for is refused',
-    rejects(() => run(mallory, 'anchor', RECORD, BREEDER_RECOVERY)).includes('does not match'));
+ok('anchor: the breeder cannot anchor twice',
+    rejects(() => run(breeder, 'anchor', BREEDER_RECOVERY)).includes('already anchored'));
 
 const BATCH_ROOT = b32(0x55);
 run(breeder, 'anchorBatch', BATCH_ROOT);
@@ -163,18 +169,21 @@ ok('anchorBatch: root stored', same(state().lastBatchRoot, BATCH_ROOT));
 run(breeder, 'proveOwnership');
 ok('proveOwnership: counter moved', state().proofSeq === 1n);
 
-run(breeder, 'pairDna', RECORD, b32(0x66));
-ok('pairDna: lastAnchor now carries the DNA commitment', same(state().lastAnchor, b32(0x66)));
+run(breeder, 'pairDna', b32(0x66));
+ok('pairDna: the DNA commitment has its own cell', same(state().lastPairedDna, b32(0x66)));
+ok('pairDna: paired to the caller\'s own record', same(state().lastPairedRecord, RECORD));
+ok('pairDna: lastAnchor still holds the proved record', same(state().lastAnchor, RECORD));
 
-run(breeder, 'issueLicense', RECORD, LICENSE);
-ok('issueLicense: starts PENDING', state().licenseStatusOf.lookup(LICENSE) === LicenseState.PENDING);
-ok('issueLicense: only the record owner may issue',
-    rejects(() => run(mallory, 'issueLicense', RECORD, LICENSE2)).includes('Only the record owner'));
+run(breeder, 'issueLicense', LICENSE);
+ok('issueLicense: starts PENDING', state().licenseStatusOf.lookup(K(LICENSE)) === LicenseState.PENDING);
+run(mallory, 'issueLicense', LICENSE2);
+ok('issueLicense: a stranger\'s issue lands under THEIR record, never the breeder\'s',
+    state().licenseStatusOf.member(K(LICENSE2, commit(MALLORY))) && !state().licenseStatusOf.member(K(LICENSE2)));
 ok('issueLicense: no double issue',
-    rejects(() => run(breeder, 'issueLicense', RECORD, LICENSE)).includes('already exists'));
+    rejects(() => run(breeder, 'issueLicense', LICENSE)).includes('already exists'));
 
 countersign(licensee, LICENSE_SECRET, RECORD);
-ok('countersign: now ACTIVE', state().licenseStatusOf.lookup(LICENSE) === LicenseState.ACTIVE);
+ok('countersign: now ACTIVE', state().licenseStatusOf.lookup(K(LICENSE)) === LicenseState.ACTIVE);
 
 // Asserted `true` — it ran the circuit and then checked nothing, so the line would
 // have passed had proveLicense been a no-op. It passes if the call is accepted.
@@ -188,24 +197,24 @@ ok('proveLicense: a wrong secret fails',
 // party has never seen.
 const ASSIGNEE_SECRET = b32(0x44);
 const ASSIGNEE_LICENSE = licenseCommit(ASSIGNEE_SECRET, RECORD);
-run(licensee, 'proposeTransfer', LICENSE_SECRET, RECORD, ASSIGNEE_LICENSE);
-ok('proposeTransfer: proposal recorded', state().pendingTransferOf.member(LICENSE));
+asHolder(LICENSE_SECRET, () => run(licensee, 'proposeTransfer', RECORD, ASSIGNEE_LICENSE));
+ok('proposeTransfer: proposal recorded', state().pendingTransferOf.member(K(LICENSE)));
 
 approve(breeder, LICENSE, RECORD, ASSIGNEE_LICENSE);
 ok('approveTransfer: the new licence is live and ACTIVE',
-    state().licenseStatusOf.lookup(ASSIGNEE_LICENSE) === LicenseState.ACTIVE);
+    state().licenseStatusOf.lookup(K(ASSIGNEE_LICENSE)) === LicenseState.ACTIVE);
 ok('approveTransfer: it is issued against the same record',
-    same(state().licenseRecordOf.lookup(ASSIGNEE_LICENSE), RECORD));
-ok('approveTransfer: proposal cleared', !state().pendingTransferOf.member(LICENSE));
+    state().licenseStatusOf.member(K(ASSIGNEE_LICENSE, RECORD)));
+ok('approveTransfer: proposal cleared', !state().pendingTransferOf.member(K(LICENSE)));
 
 // The point of the whole mechanism. USDA's template calls the obligations
 // non-delegable and the identity of the parties material, so an assignment has
 // to END the outgoing party's rights rather than add a second holder.
-ok('approveTransfer: the OLD licence no longer exists', !state().licenseStatusOf.member(LICENSE));
+ok('approveTransfer: the OLD licence no longer exists', !state().licenseStatusOf.member(K(LICENSE)));
 ok('approveTransfer: the outgoing party can no longer prove the licence',
     rejects(() => present(licensee, LICENSE_SECRET, RECORD)).includes('No live licence'));
 ok('approveTransfer: the outgoing party can no longer propose another assignment',
-    rejects(() => run(licensee, 'proposeTransfer', LICENSE_SECRET, RECORD, licenseCommit(b32(0x55), RECORD))) !== '');
+    rejects(() => asHolder(LICENSE_SECRET, () => run(licensee, 'proposeTransfer', RECORD, licenseCommit(b32(0x55), RECORD)))) !== '');
 ok('approveTransfer: the incoming party can prove it',
     rejects(() => present(licensee, ASSIGNEE_SECRET, RECORD)) === '');
 
@@ -213,10 +222,10 @@ console.log('\n== 2. the same flows, driven by an attacker ==\n');
 
 // F1: countersignLicense authenticates nobody. The licence commitment is
 // public: it is disclosed by issueLicense and it is a ledger map key.
-run(breeder, 'issueLicense', RECORD, LICENSE2);
+run(breeder, 'issueLicense', LICENSE2);
 const f1 = rejects(() => countersign(mallory, b32(0xAA), RECORD));
 ok('F1: a stranger CANNOT activate a pending licence', f1 !== '',
-    f1 === '' ? `mallory activated it, status is now ${state().licenseStatusOf.lookup(LICENSE2)}` : f1);
+    f1 === '' ? `mallory activated it, status is now ${state().licenseStatusOf.lookup(K(LICENSE2))}` : f1);
 
 // LICENSE2 is still PENDING: F1 no longer activates it as a side effect, now
 // that a stranger cannot countersign. The rightful holder activates it here.
@@ -227,19 +236,19 @@ countersign(licensee, LICENSE2_SECRET, RECORD);
 // issuer between reading a proposal and approving it.
 const INTENDED = licenseCommit(LICENSEE, RECORD);
 const MALLORYS = licenseCommit(MALLORY, RECORD);
-run(licensee, 'proposeTransfer', LICENSE2_SECRET, RECORD, INTENDED);   // the licensee proposes
-rejects(() => run(mallory, 'proposeTransfer', b32(0xAA), RECORD, MALLORYS));  // the sniper tries to overwrite
+asHolder(LICENSE2_SECRET, () => run(licensee, 'proposeTransfer', RECORD, INTENDED));   // the licensee proposes
+rejects(() => asHolder(b32(0xAA), () => run(mallory, 'proposeTransfer', RECORD, MALLORYS)));  // the sniper tries to overwrite
 approve(breeder, LICENSE2, RECORD, INTENDED);   // the breeder approves the party it saw
 ok('F2: approval lands on the recipient the issuer saw',
-    state().licenseStatusOf.member(INTENDED) && !state().licenseStatusOf.member(MALLORYS),
-    state().licenseStatusOf.member(MALLORYS) ? 'it landed on the sniper instead' : 'it landed somewhere else');
+    state().licenseStatusOf.member(K(INTENDED)) && !state().licenseStatusOf.member(K(MALLORYS)),
+    state().licenseStatusOf.member(K(MALLORYS)) ? 'it landed on the sniper instead' : 'it landed somewhere else');
 
 // F3: withdrawTransfer is unauthenticated too. LICENSE2 was consumed by the
 // assignment above — an assignment ends the old licence — so this runs against
 // the licence that replaced it.
 const INTENDED_SECRET = LICENSEE;
-run(licensee, 'proposeTransfer', INTENDED_SECRET, RECORD, licenseCommit(b32(0x56), RECORD));
-const f3 = rejects(() => run(mallory, 'withdrawTransfer', b32(0xAA), RECORD));
+asHolder(INTENDED_SECRET, () => run(licensee, 'proposeTransfer', RECORD, licenseCommit(b32(0x56), RECORD)));
+const f3 = rejects(() => asHolder(b32(0xAA), () => run(mallory, 'withdrawTransfer', RECORD)));
 ok('F3: a stranger CANNOT withdraw a proposal they did not make', f3 !== '',
     f3 === '' ? 'mallory cancelled it' : f3);
 
@@ -250,10 +259,10 @@ ok('F3: a stranger CANNOT withdraw a proposal they did not make', f3 !== '',
 // The F3 proposal still stands, and one licence holds one proposal at a time, so
 // the holder withdraws before proposing again. This runs against INTENDED, the
 // licence that replaced LICENSE2 when it was assigned.
-run(licensee, 'withdrawTransfer', INTENDED_SECRET, RECORD);
-run(licensee, 'proposeTransfer', INTENDED_SECRET, RECORD, licenseCommit(b32(0x57), RECORD));
+asHolder(INTENDED_SECRET, () => run(licensee, 'withdrawTransfer', RECORD));
+asHolder(INTENDED_SECRET, () => run(licensee, 'proposeTransfer', RECORD, licenseCommit(b32(0x57), RECORD)));
 revoke(breeder, INTENDED);
-ok('F4: revocation leaves no pending transfer behind', !state().pendingTransferOf.member(INTENDED),
+ok('F4: revocation leaves no pending transfer behind', !state().pendingTransferOf.member(K(INTENDED)),
     'pendingTransferOf still holds the revoked licence');
 
 // F5: rotateRecordSecret is the newest circuit and the least exercised, which is
@@ -270,7 +279,7 @@ const MALLORY_NEW = commit(b32(0x61));
 
 const f5 = rejects(() => run(contractFor(MALLORY, b32(0x61)), 'rotateRecordSecret', MALLORY_NEW));
 ok('F5: a stranger rotating cannot touch the breeder\'s record',
-    f5 !== '' || state().lastAnchor === undefined || !same(state().lastAnchor, VICTIM_RECORD),
+    f5 !== '' || (!state().rotatedTo.member(VICTIM_RECORD) && same(state().lastRotatedFrom, commit(MALLORY))),
     'mallory\'s rotation landed on the breeder\'s commitment');
 
 // F6: the holder can rotate, and the CHAIN names the identity being left behind.

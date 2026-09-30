@@ -18,7 +18,7 @@
     "compact": "compact compile src/veilcore.compact ./src/managed/veilcore && compact compile src/lineage.compact ./src/managed/lineage && npm run compact:shallow",
     "lint": "eslint src",
     "prepack": "npm build",
-    "test": "for f in test-*.mjs *-checks.mjs verify-max-*.mjs; do echo \"--- $f\"; node \"$f\" || exit 1; done",
+    "test": "for f in test-*.mjs *-checks.mjs verify-max-*.mjs attack-*.mjs; do echo \"--- $f\"; node \"$f\" || exit 1; done",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "compact:shallow": "node gen-lineage.mjs 8 src/lineage-shallow.compact && compact compile --skip-zk src/lineage-shallow.compact ./src/managed/lineage-shallow"
   },

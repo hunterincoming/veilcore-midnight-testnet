@@ -36,6 +36,7 @@ const party = (secret) => new V.Contract({
   licenseRecord: (c) => [c.privateState, licPath.record],
   licenseSiblings: (c) => [c.privateState, licPath.siblings],
   licenseDirections: (c) => [c.privateState, licPath.dirs],
+  presentationChallenge: (c) => [c.privateState, licPath.challenge ?? sec('challenge')],
 });
 
 const licTree = new LicenseTree();
@@ -77,8 +78,9 @@ const licensed = (plan, apply, secret, name, ...args) => {
 };
 const countersign = (who, secret, record) => {
   const lc = V.pureCircuits.licenseCommit(secret, record);
+  licPath = { ...NO_PATH, secret };
   return licensed(() => licTree.planInsert(lc), (i) => licTree.applyInsert(lc, i),
-                  who, 'countersignLicense', secret, record);
+                  who, 'countersignLicense', record);
 };
 const approve = (who, lc, record, nlc) =>
   licensed(() => licTree.planReplace(lc), (i) => licTree.applyReplace(lc, nlc, i),
@@ -97,7 +99,7 @@ const present = (who, secret, record) => {
     p = { siblings: Array.from({ length: 16 }, () => new Uint8Array(32)),
           dirs: Array.from({ length: 16 }, () => false) };
   }
-  licPath = { secret, record, siblings: p.siblings, dirs: p.dirs };
+  licPath = { ...NO_PATH, secret, record, siblings: p.siblings, dirs: p.dirs };
   try { return run(who, 'proveLicense'); } finally { licPath = NO_PATH; }
 };
 const presentRefused = (who, secret, record) => {
@@ -106,6 +108,7 @@ const presentRefused = (who, secret, record) => {
 };
 
 const breederRecord = V.pureCircuits.commit(BREEDER);
+const K = (lc, record) => V.pureCircuits.licenseKey(lc, record);
 const sniperRecord = V.pureCircuits.commit(SNIPER);
 
 // ── V1: front-run ───────────────────────────────────────────────────────────
@@ -123,10 +126,14 @@ console.log('\n== V1. can a sniper capture a licence before the breeder issues i
      'an unbound commitment was the same value whoever issued it, so the sniper\n' +
      '     occupied the exact key the breeder needed');
 
-  run(SNIPER, 'issueLicense', sniperRecord, sniped);
+  run(SNIPER, 'issueLicense', sniped);
+  // The stronger attack: the sniper issues the breeder's OWN commitment under the
+  // sniper's record. Licence entries are keyed by (licence, issuer), so it lands
+  // in a different entry and blocks nothing.
+  run(SNIPER, 'issueLicense', intended);
 
   // The breeder's call now succeeds: the sniper is not in its way.
-  const breederErr = refused(BREEDER, 'issueLicense', breederRecord, intended);
+  const breederErr = refused(BREEDER, 'issueLicense', intended);
   ok('the breeder can still issue', breederErr === '',
      `refused: ${breederErr} — the sniper blocked the breeder`);
 
@@ -134,10 +141,11 @@ console.log('\n== V1. can a sniper capture a licence before the breeder issues i
   const csErr = (() => { try { countersign(LICENSEE, licenceSecret, breederRecord); return ''; } catch (e) { return String(e?.message ?? e); } })();
   ok('the licensee countersigns the breeder\'s licence', csErr === '', csErr);
   ok('the breeder\'s licence is the active one',
-     state().licenseStatusOf.member(intended) &&
-     state().licenseStatusOf.lookup(intended) === V.LicenseState.ACTIVE);
+     state().licenseStatusOf.member(K(intended, breederRecord)) &&
+     state().licenseStatusOf.lookup(K(intended, breederRecord)) === V.LicenseState.ACTIVE);
   ok('the sniper\'s entry never activates',
-     state().licenseStatusOf.lookup(sniped) === V.LicenseState.PENDING,
+     state().licenseStatusOf.lookup(K(sniped, sniperRecord)) === V.LicenseState.PENDING &&
+     state().licenseStatusOf.lookup(K(intended, sniperRecord)) === V.LicenseState.PENDING,
      'the countersignature landed on the sniper\'s entry and the licence went active\n     under a record the licensee never agreed to');
 
   // And a proof against the sniper's record fails.
@@ -165,11 +173,11 @@ console.log('\n== V3. can a licence secret be anchored as a record? ==');
   // The licensee can still anchor a record of their own — that is allowed — but it
   // is not the licence, and a licence issued against it is a different thing.
   const sub = V.pureCircuits.licenseCommit(sec('sub'), asRecord);
-  const subErr = refused(licenceSecret, 'issueLicense', asRecord, sub);
+  const subErr = refused(licenceSecret, 'issueLicense', sub);
   note(subErr ? `sublicence refused: ${subErr}` : 'sublicence issued against their own record');
   ok('a sublicence does not touch the breeder\'s licence',
-     !state().licenseStatusOf.member(asLicence) ||
-     state().licenseStatusOf.lookup(asLicence) === V.LicenseState.ACTIVE,
+     !state().licenseStatusOf.member(K(asLicence, breederRecord)) ||
+     state().licenseStatusOf.lookup(K(asLicence, breederRecord)) === V.LicenseState.ACTIVE,
      'the sublicence path altered the breeder\'s licence');
 }
 
@@ -181,12 +189,13 @@ console.log('\n== V2. can an outgoing licensee resurrect an assigned licence? ==
   const lc = V.pureCircuits.licenseCommit(outgoing, breederRecord);
   const nlc = V.pureCircuits.licenseCommit(incoming, breederRecord);
 
-  run(BREEDER, 'issueLicense', breederRecord, lc);
+  run(BREEDER, 'issueLicense', lc);
   countersign(LICENSEE, outgoing, breederRecord);
-  run(LICENSEE, 'proposeTransfer', outgoing, breederRecord, nlc);
+  licPath = { ...NO_PATH, secret: outgoing };
+  try { run(LICENSEE, 'proposeTransfer', breederRecord, nlc); } finally { licPath = NO_PATH; }
   approve(BREEDER, lc, breederRecord, nlc);
 
-  ok('the assignment removed the old licence', !state().licenseStatusOf.member(lc));
+  ok('the assignment removed the old licence', !state().licenseStatusOf.member(K(lc, breederRecord)));
 
   // The outgoing party re-issues the old commitment under a record THEY own.
   const theirRecord = V.pureCircuits.commit(sec('outgoing-record'));

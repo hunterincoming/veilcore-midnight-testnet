@@ -49,6 +49,11 @@ export type VeilcorePrivateState = {
   /** Its path in the active-licence tree. Set from ./license-tree.mjs per call. */
   readonly licenseSiblings: Uint8Array[];
   readonly licenseDirections: boolean[];
+  /**
+   * The verifier's challenge for the presentation about to be made. Chosen by the
+   * VERIFIER, 32 random bytes, used once, never published.
+   */
+  readonly presentationChallenge: Uint8Array;
 };
 
 const ZERO32 = (): Uint8Array => new Uint8Array(32);
@@ -66,11 +71,15 @@ export const createVeilcorePrivateState = (
 ): VeilcorePrivateState => ({
   geneticSecret,
   incomingGeneticSecret: geneticSecret,
-  recoverySecret: geneticSecret,
+  // NOT the genetic secret. A recovery secret defaulting to the primary would make
+  // recovery a copy of the key it is meant to back up. All-zero is a value no
+  // recovery commitment is built from, so a call that forgets to set it fails.
+  recoverySecret: ZERO32(),
   licenseSecret: ZERO32(),
   licenseRecord: ZERO32(),
   licenseSiblings: [],
   licenseDirections: [],
+  presentationChallenge: ZERO32(),
 });
 
 /** Name the secret a rotation is moving into, before calling rotateRecordSecret. */
@@ -153,6 +162,13 @@ export const veilcoreWitnesses = {
   }: VC): [VeilcorePrivateState, boolean[]] => [
     privateState,
     privateState.licenseDirections,
+  ],
+
+  presentationChallenge: ({
+    privateState,
+  }: VC): [VeilcorePrivateState, Uint8Array] => [
+    privateState,
+    privateState.presentationChallenge,
   ],
 };
 

@@ -604,6 +604,7 @@ const run = (seed: number): void => {
     } catch (e) {
       throw new Error(
         `seed ${seed}, step ${step} (${name}): ${e instanceof Error ? e.message : String(e)}`,
+        { cause: e },
       );
     }
   }

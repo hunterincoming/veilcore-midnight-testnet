@@ -11,7 +11,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-import { generateKeypair, signAttestation, signRetraction, type Keypair } from 'veilcore-records';
+import { canonicalise, generateKeypair, signAttestation, signRetraction, type Keypair } from 'veilcore-records';
 import { readJson, isObject, isString, isBoolean, optional } from './json';
 
 const KEY = 'veilcore.attester.v1';
@@ -68,8 +68,37 @@ export const createAttester = async (
  * accreditation is recorded as the attester's own claim with a named accreditor —
  * VeilCore does not verify it and says so.
  */
+const fromHex = (hex: string): Uint8Array => new Uint8Array((hex.match(/.{1,2}/g) ?? []).map((b) => parseInt(b, 16)));
+const toHex = (b: Uint8Array): string => Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
+
+/**
+ * Sign the listing with the attester's own key. The registry refuses an unsigned one:
+ * otherwise anyone could put any name on any lab's key. Same canonical payload as the
+ * registry's registrationPayload (veilcore-api, lineage/attesters.mjs).
+ */
+const signRegistration = async (p: AttesterProfile, issuedAt: number): Promise<string> => {
+  const payload = canonicalise({
+    type: 'veilcore/attester-registration/v1',
+    publicKey: p.keypair.publicKey,
+    ...(p.displayName === undefined ? {} : { displayName: p.displayName }),
+    ...(p.role === undefined ? {} : { role: p.role }),
+    ...(p.accreditation === undefined ? {} : { accreditation: p.accreditation }),
+    issuedAt,
+  });
+  const key = await crypto.subtle.importKey(
+    'pkcs8',
+    fromHex(p.keypair.privateKey) as unknown as BufferSource,
+    { name: 'Ed25519' },
+    false,
+    ['sign'],
+  );
+  const sig = await crypto.subtle.sign('Ed25519', key, new TextEncoder().encode(payload));
+  return toHex(new Uint8Array(sig));
+};
+
 export const publishAttester = async (p: AttesterProfile): Promise<{ attesterId?: string; error?: string }> => {
   try {
+    const issuedAt = Date.now();
     const res = await fetch(`${BASE}/attesters`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -78,6 +107,8 @@ export const publishAttester = async (p: AttesterProfile): Promise<{ attesterId?
         displayName: p.displayName,
         role: p.role,
         accreditation: p.accreditation,
+        issuedAt,
+        signature: await signRegistration(p, issuedAt),
       }),
     });
     const body = await readJson(res);

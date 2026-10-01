@@ -47,10 +47,14 @@ export const DisclosedFacts: React.FC<{ record: StrainRecord; disclosure: Disclo
         </Typography>
       )}
 
-      {disclosure['existence'] && <Fact>Prior possession proven — sealed to this breeder on this date.</Fact>}
+      {disclosure['existence'] && (
+        <Fact>Prior possession: shown as proven once the record is anchored on a public ledger.</Fact>
+      )}
       {disclosure['attestation-status'] && (
         <Fact ok={!!record.dnaFingerprint}>
-          {record.dnaFingerprint ? 'DNA-verified — bound to the paired lab report.' : 'DNA report not yet paired.'}
+          {record.dnaFingerprint
+            ? 'DNA report fingerprint paired by you (not lab-confirmed).'
+            : 'DNA report not yet paired.'}
         </Fact>
       )}
       {disclosure['descent-clean'] && <Fact>Lineage intact — unbroken chain back to the sealed record.</Fact>}

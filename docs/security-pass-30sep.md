@@ -380,3 +380,22 @@ Held: the licence tree cannot practically be filled; event-cell writes do not br
 presentations; counters cannot go below zero; seal arithmetic cannot wrap; nobody but the
 authority can insert keys during the fragmented deploy, and rerunning it is safe.
 
+# Round 10: front-running, disclosure, witness tampering, hash domains; and the web layer (1 Oct)
+
+**Contract:** held. Every front-running race tried (anchor, recovery, ownership proof,
+transfer, obligation, parentage) fails for the attacker; `proveLicense` discloses only
+the root, the waiting flag, the tag and two pass/fail bits and looks up no secret key;
+forged paths and wrong-length witnesses are refused; the six hash domains cannot
+collide. Fixed in the client and docs: an ownership challenge is public, so CLI option
+26 now issues separate licence and ownership challenges and rule 8 forbids sharing
+one. Documented: relaying, and the all-zero secret. Tests:
+`contract/src/test/attack-round4.test.ts`.
+
+**Registry and website** (veilcore-api, bboard-ui), fixed the same morning:
+`/records/:localId` returned whole private records; a copied record could lock the
+real holder out of the lineage layer; anyone could rename a lab or overwrite its
+attestation; the verify page reported holder-typed attestations, DNA pairing and
+licence counts, and a holder-chosen date, as facts; documents fetched from GitHub were
+rendered unsanitised; no rate limits. See veilcore-api commit 69ff5b0 and its
+`test/registry-security-1oct.test.mjs`.
+

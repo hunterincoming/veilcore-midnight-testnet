@@ -18,19 +18,26 @@ import { GENETICS_LABEL } from '../veilcore/disclosure';
 import { TEAL } from '../config/theme';
 
 const API = import.meta.env.VITE_API_BASE ?? '';
-const fmt = (ms: number) => new Date(ms).toLocaleString();
+const fmt = (t: number | string) => new Date(t).toLocaleString();
 
 type VerifyResult = {
   found: boolean;
   id?: string;
   cultivar?: string;
   recordFingerprint?: string;
-  dnaPaired?: boolean;
+  /** The holder paired a DNA report fingerprint themselves. Not a lab's confirmation. */
+  dnaPairedByHolder?: boolean;
+  /** A signed, unretracted lab attestation exists. Nothing the holder typed counts. */
   attested?: boolean;
-  activeLicenses?: number;
+  /** The record's fingerprint is in a batch whose root is anchored on a ledger. */
+  anchored?: boolean;
+  /** The holder's own statement of when it was logged. */
+  loggedAtClaimedByHolder?: string | null;
+  /** When the registry first received the record. The registry's word, not a ledger's. */
+  registryFirstSeen?: string | null;
   disclosed?: string[];
   priorPossession?: boolean;
-  sealedAt?: number;
+  sealedAt?: number | string;
   /** null when the endpoint did not check descent — not the same as false. */
   lineageIntact?: boolean | null;
   lineageNote?: string;
@@ -59,15 +66,17 @@ const isVerifyResult = (v: unknown): v is VerifyResult => {
     str(r.cultivar) &&
     str(r.recordFingerprint) &&
     str(r.breedingMethod) &&
-    bool(r.dnaPaired) &&
+    bool(r.dnaPairedByHolder) &&
     bool(r.attested) &&
+    bool(r.anchored) &&
     bool(r.priorPossession) &&
+    str(r.loggedAtClaimedByHolder) &&
+    str(r.registryFirstSeen) &&
     // null is a valid answer here and means "not checked". Requiring a boolean made
     // the guard reject a well-formed response, and the page then reported no record
     // for a record that exists.
     (r.lineageIntact === null || bool(r.lineageIntact)) &&
-    num(r.activeLicenses) &&
-    num(r.sealedAt) &&
+    (r.sealedAt === undefined || typeof r.sealedAt === 'number' || typeof r.sealedAt === 'string') &&
     num(r.otherRecordCount) &&
     (r.disclosed === undefined || Array.isArray(r.disclosed)) &&
     (r.parents === undefined || Array.isArray(r.parents)) &&
@@ -95,7 +104,6 @@ export const VerifyPage: React.FC = () => {
   const { id = '' } = useParams();
   const [params] = useSearchParams();
   const show = params.get('show');
-  const recipient = params.get('to')?.trim();
 
   const [result, setResult] = useState<VerifyResult | null>(null);
   const [loading, setLoading] = useState(true);
@@ -158,15 +166,20 @@ export const VerifyPage: React.FC = () => {
             <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', mb: 2 }}>
               <VerifiedIcon sx={{ color: TEAL, fontSize: 30 }} />
               <Box>
+                {/* The headline is the line a reader takes away, so it claims only what was
+                    checked: a ledger anchor, or else that the record is unaltered. */}
                 <Typography variant="overline" sx={{ color: result.recordFingerprint ? TEAL : 'text.secondary' }}>
-                  {result.recordFingerprint ? 'Provenance verified' : 'Record found — nothing sealed'}
+                  {!result.recordFingerprint
+                    ? 'Record found — nothing sealed'
+                    : result.anchored
+                      ? 'Anchored on a public ledger'
+                      : 'Record unaltered since logged'}
                 </Typography>
                 <Typography variant="h5">{result.cultivar}</Typography>
               </Box>
             </Stack>
 
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              {recipient ? `Prepared for ${recipient} · ` : ''}
               {result.id}
             </Typography>
 
@@ -177,7 +190,13 @@ export const VerifyPage: React.FC = () => {
                   the reader as verified and intact. The heading above had the same
                   problem, and it is the line a reader actually takes away. */}
               {result.recordFingerprint ? (
-                <Fact>Record exists and its fingerprint is intact — unaltered since it was sealed.</Fact>
+                <Fact>
+                  Record exists and its fingerprint is intact: unaltered since
+                  {result.registryFirstSeen
+                    ? ` this registry first saw it on ${fmt(result.registryFirstSeen)}`
+                    : ' it was logged'}
+                  .
+                </Fact>
               ) : (
                 <Fact ok={false}>
                   This record carries no commitment, so nothing about it can be checked. It exists in the registry and
@@ -189,14 +208,16 @@ export const VerifyPage: React.FC = () => {
                 <>
                   {disclosed.has('own') &&
                     (result.priorPossession ? (
-                      <Fact>Prior possession proven — sealed to this breeder.</Fact>
+                      <Fact>Prior possession: the record is anchored on a public ledger, which fixes its date.</Fact>
                     ) : (
-                      <Fact ok={false}>Prior possession not established — this record was never sealed.</Fact>
+                      <Fact ok={false}>
+                        Not yet anchored on a ledger. Its date rests on this registry&apos;s records, not on a ledger.
+                      </Fact>
                     ))}
                   {disclosed.has('dna') && (
-                    <Fact ok={!!result.dnaPaired}>
-                      {result.dnaPaired
-                        ? 'DNA-verified — bound to the paired lab report.'
+                    <Fact ok={!!result.dnaPairedByHolder}>
+                      {result.dnaPairedByHolder
+                        ? 'The holder paired a DNA report fingerprint. Not confirmed by a lab.'
                         : 'DNA report not yet paired.'}
                     </Fact>
                   )}
@@ -208,7 +229,14 @@ export const VerifyPage: React.FC = () => {
                       // page asserted an unbroken chain whatever the server reported.
                       <Fact ok={false}>{result.lineageNote ?? 'Lineage was not checked for this record.'}</Fact>
                     ))}
-                  {disclosed.has('sealed') && result.sealedAt && <Fact>Sealed {fmt(result.sealedAt)}.</Fact>}
+                  {disclosed.has('sealed') && result.sealedAt && (
+                    <Fact>
+                      Date stated by the holder: {fmt(result.sealedAt)}.
+                      {result.registryFirstSeen
+                        ? ` First seen by this registry: ${fmt(result.registryFirstSeen)}.`
+                        : ''}
+                    </Fact>
+                  )}
                   {disclosed.has('parents') && (
                     <Fact ok={(result.parents?.length ?? 0) > 0}>
                       {result.parents?.length ? `Parents: ${result.parents.join(' × ')}` : 'No parents recorded.'}
@@ -237,12 +265,16 @@ export const VerifyPage: React.FC = () => {
                 </>
               ) : (
                 <>
-                  <Fact ok={!!result.dnaPaired}>DNA report {result.dnaPaired ? 'paired' : 'not yet paired'}</Fact>
-                  <Fact ok={!!result.attested}>{result.attested ? 'Lab attested' : 'No lab attestation yet'}</Fact>
-                  <Fact ok={(result.activeLicenses ?? 0) > 0}>
-                    {(result.activeLicenses ?? 0) > 0
-                      ? `${result.activeLicenses} active license${result.activeLicenses === 1 ? '' : 's'} on record`
-                      : 'No active license'}
+                  <Fact ok={!!result.anchored}>
+                    {result.anchored ? 'Anchored on a public ledger' : 'Not yet anchored on a ledger'}
+                  </Fact>
+                  <Fact ok={!!result.attested}>
+                    {result.attested ? 'Signed lab attestation on record' : 'No signed lab attestation'}
+                  </Fact>
+                  <Fact ok={!!result.dnaPairedByHolder}>
+                    {result.dnaPairedByHolder
+                      ? 'DNA report paired by the holder (not lab-confirmed)'
+                      : 'DNA report not yet paired'}
                   </Fact>
                 </>
               )}
@@ -269,7 +301,7 @@ export const VerifyPage: React.FC = () => {
                 variant="outlined"
                 label={
                   result.recordFingerprint
-                    ? 'Verified against the registry'
+                    ? 'Checked against the VeilCore registry'
                     : 'Read from the registry — nothing verified'
                 }
               />

@@ -235,7 +235,12 @@ exercise each one.
    `lastOwnershipChallenge` is your challenge and `lastOwnershipProof` is the live,
    anchored head of the identity you asked about (`acceptOwnership`;
    `VeilcoreAPI.checkOwnership`). Never accept a proof made for someone else's challenge:
-   anyone can point you at the real holder's.
+   anyone can point you at the real holder's. The challenge becomes public with the
+   proof, so never use one challenge for both an ownership proof and a licence
+   presentation: published, it would let anyone recognise the presentation's tag and
+   name its issuer. Like a presentation, a proof shows that the holder of the secret
+   answered your challenge, not that the party in front of you is that holder: a
+   middleman can relay it. Answer challenges only from the party you are dealing with.
 
 ## Trust model
 
@@ -318,6 +323,9 @@ the circuit set as changeable by VeilCore.
   record passes a check about that record, including one the issuer granted itself.
   Issue licences on different terms from different records if verifiers must tell them
   apart.
+- **A record made from the all-zero secret** can be anchored, and then anyone can act
+  as it. No client here ever uses a zero secret; one that did would be giving its record
+  away.
 - **Rotation does not unlink.** Rotation and recovery publish the old and new commitment;
   a holder who rotates keeps the same, linked identity.
 - **An edge whose parent has no holder** (a landrace, a lapsed breeder) can never be

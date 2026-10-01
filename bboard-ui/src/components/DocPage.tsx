@@ -13,6 +13,7 @@ import { Link as RouterLink, useParams } from 'react-router-dom';
 import ArrowBackIcon from '@mui/icons-material/ArrowBackOutlined';
 import CodeIcon from '@mui/icons-material/CodeOutlined';
 import { marked } from 'marked';
+import DOMPurify from 'dompurify';
 import { TEAL } from '../config/theme';
 
 const REPO = 'https://raw.githubusercontent.com/hunterincoming/veilcore-sdk/main';
@@ -51,7 +52,11 @@ export const DocPage: React.FC = () => {
     setFailed(false);
     void fetch(`${REPO}/${meta.file}`)
       .then((r) => (r.ok ? r.text() : Promise.reject(new Error('not found'))))
-      .then(async (md) => setHtml(await marked.parse(md)))
+      // Fetched from GitHub at run time, so whoever can push to that repository decides
+      // what arrives here. Cleaned before it touches the page: scripts, event handlers
+      // and javascript: links are removed, so the documents cannot run code on
+      // veilcore.org, where holder and attester keys live in local storage.
+      .then(async (md) => setHtml(DOMPurify.sanitize(await marked.parse(md), { USE_PROFILES: { html: true } })))
       .catch(() => setFailed(true));
   }, [meta]);
 

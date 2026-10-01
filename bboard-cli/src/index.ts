@@ -444,9 +444,22 @@ const mainLoop = async (
             break;
           }
           case '26': {
+            // Two kinds, never shared: an ownership proof publishes its challenge, and a
+            // licence presentation is private only while its challenge stays unpublished.
+            const kind = (await rli.question('For a (L)icence presentation or an (O)wnership proof? '))
+              .trim()
+              .toLowerCase();
             const ch = newPresentationChallenge();
-            showSecret('CHALLENGE — send it to the licensee privately, use it once, never publish it:', toHex(ch));
-            logger.info('Keep it: you need it to check their presentation (27) or ownership proof (28).');
+            if (kind.startsWith('o')) {
+              showSecret('OWNERSHIP CHALLENGE — send it to the holder; it will be public once they answer:', toHex(ch));
+              logger.info('Use it once, only for an ownership proof (check it with 28). Never reuse it for a licence.');
+            } else {
+              showSecret(
+                'LICENCE CHALLENGE — send it to the licensee privately, use it once, never publish it:',
+                toHex(ch),
+              );
+              logger.info('Use it once, only for a licence presentation (check it with 27).');
+            }
             break;
           }
           case '27': {

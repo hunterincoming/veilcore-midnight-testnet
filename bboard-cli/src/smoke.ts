@@ -36,7 +36,7 @@ export const runSmoke = async (providers: VeilcoreProviders, logger: Logger, ind
   };
 
   try {
-    logger.info('Deploying a fresh VeilCore contract (authority kept: this is preprod)...');
+    logger.info('Deploying a fresh VeilCore contract (authority kept: this is a test network)...');
     const vc = await VeilcoreAPI.deploy(providers, sampleSigningKey(), logger);
     pass(`deployed at ${vc.deployedContractAddress}`);
     must((await vc.currentLedger()).protocolVersion === 1n, 'protocol version 1 is on chain');
@@ -149,7 +149,7 @@ export const runSmoke = async (providers: VeilcoreProviders, logger: Logger, ind
     await vc.discharge(B, royalty);
     must((await vc.checkLineage(G)).clean, 'the recovered breeder releases; the lineage is clean');
 
-    logger.info(`\nSMOKE TEST PASSED: ${step} checks on preprod. Contract ${vc.deployedContractAddress}`);
+    logger.info(`\nSMOKE TEST PASSED: ${step} checks passed. Contract ${vc.deployedContractAddress}`);
     return true;
   } catch (e) {
     logger.error(String(e instanceof Error ? e.message : e));

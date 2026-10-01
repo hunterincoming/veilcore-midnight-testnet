@@ -214,6 +214,9 @@ const Person: React.FC<{ name: string; role: string; bio: string; photo: string;
             borderRadius: 2,
             border: '1px solid rgba(255,255,255,0.08)',
             mb: 1.5,
+            filter: 'grayscale(1)',
+            transition: 'filter .4s ease',
+            '&:hover': { filter: 'none' },
           }}
         />
         <Typography variant="subtitle1">{name}</Typography>

@@ -189,10 +189,33 @@ const Audience: React.FC<{ who: string; line: string; to: string; label: string 
   </Box>
 );
 
-const Person: React.FC<{ name: string; role: string; bio: string; extra?: string }> = ({ name, role, bio, extra }) => (
+const Person: React.FC<{ name: string; role: string; bio: string; photo: string; extra?: string }> = ({
+  name,
+  role,
+  bio,
+  photo,
+  extra,
+}) => (
   <Box sx={{ py: 3.5, borderTop: '1px solid', borderColor: 'rgba(255,255,255,0.07)' }}>
-    <Stack direction={{ xs: 'column', md: 'row' }} spacing={{ xs: 1, md: 4 }} sx={{ alignItems: { md: 'baseline' } }}>
+    <Stack direction={{ xs: 'column', md: 'row' }} spacing={{ xs: 1, md: 4 }} sx={{ alignItems: { md: 'flex-start' } }}>
       <Box sx={{ minWidth: { md: 210 } }}>
+        <Box
+          component="img"
+          src={photo}
+          alt={`Portrait of ${name}`}
+          width={112}
+          height={112}
+          loading="lazy"
+          sx={{
+            display: 'block',
+            width: 112,
+            height: 112,
+            objectFit: 'cover',
+            borderRadius: 2,
+            border: '1px solid rgba(255,255,255,0.08)',
+            mb: 1.5,
+          }}
+        />
         <Typography variant="subtitle1">{name}</Typography>
         <Typography variant="body2" sx={{ color: TEAL_DIM }}>
           {role}
@@ -320,12 +343,14 @@ export const Landing: React.FC = () => (
       <Person
         name="Makoto (Mako) Steiner"
         role="Co-founder & CEO"
+        photo="/team/mako.jpg"
         bio="Makoto (Mako) Steiner is VeilCore's co-founder and CEO, leading commercial strategy, fundraising, and VeilCore's relationships with partners, institutions, and investors worldwide. He studied Environmental Studies at Denison University and is based in Tokyo."
         extra="Languages: English, Japanese"
       />
       <Person
         name="Hunter Roberts"
         role="Co-founder & COO"
+        photo="/team/hunter.jpg"
         bio="Hunter Roberts is VeilCore's co-founder and COO, leading product and the VeilCore protocol, from the record format to the contracts on Midnight. He comes from hands-on plant work: tissue culture, sterile lab operations and cultivation facility build-outs. He is Midnight Foundation's Nightforce Leader (US) and is based in New Jersey."
       />
     </Box>

@@ -47,9 +47,11 @@ export const redactThisSession = (value: string): void => {
 
 /** One log line with every configured and typed secret replaced by [redacted]. */
 export const scrub = (line: string, secrets: readonly string[] = []): string => {
-  let out = secrets.reduce((acc, sec) => acc.split(sec).join('[redacted]'), line);
+  // Lines arrive as JSON, where " and \ are escaped: match that form too.
+  const forms = (t: string): string[] => [t, JSON.stringify(t).slice(1, -1)];
+  let out = secrets.flatMap(forms).reduce((acc, sec) => acc.split(sec).join('[redacted]'), line);
   for (const h of typedHex) out = out.replace(new RegExp(h, 'gi'), '[redacted]');
-  for (const t of typedText) out = out.split(t).join('[redacted]');
+  for (const t of [...typedText].flatMap(forms)) out = out.split(t).join('[redacted]');
   return out;
 };
 

@@ -342,6 +342,20 @@ export class ChallengeBook {
     return { ok: true, reason: "used now" };
   }
 
+  /**
+   * Take in entries saved by another run of the verifier: a challenge either side has
+   * used stays used. Without this, two runs open at once each saved its own copy and the
+   * later save erased the other's "used" mark (re-attack, round 11).
+   */
+  absorb(entries: readonly ChallengeEntry[]): void {
+    for (const e of entries) {
+      const mine = this.book.get(e.challenge);
+      if (mine === undefined) this.book.set(e.challenge, e);
+      else if (e.usedAt !== undefined && mine.usedAt === undefined)
+        this.book.set(e.challenge, { ...mine, usedAt: e.usedAt });
+    }
+  }
+
   /** Everything recorded, minus entries older than the maximum age (no longer usable anyway). */
   entries(): ChallengeEntry[] {
     const cutoff = this.now() - this.maxAgeMs;

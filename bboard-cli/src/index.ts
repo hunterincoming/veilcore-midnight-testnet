@@ -226,22 +226,25 @@ export const deployOrJoin = async (
   }
 };
 
-/** Mark an accepted challenge used, and save that before the verdict is shown. */
+/**
+ * Mark an accepted challenge used, saved before the verdict is shown. Refused when another
+ * run of this program used it first.
+ */
 const useUp = async (
   book: ChallengeBook,
   file: ChallengeFile,
   ch: Uint8Array,
   kind: 'licence' | 'ownership',
   logger: Logger,
-): Promise<void> => {
-  book.consume(ch, kind);
+): Promise<{ ok: boolean; reason: string }> => {
   try {
-    await file.save(book);
+    return await file.consume(book, ch, kind);
   } catch (e) {
     logger.error(
       `Could not save that this challenge is now used (${e instanceof Error ? e.message : String(e)}). ` +
         'Do not accept it again, even if this program would after a restart.',
     );
+    return book.consume(ch, kind);
   }
 };
 
@@ -533,28 +536,32 @@ const mainLoop = async (
             const txId = (await rli.question("The presentation's transaction id (from the licensee): ")).trim();
             const issuer = await ask32(rli, 'Issuer you asked about (any record of that identity, hex): ');
             const ch = await ask32(rli, 'The challenge you sent (hex): ');
+            await challengeFile.refresh(book);
             const usable = book.check(ch, 'licence');
             if (!usable.ok) {
               logger.info(`NOT ACCEPTED: ${usable.reason}.`);
               break;
             }
             const verdict = await api.checkPresentation(indexerUri, txId, issuer, ch);
-            if (verdict.accepted) await useUp(book, challengeFile, ch, 'licence', logger);
-            logger.info(`${verdict.accepted ? 'ACCEPTED' : 'NOT ACCEPTED'}: ${verdict.reason}.`);
+            const used = verdict.accepted ? await useUp(book, challengeFile, ch, 'licence', logger) : undefined;
+            if (used !== undefined && !used.ok) logger.info(`NOT ACCEPTED: ${used.reason}.`);
+            else logger.info(`${verdict.accepted ? 'ACCEPTED' : 'NOT ACCEPTED'}: ${verdict.reason}.`);
             break;
           }
           case '28': {
             const txId = (await rli.question("The ownership proof's transaction id (from the holder): ")).trim();
             const record = await ask32(rli, 'Record you asked about (any record of that identity, hex): ');
             const ch = await ask32(rli, 'The challenge you sent (hex): ');
+            await challengeFile.refresh(book);
             const usable = book.check(ch, 'ownership');
             if (!usable.ok) {
               logger.info(`NOT ACCEPTED: ${usable.reason}.`);
               break;
             }
             const verdict = await api.checkOwnership(indexerUri, txId, record, ch);
-            if (verdict.accepted) await useUp(book, challengeFile, ch, 'ownership', logger);
-            logger.info(`${verdict.accepted ? 'ACCEPTED' : 'NOT ACCEPTED'}: ${verdict.reason}.`);
+            const used = verdict.accepted ? await useUp(book, challengeFile, ch, 'ownership', logger) : undefined;
+            if (used !== undefined && !used.ok) logger.info(`NOT ACCEPTED: ${used.reason}.`);
+            else logger.info(`${verdict.accepted ? 'ACCEPTED' : 'NOT ACCEPTED'}: ${verdict.reason}.`);
             break;
           }
           case '23': {

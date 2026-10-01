@@ -260,8 +260,11 @@ export class VeilcoreAPI {
    *
    * The commitment is also remembered in this client's private state, and issueLicense
    * and approveTransfer refuse it from then on: the contract keeps no record of
-   * revocations, so without this a revoked licensee could come back through a transfer
-   * from another licensee, or through a re-issue made by mistake.
+   * revocations, so without this the same revoked commitment could come back through a
+   * transfer from another licensee, or through a re-issue made by mistake. It only stops
+   * that exact commitment: a revoked licensee who makes a new licence secret gets a
+   * commitment the issuer cannot link to them, so an issuer must still know who it is
+   * approving (design.md, known limits).
    */
   async revokeLicense(licenseCommitment: Uint8Array, issuingRecord: Uint8Array): Promise<TxRef & SealResult> {
     // Remembered before sending, so even a revocation whose confirmation fails is never

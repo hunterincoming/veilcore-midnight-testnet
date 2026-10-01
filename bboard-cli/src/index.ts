@@ -198,6 +198,12 @@ export const deployOrJoin = async (
         return api;
       }
       case '2': {
+        // On mainnet, check this build against the committed fingerprints before joining,
+        // as deploy does: join compares the chain's keys with THIS build's keys.
+        if (getNetworkId() === 'mainnet') {
+          const n = assertKeysMatchRecord(zkConfigPath, path.resolve(zkConfigPath, '..', '..', '..', '..'));
+          logger.info(`All ${n} build artefacts match the committed fingerprints (docs/fingerprints.md).`);
+        }
         const api = await VeilcoreAPI.join(providers, (await rli.question('Contract address (hex): ')).trim(), logger);
         logger.info(`Joined contract at address: ${api.deployedContractAddress}`);
         return api;

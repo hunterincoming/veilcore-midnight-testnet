@@ -113,14 +113,19 @@ describe("FINDING: checkLineage reports clean for commitments the chain knows no
   );
 });
 
-describe("FINDING (low): proposals can be piled onto any record; the victim pays to clear each", () => {
-  it("40 proposals from one attacker sit against V until V rejects each one", () => {
-    const os = Array.from({ length: 40 }, (_, i) => secret(`spam-${i}`));
-    os.forEach((o) => sim.call(as(M), "proposeObligation", C.commit(V), o));
+describe("FIXED (state bounds): proposals can no longer be piled onto a record", () => {
+  it("one proposer may have at most 8 waiting; withdrawing or an answer frees a place", () => {
+    const os = Array.from({ length: 9 }, (_, i) => secret(`spam-${i}`));
+    os.slice(0, 8).forEach((o) =>
+      sim.call(as(M), "proposeObligation", C.commit(V), o),
+    );
+    expect(() =>
+      sim.call(as(M), "proposeObligation", C.commit(V), os[8]),
+    ).toThrow("too many proposals waiting");
     expect(openObligations(sim.state, C.commit(V))).toBe(0n); // binds nothing
-    expect(sim.state.pendingObligations.size()).toBe(40n);
-    os.forEach((o) => sim.call(as(V), "rejectObligation", o, C.commit(M)));
-    expect(sim.state.pendingObligations.size()).toBe(0n);
+    sim.call(as(V), "rejectObligation", os[0], C.commit(M));
+    sim.call(as(M), "proposeObligation", C.commit(V), os[8]);
+    expect(sim.state.pendingObligations.size()).toBe(8n);
   });
 });
 

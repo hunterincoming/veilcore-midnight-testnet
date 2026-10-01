@@ -72,11 +72,13 @@ cd ../bboard-ui && npm run build
 It covers records, licences and lineage in 24 circuits. The design, the normative
 verifier rules and the trust model are in [`docs/design.md`](docs/design.md).
 
-An outside developer reviewed it in August. Since then it has had eleven rounds of
+An outside developer reviewed it in August. Since then it has had twelve rounds of
 attack, recorded in [`docs/security-pass-30sep.md`](docs/security-pass-30sep.md): round 1,
 our own pass over both contracts, and rounds 2 to 7 by reviewers who had not seen the
-fixes, all on 30 September 2026; then rounds 8 to 11 on 1 October, two of them followed
-by an independent re-attack of their fixes. Every finding was first confirmed as a
+fixes, all on 30 September 2026; then rounds 8 to 12 on 1 October, two of them followed
+by an independent re-attack of their fixes. Round 12 attacked the per-identity state
+bounds added that evening (caps on rotations, recoveries, parents, obligations and
+licences; see State bounds in `docs/design.md`). Every finding was first confirmed as a
 working attack, then fixed or written up as a known limit. Contract attacks are kept as
 tests in `contract/src/test/` (`cd contract && npm test`). Many fixes were in the CLI, the
 API, the registry or the website, and are tested there instead: `bboard-cli/src/*.test.ts`
@@ -98,8 +100,8 @@ real proofs, checking 26 results, including 8 attempts that must be refused (7 b
 1 by the verifier's transaction lookup). It does
 not call `anchorBatch`, `replaceRecoveryCommitment`, `withdrawTransfer`, `withdrawParent`,
 `proposeObligation`, `acceptObligation`, `rejectObligation` or `withdrawObligation`. It
-passed 26 of 26 on a local Midnight chain on 1 October 2026. The preprod run on this
-build has not been done yet.
+passed 26 of 26 on a local Midnight chain on 1 October 2026, on the build before the
+state bounds. Neither the local nor the preprod run has been done on this build yet.
 
 **MPS-0037**, the proposal for obligations that inherit through descent, is merged into
 Midnight's standards repository.

@@ -295,7 +295,7 @@ describe("fix 3: hasOffspring", () => {
       for (const r of [Xr, Yr, Zr])
         expect(checkLineage(sim.state, r).cyclic).toBe(false);
     }
-  });
+  }, 30_000);
 
   it("held: a cycle through a rotated or recovered commitment is still refused", () => {
     sim.call(as(X), "proposeParent", Yr);

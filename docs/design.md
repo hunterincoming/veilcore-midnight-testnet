@@ -1,7 +1,7 @@
 # VeilCore: Technical Design
 
 **Provenance, licensing and heritable obligations for plant and animal genetics on Midnight**
-Protocol version 1 · last updated 1 October 2026
+Protocol version 1 · last updated 1 October 2026 (evening: state bounds)
 
 ---
 
@@ -30,8 +30,10 @@ through an indexer it trusts (see Trust model).
   public values listed under "Known limits", never genetic data, terms or names. (The
   website keeps record contents and licence terms on the VeilCore registry, which is
   not the chain; see Trust model.)
-- **Bounded state.** Containers are cleared by the circuit that ends what filled them.
-  What grows permanently is listed under "Known limits".
+- **Bounded state per identity.** Every ledger entry is overwritten, cleared by the
+  party who created it, or capped per anchored identity. State grows with the number of
+  anchored records, not with how often anyone calls. The bound for every field is under
+  "State bounds"; where it does not hold, "Known limits" says so.
 - **Browser-viable proving.** 24 circuits, each under 700 ZKIR operations.
 - **Independent recomputation of commitments.** The six commitment hashes are plain
   SHA-256 (next section), so anyone can recompute one without Midnight tooling. The
@@ -93,9 +95,13 @@ A record secret is 32 random bytes held by the record's holder. Its commitment i
   logged, not against malware that also sees the new one. The contract refuses only the
   current commitment as the new one; the client always makes a fresh one. If a recovery
   reports an error, check whether it landed before retrying: the client does.
+- **Moves are capped.** An identity can make 16 rotations (`MAX_ROTATIONS`), and a
+  recovery resets that count, so a thief who spent them leaves the owner a fresh 16. An
+  identity can make 16 recoveries in its lifetime (`MAX_RECOVERIES`). A thief cannot
+  spend recoveries: they need the recovery secret.
 
-Licence authority, parentage and obligations are keyed by identity, so they survive any
-number of rotations and recoveries, and a retired secret controls nothing.
+Licence authority, parentage and obligations are keyed by identity, so they survive
+every rotation and recovery, and a retired secret controls nothing.
 
 ## Records
 
@@ -104,8 +110,8 @@ number of rotations and recoveries, and a retired secret controls nothing.
 | `anchor(recoveryCommitment)` | Anchors the caller's record. Refuses the zero commitment and the zero secret's commitment. |
 | `proveOwnership(challenge)` | Publishes the caller's live record in `lastOwnershipProof` and the verifier's challenge in `lastOwnershipChallenge`, so the proof answers one verifier (rule 8). The interval since its anchor is the evidence of prior possession. |
 | `pairDna(dnaCommitment)` | Records any non-zero 32-byte value the holder chooses against the caller's record. It is the holder's own statement that a report belongs to the record; the contract cannot check it. |
-| `rotateRecordSecret(newRecord)` | Moves the identity; the caller must hold the new secret. Anchored identities only. |
-| `recoverRecordSecret(origin, newRecord)` | Moves the identity with the recovery secret, whoever holds the head. |
+| `rotateRecordSecret(newRecord)` | Moves the identity; the caller must hold the new secret. Anchored identities only. At most 16 since the anchor or the last recovery. |
+| `recoverRecordSecret(origin, newRecord)` | Moves the identity with the recovery secret, whoever holds the head. At most 16 per identity; each one resets the rotation count. |
 | `replaceRecoveryCommitment(origin, new)` | Replaces a recovery secret that may have leaked. |
 | `anchorBatch(root)` | Timestamps a batch root. **Unauthenticated**: inclusion in a batch is not possession. |
 
@@ -122,10 +128,16 @@ takes the caller's record, or any secret, as an argument (checked by
 1. The **licensee** makes a licence secret and sends the issuer
    `licenseCommit(secret, issuerRecord)`. The issuer never holds the secret.
 2. `issueLicense(lc)`: the issuer (an anchored identity) records it, PENDING, keyed
-   `licenseKey(lc, issuer)`. The contract tracks only PENDING and ACTIVE: no terms, no
-   expiry. Terms, end dates and any "expired" state are the app's, kept off chain.
+   `licenseKey(lc, issuer)`, and publishes `lc` in `lastIssuedLicense`. The contract
+   tracks only PENDING and ACTIVE: no terms, no expiry. Terms, end dates and any
+   "expired" state are the app's, kept off chain. An identity can have at most 32
+   licences PENDING at once (`MAX_PENDING_LICENSES`); a countersign or a revoke of a
+   pending one frees a place.
 3. `countersignLicense(issuer, slot)`: the licensee proves the secret. The key becomes a
-   leaf of `activeLicenses` at a random free index, so activations do not contend.
+   leaf of `activeLicenses` at a random free index, so activations do not contend. An
+   issuing identity can have at most 1024 licences ACTIVE (`MAX_ACTIVE_LICENSES`);
+   beyond that a countersign is refused until the issuer revokes one. A transfer keeps
+   the count the same.
 4. `proveLicense()`: the licensee proves to one verifier that they hold a licence from
    one issuer that is in the tree at a root the contract still accepts. That is "live"
    only once the verifier also applies rule 5 (see "The revocation window"). All inputs
@@ -147,10 +159,14 @@ takes the caller's record, or any secret, as an argument (checked by
 **Revocation takes effect in two steps.** The licence is removed at once: it cannot be
 transferred, and no new path to it exists. Paths proved against earlier roots keep
 verifying until the next **seal**. `sealRevocations(bound)` drops every root except the
-current one. Anyone may call it, only when a revocation or transfer is waiting, and only
-once the block time is at least 600 seconds (`SEAL_INTERVAL`) past the previous seal's
-`bound`. `bound` must be ahead of the block time by at most 300 seconds, so two seals are
-always at least 600 seconds of block time apart.
+current one. Anyone may call it, only when the tree has changed since the last seal (a
+revocation or transfer is waiting, or an activation added a root: `rootsSinceSeal`), and
+only once the block time is at least 600 seconds (`SEAL_INTERVAL`) past the previous
+seal's `bound`. `bound` must be ahead of the block time by at most 300 seconds, so two
+seals are always at least 600 seconds of block time apart. A seal after activations only
+does not make anything safer; it clears the root history, which otherwise grows with
+every activation (see "State bounds"). Like any seal, it makes a licensee whose path
+predates it fetch a new one.
 
 Why not drop old roots on every revocation, as version 0 did: then on chain anyone
 could revoke a throwaway licence of their own each block and make every older path
@@ -163,7 +179,9 @@ verifier following rule 5 refuses a presentation whose root has since moved on. 
 a cost in re-proofs, paid in fees by the griefer too, never a wrong answer. A verifier
 that wants to accept more can check the presentation's root against every root since
 the last revocation or transfer, from the indexer's history. The client seals straight
-after a revocation or transfer when allowed, and otherwise reports when it can.
+after a revocation or transfer when allowed, and otherwise reports when it can. It does
+not seal after a countersign; the operator runs CLI option 15 ("Seal waiting
+revocations") for that (`docs/runbook.md`).
 
 A leaf names its issuer, so a transfer cannot forge a licence from another issuer, and
 a commitment cannot be live twice under one issuer.
@@ -174,7 +192,9 @@ a commitment cannot be live twice under one issuer.
 the parent's holder. The stored proposal must still name the confirming parent. The
 edge is recorded between identities in `parentsOf`, so the pedigree is readable from
 state. An edge means both holders said so, not that the child is biologically
-descended. The DNA pairing narrows that; it does not close it.
+descended. The DNA pairing narrows that; it does not close it. A record can have at most
+two confirmed parents (`MAX_PARENTS`); a third is refused at proposal and at
+confirmation.
 
 **A record's parents are fixed once it has confirmed offspring** (`hasOffspring`). An
 ancestor therefore cannot change the pedigree of material already descended from it,
@@ -187,14 +207,24 @@ beneficiary identity)`. The obligation commitment is a hash of the terms with a 
 salt, both kept off chain; without the salt, short terms could be guessed back from the
 chain (the CLI salts them).
 - A beneficiary proposes (`proposeObligation`); it binds nobody until the holder accepts
-  (`acceptObligation`). The beneficiary can withdraw an unaccepted proposal.
+  (`acceptObligation`). The beneficiary can withdraw an unaccepted proposal. A proposal
+  publishes the obligation commitment, the record's identity and the proposer's identity
+  (`lastProposedObligation`, `lastProposedAgainst`, `lastProposedBy`), so a beneficiary
+  who recovers from a theft can find and withdraw proposals a thief made in its name,
+  and the holder can find what to reject. One identity can have at most 8 proposals
+  waiting (`MAX_PENDING_OBLIGATIONS`); a withdraw, accept or reject frees a place.
 - A holder may place one on their own record in one step (`encumberOwnRecord`), for
   example a breeder marking a licensed mother.
 - **Only the beneficiary's current head can release it** (`discharge`). After recovery,
   a thief holding an old secret cannot.
 - The holder can reject a proposal (`rejectObligation`). Anyone anchored can file
-  proposals against any record, at a fee each; they bind nothing, and clearing them
-  costs the holder a transaction each.
+  proposals against any record, at a fee each and at most 8 waiting per proposer; they
+  bind nothing, and clearing them costs the holder a transaction each.
+- A record can carry at most 16 obligations in force (`MAX_OPEN_OBLIGATIONS`), plus 16
+  more for each recovery it has had, counting both accepted proposals and its own
+  encumbrances. A full record cannot accept or encumber until a beneficiary discharges
+  one. The extra room per recovery exists because a thief holding the record can fill
+  it with obligations owed to himself, which only he can release.
 - **Obligations follow material down, including ones added later.** An obligation an
   ancestor's holder accepts after a descendant was linked shows on the descendant's
   lineage too, until its beneficiary releases it.
@@ -203,6 +233,45 @@ chain (the CLI salts them).
 
 **Only anchored identities take part**, so an encumbered identity cannot be merged into
 another to shed what it owes.
+
+## State bounds
+
+Every ledger field, from the `export ledger` lines of `contract/src/veilcore.compact`.
+"Identity" means an anchored identity; the caps are counted per identity, not per
+commitment, so rotating does not reset them.
+
+| Field | Bound | Who can clear it | Why it is bounded |
+|---|---|---|---|
+| `protocolVersion` | one value | nobody (sealed) | fixed slot |
+| 10 counters: `anchorSeq`, `proofSeq`, `batchSeq`, `pairSeq`, `rotationSeq`, `transferSeq`, `presentationSeq`, `sealSeq`, `descentSeq`, `obligationSeq` | one value each | nobody; they only count | fixed slot |
+| 24 event cells: `lastAnchor`, `lastBatchRoot`, `lastOwnershipProof`, `lastOwnershipChallenge`, `lastPairedRecord`, `lastPairedDna`, `lastRotatedFrom`, `lastRotatedTo`, `lastRecoveredOrigin`, `lastPresentation`, `lastPresentationRoot`, `lastPresentationUnsealed`, `lastIssuedLicense`, `lastActivatedLicense`, `lastTransferredLicense`, `lastActivatedRecord`, `lastDescentChild`, `lastDescentParent`, `lastObligationRecord`, `lastObligation`, `lastBeneficiary`, `lastProposedObligation`, `lastProposedAgainst`, `lastProposedBy` | one value each | overwritten by the next transaction that writes it | fixed slot |
+| `lastSealTime`, `unsealedChanges`, `rootsSinceSeal` | one value each | overwritten | fixed slot |
+| `recoveryOf` | 1 per identity | nobody; replaced in place by recovery and `replaceRecoveryCommitment` | created once, at anchor |
+| `obligationCountOf`, `rotationsOf`, `recoveriesOf`, `pendingObligationsBy`, `pendingLicensesBy`, `activeLicensesBy` | 1 counter each per identity | nobody | created once, at anchor; each holds a count, not a list |
+| `originOf` | at most 288 per identity: 16 rotations in each of 17 periods (before the first recovery and after each of 16), plus one entry per recovery | nobody | `MAX_ROTATIONS` 16, reset by recovery; `MAX_RECOVERIES` 16 |
+| `headOf` | 1 per identity that has moved | nobody; overwritten by each move | one head per identity |
+| `licenseStatusOf` | per issuing identity, at most 32 PENDING and 1024 ACTIVE | the issuer (`revokeLicense`); `approveTransfer` swaps one entry for another | `MAX_PENDING_LICENSES`, `MAX_ACTIVE_LICENSES` |
+| `pendingTransferOf` | at most 1 per active licence | the holder (`withdrawTransfer`), the issuer (`approveTransfer`, `revokeLicense`) | one proposal per licence, and active licences are capped |
+| `activeLicenses` leaves | at most 1024 per issuing identity; 2^24 = 16,777,216 in all | the issuer (`revokeLicense`) | `MAX_ACTIVE_LICENSES`; the tree has depth 24 |
+| `activeLicenses` root history | one root per tree change (activation, approved transfer, revocation) since the last seal | anyone (`sealRevocations`), at most once per 600 s | only if someone seals; see Known limits |
+| `licenseSlotOf`, `licenseAtSlot` | 1 each per active licence | the issuer (`revokeLicense`); a transfer reuses the slot | as active licences |
+| `pendingParentOf` | at most 1 per child identity | the child (`withdrawParent`), the parent (`confirmParent`) | one proposal at a time |
+| `parentsOf` | at most 2 per child identity | nobody | `MAX_PARENTS` 2 |
+| `hasOffspring` | at most 1 per identity | nobody | set membership |
+| `pendingObligations` | at most 8 per proposing identity | the proposer (`withdrawObligation`), the holder (`acceptObligation`, `rejectObligation`) | `MAX_PENDING_OBLIGATIONS` 8 |
+| `openObligations` | at most 16 per record identity, plus 16 per recovery (so at most 272) | the beneficiary (`discharge`) | `MAX_OPEN_OBLIGATIONS` 16 × (recoveries + 1) |
+
+**Why this is Tier 2 on Midnight's State-Space-at-Risk rubric.** Each identity's share of
+state is capped, and every identity costs an `anchor` transaction and its fee. So state
+grows with the number of anchored records, not with how often anyone calls: a repeated
+call by one identity overwrites a cell, stops at a cap, or clears what it created.
+`contract/src/test/state-bounds.test.ts` checks each cap, the moves that free a place,
+and that 50 rounds of propose/withdraw, issue/revoke and parent propose/withdraw leave
+state where it started. That is the rubric's Tier 2 shape (bounded per user, growing with
+the number of users). It is not Tier 1: there is no global ceiling on the number of
+identities. Two things are not bounded per identity, and are listed under Known limits:
+the licence tree's root history, which is bounded only while someone seals, and the
+total created by one party with many anchors.
 
 ---
 
@@ -255,7 +324,10 @@ encrypted under `~/.veilcore/challenges`, one file per network
    with which circuit that transaction called: several circuits write the same cells
    (accepting and releasing an obligation, say), and a rotation and a recovery both
    write `lastRotatedTo` (a recovery clears `lastRotatedFrom`; a rotation clears
-   `lastRecoveredOrigin`).
+   `lastRecoveredOrigin`). `lastIssuedLicense` is written only by `issueLicense`,
+   `lastTransferredLicense` only by `approveTransfer`, and
+   `lastProposedObligation`, `lastProposedAgainst` and `lastProposedBy` only by
+   `proposeObligation`.
 7. **Batch roots are not possession.** `anchorBatch` is unauthenticated.
 8. **Ownership proofs.** Send the holder a fresh 32-byte random challenge and use it once.
    The holder gives you the transaction id of a `proveOwnership(challenge)` call. Look
@@ -338,18 +410,49 @@ the circuit set as changeable by VeilCore.
   control and the recovery secret offline.
 - **Licence activity is public apart from presentations.** Every licence call except a
   presentation publishes the licence key, which links them to each other, and the
-  issuing record. Issue publishes the key, not the licence commitment. Countersign
-  publishes the licence commitment (`lastActivatedLicense`). A transfer proposal
-  publishes the incoming commitment. Revoke and approve publish the caller's record.
-  Only a presentation hides the licence and the licensee. Whether fee payments can link a presentation to its countersign is an open
-  question for the Midnight wallet, not this contract.
-- **Licence entries grow with use.** Anyone can issue licences to themselves at a fee per
-  entry. The bound is economic, not structural. Identity maps grow by one entry per
-  anchor, rotation or recovery. That is the price of a retired secret ceasing to work.
-- **Parentage grows and is permanent.** Confirmed edges (`parentsOf`) and
-  `hasOffspring` are never removed. A record with no confirmed offspring can take any
-  number of confirmed parents, one proposal at a time (tested with 40). The bound is the
-  fee per proposal and confirmation, and each parent's holder must agree.
+  issuing record. Issue and countersign both publish the licence commitment
+  (`lastIssuedLicense`, `lastActivatedLicense`). Issue publishes it so that an owner who
+  recovers from a theft can revoke PENDING licences the thief issued: revoking needs the
+  commitment, and the key alone does not give it. A transfer proposal publishes the
+  incoming commitment, and an approved transfer writes it to `lastTransferredLicense`,
+  so the same owner can revoke a licence the thief activated and then transferred. Revoke and approve publish the caller's record. Only a
+  presentation hides the licence and the licensee. Whether fee payments can link a
+  presentation to its countersign is an open question for the Midnight wallet, not this
+  contract.
+- **Obligation proposals are public.** A proposal publishes who proposed what against
+  whom, and the obligation commitment, before the holder has answered. A proposal the
+  holder rejects still shows that it was made. The commitment hides the terms only if
+  it is salted: the CLI salts it (SHA-256 of a random salt and the text); a client that
+  passes a guessable value publishes something guessable.
+- **Parentage and identity entries are permanent.** Confirmed edges (`parentsOf`),
+  `hasOffspring`, `originOf`, `headOf`, `recoveryOf` and the per-identity counters are
+  never removed. Each is capped per identity ("State bounds"). Keeping old successors in
+  `originOf` is the price of a retired secret ceasing to work.
+- **The caps can refuse legitimate use.** A record cannot take a third parent. A record
+  with 16 obligations in force cannot accept another until one is discharged. A
+  proposer with 8 proposals waiting, or an issuer with 32 licences waiting for
+  countersignature, must wait for answers or withdraw. An issuer with 1024 active
+  licences must revoke one, or issue from another record, to activate more. After 16
+  recoveries an identity cannot be recovered again, and once it has also used the 16
+  rotations after its last recovery it cannot move at all. Obligations a thief accepted
+  owed to himself stay in force after recovery (only their beneficiary can release
+  them); the record gets 16 more places per recovery, so it can still take new ones.
+- **A thief can fill both parent slots for good.** Someone holding an identity's current
+  secret can propose two parents and, with the holders of those records (their own
+  anchors, say), confirm them. Recovery does not remove confirmed edges, so the true
+  parent can never be recorded (`attack-bounds.test.ts`, F4).
+- **The licence tree's root history is bounded only while someone seals.** Every
+  activation, approved transfer and revocation adds a root, and only `sealRevocations`
+  clears them. Nothing in the contract seals on its own: if nobody calls it, the history
+  grows with every tree change. A seal is possible at most once per 600 s of block time,
+  and a sealer that sets its bound the full 300 s ahead pushes the next possible seal to
+  900 s. The operator should run a sealer (CLI option 15) after licence activations
+  (`attack-bounds.test.ts`, F6).
+- **The caps are per anchored identity, so many anchors get more.** Each `anchor` costs
+  one fee and no material, and brings a fresh set of caps. One party with many anchors
+  can, for example, keep 8 proposals per anchor waiting against one record. The holder
+  can find each one from the proposal cells and reject it, a transaction each
+  (`attack-bounds.test.ts`, F7).
 - **The revocation window.** A revoked licence's old path verifies on chain until the
   next seal: up to `SEAL_INTERVAL` plus `SEAL_SLACK` (a sealer may set the bound 300
   seconds ahead) plus the time until someone seals. A verifier following rule 5 does not
@@ -360,11 +463,14 @@ the circuit set as changeable by VeilCore.
   before it does, they get their own salted tag.
 - **Record commitments are stable pseudonyms.** Actions under one record link to each
   other.
-- **Licences issued by a thief** before recovery stay PENDING under the identity, and
-  the owner cannot revoke what it does not know. The thief can activate one later and
-  present it straight away, and a verifier asking about the identity accepts it. The
-  owner learns its commitment when it is countersigned (`lastActivatedLicense`) and can
-  revoke it then.
+- **Licences issued by a thief** before recovery stay PENDING under the identity until
+  the owner revokes them. Each issue publishes its licence commitment
+  (`lastIssuedLicense`), so after recovering, the owner should read the identity's
+  `issueLicense` transactions from the indexer and revoke every licence it did not
+  issue. The client does not do this lookup for you yet. Until then the thief can
+  activate one and present it, and a verifier asking
+  about the identity accepts it. The same applies to obligation proposals a thief made
+  in the identity's name (`lastProposed*`, `withdrawObligation`).
 - **A presentation names the issuer, not the licence.** Any live licence against a
   record passes a check about that record, including one the issuer granted itself.
   Issue licences on different terms from different records if verifiers must tell them
@@ -406,7 +512,8 @@ compiled contract, in the style of Midnight's examples (`veilcore-simulator.ts`)
 | `licences.test.ts` | Lifecycle, forgery through transfer, squatting, starvation of revocation, sealing and its rate limit, slot contention |
 | `lineage.test.ts` | Consent, release by beneficiary only, survival across rotation and recovery, identity merging, the verifier walk |
 | `interface.test.ts` | Published vectors, protocol version, the circuit list, no secret or caller record as an argument |
-| `attack-*.test.ts` | The contract-side attacks from rounds 8 to 11. Most tests assert the refusal or the fix directly; a few blocked attacks are kept as `it.fails`, so they still run and must still fail |
+| `attack-*.test.ts` | The contract-side attacks from rounds 8 to 12. Most tests assert the refusal or the fix directly; a few blocked attacks are kept as `it.fails`, so they still run and must still fail. `attack-bounds.test.ts` is round 12, the attack on the state bounds (F1 to F7) |
+| `state-bounds.test.ts` | Each per-identity cap, the moves that free a place, and that repeated calls by one identity leave state where it started. The 1024-active-licence test runs only with `SLOW_TESTS=1` |
 | `rules-coverage-round11.test.ts` | Round 11: one test for each rule in this file and the README that had none (40), including limits the docs had wrong |
 | `fuzz-invariants.test.ts`, `deploy-fragments.test.ts` | Random multi-party sequences with invariants checked after every step; the fragmented deploy |
 
@@ -423,8 +530,8 @@ transactions arrive first. The smoke test (`bboard-cli/src/smoke.ts`) deploys a 
 contract and calls 16 of the 24 circuits with real proofs, checking 26 results. It does
 not call `anchorBatch`, `replaceRecoveryCommitment`, `withdrawTransfer`, `withdrawParent`,
 `proposeObligation`, `acceptObligation`, `rejectObligation` or `withdrawObligation`. It
-passed 26 of 26 on a local Midnight chain on 1 October 2026; the preprod run on this
-build is still to do. The attack history behind these tests is
+passed 26 of 26 on a local Midnight chain on 1 October 2026, on the build before the
+state bounds; neither the local nor the preprod run has been done on this build. The attack history behind these tests is
 in `docs/security-pass-30sep.md`.
 
 ## Repository

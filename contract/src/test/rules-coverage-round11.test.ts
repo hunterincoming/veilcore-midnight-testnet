@@ -315,7 +315,7 @@ describe("PROVEN: the licence state machine has no illegal edges", () => {
     sim.call(as(A), "revokeLicense", lc, A_REC);
     expect(sim.state.unsealedChanges).toBe(false);
     expect(() => sim.call(anyone, "sealRevocations", sim.now + 60n)).toThrow(
-      "No revocation or transfer is waiting",
+      "Nothing has changed the licence tree",
     );
     const lc2 = active(A, L2);
     const nlc = C.licenseCommit(secret("r11-L3"), A_REC);
@@ -418,24 +418,20 @@ describe("PROVEN: descent — illegal moves no suite tried", () => {
   });
 });
 
-describe("LIMIT (not in docs): a childless record can take any number of parents", () => {
-  // attack-lineage.test.ts "there is no bound on parents per record (fan-out)" is an
-  // it.fails that now passes for an unrelated reason: its record already has offspring,
-  // so the very first edge is refused. On a record with no offspring the fan-out is
-  // unbounded, and parentsOf / hasOffspring are permanent state that design.md's
-  // "Bounded state ... What grows permanently is listed under Known limits" omits.
-  it("40 consenting parents on one record", () => {
+describe("PROVEN: a record has at most two parents (was a LIMIT before the state bounds)", () => {
+  it("a third consenting parent is refused at proposal and at confirmation", () => {
     anchor(A);
-    const many = Array.from({ length: 40 }, (_, i) => secret(`r11-fan-${i}`));
-    for (const p of many) {
-      anchor(p);
+    const ps = [0, 1, 2].map((i) => secret(`r11-fan-${i}`));
+    ps.forEach(anchor);
+    for (const p of ps.slice(0, 2)) {
       sim.call(as(A), "proposeParent", C.commit(p));
       sim.call(as(p), "confirmParent", A_REC);
     }
-    expect([...sim.state.parentsOf.lookup(A_REC)].length).toBe(40);
-    expect(checkLineage(sim.state, A_REC).roots.length).toBe(40);
-    // 160 circuit calls: about 5 s on a loaded machine, past vitest's default 5 s.
-  }, 30_000);
+    expect(() => sim.call(as(A), "proposeParent", C.commit(ps[2]))).toThrow(
+      "already has two parents",
+    );
+    expect([...sim.state.parentsOf.lookup(A_REC)].length).toBe(2);
+  });
 });
 
 // ───────────────────────────────────────────────────── event cells (rule 6)
@@ -629,7 +625,7 @@ describe("PROVEN + doc fix: a thief's PENDING licence is invisible to the owner;
   // proven here) and also that "Issue, countersign, transfer and revoke publish the
   // licence commitment and the issuer". For issue that is wrong: its transcript carries
   // licenseKey(lc, issuer) and the issuer, not lc, and revokeLicense needs lc.
-  it("the issue transcript names the key and the issuer, not the licence commitment", () => {
+  it("the issue transcript names the key, the issuer and (since the state bounds) the licence commitment", () => {
     anchor(A);
     const T = secret("r11-thief"),
       T_REC = C.commit(T);
@@ -643,7 +639,7 @@ describe("PROVEN + doc fix: a thief's PENDING licence is invisible to the owner;
           ? hex(v)
           : v,
     );
-    expect(blob.includes(hex(lcT))).toBe(false);
+    expect(blob.includes(hex(lcT))).toBe(true); // published so a recovered owner can revoke
     expect(blob.includes(hex(C.licenseKey(lcT, T_REC)))).toBe(true);
     expect(blob.includes(hex(T_REC))).toBe(true);
   });

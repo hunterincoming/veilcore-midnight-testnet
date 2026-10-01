@@ -1,8 +1,8 @@
 # VeilCore contract: attack pass, 30 Sep 2026
 
-Last updated 1 October 2026 (round 11). Eleven rounds in all: round 1 (this first pass and
+Last updated 1 October 2026 (round 12). Twelve rounds in all: round 1 (this first pass and
 the lineage pass, our own) and rounds 2 to 7 by reviewers who had not seen the fixes, on
-30 September; rounds 8 to 11 on 1 October, rounds 8 and 11 each followed by an independent
+30 September; rounds 8 to 12 on 1 October, rounds 8 and 11 each followed by an independent
 re-attack of their fixes. Times in headings are commit times from `git log` (EDT); they
 replace earlier time-of-day labels that were out of order.
 
@@ -455,3 +455,52 @@ Tests: `bboard-cli/src/reattack-round11.test.ts` and the registry's
 real bug: two private-state store operations at once failed with "Database failed to
 open". Fixed in 41332e1 (the store now runs one operation at a time). On 1 October the smoke
 test passed 26 of 26 on the local chain. The preprod run on this build is still to do.
+
+# Round 12 (1 Oct 2026, evening): state bounds
+
+**Why.** Scored against Midnight's deployment rubric, the contract was a 3 on
+State-Space-at-Risk: anchors, rotations, recoveries and confirmed parents added entries
+nothing removed, an identity could rotate or take parents without limit, and pending
+licences and obligation proposals had no limit. A 3 blocks deployment.
+
+**What changed.** Every entry is now overwritten, cleared by the party who created it, or
+capped per anchored identity: 16 rotations (reset by recovery), 16 recoveries, 2
+parents, 16 obligations in force per record, 8 waiting proposals per proposer, 32
+pending and 1024 active licences per issuer. Five counter maps, made at anchor, hold the
+counts. A seal is now allowed when only activations changed the licence tree
+(`rootsSinceSeal`), and CLI option 15 seals in that case too. Tests:
+`contract/src/test/state-bounds.test.ts`. The full bound table is in `docs/design.md`,
+State bounds. The fingerprints changed and must be regenerated.
+
+**The attack on it.** An independent attacker went after the bounds
+(`contract/src/test/attack-bounds.test.ts`) and found seven issues.
+
+| | Finding | Outcome |
+|---|---|---|
+| F1 | A thief with the head key fills the 32 pending-licence places; the owner cannot revoke them after recovery, because issue did not publish the licence commitment. | Fixed: issue publishes it (`lastIssuedLicense`). |
+| F2 | The same for the 8 waiting-proposal places. | Fixed: a proposal publishes what, against whom and by whom (`lastProposedObligation`, `lastProposedAgainst`, `lastProposedBy`). |
+| F3 | A thief spends all 16 rotations. | Fixed: recovery resets the rotation count. |
+| F4 | A thief fills both parent slots with records whose holders confirm; the true parent can never be recorded. | Documented (design.md, Known limits). |
+| F5 | Active licences were not counted per issuer. | Fixed: capped at 1024 (`activeLicensesBy`). |
+| F6 | The root history grows with every tree change until someone seals, at most once per 600 to 900 s. | Documented; the operator runs a sealer (CLI option 15). |
+| F7 | Caps are per anchored identity, so a party with many anchors, one fee each, gets more. | Documented. |
+
+Held: a thief cannot spend recoveries; self-encumbrances and thief-activated licences
+publish what the recovered owner needs to clear them; the counters stay in step across
+rotations, and a countersign racing a revoke cannot decrement twice; a cap check
+conflicts with concurrent calls only when the count crosses the cap.
+
+**A second attacker on the fixed bounds** (`contract/src/test/reattack-bounds.test.ts`)
+found two more ways for a thief to leave the owner stuck after recovery.
+
+| | Finding | Outcome |
+|---|---|---|
+| R1 | A thief accepts 16 obligations owed to his own record; only he can release them, so the record can never take another. | Fixed: a record gets 16 more places per recovery (bounded at 272). |
+| R2 | A thief activates a licence and transfers it to a new commitment no event cell showed, so the owner cannot revoke it. | Fixed: an approved transfer publishes the new commitment (`lastTransferredLicense`). |
+| R3 | F4 again: thief-confirmed parents stay. | Documented. Letting a record drop a confirmed parent would let a grower shed a breeder's inherited obligations, which is worse. |
+| P2 | A proposal now publishes the obligation commitment, even if rejected. | Documented: harmless when salted, as the CLI does. |
+
+Held: `lastIssuedLicense` adds nothing linkable the issue transcript did not already
+carry; `activeLicensesBy` stays in step through rotation, recovery, transfer and double
+revoke; the rotation reset cannot push `originOf` past 288 entries per identity; every
+circuit is under 700 ZKIR instructions (largest: approveTransfer 686).

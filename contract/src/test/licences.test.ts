@@ -401,8 +401,8 @@ describe("revocation and sealing", () => {
   });
 
   it("anyone may seal, only when something is waiting, and never twice within the interval of block time", () => {
+    expect(() => seal()).toThrow("Nothing has changed the licence tree");
     const lc = activeA();
-    expect(() => seal()).toThrow("No revocation or transfer is waiting");
     sim.call(as(A), "revokeLicense", lc, A_REC);
     sim.call(anyone, "sealRevocations", sim.now + 1n); // the tightest bound
     const lc2 = issue(A, L2);

@@ -40,9 +40,11 @@ confirmed from the code.
    `npm install --legacy-peer-deps`
 4. The contract is compiled: the folder `contract/src/managed/veilcore` exists. If not:
    `cd contract && npm run compact` (needs the Compact toolchain; see README.md).
-   The 1 October build on the Mac matched every hash in `docs/fingerprints.md`
-   (compiler 0.31.1). Do not rebuild with a different compiler; the mainnet deploy checks
-   the hashes again and refuses if they differ.
+   The contract changed on the evening of 1 October (state bounds), so
+   `docs/fingerprints.md` must be regenerated from a build of it on the Mac (compiler
+   0.31.1) before mainnet; the earlier hashes no longer match. Do not rebuild with a
+   different compiler; the mainnet deploy checks the hashes again and refuses if they
+   differ.
 
 The password rule (the CLI checks it in the first second): 16 or more characters; at
 least 3 of capital letters, small letters, numbers and symbols; no character more than
@@ -186,6 +188,14 @@ that deploys a second contract.
 **CHECK WITH CLAUDE BEFORE MAINNET:** what to do if it stops before any `contractDeployed`
 line appeared. The code suggests nothing was deployed and starting over with `1` is
 safe, but confirm before spending fees.
+
+### Sealing after licence activations
+
+Once licences are being countersigned, join the contract and run main menu option **15**
+("Seal waiting revocations") regularly, for example once an hour: it now also seals when
+only activations changed the licence tree, which keeps the tree's root history from
+growing. It says when the next seal is possible if it is too soon (at most one per 10
+minutes).
 
 ### Retiring the maintenance authority later
 

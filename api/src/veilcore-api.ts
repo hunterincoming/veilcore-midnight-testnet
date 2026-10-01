@@ -341,7 +341,9 @@ export class VeilcoreAPI {
    */
   async sealRevocations(): Promise<SealResult> {
     const ledger = await this.currentLedger();
-    if (!ledger.unsealedChanges) return { sealed: false, waiting: false };
+    // Also when only activations changed the tree: a seal then clears the root history
+    // the tree keeps, so it does not grow with every activation (state bounds).
+    if (!ledger.unsealedChanges && !ledger.rootsSinceSeal) return { sealed: false, waiting: false };
     const now = BigInt(Math.floor(Date.now() / 1000));
     const earliest = ledger.lastSealTime + BigInt(SEAL_INTERVAL_SECONDS + SEAL_SKEW_SECONDS);
     if (now < earliest) return { sealed: false, waiting: true, sealableAt: Number(earliest) };
@@ -354,7 +356,8 @@ export class VeilcoreAPI {
     } catch (e) {
       // Someone else sealed first, or the clock disagreed: the revocation stands either way.
       this.logger?.info(`seal not made now: ${e instanceof Error ? e.message : String(e)}`);
-      return { sealed: false, waiting: (await this.currentLedger()).unsealedChanges };
+      const after = await this.currentLedger();
+      return { sealed: false, waiting: after.unsealedChanges || after.rootsSinceSeal };
     }
   }
 

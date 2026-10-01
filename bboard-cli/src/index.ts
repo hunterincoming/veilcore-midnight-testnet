@@ -8,6 +8,7 @@ import { createHash } from 'node:crypto';
 import { createInterface, type Interface } from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
 import { Writable } from 'node:stream';
+import { oneAtATime } from './one-at-a-time.js';
 import { Buffer } from 'node:buffer';
 import { WebSocket } from 'ws';
 import {
@@ -735,7 +736,7 @@ export const run = async (config: Config, testEnv: TestEnvironment, logger: Logg
 
     const zkConfigProvider = new NodeZkConfigProvider<VeilcoreCircuitKeys>(config.zkConfigPath);
     const providers: VeilcoreProviders = {
-      privateStateProvider: levelPrivateStateProvider<VeilcorePrivateStateId, VeilcorePrivateState>({
+      privateStateProvider: oneAtATime(levelPrivateStateProvider<VeilcorePrivateStateId, VeilcorePrivateState>({
         privateStateStoreName: config.privateStateStoreName,
         signingKeyStoreName: `${config.privateStateStoreName}-signing-keys`,
         privateStoragePasswordProvider: () => {
@@ -755,7 +756,7 @@ export const run = async (config: Config, testEnv: TestEnvironment, logger: Logg
           return password;
         },
         accountId: seed,
-      }),
+      })),
       publicDataProvider: indexerPublicDataProvider(envConfiguration.indexer, envConfiguration.indexerWS),
       zkConfigProvider: zkConfigProvider,
       proofProvider: httpClientProofProvider(envConfiguration.proofServer, zkConfigProvider),
@@ -792,7 +793,7 @@ export const run = async (config: Config, testEnv: TestEnvironment, logger: Logg
 
 function logError(logger: Logger, e: unknown) {
   if (e instanceof Error) {
-    logger.error(`Found error '${e.message}'`);
+    logger.error(`Found error '${e.message}'${e.cause instanceof Error ? ` (cause: ${e.cause.message})` : ''}`);
     logger.debug(`${e.stack}`);
   } else {
     logger.error(`Found error (unknown type)`);

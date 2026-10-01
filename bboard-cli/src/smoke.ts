@@ -153,6 +153,7 @@ export const runSmoke = async (providers: VeilcoreProviders, logger: Logger, ind
     return true;
   } catch (e) {
     logger.error(String(e instanceof Error ? e.message : e));
+    if (e instanceof Error && e.cause instanceof Error) logger.error(`cause: ${e.cause.message}`);
     logger.error('SMOKE TEST FAILED. Do not deploy to mainnet until this passes.');
     return false;
   }

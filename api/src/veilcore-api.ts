@@ -26,7 +26,7 @@ import {
   deployContract,
   findDeployedContract,
 } from '@midnight-ntwrk/midnight-js-contracts';
-import { combineLatest, map, from, type Observable } from 'rxjs';
+import { combineLatest, map, from, defer, type Observable } from 'rxjs';
 import { toHex } from '@midnight-ntwrk/midnight-js-utils';
 import { assertDeploymentRecordCurrent } from './deploy-guard.js';
 import { retireMaintenanceAuthority } from './maintenance.js';
@@ -85,7 +85,10 @@ export class VeilcoreAPI {
         providers.publicDataProvider
           .contractStateObservable(this.deployedContractAddress, { type: 'latest' })
           .pipe(map((contractState) => Veilcore.ledger(contractState.data))),
-        from(providers.privateStateProvider.get(veilcorePrivateStateKey) as Promise<VeilcorePrivateState>),
+        // Read only when someone subscribes. Reading here, in the constructor, ran the read
+        // alongside whatever the caller did next with the store, and the local store opens
+        // for one operation at a time ("Database failed to open").
+        defer(() => from(providers.privateStateProvider.get(veilcorePrivateStateKey) as Promise<VeilcorePrivateState>)),
       ],
       (ledger, privateState) => {
         const mine = Veilcore.pureCircuits.commit(privateState.geneticSecret);

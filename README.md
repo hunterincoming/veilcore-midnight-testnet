@@ -8,14 +8,14 @@ A breeder who holds genetic material may later need to establish three things: t
 
 Written agreements have a related problem. A contract binds the parties who signed it. It cannot bind a plant that did not exist when it was signed, which is why a cutting that becomes a mother that becomes ten thousand clones carries no obligation anyone can point at.
 
-VeilCore records what was held and when, binds terms to the record rather than to a signature page, and lets an obligation on an ancestor be carried by everything derived from it.
+VeilCore records what was held and when, lets licences be granted against a record, and lets an obligation on an ancestor be carried by everything derived from it.
 
-- **Prove prior possession** — a sealed, dated record from the moment it is logged.
-- **Pair a DNA report** — bind the record to the genetics using the report your testing laboratory returns.
-- **License with terms bound to the record** — draft, countersigned, active, expired or revoked, with the terms travelling with the material.
-- **Prove a claim without disclosing it** — show you hold a record, or a live licence, in zero knowledge.
+- **Prove prior possession** — on chain, an anchored record is dated by the block it lands in. (The web app does not anchor yet; see Current status.)
+- **Pair a DNA report** — record a DNA report fingerprint against your record. The contract binds whatever 32-byte value the holder submits: it is the holder's own statement that this report belongs to this record, not a check of the genetics. The web app keeps the pairing in the registry, not on chain.
+- **License against the record** — on chain a licence is only PENDING (issued) or ACTIVE (countersigned), and revoking removes it. The contract stores no terms and has no expiry. Terms, dates, expiry and the royalty log are kept by the app, in the VeilCore registry. A presentation proves "a live licence from this issuer", not which licence or on what terms.
+- **Prove a claim without showing the secret** — prove you hold a record, or a licence, without revealing the secret behind it. An ownership proof publishes the record's commitment. A licence presentation hides the licence and the licensee, and the issuer only among issuers with live licences; while only one issuer has live licences, as at launch, it names that issuer.
 
-**No custody, ever.** Hashing happens locally in the browser. Only commitments are ever recorded; the genetics, the terms and the counterparties never leave the device.
+**What leaves your browser.** DNA reports and photos are hashed in the browser; only their fingerprints and the report's file name leave it. The web app stores the rest on the VeilCore registry (a server we run), keyed by a random holder key your browser keeps in `localStorage` and sends with every request (whoever has the key can read and change your set): each record's contents (cultivar, breeder, dates, notes, parents, method, your reference, the nonce behind its fingerprint, the fingerprints, the DNA pairing) and each licence in full (counterparty, terms, dates, status, royalty log). Anyone with a record's id can see its id, cultivar, fingerprint, the logging time you claimed and when the registry first saw it. On chain, only commitments are recorded, plus the public values listed under Known limits in [`docs/design.md`](docs/design.md).
 
 Cannabis is the first vertical, not the scope. The record format is domain-blind: the same envelope serves ornamental propagation, a livestock herd book, or a microbial culture collection.
 
@@ -23,7 +23,7 @@ Cannabis is the first vertical, not the scope. The record format is domain-blind
 
 This is the application — the contract, the API, the CLI and the web app.
 
-The record format itself is a separate, open specification with independent implementations in TypeScript, Python and Rust: **[veilcore-sdk](https://github.com/hunterincoming/veilcore-sdk)**. Verification needs SHA-256 and nothing from this repository or from us.
+The record format itself is a separate, open specification with independent implementations in TypeScript, Python and Rust: **[veilcore-sdk](https://github.com/hunterincoming/veilcore-sdk)**. Checking a record's fingerprint needs SHA-256 and nothing from this repository or from us. Checking what the contract says (anchors, licences, lineage) needs Midnight's tooling to read chain state; see Current status.
 
 ```
 contract/     # The Compact contract (veilcore.compact), verifier rules (verify.ts), tests, hash vectors
@@ -44,7 +44,7 @@ cd bboard-ui
 npm run dev                      # http://localhost:5173
 ```
 
-Log a record, pair a DNA report, view the evidence package, issue and countersign a licence, prove possession. Records persist in `localStorage`; the dashboard has Export, Import and Reset.
+Log a record, pair a DNA report, view the evidence package, issue and countersign a licence, prove possession. Records and licences are saved to the registry named by `VITE_API_BASE` (the live site uses VeilCore's). With it unset, `npm run dev` has no registry to save to, so records last only for the browser session; to keep them, run the registry (the `veilcore-api` repository, `npm start`, port 8787) and start the app with `VITE_API_BASE=http://localhost:8787`. Only the holder key, and a few settings, are kept in `localStorage`. The dashboard has Export, Import and Reset.
 
 ## Building from a fresh clone
 
@@ -72,31 +72,44 @@ cd ../bboard-ui && npm run build
 It covers records, licences and lineage in 24 circuits. The design, the normative
 verifier rules and the trust model are in [`docs/design.md`](docs/design.md).
 
-It has been through eleven adversarial passes: one by an outside developer in August,
-seven on 29 and 30 September 2026, six of them by reviewers who had not seen the fixes,
-and three rounds on 1 October: four independent attackers, one per area, a re-attack of
-their fixes, and a round on economics, privacy, the fragmented deploy and composition. Every finding was
-first confirmed as a working attack, then fixed or written up as a known limit, and each
-attack is a regression test (`cd contract && npm test`). The history is in
-[`docs/security-pass-30sep.md`](docs/security-pass-30sep.md). These were adversarial
-reviews, not a formal security audit, and we do not call them one.
+An outside developer reviewed it in August. Since then it has had eleven rounds of
+attack, recorded in [`docs/security-pass-30sep.md`](docs/security-pass-30sep.md): round 1,
+our own pass over both contracts, and rounds 2 to 7 by reviewers who had not seen the
+fixes, all on 30 September 2026; then rounds 8 to 11 on 1 October, two of them followed
+by an independent re-attack of their fixes. Every finding was first confirmed as a
+working attack, then fixed or written up as a known limit. Contract attacks are kept as
+tests in `contract/src/test/` (`cd contract && npm test`). Many fixes were in the CLI, the
+API, the registry or the website, and are tested there instead: `bboard-cli/src/*.test.ts`
+(`cd bboard-cli && npx vitest run`), `api/` (`npm test`), and the registry's
+`test/*.test.mjs`. Not every attack has a test. These were adversarial reviews, not a
+formal security audit, and we do not call them one.
 
-Every hash the contract uses is plain SHA-256 over a tag and its inputs, with published
-test vectors (`contract/vectors/v1.json`), so a verifier can check them in any language.
+The six commitment hashes (record, recovery, licence, licence key, presentation tag,
+obligation) are plain SHA-256 over a tag and their inputs, with published test vectors
+(`contract/vectors/v1.json`), so they can be recomputed in any language. The licence
+tree is not: its inner nodes use Midnight's own field hash, and verifier rule 5 compares
+tree roots, so checking a licence presentation, like reading any contract state, needs
+Midnight's tooling.
 
-**The web app runs real hashing against simulated settlement** until it is pointed at a
-deployed contract. The CLI in `bboard-cli/` talks to a deployed contract, and its preprod
-smoke test runs every flow with real proofs.
+**The web app runs real hashing against simulated settlement.** It sends nothing to
+the chain. The CLI in `bboard-cli/` talks to a deployed contract. Its smoke test
+(`bboard-cli/src/smoke.ts`) deploys a fresh contract and calls 16 of the 24 circuits with
+real proofs, checking 26 results, including 8 attempts that must be refused (7 by the contract,
+1 by the verifier's transaction lookup). It does
+not call `anchorBatch`, `replaceRecoveryCommitment`, `withdrawTransfer`, `withdrawParent`,
+`proposeObligation`, `acceptObligation`, `rejectObligation` or `withdrawObligation`. It
+passed 26 of 26 on a local Midnight chain on 1 October 2026. The preprod run on this
+build has not been done yet.
 
 **MPS-0037**, the proposal for obligations that inherit through descent, is merged into
 Midnight's standards repository.
 
 ## What VeilCore does not claim
 
-- The sealed timestamp is the moment a record is logged. The editable creation date is the holder's own claim; this does not prove a backdated one.
+- On chain, a record is dated by the block its anchor lands in. In the web app, the logging time comes from the browser's clock and the creation date is typed by the holder: both are the holder's own claims. The registry adds the time it first saw the record, which is the registry's word, not the chain's. None of this proves a backdated date wrong.
 - A record establishes **prior possession, not ownership**. It is evidence a lawyer can rely on, not a verdict.
-- It **pairs** the DNA report a laboratory returns. It does not sequence anything, and it is laboratory-agnostic.
-- In-app signatures bind parties to a record cryptographically. They are not qualified eIDAS signatures.
+- It **pairs** the DNA report a laboratory returns, as the holder's own statement. It does not sequence anything, check the report, or confirm it came from a laboratory.
+- In-app "signing" and countersigning of a licence record a time in the registry. They are not cryptographic signatures, and not qualified eIDAS signatures. On chain, a countersign is proved with the licensee's licence secret.
 - The royalty log records and proves obligations. It does not move money.
 - It raises the cost and the evidentiary risk of laundering stolen genetics. It does not prevent it.
 - Settlement in the web app is simulated. The hashing is real; the on-chain submission is not wired in yet.

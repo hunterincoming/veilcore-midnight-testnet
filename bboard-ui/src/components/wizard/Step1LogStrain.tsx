@@ -233,7 +233,7 @@ export const Step1LogStrain: React.FC<{ onDone: (recordId: string) => void }> = 
       >
         <ShieldIcon fontSize="small" />
         <Typography variant="body2" sx={{ color: TEAL }}>
-          Nothing proprietary required — your genetics never leave your device.
+          DNA files stay on your device. The details you type here are saved to the VeilCore registry.
         </Typography>
       </MBox>
 

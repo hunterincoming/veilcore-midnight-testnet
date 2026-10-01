@@ -1,5 +1,11 @@
 # VeilCore contract: attack pass, 30 Sep 2026
 
+Last updated 1 October 2026 (round 11). Eleven rounds in all: round 1 (this first pass and
+the lineage pass, our own) and rounds 2 to 7 by reviewers who had not seen the fixes, on
+30 September; rounds 8 to 11 on 1 October, rounds 8 and 11 each followed by an independent
+re-attack of their fixes. Times in headings are commit times from `git log` (EDT); they
+replace earlier time-of-day labels that were out of order.
+
 > **Note, 30 Sep (round 4).** The contracts were merged into one, `veilcore.compact`, and
 > the hand-rolled test scripts named below (`attack-30sep.mjs`, `attack-lineage-30sep.mjs`,
 > `verify-max-*.mjs`) were replaced by the Vitest suites in `contract/src/test/`, which
@@ -10,7 +16,7 @@
 
 **Method:** for every circuit, ask who can call it, what they feed in, and how it breaks. Then chain the circuits together, because most of the real problems only show up across two or three calls.
 
-**Status (end of 30 Sep):** every contract finding was first confirmed by running the attack against the old build. All are now fixed on branch `security-pass-30sep`.
+**Status (30 Sep, after the first fixes, 13e7704 at 05:59):** every contract finding was first confirmed by running the attack against the old build. All are now fixed on branch `security-pass-30sep`.
 
 - `contract/attack-30sep.mjs` runs each attack against the new build, and all are refused.
 - The full existing suite still passes. The 6 older test files were updated to the new circuit signatures.
@@ -22,13 +28,13 @@
 | M1, M2, M3, M4, M6 | fixed |
 | M5 | not changed, see below |
 | L1, L2, L3, L4 | fixed or documented |
-| L5 | CLI now has the licensee build their own commitment (menu 16) |
+| L5 | CLI now has the licensee build their own commitment (menu 16 then; option 7 now) |
 
 **Found while fixing:**
 
 - **H4b. The CLI wrote the WALLET SEED to the log file** (`midnight-wallet-provider.ts`). This is worse than H4 if a funded wallet is ever used. Fixed: seeds and secrets now go to the screen only (`secret-out.ts`).
 - **N1. After a rotation, the client kept using the retired secret.** Every later call was then refused. Fixed in `veilcore-api.ts`.
-- **N2. CLI menu 4 asked the issuer for the licensee's secret and committed it with the record tag.** That made a licence that could never be countersigned. Fixed: the issuer now takes the licensee's commitment, and the licensee builds it with menu 16.
+- **N2. CLI menu 4 asked the issuer for the licensee's secret and committed it with the record tag.** That made a licence that could never be countersigned. Fixed: the issuer now takes the licensee's commitment, and the licensee builds it with menu 16 (option 7 in the current menu; the issuer issues with option 8).
 - **N3. Keying licences by (licence, issuer) hid the licence commitment from the chain.** Without it nobody could rebuild the tree to get a path. Fixed: activation now publishes the licence and its issuer.
 - **N4. The default private state set the recovery secret equal to the genetic secret.** Now all-zero, so a call that forgets to set it fails instead of quietly using the primary.
 
@@ -185,7 +191,7 @@ If you choose "with", keep the key off the laptop (see H4) and say so publicly. 
 
 ---
 
-# Lineage contract pass (30 Sep, afternoon)
+# Lineage contract pass (30 Sep, morning; f03ebcf at 07:10)
 
 Every attack was confirmed against the previous build first. The fixes live in
 `contract/attack-lineage-30sep.mjs`: 60+ checks, all refused.
@@ -210,12 +216,12 @@ Every attack was confirmed against the previous build first. The fixes live in
 
 **MA1. "Deploying with NO maintenance authority" was false.** midnight-js does `signingKey ?? sampleSigningKey()`, so leaving the key out creates an authority with a random key, stored in the local signing-key database.
 
-Fixed in `api/src/maintenance.ts`. "No" now means: deploy, then immediately replace the authority with a key that is never stored, and delete the local copy. CLI menu 19 does the same later, after typing RETIRE. Both contracts' deploys ask the question.
+Fixed in `api/src/maintenance.ts`. "No" now means: deploy, then immediately replace the authority with a key that is never stored, and delete the local copy. CLI main menu option 33 does the same later, after typing RETIRE (it was 19 then). Both contracts' deploys ask the question.
 
 
 ---
 
-# Round 2: independent review (30 Sep, evening)
+# Round 2: independent review (30 Sep, morning; fixes in 6a499a5 at 07:31)
 
 A separate reviewer, who had not written or seen the fixes being made, attacked both contracts. They demonstrated every finding below against the compiled build. All are now fixed, and each has a regression test in `attack-30sep.mjs`.
 
@@ -236,7 +242,7 @@ A side effect of the tree change: the CLI and API no longer keep their own licen
 
 ---
 
-# Round 3: second independent review (30 Sep, night)
+# Round 3: second independent review (30 Sep, morning; ddbfe3a at 07:42)
 
 A fresh reviewer attacked the fixed build and found **no critical or high issues**. What they found:
 
@@ -251,7 +257,7 @@ A fresh reviewer attacked the fixed build and found **no critical or high issues
 
 ---
 
-# Round 4: third independent review, at the "standards body" bar (30 Sep, morning)
+# Round 4: third independent review, at the "standards body" bar (30 Sep, morning; 6f35bee at 09:11)
 
 A fresh reviewer, told to review as a senior Midnight engineer and a standards body
 would, attacked the fixed build and the registry service. Every finding below was
@@ -277,7 +283,7 @@ contract, and is tracked for the registry.
 
 ---
 
-# Round 5: fourth independent review (30 Sep, afternoon)
+# Round 5: fourth independent review (30 Sep, morning; c9d649f at 09:33)
 
 A fresh reviewer attacked the merged contract. No forgery or starvation issue was found
 in the contract. Findings and fixes:
@@ -298,7 +304,7 @@ in the contract. Findings and fixes:
 
 ---
 
-# Round 6: fifth independent review, of round 5's changes (30 Sep, afternoon)
+# Round 6: fifth independent review, of round 5's changes (30 Sep, morning; 0560946 at 09:47)
 
 | # | Finding | Fix |
 |---|---|---|
@@ -315,7 +321,7 @@ in the contract. Findings and fixes:
 
 ---
 
-# Round 7: sixth independent review, of round 6's changes (30 Sep, evening)
+# Round 7: sixth independent review, of round 6's changes (30 Sep, morning; 5b23836 at 09:57)
 
 | # | Finding | Fix |
 |---|---|---|
@@ -327,7 +333,7 @@ in the contract. Findings and fixes:
 
 ---
 
-# Round 8: four independent attackers, one per area (1 Oct, morning)
+# Round 8: four independent attackers, one per area (1 Oct, morning; fe3ae54 at 07:07)
 
 Licences, lineage, identity and recovery, and the verifier and client, each attacked by a
 reviewer who had seen none of the earlier rounds and was asked to prove every finding
@@ -351,17 +357,17 @@ with a test. Their tests are `contract/src/test/attack-*.test.ts`.
 What held up, by test: no licence forgery, no double activation, revocation cannot be
 starved, no identity takeover, fork or merge, obligation counts cannot drift.
 
-**Re-attack of the fixes, same morning.** A fresh reviewer confirmed all three contract
+**Re-attack of the fixes, same morning (2690968 at 07:25).** A fresh reviewer confirmed all three contract
 fixes hold, including two- and three-cycles in every landing order, competing
 recoveries, and every revoke, transfer and seal ordering around a presentation. It found
 two client problems in the changes, both fixed: a recovery or anchor that landed but
 reported an error could be retried into secrets that control nothing (the client now
 checks the chain first), and removing the maintenance key after deploy broke retiring it
-later (option 32 now asks for it). It also noted that a seal, not only a revocation,
+later (option 33 now asks for it). It also noted that a seal, not only a revocation,
 sends presentations in flight back to be re-proved; design.md says so. Its tests are
 `contract/src/test/attack-round2.test.ts`.
 
-# Round 9: new angles (1 Oct, morning)
+# Round 9: new angles (1 Oct, morning; e0f2815 at 07:49)
 
 Economics and denial of service, privacy, the fragmented deploy, multi-step composition,
 arithmetic. Nothing critical or high. Tests: `contract/src/test/attack-round3.test.ts`.
@@ -380,7 +386,7 @@ Held: the licence tree cannot practically be filled; event-cell writes do not br
 presentations; counters cannot go below zero; seal arithmetic cannot wrap; nobody but the
 authority can insert keys during the fragmented deploy, and rerunning it is safe.
 
-# Round 10: front-running, disclosure, witness tampering, hash domains; and the web layer (1 Oct)
+# Round 10: front-running, disclosure, witness tampering, hash domains; and the web layer (1 Oct, morning; eac09c7 at 08:42)
 
 **Contract:** held. Every front-running race tried (anchor, recovery, ownership proof,
 transfer, obligation, parentage) fails for the attacker; `proveLicense` discloses only
@@ -399,3 +405,53 @@ licence counts, and a holder-chosen date, as facts; documents fetched from GitHu
 rendered unsanitised; no rate limits. See veilcore-api commit 69ff5b0 and its
 `test/registry-security-1oct.test.mjs`.
 
+# Round 11: four independent attackers, and a re-attack (1 Oct 2026)
+
+Four attackers worked independently, one area each: the contract and verifier; the
+deploy tooling and CLI; the registry and website; and an audit of every stated rule
+against the code, which added 40 rule tests (`contract/src/test/rules-coverage-round11.test.ts`).
+
+**The contract held.** No HIGH or MEDIUM finding on chain; the contract and the build did
+not change. The findings were in the client, the registry, the website and the docs, and
+all were fixed (vc 95e40b7, registry 982ee41). Among them:
+
+- CLI and API: the test kit's wallet builder logged the Blockfrost project id and new
+  seeds; every typed secret is now hidden and scrubbed from logs. The private-state
+  password is checked at start with midnight-js's own rules, typed twice. Challenges are
+  single-use, tied to their kind and valid 7 days (`ChallengeBook`), kept encrypted per
+  network; options 27 and 28 enforce them. `checkOwnership` refuses a proof whose prover
+  is no longer the live head. The issuer's client refuses to re-issue, or approve a
+  transfer to, a commitment it revoked. The smoke test counts only real contract
+  refusals as refusals.
+- Registry and website: backdating through a changed fingerprint, unvetted attester keys
+  shown as labs, transfer blocking and leaks, and the public view. See the registry's
+  `test/attack-round11.test.mjs`.
+- Docs: the overclaims corrected in README.md and design.md on 1 October (hashes,
+  licence states, what is stored where, what the smoke test covers, what "live" needs).
+
+Tests: `contract/src/test/attack-round11-contract.test.ts`,
+`rules-coverage-round11.test.ts`, and `bboard-cli/src/attack-round11-deploy.test.ts`
+(`cd bboard-cli && npx vitest run`).
+
+**Re-attack of the fixes.** An independent reviewer attacked the round 11 fixes and
+found six smaller issues, plus one that predated round 11. All fixed (vc 6b7d725,
+registry cee857f):
+
+- Two CLI runs open at once could erase each other's "used" marks on challenges. The
+  challenge file is now merged on every save and consumed under a lock.
+- The log scrubber missed JSON-escaped forms of typed secrets.
+- `revokeLicense`'s comment overclaimed: refusing a revoked commitment does not stop a
+  revoked licensee who makes a new licence secret. Now stated (design.md, Known limits).
+- Registry: a holder with more than 500 records could no longer save; a null
+  fingerprint could keep a "first seen" date; a record could claim to correct another
+  holder's record.
+- Pre-existing: a transfer claim could read and stamp a record stored later under the
+  same id by someone else.
+
+Tests: `bboard-cli/src/reattack-round11.test.ts` and the registry's
+`test/reattack-round11.test.mjs`.
+
+**Local-chain smoke test (1 Oct).** Running `smoke.ts` on a local Midnight chain found a
+real bug: two private-state store operations at once failed with "Database failed to
+open". Fixed in 41332e1 (the store now runs one operation at a time). On 1 October the smoke
+test passed 26 of 26 on the local chain. The preprod run on this build is still to do.

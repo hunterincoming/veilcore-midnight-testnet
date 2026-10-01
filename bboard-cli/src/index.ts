@@ -18,6 +18,7 @@ import {
   type VeilcoreCircuitKeys,
   type SealResult,
   LandedButUnconfirmedError,
+  assertDeploymentRecordCurrent,
 } from '../../api/src/index';
 import { type WalletFacade } from '@midnight-ntwrk/wallet-sdk-facade';
 import { pureCircuits } from '../../contract/src/managed/veilcore/contract/index.js';
@@ -156,6 +157,13 @@ const askMaintenanceAuthority = async (rli: Interface, logger: Logger): Promise<
       const key = sampleSigningKey();
       redactThisSession(key);
       showSecret('MAINTENANCE AUTHORITY SIGNING KEY — write it down now and keep it offline:', key);
+      // Nothing is sent until the operator says the key is written down.
+      for (;;) {
+        const ok = (await rli.question('Type WRITTEN once the key is on paper and checked (nothing is sent before): '))
+          .trim()
+          .toUpperCase();
+        if (ok === 'WRITTEN') break;
+      }
       return key;
     }
     const r = parseSigningKey(typed);
@@ -182,6 +190,9 @@ export const deployOrJoin = async (
           const n = assertKeysMatchRecord(zkConfigPath, path.resolve(zkConfigPath, '..', '..', '..', '..'));
           logger.info(`All ${n} build artefacts match the committed fingerprints (docs/fingerprints.md).`);
         }
+        // Checked again inside deploy; here so a missing record revision is found before a
+        // maintenance key is made and written down for nothing.
+        assertDeploymentRecordCurrent('veilcore', logger);
         const api = await VeilcoreAPI.deploy(providers, await askMaintenanceAuthority(rli, logger), logger);
         logger.info(`Deployed VeilCore contract at address: ${api.deployedContractAddress}`);
         return api;

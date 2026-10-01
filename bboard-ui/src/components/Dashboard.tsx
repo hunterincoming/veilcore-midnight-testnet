@@ -96,8 +96,9 @@ export const Dashboard: React.FC = () => {
             </Box>
           </Typography>
           <Typography variant="body1" color="text.secondary" sx={{ maxWidth: 560, mx: 'auto', mb: 2 }}>
-            A tamper-evident record of when you logged a cultivar and what it is — bound to its DNA fingerprint.
-            Everything is hashed on your device; your genetics never leave it.
+            A tamper-evident record of when you logged a cultivar and what it is, paired with its DNA report
+            fingerprint. DNA reports are fingerprinted on your device and never leave it; the details you type are saved
+            to the VeilCore registry.
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 560, mx: 'auto', mb: 4 }}>
             Built for breeders and the labs that hold their material. Anyone you send a record to can verify it — free,

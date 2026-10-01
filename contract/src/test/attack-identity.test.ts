@@ -191,7 +191,9 @@ describe("retired commitments", () => {
       expect(() =>
         sim.call(as(old), "anchor", C.recoveryCommit(secret("r"))),
       ).toThrow();
-      expect(() => sim.call(as(old), "proveOwnership")).toThrow();
+      expect(() =>
+        sim.call(as(old), "proveOwnership", new Uint8Array(32).fill(9)),
+      ).toThrow();
       expect(() => sim.call(as(old), "pairDna", secret("d"))).toThrow();
       expect(() =>
         sim.call(

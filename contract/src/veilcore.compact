@@ -53,6 +53,8 @@ export ledger obligationSeq: Counter;
 export ledger lastAnchor: Bytes<32>;
 export ledger lastBatchRoot: Bytes<32>;
 export ledger lastOwnershipProof: Bytes<32>;
+/** The verifier's challenge the last ownership proof answered. */
+export ledger lastOwnershipChallenge: Bytes<32>;
 export ledger lastPairedRecord: Bytes<32>;
 export ledger lastPairedDna: Bytes<32>;
 export ledger lastRotatedFrom: Bytes<32>;
@@ -287,11 +289,18 @@ export circuit anchorBatch(root: Bytes<32>): [] {
   lastBatchRoot = r;
 }
 
-/** Prove present possession of a live, anchored record. */
-export circuit proveOwnership(): Bytes<32> {
+/**
+ * Prove present possession of a live, anchored record, to the verifier who chose
+ * `challenge` (fresh random bytes, used once). Without the challenge anyone could point a
+ * verifier at the real holder's proof and pass it off as their own.
+ */
+export circuit proveOwnership(challenge: Bytes<32>): Bytes<32> {
   const c = anchoredSelf();
+  const ch = disclose(challenge);
+  assert(ch != default<Bytes<32>>, "An ownership proof needs the verifier's challenge");
   proofSeq.increment(1);
   lastOwnershipProof = c;
+  lastOwnershipChallenge = ch;
   return c;
 }
 
@@ -318,6 +327,7 @@ export circuit rotateRecordSecret(newRecordCommitment: Bytes<32>): Bytes<32> {
   originOf.insert(fresh, origin);
   headOf.insert(origin, fresh);
   rotationSeq.increment(1);
+  lastRecoveredOrigin = default<Bytes<32>>;
   lastRotatedFrom = old;
   lastRotatedTo = fresh;
   return old;
@@ -346,6 +356,7 @@ export circuit recoverRecordSecret(recordCommitment: Bytes<32>, newRecordCommitm
   headOf.insert(origin, fresh);
   rotationSeq.increment(1);
   lastRecoveredOrigin = origin;
+  lastRotatedFrom = default<Bytes<32>>; // a recovery moves from no particular commitment
   lastRotatedTo = fresh;
 }
 
@@ -605,7 +616,6 @@ export circuit rejectObligation(obligationCommitment: Bytes<32>, beneficiary: By
   const k = obligationKey(myIdentity(), disclose(obligationCommitment), anchoredIdentity(disclose(beneficiary)));
   assert(pendingObligations.member(k), "No such obligation proposed against your record");
   pendingObligations.remove(k);
-  obligationSeq.increment(1);
 }
 
 /** ONLY THE BENEFICIARY, under its current head, releases an obligation. */

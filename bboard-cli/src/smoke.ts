@@ -48,8 +48,17 @@ export const runSmoke = async (providers: VeilcoreProviders, logger: Logger, ind
     await vc.actAs(breeder);
     await vc.anchor(C.recoveryCommit(recovery));
     must(same((await vc.currentLedger()).lastAnchor, B), 'anchor: the chain holds the record');
-    await vc.proveOwnership();
+    const ownCh = newPresentationChallenge();
+    const owned = await vc.proveOwnership(ownCh);
     must(same((await vc.currentLedger()).lastOwnershipProof, B), 'proveOwnership names the record on chain');
+    must(
+      (await vc.checkOwnership(indexerUri, owned.txId, B, ownCh)).accepted,
+      "a verifier accepts the holder's proof for its own challenge, found by transaction id",
+    );
+    must(
+      !(await vc.checkOwnership(indexerUri, owned.txId, B, newPresentationChallenge())).accepted,
+      "the same proof is refused for another verifier's challenge",
+    );
     const dna = randomBytes(32);
     await vc.pairDna(dna);
     const paired = await vc.currentLedger();
@@ -103,7 +112,7 @@ export const runSmoke = async (providers: VeilcoreProviders, logger: Logger, ind
       'the successor revokes a licence the original record issued',
     );
     await vc.actAs(breeder);
-    await refused('an ownership proof from a retired secret', () => vc.proveOwnership());
+    await refused('an ownership proof from a retired secret', () => vc.proveOwnership(newPresentationChallenge()));
 
     // ── lineage, across rotation ─────────────────────────────────────────────
     const grower = randomBytes(32),

@@ -2,6 +2,7 @@
 // 30 Sep security pass (docs/security-pass-30sep.md). SPDX-License-Identifier: Apache-2.0
 
 import { beforeEach, describe, expect, it } from "vitest";
+import { acceptOwnership } from "../verify.js";
 import {
   C,
   VeilcoreSimulator,
@@ -35,7 +36,7 @@ describe("anchoring and ownership", () => {
   it("anchors the caller's own record and proves ownership of it", () => {
     anchorA();
     expect(hex(sim.state.lastAnchor)).toBe(hex(A_REC));
-    sim.call(as(A), "proveOwnership");
+    sim.call(as(A), "proveOwnership", new Uint8Array(32).fill(9));
     expect(hex(sim.state.lastOwnershipProof)).toBe(hex(A_REC));
   });
 
@@ -89,10 +90,10 @@ describe("rotation", () => {
   it("retires the old secret and keeps the identity", () => {
     anchorA();
     sim.call(as(A, { incoming: B }), "rotateRecordSecret", B_REC);
-    expect(() => sim.call(as(A), "proveOwnership")).toThrow(
-      "rotated or recovered",
-    );
-    sim.call(as(B), "proveOwnership");
+    expect(() =>
+      sim.call(as(A), "proveOwnership", new Uint8Array(32).fill(9)),
+    ).toThrow("rotated or recovered");
+    sim.call(as(B), "proveOwnership", new Uint8Array(32).fill(9));
     expect(hex(sim.state.headOf.lookup(A_REC))).toBe(hex(B_REC));
   });
 
@@ -108,9 +109,9 @@ describe("rotation", () => {
   });
 
   it("an unanchored record can do nothing but anchor, so it carries no history into an identity", () => {
-    expect(() => sim.call(as(D), "proveOwnership")).toThrow(
-      "only for anchored records",
-    );
+    expect(() =>
+      sim.call(as(D), "proveOwnership", new Uint8Array(32).fill(9)),
+    ).toThrow("only for anchored records");
     expect(() => sim.call(as(D), "pairDna", secret("dna"))).toThrow(
       "only for anchored records",
     );
@@ -148,6 +149,33 @@ describe("rotation", () => {
     expect(() =>
       sim.call(as(B), "anchor", C.recoveryCommit(secret("r"))),
     ).toThrow("successor");
+  });
+});
+
+describe("ownership proofs (rule 8)", () => {
+  it("bind to the verifier's challenge: a proof made for one verifier is refused by another", () => {
+    // Attack round 3, 1 Oct: without a challenge, anyone could cite the real holder's proof.
+    anchorA();
+    const mine = secret("verifier-1"),
+      theirs = secret("verifier-2");
+    sim.call(as(A), "proveOwnership", mine);
+    expect(acceptOwnership(sim.state, A_REC, mine).accepted).toBe(true);
+    expect(acceptOwnership(sim.state, A_REC, theirs).accepted).toBe(false);
+    expect(acceptOwnership(sim.state, B_REC, mine).accepted).toBe(false);
+    expect(() => sim.call(as(A), "proveOwnership", new Uint8Array(32))).toThrow(
+      "challenge",
+    );
+  });
+
+  it("are refused from a retired commitment, and accepted from the new head for the same identity", () => {
+    anchorA();
+    sim.call(as(A, { incoming: B }), "rotateRecordSecret", B_REC);
+    expect(() => sim.call(as(A), "proveOwnership", secret("v"))).toThrow(
+      "rotated or recovered",
+    );
+    const ch = secret("v2");
+    sim.call(as(B), "proveOwnership", ch);
+    expect(acceptOwnership(sim.state, A_REC, ch).accepted).toBe(true); // asked about the origin
   });
 });
 
@@ -203,10 +231,10 @@ describe("recovery", () => {
       freshRecovery(),
     );
     expect(hex(sim.state.headOf.lookup(A_REC))).toBe(hex(C_REC));
-    expect(() => sim.call(as(THIEF), "proveOwnership")).toThrow(
-      "rotated or recovered",
-    );
-    sim.call(as(Cs), "proveOwnership");
+    expect(() =>
+      sim.call(as(THIEF), "proveOwnership", new Uint8Array(32).fill(9)),
+    ).toThrow("rotated or recovered");
+    sim.call(as(Cs), "proveOwnership", new Uint8Array(32).fill(9));
   });
 
   it("survives rotation (the original recovery secret still works)", () => {
@@ -219,9 +247,9 @@ describe("recovery", () => {
       C_REC,
       freshRecovery(),
     );
-    expect(() => sim.call(as(B), "proveOwnership")).toThrow(
-      "rotated or recovered",
-    );
+    expect(() =>
+      sim.call(as(B), "proveOwnership", new Uint8Array(32).fill(9)),
+    ).toThrow("rotated or recovered");
   });
 
   it("refuses a wrong recovery secret, the zero secret, and a successor named as the origin", () => {
@@ -307,8 +335,8 @@ describe("recovery", () => {
     sim.call(as(T1, { incoming: T2 }), "rotateRecordSecret", C.commit(T2));
     sim.land(recovery);
     expect(hex(sim.state.headOf.lookup(A_REC))).toBe(hex(C.commit(NEW)));
-    expect(() => sim.call(as(T2), "proveOwnership")).toThrow(
-      "rotated or recovered",
-    );
+    expect(() =>
+      sim.call(as(T2), "proveOwnership", new Uint8Array(32).fill(9)),
+    ).toThrow("rotated or recovered");
   });
 });

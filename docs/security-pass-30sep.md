@@ -361,3 +361,22 @@ later (option 32 now asks for it). It also noted that a seal, not only a revocat
 sends presentations in flight back to be re-proved; design.md says so. Its tests are
 `contract/src/test/attack-round2.test.ts`.
 
+# Round 9: new angles (1 Oct, morning)
+
+Economics and denial of service, privacy, the fragmented deploy, multi-step composition,
+arithmetic. Nothing critical or high. Tests: `contract/src/test/attack-round3.test.ts`.
+
+| Severity | Finding | Fix |
+|---|---|---|
+| LOW/MEDIUM | `proveOwnership` named no verifier: anyone could cite the real holder's proof. | Contract: `proveOwnership(challenge)` records the challenge; rule 8 and `acceptOwnership`. |
+| MEDIUM | A presentation hides its issuer only among issuers with live licences at its root; at launch that can be one. design.md said it named nothing. | Documented. |
+| MEDIUM | CLI obligation terms were an unsalted hash; short terms were guessed back in about 200 tries. | Salted; the salt is shown to keep. |
+| LOW | The web app fingerprints files with the record commitment. | Not on chain today; documented, to get its own salted tag before it is. |
+| LOW | `join` did not notice extra circuits added by the authority. | `join` refuses circuits the build does not have. |
+| INFO | A recovery left `lastRotatedFrom` from another identity; `rejectObligation` bumped the obligation counter with stale cells. | Contract: both fixed; rule 6 says to read cells with the circuit called. |
+| INFO | The revocation window can run to `SEAL_INTERVAL` + 300 s + time to seal. | Documented. |
+
+Held: the licence tree cannot practically be filled; event-cell writes do not break
+presentations; counters cannot go below zero; seal arithmetic cannot wrap; nobody but the
+authority can insert keys during the fragmented deploy, and rerunning it is safe.
+

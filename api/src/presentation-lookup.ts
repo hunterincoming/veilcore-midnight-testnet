@@ -28,14 +28,28 @@ type Action = { address?: string; state?: string; entryPoint?: string };
 type Tx = { identifiers?: string[]; transactionResult?: { status?: string }; contractActions?: Action[] };
 
 const norm = (h: string): string => h.toLowerCase().replace(/^0x/, '');
-const PROVE_LICENSE = new Set(['provelicense', Buffer.from('proveLicense', 'utf8').toString('hex')]);
+const entryNames = (name: string): Set<string> =>
+  new Set([name.toLowerCase(), Buffer.from(name, 'utf8').toString('hex')]);
 
-export const presentationState = async (
+export const presentationState = (
   indexerUri: string,
   contractAddress: string,
   txId: string,
   timeoutMs = 20_000,
+): Promise<Veilcore.Ledger> => callState(indexerUri, contractAddress, txId, 'proveLicense', timeoutMs);
+
+/**
+ * The same lookup for any single call: the transaction must have succeeded and its only
+ * call on this contract must be `entryPoint` (rule 8 uses it for `proveOwnership`).
+ */
+export const callState = async (
+  indexerUri: string,
+  contractAddress: string,
+  txId: string,
+  entryPoint: string,
+  timeoutMs = 20_000,
 ): Promise<Veilcore.Ledger> => {
+  const wanted = entryNames(entryPoint);
   if (!/^(0x)?[0-9a-fA-F]+$/.test(txId)) throw new Error('That is not a transaction id.');
   const res = await fetch(indexerUri, {
     method: 'POST',
@@ -55,8 +69,12 @@ export const presentationState = async (
   const calls = (tx.contractActions ?? []).filter(
     (a) => a.address !== undefined && norm(a.address) === norm(contractAddress),
   );
-  if (calls.length !== 1 || !PROVE_LICENSE.has(norm(calls[0].entryPoint ?? '')) || calls[0].state === undefined) {
-    throw new Error('That transaction is not a single licence presentation on this contract.');
+  if (calls.length !== 1 || !wanted.has(norm(calls[0].entryPoint ?? '')) || calls[0].state === undefined) {
+    throw new Error(
+      entryPoint === 'proveLicense'
+        ? 'That transaction is not a single licence presentation on this contract.'
+        : `That transaction is not a single ${entryPoint} call on this contract.`,
+    );
   }
   return Veilcore.ledger(ContractState.deserialize(Uint8Array.from(Buffer.from(norm(calls[0].state), 'hex'))).data);
 };

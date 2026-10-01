@@ -13,7 +13,14 @@ import { type Logger } from 'pino';
 import * as Veilcore from '../../contract/src/managed/veilcore/contract/index.js';
 import { CompiledVeilcore, PROVABLE_CIRCUITS, compiledVeilcoreDeploying } from '../../contract/src/veilcore';
 import { type VeilcorePrivateState, createVeilcorePrivateState } from '../../contract/src/witnesses.js';
-import { acceptPresentation, checkLineage, identityOf, isLive, type LineageReport } from '../../contract/src/verify.js';
+import {
+  acceptOwnership,
+  acceptPresentation,
+  checkLineage,
+  identityOf,
+  isLive,
+  type LineageReport,
+} from '../../contract/src/verify.js';
 import {
   createCircuitMaintenanceTxInterfaces,
   deployContract,
@@ -23,7 +30,7 @@ import { combineLatest, map, from, type Observable } from 'rxjs';
 import { toHex } from '@midnight-ntwrk/midnight-js-utils';
 import { assertDeploymentRecordCurrent } from './deploy-guard.js';
 import { retireMaintenanceAuthority } from './maintenance.js';
-import { presentationState } from './presentation-lookup.js';
+import { callState, presentationState } from './presentation-lookup.js';
 import * as utils from './utils/index.js';
 import {
   type VeilcoreProviders,
@@ -105,8 +112,9 @@ export class VeilcoreAPI {
   }
 
   /** Prove present possession of the caller's live record. The chain carries it in lastOwnershipProof. */
-  async proveOwnership(): Promise<TxRef & { commitment: Uint8Array }> {
-    const txData = await this.deployedContract.callTx.proveOwnership();
+  /** Prove possession to the verifier who chose `challenge`; give them the returned txId. */
+  async proveOwnership(challenge: Uint8Array): Promise<TxRef & { commitment: Uint8Array }> {
+    const txData = await this.deployedContract.callTx.proveOwnership(challenge);
     return { ...this.logged('proveOwnership', txData), commitment: txData.private.result };
   }
 
@@ -381,6 +389,20 @@ export class VeilcoreAPI {
    * licensee gave you; it must be a successful proveLicense call on this contract, and
    * the check is made on the state right after it (presentation-lookup.ts).
    */
+  /** Rule 8: check an ownership proof the holder made for your challenge. */
+  async checkOwnership(
+    indexerUri: string,
+    txId: string,
+    record: Uint8Array,
+    challenge: Uint8Array,
+  ): Promise<ReturnType<typeof acceptOwnership>> {
+    return acceptOwnership(
+      await callState(indexerUri, this.deployedContractAddress, txId, 'proveOwnership'),
+      record,
+      challenge,
+    );
+  }
+
   async checkPresentation(
     indexerUri: string,
     txId: string,
@@ -566,6 +588,15 @@ export class VeilcoreAPI {
       privateStateId: veilcorePrivateStateKey,
       initialPrivateState: existing ?? createVeilcorePrivateState(utils.randomBytes(32)),
     });
+    // findDeployedContract checks every circuit in this build has its key on chain. Also
+    // refuse a contract carrying a circuit this build does not know: one the maintenance
+    // authority added would otherwise pass silently.
+    const onChain =
+      (await providers.publicDataProvider.queryContractState(contractAddress))?.operations().map(operationName) ?? [];
+    const extra = onChain.filter((c) => !PROVABLE_CIRCUITS.includes(c));
+    if (extra.length > 0) {
+      throw new Error(`The contract carries circuits this build does not have: ${extra.join(', ')}. Do not use it.`);
+    }
     logger?.info({ contractJoined: deployed.deployTxData.public });
     return new VeilcoreAPI(deployed, providers, logger);
   }

@@ -191,3 +191,44 @@ export const acceptPresentation = (
       "proved against an older root while a revocation was waiting; ask again",
   };
 };
+
+/**
+ * Rule 8. Accept an ownership proof. `afterTx` is the contract state recorded for the
+ * proof's own `proveOwnership` call, found by transaction id. The verifier chose
+ * `challenge` (32 fresh random bytes, used once) and asked about `record`, any
+ * commitment of the identity. Accepted when that call answered this challenge, for this
+ * identity, from the commitment that was its live head at the time.
+ */
+export const acceptOwnership = (
+  afterTx: Ledger,
+  record: Uint8Array,
+  challenge: Uint8Array,
+): { readonly accepted: boolean; readonly reason: string } => {
+  if (challenge.length !== 32 || challenge.every((b) => b === 0))
+    return { accepted: false, reason: "not a usable challenge" };
+  if (afterTx.proofSeq === 0n)
+    return {
+      accepted: false,
+      reason: "no ownership proof has been made on this contract",
+    };
+  if (!same(afterTx.lastOwnershipChallenge, challenge))
+    return {
+      accepted: false,
+      reason: "that transaction did not answer this challenge",
+    };
+  const prover = afterTx.lastOwnershipProof;
+  if (!same(identityOf(afterTx, prover), identityOf(afterTx, record)))
+    return {
+      accepted: false,
+      reason: "that transaction proved a different record",
+    };
+  if (!isLive(afterTx, prover) || !isAnchored(afterTx, prover))
+    return {
+      accepted: false,
+      reason: "the proving commitment was not the live, anchored head",
+    };
+  return {
+    accepted: true,
+    reason: "the holder of this record answered your challenge",
+  };
+};

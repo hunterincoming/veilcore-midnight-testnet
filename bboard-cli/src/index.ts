@@ -77,8 +77,13 @@ const askObligation = async (rli: Interface, logger: Logger): Promise<Uint8Array
   const asHex = parse32(raw);
   if (asHex !== null) return asHex;
   if (raw === '') throw new InputError('An obligation cannot be empty.');
-  const c = new Uint8Array(createHash('sha256').update(raw, 'utf8').digest());
-  logger.info(`Obligation commitment (SHA-256 of the text): ${toHex(c)}`);
+  // Salted, or anyone could guess short terms ("7% royalty") back from the chain. Whoever
+  // needs to check the terms later needs the text and this salt.
+  const salt = randomBytes(32);
+  const c = new Uint8Array(createHash('sha256').update(salt).update(raw, 'utf8').digest());
+  showSecret('OBLIGATION SALT — keep it with the terms; both are needed to show what was agreed:', toHex(salt));
+  logger.info(`Obligation commitment (SHA-256 of salt + text): ${toHex(c)}`);
+  logger.info('To act on this obligation later (accept, release), enter the commitment above, not the text.');
   return c;
 };
 
@@ -208,15 +213,16 @@ const MAIN_LOOP_QUESTION = `
   8. Issue a licence                      25. Check a record's lineage
   9. Countersign a licence (as licensee)
  10. Prove you hold a licence             Verifier
- 11. Propose a transfer (as holder)       26. Make a challenge for a licensee
+ 11. Propose a transfer (as holder)       26. Make a challenge (for a licensee or a holder)
  12. Approve a transfer (as issuer)       27. Check a licence presentation
- 13. Withdraw a transfer proposal
- 14. Revoke a licence                     Other
- 15. Seal waiting revocations             28. Anchor a batch root
-                                          29. Show the contract state
-                                          30. Show your record and identity
-                                          31. Show your record secret
-                                          32. Retire the maintenance authority (PERMANENT)
+ 13. Withdraw a transfer proposal         28. Check an ownership proof
+ 14. Revoke a licence
+ 15. Seal waiting revocations             Other
+                                          29. Anchor a batch root
+                                          30. Show the contract state
+                                          31. Show your record and identity
+                                          32. Show your record secret
+                                          33. Retire the maintenance authority (PERMANENT)
                                            0. Exit
 Which would you like to do? `;
 
@@ -263,7 +269,8 @@ const mainLoop = async (
             break;
           }
           case '2': {
-            const p = await api.proveOwnership();
+            const challenge = await ask32(rli, "The verifier's challenge (hex): ");
+            const p = await api.proveOwnership(challenge);
             logger.info(`Ownership proved for record ${toHex(p.commitment)}.`);
             tx(p);
             break;
@@ -439,7 +446,7 @@ const mainLoop = async (
           case '26': {
             const ch = newPresentationChallenge();
             showSecret('CHALLENGE — send it to the licensee privately, use it once, never publish it:', toHex(ch));
-            logger.info('Keep it: you need it to check their presentation (option 27).');
+            logger.info('Keep it: you need it to check their presentation (27) or ownership proof (28).');
             break;
           }
           case '27': {
@@ -447,6 +454,14 @@ const mainLoop = async (
             const issuer = await ask32(rli, 'Issuer you asked about (any record of that identity, hex): ');
             const ch = await ask32(rli, 'The challenge you sent (hex): ');
             const verdict = await api.checkPresentation(indexerUri, txId, issuer, ch);
+            logger.info(`${verdict.accepted ? 'ACCEPTED' : 'NOT ACCEPTED'}: ${verdict.reason}.`);
+            break;
+          }
+          case '28': {
+            const txId = (await rli.question("The ownership proof's transaction id (from the holder): ")).trim();
+            const record = await ask32(rli, 'Record you asked about (any record of that identity, hex): ');
+            const ch = await ask32(rli, 'The challenge you sent (hex): ');
+            const verdict = await api.checkOwnership(indexerUri, txId, record, ch);
             logger.info(`${verdict.accepted ? 'ACCEPTED' : 'NOT ACCEPTED'}: ${verdict.reason}.`);
             break;
           }
@@ -489,13 +504,13 @@ const mainLoop = async (
             );
             break;
           }
-          case '28': {
+          case '29': {
             const root = await ask32(rli, 'Batch root (hex): ');
             tx(await api.anchorBatch(root));
             logger.info('Anchored. This proves the batch existed at this time, not who held its records.');
             break;
           }
-          case '29': {
+          case '30': {
             const l = await api.currentLedger();
             logger.info(
               `Protocol version ${l.protocolVersion}. Anchors ${l.anchorSeq}, ownership proofs ${l.proofSeq}, presentations ${l.presentationSeq}.`,
@@ -504,7 +519,7 @@ const mainLoop = async (
             logger.info(`Revocations waiting for a seal: ${l.unsealedChanges ? 'yes' : 'no'}.`);
             break;
           }
-          case '30':
+          case '31':
             if (derived === undefined) logger.info('No state yet.');
             else {
               logger.info(`Your record:   ${derived.myCommitment}`);
@@ -514,10 +529,10 @@ const mainLoop = async (
               );
             }
             break;
-          case '31':
+          case '32':
             showSecret('YOUR RECORD SECRET:', toHex(await mySecret(providers)));
             break;
-          case '32': {
+          case '33': {
             const sure = (
               await rli.question(
                 'Nobody, including you, will ever be able to change this contract. Type RETIRE to confirm: ',

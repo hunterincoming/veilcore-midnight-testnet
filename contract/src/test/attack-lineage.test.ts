@@ -70,9 +70,9 @@ describe("FINDING: an ancestor can rewrite a descendant's verdict after the fact
         C.commit(NEW),
         freshRecovery(),
       );
-      expect(() => sim.call(as(P), "proveOwnership")).toThrow(
-        "rotated or recovered",
-      );
+      expect(() =>
+        sim.call(as(P), "proveOwnership", new Uint8Array(32).fill(9)),
+      ).toThrow("rotated or recovered");
       const r = checkLineage(sim.state, C.commit(V), [C.commit(ROOT)]);
       expect(r.cyclic).toBe(true);
       expect(r.accepted).toBe(false);

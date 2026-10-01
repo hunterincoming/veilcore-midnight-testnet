@@ -91,7 +91,7 @@ number of rotations and recoveries, and a retired secret controls nothing.
 | Circuit | Effect |
 |---|---|
 | `anchor(recoveryCommitment)` | Anchors the caller's record. Refuses the zero commitment and the zero secret's commitment. |
-| `proveOwnership()` | Publishes the caller's live record in `lastOwnershipProof`. The interval since its anchor is the evidence of prior possession. |
+| `proveOwnership(challenge)` | Publishes the caller's live record in `lastOwnershipProof` and the verifier's challenge in `lastOwnershipChallenge`, so the proof answers one verifier (rule 8). The interval since its anchor is the evidence of prior possession. |
 | `pairDna(dnaCommitment)` | Binds a DNA report fingerprint to the caller's record. |
 | `rotateRecordSecret(newRecord)` | Moves the identity; the caller must hold the new secret. Anchored identities only. |
 | `recoverRecordSecret(origin, newRecord)` | Moves the identity with the recovery secret, whoever holds the head. |
@@ -112,8 +112,11 @@ any secret, as an argument (checked by `src/test/interface.test.ts`).
 4. `proveLicense()`: the licensee proves to one verifier that they hold a live licence
    from one issuer. All inputs are witnesses. It publishes
    `presentationTag(issuer, challenge)` and the root proved against. The verifier chose
-   the challenge (32 random bytes, used once, never published) and recognises the tag;
-   to anyone else it names nothing.
+   the challenge (32 random bytes, used once, never published) and recognises the tag.
+   To anyone else the tag names nothing, but the root does narrow it: it fixes which
+   licences were live, and countersigns are public, so an observer learns the issuer was
+   one of those with a live licence at that root. While few issuers have live licences,
+   as at launch, that can be one.
 5. `proposeTransfer` / `approveTransfer` / `withdrawTransfer`: the holder proposes a
    commitment the incoming party built; the issuer's identity approves the one it was
    shown. The leaf is replaced in place.
@@ -159,7 +162,9 @@ Record a line oldest first: a parent proposed for a record can no longer confirm
 that record has confirmed offspring of its own.
 
 **Obligations.** An obligation is `obligationKey(record identity, obligation commitment,
-beneficiary identity)`. The obligation commitment is a hash of the terms, kept off chain.
+beneficiary identity)`. The obligation commitment is a hash of the terms with a random
+salt, both kept off chain; without the salt, short terms could be guessed back from the
+chain (the CLI salts them).
 - A beneficiary proposes (`proposeObligation`); it binds nobody until the holder accepts
   (`acceptObligation`). The beneficiary can withdraw an unaccepted proposal.
 - A holder may place one on their own record in one step (`encumberOwnRecord`), for
@@ -182,7 +187,7 @@ another to shed what it owes.
 
 ## Verifier rules
 
-These are normative. `contract/src/verify.ts` implements rules 1 to 5, and the tests
+These are normative. `contract/src/verify.ts` implements rules 1 to 5 and 8, and the tests
 exercise each one.
 
 1. **Resolve identity.** A commitment's identity is `originFor(x)`. It may act only if
@@ -218,8 +223,19 @@ exercise each one.
    the licence secret took part, not which party. The published root also shows
    roughly when the licensee last fetched their path.
 6. **Event cells are per transaction.** Each `last*` cell holds the value from the most
-   recent transaction that wrote it. Read them from the indexer per transaction.
+   recent transaction that wrote it. Read them from the indexer per transaction, together
+   with which circuit that transaction called: several circuits write the same cells
+   (accepting and releasing an obligation, say), and a rotation and a recovery both
+   write `lastRotatedTo` (a recovery clears `lastRotatedFrom`; a rotation clears
+   `lastRecoveredOrigin`).
 7. **Batch roots are not possession.** `anchorBatch` is unauthenticated.
+8. **Ownership proofs.** Send the holder a fresh 32-byte random challenge and use it once.
+   The holder gives you the transaction id of a `proveOwnership(challenge)` call. Look
+   it up as in rule 5 (successful, its only call on this contract) and accept only if
+   `lastOwnershipChallenge` is your challenge and `lastOwnershipProof` is the live,
+   anchored head of the identity you asked about (`acceptOwnership`;
+   `VeilcoreAPI.checkOwnership`). Never accept a proof made for someone else's challenge:
+   anyone can point you at the real holder's.
 
 ## Trust model
 
@@ -252,7 +268,7 @@ each remaining key in its own transaction (`VeilcoreAPI.deploy`,
 `addMissingCircuitKeys`; CLI deploy menu option 4 finishes an interrupted run). The
 ledger state and every circuit are the ones compiled; only which keys ride the first
 transaction differs. Joining the contract checks every key on chain against the local
-build, and on mainnet the local build is first checked against `docs/fingerprints.md`.
+build, and refuses a contract carrying any circuit the build does not have, and on mainnet the local build is first checked against `docs/fingerprints.md`.
 Anyone can do the same: read the contract's verifier keys from the indexer and compare
 them with the published fingerprints.
 
@@ -284,8 +300,13 @@ the circuit set as changeable by VeilCore.
   entry. The bound is economic, not structural. Identity maps grow by one entry per
   anchor, rotation or recovery. That is the price of a retired secret ceasing to work.
 - **The revocation window.** A revoked licence's old path verifies on chain until the
-  next seal: up to `SEAL_INTERVAL` plus the time until someone seals. A verifier
-  following rule 5 does not accept such a presentation.
+  next seal: up to `SEAL_INTERVAL` plus `SEAL_SLACK` (a sealer may set the bound 300
+  seconds ahead) plus the time until someone seals. A verifier following rule 5 does not
+  accept such a presentation.
+- **The web app's file fingerprints** (DNA reports, photos) are run through the record
+  commitment, so whoever holds a report could anchor its fingerprint as a record of their
+  own, and could find a record paired with it. The app does not put these on chain today;
+  before it does, they get their own salted tag.
 - **Record commitments are stable pseudonyms.** Actions under one record link to each
   other.
 - **Licences issued by a thief** before recovery stay PENDING under the identity, and

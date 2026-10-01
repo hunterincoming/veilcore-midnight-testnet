@@ -354,7 +354,7 @@ export const Landing: React.FC = () => (
         name="Hunter Roberts"
         role="Co-founder & COO"
         photo="/team/hunter.jpg"
-        bio="Hunter Roberts is VeilCore's co-founder and COO, leading product and the VeilCore protocol, from the record format to the contracts on Midnight. He comes from hands-on plant work, including breeding, tissue culture and sterile lab operations, and is building a cultivation facility in New Jersey. He is Midnight Foundation's Nightforce Leader (US)."
+        bio="Hunter Roberts is VeilCore's co-founder and COO, leading product and the VeilCore protocol, from the record format to the contracts on Midnight. He comes from hands-on plant work, including breeding and tissue culture, and is building a cultivation facility in New Jersey. He is Midnight Foundation's Nightforce Leader (US)."
       />
     </Box>
   </Container>

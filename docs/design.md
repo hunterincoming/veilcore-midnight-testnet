@@ -78,7 +78,10 @@ A record secret is 32 random bytes held by the record's holder. Its commitment i
   controls the identity, so it belongs offline. There is no waiting period.
 - **A recovery uses up the recovery secret.** The same call installs a new recovery
   commitment, so a secret typed into a possibly compromised machine to recover cannot be
-  used again by whoever saw it there.
+  used again by whoever saw it there. That protects against a secret being read or
+  logged, not against malware that also sees the new one. The contract refuses only the
+  current commitment as the new one; the client always makes a fresh one. If a recovery
+  reports an error, check whether it landed before retrying: the client does.
 
 Licence authority, parentage and obligations are keyed by identity, so they survive any
 number of rotations and recoveries, and a retired secret controls nothing.
@@ -129,7 +132,9 @@ Why not drop old roots on every revocation, as version 0 did: then on chain anyo
 could revoke a throwaway licence of their own each block and make every older path
 fail. Sealing limits that on chain. It does not stop a griefer from costing honest
 licensees re-proofs: a presentation records whether a revocation was waiting when it was
-proved, so a revocation landing before it sends it back, and while one is waiting, a
+proved, so a revocation landing before it, or a seal, sends it back (at most about twice
+per `SEAL_INTERVAL`, since a seal clears the flag and the next revocation sets it), and
+while one is waiting, a
 verifier following rule 5 refuses a presentation whose root has since moved on. That is
 a cost in re-proofs, paid in fees by the griefer too, never a wrong answer. A verifier
 that wants to accept more can check the presentation's root against every root since
@@ -150,7 +155,8 @@ descended. The DNA pairing narrows that; it does not close it.
 **A record's parents are fixed once it has confirmed offspring** (`hasOffspring`). An
 ancestor therefore cannot change the pedigree of material already descended from it,
 and no cycle can form: the edge that would close one gives a parent a new parent.
-Record a line oldest first.
+Record a line oldest first: a parent proposed for a record can no longer confirm once
+that record has confirmed offspring of its own.
 
 **Obligations.** An obligation is `obligationKey(record identity, obligation commitment,
 beneficiary identity)`. The obligation commitment is a hash of the terms, kept off chain.
@@ -237,6 +243,19 @@ exercise each one.
   lineage responses are labelled that way. Anything a decision rests on is checked
   against the contract with rule 1 to 7.
 
+## Deployment in fragments
+
+The network refuses a deploy transaction that carries a verifier key for all 24 circuits
+("exceeded block limit"). The contract is therefore deployed with the keys of the first
+few circuits (`FIRST_FRAGMENT`, halved on a refusal), and the maintenance authority adds
+each remaining key in its own transaction (`VeilcoreAPI.deploy`,
+`addMissingCircuitKeys`; CLI deploy menu option 4 finishes an interrupted run). The
+ledger state and every circuit are the ones compiled; only which keys ride the first
+transaction differs. Joining the contract checks every key on chain against the local
+build, and on mainnet the local build is first checked against `docs/fingerprints.md`.
+Anyone can do the same: read the contract's verifier keys from the indexer and compare
+them with the published fingerprints.
+
 ## Governance: the maintenance authority
 
 midnight-js always installs a maintenance authority on deployment. It can add and remove
@@ -244,7 +263,8 @@ verifier keys, so it can repair or disable any circuit, and a key for a new circ
 rewrite state: whoever holds it controls the contract. VeilCore keeps it for launch, held offline by the deployer (the client shows it before
 deploying and removes it from the local store afterwards), and
 will retire it on a date published in the deployment record, using
-`retireMaintenanceAuthority` (api/src/maintenance.ts). Until then, holders should treat
+`retireMaintenanceAuthority` (api/src/maintenance.ts; CLI option 32, which asks for the
+key from the offline copy). Until then, holders should treat
 the circuit set as changeable by VeilCore.
 
 ## Known limits

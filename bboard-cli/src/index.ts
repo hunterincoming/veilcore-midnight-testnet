@@ -105,7 +105,8 @@ const DEPLOY_OR_JOIN_QUESTION = `
   1. Deploy a new VeilCore contract
   2. Join an existing VeilCore contract
   3. Run the full smoke test (preprod or preview only; deploys a fresh test contract)
-  4. Exit
+  4. Finish a deploy that stopped partway (adds the missing circuit keys)
+  5. Exit
 Which would you like to do? `;
 
 /**
@@ -163,7 +164,25 @@ export const deployOrJoin = async (
         logger.info(passed ? 'Smoke test passed.' : 'Smoke test FAILED — see above.');
         return null;
       }
-      case '4':
+      case '4': {
+        // A deploy is one transaction plus one per remaining circuit key. If it stopped
+        // partway, the authority's key is still in the local store; this adds the rest.
+        if (getNetworkId() === 'mainnet') {
+          const n = assertKeysMatchRecord(zkConfigPath, path.resolve(zkConfigPath, '..', '..', '..', '..'));
+          logger.info(`All ${n} build artefacts match the committed fingerprints (docs/fingerprints.md).`);
+        }
+        const address = (await rli.question('Contract address (hex): ')).trim();
+        await VeilcoreAPI.addMissingCircuitKeys(providers, address, logger);
+        const api = await VeilcoreAPI.join(providers, address, logger);
+        const retire = (
+          await rli.question('Retire the maintenance authority now? Type RETIRE, or Enter to keep it: ')
+        ).trim();
+        if (retire === 'RETIRE') await api.retireMaintenanceAuthority();
+        await providers.privateStateProvider.removeSigningKey(address);
+        logger.info(`Deploy finished: every circuit key is on chain at ${address}.`);
+        return api;
+      }
+      case '5':
         return null;
       default:
         logger.error(`Invalid choice: ${choice}`);
@@ -229,8 +248,18 @@ const mainLoop = async (
             showSecret('RECOVERY SECRET — SAVE THIS NOW, IT IS NOT STORED AND NOT SHOWN AGAIN:', toHex(recovery));
             logger.info('It moves this record even if the record secret is lost OR STOLEN. Keep it offline.');
             await rli.question('Press Enter once it is stored, to anchor. ');
-            tx(await api.anchor(C.recoveryCommit(recovery)));
-            logger.info(`Anchored record: ${toHex(C.commit(await mySecret(providers)))}`);
+            const me = C.commit(await mySecret(providers));
+            try {
+              tx(await api.anchor(C.recoveryCommit(recovery)));
+            } catch (e) {
+              // It may have landed with only the confirmation failing: then the secret just
+              // shown is the real one, and a retry would show a different, useless one.
+              const l = await api.currentLedger();
+              if (l.recoveryOf.member(me) && toHex(l.recoveryOf.lookup(me)) === toHex(C.recoveryCommit(recovery))) {
+                logger.warn('The anchor DID land; only confirming it failed. Keep the recovery secret shown above.');
+              } else throw e;
+            }
+            logger.info(`Anchored record: ${toHex(me)}`);
             break;
           }
           case '2': {
@@ -265,7 +294,23 @@ const mainLoop = async (
               toHex(nextRecovery),
             );
             await rli.question('Press Enter once BOTH are stored. ');
-            tx(await api.recoverRecordSecret(origin, C.commit(next), C.recoveryCommit(nextRecovery), recovery, next));
+            try {
+              tx(await api.recoverRecordSecret(origin, C.commit(next), C.recoveryCommit(nextRecovery), recovery, next));
+            } catch (e) {
+              // A recovery that landed uses up the recovery secret, so a retry would fail and
+              // show new secrets that control nothing. Check before reporting failure.
+              const l = await api.currentLedger();
+              if (l.headOf.member(origin) && toHex(l.headOf.lookup(origin)) === toHex(C.commit(next))) {
+                logger.warn(
+                  'The recovery DID land; only confirming it failed. The two secrets shown above are the real ones.',
+                );
+              } else {
+                logger.error(
+                  'The recovery did not land. Your old recovery secret still works; the secrets above do not.',
+                );
+                throw e;
+              }
+            }
             logger.info('Recovered. Whoever held an earlier secret, including a thief, can no longer act from now on.');
             logger.info('The recovery secret you typed in is used up; only the new one works.');
             logger.info(
@@ -478,8 +523,13 @@ const mainLoop = async (
                 'Nobody, including you, will ever be able to change this contract. Type RETIRE to confirm: ',
               )
             ).trim();
-            if (sure === 'RETIRE') await api.retireMaintenanceAuthority();
-            else logger.info('Not retired.');
+            if (sure === 'RETIRE') {
+              // The key is removed from this machine after deploy, so it has to be given back
+              // for the one transaction that retires it.
+              const key = (await rli.question('Maintenance authority signing key (from your offline copy): ')).trim();
+              if (key === '') logger.info('Not retired: the signing key is needed.');
+              else await api.retireMaintenanceAuthority(key);
+            } else logger.info('Not retired.');
             break;
           }
           case '0':

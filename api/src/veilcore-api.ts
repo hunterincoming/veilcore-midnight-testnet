@@ -8,12 +8,17 @@
 // whether it succeeded or not.
 
 import { type ContractAddress, type SigningKey } from '@midnight-ntwrk/midnight-js-protocol/compact-runtime';
+import { inspect } from 'node:util';
 import { type Logger } from 'pino';
 import * as Veilcore from '../../contract/src/managed/veilcore/contract/index.js';
-import { CompiledVeilcore } from '../../contract/src/veilcore';
+import { CompiledVeilcore, PROVABLE_CIRCUITS, compiledVeilcoreDeploying } from '../../contract/src/veilcore';
 import { type VeilcorePrivateState, createVeilcorePrivateState } from '../../contract/src/witnesses.js';
 import { acceptPresentation, checkLineage, identityOf, isLive, type LineageReport } from '../../contract/src/verify.js';
-import { deployContract, findDeployedContract } from '@midnight-ntwrk/midnight-js-contracts';
+import {
+  createCircuitMaintenanceTxInterfaces,
+  deployContract,
+  findDeployedContract,
+} from '@midnight-ntwrk/midnight-js-contracts';
 import { combineLatest, map, from, type Observable } from 'rxjs';
 import { toHex } from '@midnight-ntwrk/midnight-js-utils';
 import { assertDeploymentRecordCurrent } from './deploy-guard.js';
@@ -27,6 +32,16 @@ import {
   type VeilcoreDerivedState,
   veilcorePrivateStateKey,
 } from './veilcore-types.js';
+
+/** Circuit keys carried by the deploy transaction itself; the rest follow it. */
+export const FIRST_FRAGMENT = 8;
+
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+const operationName = (o: string | Uint8Array): string => (typeof o === 'string' ? o : Buffer.from(o).toString('utf8'));
+
+/** The network's refusal of a transaction too big for a block, however it is wrapped. */
+const isBlockLimit = (e: unknown): boolean =>
+  /block limit|BlockLimitExceeded|ExhaustsResources|\b1010\b/i.test(inspect(e, { depth: 6 }));
 
 /** A landed transaction. Give a verifier `txId`: it finds the state right after it. */
 export type TxRef = { readonly txId: string; readonly txHash: string; readonly blockHeight: number };
@@ -394,7 +409,14 @@ export class VeilcoreAPI {
   }
 
   /** Give up the maintenance authority permanently. See maintenance.ts. */
-  async retireMaintenanceAuthority(): Promise<void> {
+  /**
+   * Retire the maintenance authority for good. `currentKey` is the authority's signing key
+   * from the deployer's offline copy: deploy removes it from the local store.
+   */
+  async retireMaintenanceAuthority(currentKey?: SigningKey): Promise<void> {
+    if (currentKey !== undefined) {
+      await this.providers.privateStateProvider.setSigningKey(this.deployedContractAddress, currentKey);
+    }
     await retireMaintenanceAuthority(
       this.deployedContract,
       this.providers.privateStateProvider,
@@ -450,22 +472,85 @@ export class VeilcoreAPI {
     providers: VeilcoreProviders,
     signingKey: SigningKey | null,
     logger?: Logger,
+    firstFragment = FIRST_FRAGMENT,
   ): Promise<VeilcoreAPI> {
     assertDeploymentRecordCurrent('veilcore', logger);
-    const deployed = await deployContract(providers, {
-      compiledContract: CompiledVeilcore,
-      privateStateId: veilcorePrivateStateKey,
-      initialPrivateState: createVeilcorePrivateState(utils.randomBytes(32)),
-      ...(signingKey === null ? {} : { signingKey }),
-    });
-    logger?.info({ contractDeployed: deployed.deployTxData.public });
-    const api = new VeilcoreAPI(deployed, providers, logger);
+    // The network refuses a deploy carrying a verifier key for every circuit ("exceeded
+    // block limit"). Deploy with the first `size` keys, halving on that refusal, then add
+    // the rest one maintenance transaction each. The authority's key, which those
+    // transactions need, stays in the local store until every key is on chain.
+    let size = Math.min(Math.max(1, firstFragment), PROVABLE_CIRCUITS.length);
+    let address: ContractAddress;
+    for (;;) {
+      const keep = PROVABLE_CIRCUITS.slice(0, size);
+      try {
+        const deployed = await deployContract(providers, {
+          compiledContract: compiledVeilcoreDeploying(keep),
+          privateStateId: veilcorePrivateStateKey,
+          initialPrivateState: createVeilcorePrivateState(utils.randomBytes(32)),
+          ...(signingKey === null ? {} : { signingKey }),
+        });
+        address = deployed.deployTxData.public.contractAddress;
+        logger?.info({ contractDeployed: deployed.deployTxData.public, circuitKeysInDeploy: keep.length });
+        break;
+      } catch (e) {
+        if (size > 1 && isBlockLimit(e)) {
+          size = Math.ceil(size / 2);
+          logger?.info(`the deploy was over the block limit; trying again with ${size} circuit keys in it`);
+          continue;
+        }
+        throw e;
+      }
+    }
+    await VeilcoreAPI.addMissingCircuitKeys(providers, address, logger);
+    const api = await VeilcoreAPI.join(providers, address, logger); // checks every key on chain
     if (signingKey === null) await api.retireMaintenanceAuthority();
     // midnight-js keeps the authority's signing key in the local private-state store.
     // The deployer was shown it before deploying and holds it offline; it should not
     // also sit on this machine. To use it later: privateStateProvider.setSigningKey.
-    await providers.privateStateProvider.removeSigningKey(api.deployedContractAddress);
+    await providers.privateStateProvider.removeSigningKey(address);
     return api;
+  }
+
+  /**
+   * Add the verifier key of every circuit the contract does not have on chain yet, one
+   * maintenance transaction each. Safe to run again after an interruption: it reads
+   * what is on chain first. Needs the maintenance authority's key in the local store.
+   */
+  static async addMissingCircuitKeys(
+    providers: VeilcoreProviders,
+    address: ContractAddress,
+    logger?: Logger,
+  ): Promise<void> {
+    const onChain = async (): Promise<Set<string>> => {
+      for (let i = 0; i < 30; i++) {
+        const state = await providers.publicDataProvider.queryContractState(address);
+        if (state !== null && state !== undefined) return new Set(state.operations().map(operationName));
+        await sleep(2_000);
+      }
+      throw new Error(`The indexer has no contract at ${address}.`);
+    };
+    const present = await onChain();
+    const todo = PROVABLE_CIRCUITS.filter((c) => !present.has(c));
+    const maintenance = createCircuitMaintenanceTxInterfaces(providers, CompiledVeilcore, address);
+    type Circuit = keyof typeof maintenance;
+    for (const [i, circuit] of todo.entries()) {
+      logger?.info(`adding circuit key ${i + 1} of ${todo.length}: ${circuit}`);
+      const vk = await providers.zkConfigProvider.getVerifierKey(circuit as Circuit);
+      try {
+        await maintenance[circuit as Circuit].insertVerifierKey(vk);
+      } catch (e) {
+        // It may have landed with only the confirmation failing; the chain decides.
+        if (!(await onChain()).has(circuit)) throw e;
+      }
+      // The next insert signs over the authority's counter as the indexer reports it, so
+      // wait until the indexer shows this one before building the next.
+      for (let tries = 0; !(await onChain()).has(circuit); tries++) {
+        if (tries >= 30) throw new Error(`The indexer never showed the key for ${circuit}.`);
+        await sleep(2_000);
+      }
+    }
+    logger?.info(`all ${PROVABLE_CIRCUITS.length} circuit keys are on chain`);
   }
 
   static async join(

@@ -351,3 +351,13 @@ with a test. Their tests are `contract/src/test/attack-*.test.ts`.
 What held up, by test: no licence forgery, no double activation, revocation cannot be
 starved, no identity takeover, fork or merge, obligation counts cannot drift.
 
+**Re-attack of the fixes, same morning.** A fresh reviewer confirmed all three contract
+fixes hold, including two- and three-cycles in every landing order, competing
+recoveries, and every revoke, transfer and seal ordering around a presentation. It found
+two client problems in the changes, both fixed: a recovery or anchor that landed but
+reported an error could be retried into secrets that control nothing (the client now
+checks the chain first), and removing the maintenance key after deploy broke retiring it
+later (option 32 now asks for it). It also noted that a seal, not only a revocation,
+sends presentations in flight back to be re-proved; design.md says so. Its tests are
+`contract/src/test/attack-round2.test.ts`.
+

@@ -127,18 +127,22 @@ export class VeilcoreAPI {
   /**
    * Move an identity whose primary secret is lost or stolen, with its recovery secret.
    * `recordCommitment` is the ORIGINAL anchored record. Works even if a thief rotated
-   * it since. The recovery secret is cleared from this client when the call ends.
+   * it since. The recovery secret is used up: the same call installs
+   * `newRecoveryCommitment`, built from a NEW recovery secret the caller has already
+   * stored. The recovery secret is cleared from this client when the call ends.
    */
   async recoverRecordSecret(
     recordCommitment: Uint8Array,
     newRecordCommitment: Uint8Array,
+    newRecoveryCommitment: Uint8Array,
     recoverySecret: Uint8Array,
     incomingSecret: Uint8Array,
   ): Promise<TxRef> {
     const txData = await this.withPrivate(
       { recoverySecret, incomingGeneticSecret: incomingSecret },
       { recoverySecret: ZERO32(), incomingGeneticSecret: ZERO32() },
-      () => this.deployedContract.callTx.recoverRecordSecret(recordCommitment, newRecordCommitment),
+      () =>
+        this.deployedContract.callTx.recoverRecordSecret(recordCommitment, newRecordCommitment, newRecoveryCommitment),
     );
     await this.patchPrivateState({ geneticSecret: incomingSecret });
     return this.logged('recoverRecordSecret', txData);
@@ -180,7 +184,20 @@ export class VeilcoreAPI {
           await this.deployedContract.callTx.countersignLicense(recordCommitment, slot),
         );
       } catch (e) {
-        const taken = (await this.currentLedger()).licenseAtSlot.member(slot);
+        const ledger = await this.currentLedger();
+        const key = Veilcore.pureCircuits.licenseKey(
+          Veilcore.pureCircuits.licenseCommit(secret, recordCommitment),
+          recordCommitment,
+        );
+        // The call may have landed and only the confirmation failed (an indexer timeout,
+        // say). Then the slot is "taken" by this very licence: do not retry into a
+        // misleading "not pending", say what happened.
+        if (ledger.licenseStatusOf.member(key) && ledger.licenseStatusOf.lookup(key) === Veilcore.LicenseState.ACTIVE) {
+          throw new Error(
+            `The licence IS active: the countersign landed, only confirming it failed (${String(e instanceof Error ? e.message : e)}).`,
+          );
+        }
+        const taken = ledger.licenseAtSlot.member(slot);
         if (!taken || attempt >= 3) throw e;
         this.logger?.info(`licence slot ${slot} was taken first; retrying with another`);
       }
@@ -444,6 +461,10 @@ export class VeilcoreAPI {
     logger?.info({ contractDeployed: deployed.deployTxData.public });
     const api = new VeilcoreAPI(deployed, providers, logger);
     if (signingKey === null) await api.retireMaintenanceAuthority();
+    // midnight-js keeps the authority's signing key in the local private-state store.
+    // The deployer was shown it before deploying and holds it offline; it should not
+    // also sit on this machine. To use it later: privateStateProvider.setSigningKey.
+    await providers.privateStateProvider.removeSigningKey(api.deployedContractAddress);
     return api;
   }
 

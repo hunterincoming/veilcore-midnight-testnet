@@ -35,6 +35,11 @@ export const secret = (label: string): Uint8Array =>
 const COIN = "0".repeat(64);
 export const T0 = 1_800_000_000n;
 
+let recoveries = 0;
+/** A recovery commitment nobody has used: every recovery must install one. */
+export const freshRecovery = (): Uint8Array =>
+  pureCircuits.recoveryCommit(secret(`fresh-recovery-${recoveries++}`));
+
 /** Who is calling: their record secret, and the other secrets a call may need. */
 export type Party = {
   readonly own: Uint8Array;

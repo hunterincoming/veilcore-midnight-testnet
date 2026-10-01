@@ -61,6 +61,13 @@ export ledger lastRecoveredOrigin: Bytes<32>;
 export ledger lastPresentation: Bytes<32>;
 /** The licence-tree root the last presentation proved against. */
 export ledger lastPresentationRoot: MerkleTreeDigest;
+/**
+ * Whether a revocation or transfer was waiting for a seal when the last presentation was
+ * proved. Recorded at proof time so the verdict cannot depend on what else lands in the
+ * same transaction or block (a seal bundled after a stale presentation used to clear the
+ * live flag before the verifier read it).
+ */
+export ledger lastPresentationUnsealed: Boolean;
 export ledger lastActivatedLicense: Bytes<32>;
 export ledger lastActivatedRecord: Bytes<32>;
 export ledger lastDescentChild: Bytes<32>;
@@ -101,6 +108,13 @@ export ledger unsealedChanges: Boolean;
 export ledger pendingParentOf: Map<Bytes<32>, Bytes<32>>;
 /** Child identity -> the parent identities both holders confirmed. The pedigree, readable from state. */
 export ledger parentsOf: Map<Bytes<32>, Set<Bytes<32>>>;
+/**
+ * Identities that are a confirmed parent of something. Their own parents are then fixed:
+ * an ancestor cannot change the pedigree of material already descended from it (adding a
+ * loop or an unrecognised root used to fail every descendant's check, permanently), and
+ * no cycle can ever form, since the edge that closed one would give a parent a new parent.
+ */
+export ledger hasOffspring: Set<Bytes<32>>;
 /** obligationKey(record identity, obligation, beneficiary identity), proposed. */
 export ledger pendingObligations: Set<Bytes<32>>;
 /** obligationKey(...), in force. */
@@ -311,13 +325,20 @@ export circuit rotateRecordSecret(newRecordCommitment: Bytes<32>): Bytes<32> {
 
 /**
  * Move an identity with its recovery secret, whoever holds the current head, including
- * a thief. Whoever holds the recovery secret controls the record.
+ * a thief. Whoever holds the recovery secret controls the record. The recovery secret is
+ * used up: the same call installs a new recovery commitment, because the old secret has
+ * just been typed into a machine that may be the one the record secret was stolen from.
  */
-export circuit recoverRecordSecret(recordCommitment: Bytes<32>, newRecordCommitment: Bytes<32>): [] {
+export circuit recoverRecordSecret(recordCommitment: Bytes<32>, newRecordCommitment: Bytes<32>,
+                                   newRecoveryCommitment: Bytes<32>): [] {
   const origin = disclose(recordCommitment);
   assert(recoveryOf.member(origin), "Recovery is only for an anchored origin record");
-  assert(recoveryOf.lookup(origin) == recoveryCommit(recoverySecret()),
-         "That is not the recovery secret for this record");
+  const current = recoveryOf.lookup(origin);
+  assert(current == recoveryCommit(recoverySecret()), "That is not the recovery secret for this record");
+  const nextRecovery = disclose(newRecoveryCommitment);
+  assertUsableRecovery(nextRecovery);
+  assert(nextRecovery != current, "A recovery must install a new recovery commitment");
+  recoveryOf.insert(origin, nextRecovery);
   const fresh = disclose(newRecordCommitment);
   assert(fresh == commit(incomingGeneticSecret()), "You must hold the secret behind the new commitment");
   assertUnused(fresh);
@@ -485,6 +506,7 @@ export circuit proveLicense(): [] {
   assert(activeLicenses.checkRoot(root), "No live licence for that secret, or the path is stale");
   presentationSeq.increment(1);
   lastPresentationRoot = root;
+  lastPresentationUnsealed = unsealedChanges;
   lastPresentation = disclose(presentationTag(record, challenge));
 }
 
@@ -495,6 +517,7 @@ export circuit proposeParent(parentRecord: Bytes<32>): [] {
   const c = myIdentity();
   const p = anchoredIdentity(disclose(parentRecord));
   assert(c != p, "A record is not its own parent");
+  assert(!hasOffspring.member(c), "This record already has confirmed offspring; its parents are fixed");
   assert(!pendingParentOf.member(c), "This record already has a parentage proposal outstanding");
   assert(!(parentsOf.member(c) && parentsOf.lookup(c).member(p)), "That parentage is already confirmed");
   pendingParentOf.insert(c, p);
@@ -506,11 +529,13 @@ export circuit confirmParent(childRecord: Bytes<32>): [] {
   const c = anchoredIdentity(disclose(childRecord));
   assert(pendingParentOf.member(c), "No parentage proposed for that record");
   assert(pendingParentOf.lookup(c) == p, "You are not the parent proposed for this record");
+  assert(!hasOffspring.member(c), "That record already has confirmed offspring; its parents are fixed");
   pendingParentOf.remove(c);
   if (!parentsOf.member(c)) {
     parentsOf.insert(c, default<Set<Bytes<32>>>);
   }
   parentsOf.lookup(c).insert(p);
+  hasOffspring.insert(p);
   descentSeq.increment(1);
   lastDescentChild = c;
   lastDescentParent = p;

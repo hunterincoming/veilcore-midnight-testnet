@@ -30,6 +30,7 @@ await refuses('a failed transaction', call({ transactionResult: { status: 'FAILU
 await refuses('a partly failed transaction', call({ transactionResult: { status: 'PARTIAL_SUCCESS' } }), 'did not succeed');
 await refuses('a look-alike contract', call({ contractActions: [{ address: THEIRS, state: STATE, entryPoint: 'proveLicense' }] }), 'not a single licence presentation');
 await refuses('a later transaction (a seal)', call({ contractActions: [{ address: OURS, state: STATE, entryPoint: 'sealRevocations' }] }), 'not a single licence presentation');
+await refuses('a presentation bundled with a seal', call({ contractActions: [{ address: OURS, state: STATE, entryPoint: 'proveLicense' }, { address: OURS, state: STATE, entryPoint: 'sealRevocations' }] }), 'not a single licence presentation');
 await refuses('two presentations in one transaction', call({ contractActions: [{ address: OURS, state: STATE, entryPoint: 'proveLicense' }, { address: OURS, state: STATE, entryPoint: 'proveLicense' }] }), 'not a single licence presentation');
 await assert.rejects(() => presentationState('http://indexer', OURS, 'not-hex'), /not a transaction id/);
 console.log('refused, as it should be: a malformed id\n\nall lookup checks pass');

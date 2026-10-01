@@ -120,6 +120,7 @@ export const runSmoke = async (providers: VeilcoreProviders, logger: Logger, ind
       (await vc.currentLedger()).parentsOf.lookup(G).member(B),
       'descent: both agreed; the edge is between identities',
     );
+    await refused('the breeder changing its own parents once it has offspring', () => vc.proposeParent(G));
 
     const royalty = randomBytes(32);
     await vc.encumberOwnRecord(royalty);
@@ -129,7 +130,10 @@ export const runSmoke = async (providers: VeilcoreProviders, logger: Logger, ind
 
     // Recovery, with the breeder's current secret treated as stolen: the owner still releases.
     const recovered = randomBytes(32);
-    await vc.recoverRecordSecret(B, C.commit(recovered), recovery, recovered);
+    await vc.recoverRecordSecret(B, C.commit(recovered), C.recoveryCommit(randomBytes(32)), recovery, recovered);
+    await refused('the used-up recovery secret recovering again', () =>
+      vc.recoverRecordSecret(B, C.commit(stranger), C.recoveryCommit(randomBytes(32)), recovery, stranger),
+    );
     await vc.actAs(next);
     await refused('the stolen secret releasing the royalty after recovery', () => vc.discharge(B, royalty));
     await vc.actAs(recovered);

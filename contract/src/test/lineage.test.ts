@@ -10,6 +10,7 @@ import {
   as,
   hex,
   secret,
+  freshRecovery,
 } from "./veilcore-simulator.js";
 import {
   checkLineage,
@@ -157,6 +158,7 @@ describe("obligations survive rotation and recovery (independent review, must-fi
       "recoverRecordSecret",
       Br,
       C.commit(NEW),
+      freshRecovery(),
     );
     sim.call(as(NEW), "discharge", Br, ROYALTY);
     expect(owes(Br)).toBe(0n);
@@ -183,6 +185,7 @@ describe("obligations survive rotation and recovery (independent review, must-fi
       "recoverRecordSecret",
       Br,
       C.commit(secret("b3")),
+      freshRecovery(),
     );
     expect(() => sim.call(as(T), "discharge", Br, ROYALTY)).toThrow(
       "rotated or recovered",
@@ -266,8 +269,8 @@ describe("the verifier's walk (verify.ts)", () => {
   it("finds an encumbered grandparent the seller did not mention (omission)", () => {
     const GP = secret("grandparent");
     anchor(GP);
+    link(BREEDER, GP); // oldest first: a record's parents are fixed once it has offspring
     link(GROWER, BREEDER);
-    link(BREEDER, GP);
     sim.call(as(GP), "encumberOwnRecord", ROYALTY);
     const report = checkLineage(sim.state, G);
     expect(report.clean).toBe(false);
@@ -283,9 +286,8 @@ describe("the verifier's walk (verify.ts)", () => {
     expect(report.roots.map(hex)).toEqual([hex(Br)]);
   });
 
-  it("walks from any commitment of the identity, and survives cycles", () => {
+  it("walks from any commitment of the identity", () => {
     link(GROWER, BREEDER);
-    link(BREEDER, GROWER);
     const G2 = secret("grower-2");
     rotate(GROWER, G2);
     const report = checkLineage(sim.state, C.commit(G2));
@@ -353,6 +355,7 @@ describe("known limit: what a thief does with a stolen secret before recovery st
       "recoverRecordSecret",
       Br,
       C.commit(NEW),
+      freshRecovery(),
     );
     expect(owes(Br)).toBe(1n);
     expect(() => sim.call(as(NEW), "discharge", Br, FAKE)).toThrow(
@@ -367,13 +370,64 @@ describe("the verifier's walk: cycles, the record itself, and recognised roots",
     sim.call(as(parent), "confirmParent", C.commit(child));
   };
 
-  it("flags a pedigree that loops, which has no root to check", () => {
-    link(GROWER, BREEDER);
+  it("no loop can form: the edge that would close one gives a parent a new parent", () => {
     link(BREEDER, COMPETITOR);
-    link(COMPETITOR, BREEDER);
-    const r = checkLineage(sim.state, G, [Br, Co]);
+    link(GROWER, BREEDER);
+    // COMPETITOR is now a parent, so its own parents are fixed.
+    expect(() => sim.call(as(COMPETITOR), "proposeParent", G)).toThrow(
+      "parents are fixed",
+    );
+    expect(() => sim.call(as(BREEDER), "proposeParent", G)).toThrow(
+      "parents are fixed",
+    );
+    const r = checkLineage(sim.state, G, [Co]);
+    expect(r.cyclic).toBe(false);
+    expect(r.accepted).toBe(true);
+  });
+
+  it("an ancestor cannot change the pedigree of material already descended from it", () => {
+    link(GROWER, BREEDER);
+    const junk = secret("junk-root");
+    anchor(junk);
+    expect(() =>
+      sim.call(as(BREEDER), "proposeParent", C.commit(junk)),
+    ).toThrow("parents are fixed");
+    expect(checkLineage(sim.state, G, [Br]).accepted).toBe(true);
+  });
+
+  it("a parent's proposal made before it had offspring cannot be confirmed after", () => {
+    const GP = secret("late-grandparent");
+    anchor(GP);
+    sim.call(as(BREEDER), "proposeParent", C.commit(GP));
+    link(GROWER, BREEDER);
+    expect(() => sim.call(as(GP), "confirmParent", Br)).toThrow(
+      "parents are fixed",
+    );
+  });
+
+  it("the walk itself still refuses a loop if one is ever handed to it", () => {
+    // A stub ledger with a two-node loop, as a buggy or hostile indexer might report.
+    const a = secret("loop-a"),
+      b = secret("loop-b");
+    const sets: Record<string, Uint8Array[]> = { [hex(a)]: [b], [hex(b)]: [a] };
+    const none = {
+      member: () => false,
+      lookup: () => {
+        throw new Error("absent");
+      },
+    };
+    const stub = {
+      originOf: none,
+      headOf: none,
+      recoveryOf: { member: () => true },
+      obligationCountOf: none,
+      parentsOf: {
+        member: (k: Uint8Array) => hex(k) in sets,
+        lookup: (k: Uint8Array) => sets[hex(k)],
+      },
+    } as unknown as Parameters<typeof checkLineage>[0];
+    const r = checkLineage(stub, a, [a, b]);
     expect(r.cyclic).toBe(true);
-    expect(r.roots).toEqual([]);
     expect(r.accepted).toBe(false);
   });
 
@@ -405,10 +459,10 @@ describe("the verifier's walk: shared ancestors and founding records (third revi
   it("a backcross (two lines sharing an ancestor) is not a cycle", () => {
     const R = secret("root-mother");
     anchor(R);
-    link(GROWER, BREEDER);
-    link(GROWER, COMPETITOR); // a cross: two parents
     link(BREEDER, R);
     link(COMPETITOR, R); // both descend from R
+    link(GROWER, BREEDER);
+    link(GROWER, COMPETITOR); // a cross: two parents
     const r = checkLineage(sim.state, G, [C.commit(R)]);
     expect(r.cyclic).toBe(false);
     expect(r.roots.map(hex)).toEqual([hex(C.commit(R))]);

@@ -72,10 +72,11 @@ cd ../bboard-ui && npm run build
 It covers records, licences and lineage in 24 circuits. The design, the normative
 verifier rules and the trust model are in [`docs/design.md`](docs/design.md).
 
-It has been through eight adversarial passes: one by an outside developer in August, and
-seven on 29 and 30 September 2026, six of them by reviewers who had not seen the fixes. Every finding was first confirmed as a
-working attack, then fixed, and each attack is a regression test
-(`cd contract && npm test`). The history is in
+It has been through nine adversarial passes: one by an outside developer in August,
+seven on 29 and 30 September 2026, six of them by reviewers who had not seen the fixes,
+and on 1 October a round of four independent attackers, one per area. Every finding was
+first confirmed as a working attack, then fixed or written up as a known limit, and each
+attack is a regression test (`cd contract && npm test`). The history is in
 [`docs/security-pass-30sep.md`](docs/security-pass-30sep.md). These were adversarial
 reviews, not a formal security audit, and we do not call them one.
 

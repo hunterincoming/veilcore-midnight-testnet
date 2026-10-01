@@ -223,11 +223,14 @@ const mainLoop = async (
           case '1': {
             // A recovery secret is chosen now or never: by the time a holder needs one, they
             // no longer hold the secret that would authorise adding it.
+            // Shown BEFORE the anchor is sent: if the call failed after landing, a secret
+            // shown afterwards would be lost, and the commitment can never be replaced.
             const recovery = randomBytes(32);
-            tx(await api.anchor(C.recoveryCommit(recovery)));
-            logger.info(`Anchored record: ${toHex(C.commit(await mySecret(providers)))}`);
             showSecret('RECOVERY SECRET — SAVE THIS NOW, IT IS NOT STORED AND NOT SHOWN AGAIN:', toHex(recovery));
             logger.info('It moves this record even if the record secret is lost OR STOLEN. Keep it offline.');
+            await rli.question('Press Enter once it is stored, to anchor. ');
+            tx(await api.anchor(C.recoveryCommit(recovery)));
+            logger.info(`Anchored record: ${toHex(C.commit(await mySecret(providers)))}`);
             break;
           }
           case '2': {
@@ -255,10 +258,16 @@ const mainLoop = async (
             const origin = await ask32(rli, 'ORIGINAL anchored record (hex): ');
             const recovery = await ask32(rli, 'Recovery secret (hex): ');
             const next = randomBytes(32);
+            const nextRecovery = randomBytes(32);
             showSecret('YOUR NEW RECORD SECRET — store it now, before the recovery is sent:', toHex(next));
-            await rli.question('Press Enter once it is stored. ');
-            tx(await api.recoverRecordSecret(origin, C.commit(next), recovery, next));
+            showSecret(
+              'YOUR NEW RECOVERY SECRET — the old one stops working with this recovery. Store it OFFLINE now:',
+              toHex(nextRecovery),
+            );
+            await rli.question('Press Enter once BOTH are stored. ');
+            tx(await api.recoverRecordSecret(origin, C.commit(next), C.recoveryCommit(nextRecovery), recovery, next));
             logger.info('Recovered. Whoever held an earlier secret, including a thief, can no longer act from now on.');
+            logger.info('The recovery secret you typed in is used up; only the new one works.');
             logger.info(
               'What they did before this (licences revoked, obligations accepted) stands. See design.md, Known limits.',
             );

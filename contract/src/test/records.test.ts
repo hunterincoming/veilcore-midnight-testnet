@@ -9,6 +9,7 @@ import {
   as,
   hex,
   secret,
+  freshRecovery,
 } from "./veilcore-simulator.js";
 
 const A = secret("breeder-A"),
@@ -151,6 +152,46 @@ describe("rotation", () => {
 });
 
 describe("recovery", () => {
+  it("uses up the recovery secret: whoever saw it during a recovery cannot recover again", () => {
+    // Attack round, 1 Oct: the recovery secret used to stay valid, so a thief who saw it
+    // typed in could recover the identity back and lock the owner out.
+    anchorA();
+    const NEXT = secret("next-recovery");
+    sim.call(
+      as(secret("nothing"), { incoming: Cs, recovery: RECOVERY }),
+      "recoverRecordSecret",
+      A_REC,
+      C_REC,
+      C.recoveryCommit(NEXT),
+    );
+    expect(() =>
+      sim.call(
+        as(secret("thief-2"), { incoming: THIEF, recovery: RECOVERY }),
+        "recoverRecordSecret",
+        A_REC,
+        C.commit(THIEF),
+        C.recoveryCommit(secret("thief-recovery")),
+      ),
+    ).toThrow("not the recovery secret");
+    expect(() =>
+      sim.call(
+        as(secret("n"), { incoming: D, recovery: NEXT }),
+        "recoverRecordSecret",
+        A_REC,
+        D_REC,
+        C.recoveryCommit(NEXT),
+      ),
+    ).toThrow("new recovery commitment");
+    sim.call(
+      as(secret("n"), { incoming: D, recovery: NEXT }),
+      "recoverRecordSecret",
+      A_REC,
+      D_REC,
+      freshRecovery(),
+    );
+    expect(hex(sim.state.headOf.lookup(A_REC))).toBe(hex(D_REC));
+  });
+
   it("beats a thief who rotated first", () => {
     anchorA();
     sim.call(as(A, { incoming: THIEF }), "rotateRecordSecret", C.commit(THIEF));
@@ -159,6 +200,7 @@ describe("recovery", () => {
       "recoverRecordSecret",
       A_REC,
       C_REC,
+      freshRecovery(),
     );
     expect(hex(sim.state.headOf.lookup(A_REC))).toBe(hex(C_REC));
     expect(() => sim.call(as(THIEF), "proveOwnership")).toThrow(
@@ -175,6 +217,7 @@ describe("recovery", () => {
       "recoverRecordSecret",
       A_REC,
       C_REC,
+      freshRecovery(),
     );
     expect(() => sim.call(as(B), "proveOwnership")).toThrow(
       "rotated or recovered",
@@ -189,6 +232,7 @@ describe("recovery", () => {
         "recoverRecordSecret",
         A_REC,
         C_REC,
+        freshRecovery(),
       ),
     ).toThrow("not the recovery secret");
     expect(() =>
@@ -197,6 +241,7 @@ describe("recovery", () => {
         "recoverRecordSecret",
         A_REC,
         C_REC,
+        freshRecovery(),
       ),
     ).toThrow("not the recovery secret");
     sim.call(as(A, { incoming: B }), "rotateRecordSecret", B_REC);
@@ -206,6 +251,7 @@ describe("recovery", () => {
         "recoverRecordSecret",
         B_REC,
         C_REC,
+        freshRecovery(),
       ),
     ).toThrow("only for an anchored origin");
   });
@@ -233,6 +279,7 @@ describe("recovery", () => {
         "recoverRecordSecret",
         A_REC,
         C_REC,
+        freshRecovery(),
       ),
     ).toThrow();
     sim.call(
@@ -240,6 +287,7 @@ describe("recovery", () => {
       "recoverRecordSecret",
       A_REC,
       C_REC,
+      freshRecovery(),
     );
   });
 
@@ -254,6 +302,7 @@ describe("recovery", () => {
       "recoverRecordSecret",
       A_REC,
       C.commit(NEW),
+      freshRecovery(),
     );
     sim.call(as(T1, { incoming: T2 }), "rotateRecordSecret", C.commit(T2));
     sim.land(recovery);

@@ -3,10 +3,13 @@
  * Find the state a verifier judges a licence presentation on (design.md, rule 5).
  *
  * The licensee hands over a transaction id. It is not trusted: the transaction must
- * exist, have succeeded, and contain exactly one call to `proveLicense` on THIS
- * contract. Anything else (a later transaction such as a seal, a call on a look-alike
- * contract, a failed call) is refused. The state returned is the one right after that
- * call, as the indexer recorded it.
+ * exist, have succeeded, and contain exactly one call on THIS contract, and that call
+ * must be `proveLicense`. Anything else (a seal or any other call bundled with it, a
+ * later transaction, a call on a look-alike contract, a failed call) is refused. The
+ * state returned is the one the indexer recorded for that call.
+ *
+ * The indexer is trusted for what it reports (design.md, trust model). For a decision
+ * that matters, ask a second indexer or your own node and compare.
  */
 import { ContractState } from '@midnight-ntwrk/midnight-js-protocol/compact-runtime';
 import * as Veilcore from '../../contract/src/managed/veilcore/contract/index.js';
@@ -46,13 +49,13 @@ export const presentationState = async (
   const tx = (body.data?.transactions ?? []).find((t) => (t.identifiers ?? []).map(norm).includes(norm(txId)));
   if (tx === undefined) throw new Error('No such transaction.');
   if (tx.transactionResult?.status !== 'SUCCESS') throw new Error('That transaction did not succeed.');
+  // Every action on this contract, whatever it is: a presentation bundled with anything
+  // else (a seal above all) is refused outright, so the verdict never depends on which
+  // point in the transaction the indexer's state describes.
   const calls = (tx.contractActions ?? []).filter(
-    (a) =>
-      a.address !== undefined &&
-      norm(a.address) === norm(contractAddress) &&
-      PROVE_LICENSE.has(norm(a.entryPoint ?? '')),
+    (a) => a.address !== undefined && norm(a.address) === norm(contractAddress),
   );
-  if (calls.length !== 1 || calls[0].state === undefined) {
+  if (calls.length !== 1 || !PROVE_LICENSE.has(norm(calls[0].entryPoint ?? '')) || calls[0].state === undefined) {
     throw new Error('That transaction is not a single licence presentation on this contract.');
   }
   return Veilcore.ledger(ContractState.deserialize(Uint8Array.from(Buffer.from(norm(calls[0].state), 'hex'))).data);

@@ -21,7 +21,8 @@ VeilCore is one Midnight contract, `contract/src/veilcore.compact`, that records
    restrictions) that the record's holder accepted and only the beneficiary can release.
 
 Everything is keyed by **identity**, so it survives a holder changing or losing their
-key. A verifier checks all of it from chain state alone (`contract/src/verify.ts`).
+key. A verifier checks all of it from chain state alone (`contract/src/verify.ts`), read
+through an indexer it trusts (see Trust model).
 
 ## Constraints
 
@@ -75,6 +76,9 @@ A record secret is 32 random bytes held by the record's holder. Its commitment i
 - **Recovery writes the new head without reading the old one.** A thief holding the
   current secret cannot block it by rotating again. Whoever holds the recovery secret
   controls the identity, so it belongs offline. There is no waiting period.
+- **A recovery uses up the recovery secret.** The same call installs a new recovery
+  commitment, so a secret typed into a possibly compromised machine to recover cannot be
+  used again by whoever saw it there.
 
 Licence authority, parentage and obligations are keyed by identity, so they survive any
 number of rotations and recoveries, and a retired secret controls nothing.
@@ -121,11 +125,16 @@ once the block time is at least 600 seconds (`SEAL_INTERVAL`) past the previous 
 `bound`. `bound` must be ahead of the block time by at most 300 seconds, so two seals are
 always at least 600 seconds of block time apart.
 
-Why not drop old roots on every revocation, as version 0 did: then anyone could revoke
-a throwaway licence of their own each block and cancel every presentation in flight.
-With sealing, that costs a presentation at most one re-proof per 600 seconds, and only
-if the tree changed since it was proved. The client seals straight after a revocation or
-transfer when allowed, and otherwise reports when it can.
+Why not drop old roots on every revocation, as version 0 did: then on chain anyone
+could revoke a throwaway licence of their own each block and make every older path
+fail. Sealing limits that on chain. It does not stop a griefer from costing honest
+licensees re-proofs: a presentation records whether a revocation was waiting when it was
+proved, so a revocation landing before it sends it back, and while one is waiting, a
+verifier following rule 5 refuses a presentation whose root has since moved on. That is
+a cost in re-proofs, paid in fees by the griefer too, never a wrong answer. A verifier
+that wants to accept more can check the presentation's root against every root since
+the last revocation or transfer, from the indexer's history. The client seals straight
+after a revocation or transfer when allowed, and otherwise reports when it can.
 
 A leaf names its issuer, so a transfer cannot forge a licence from another issuer, and
 a commitment cannot be live twice under one issuer.
@@ -138,6 +147,11 @@ edge is recorded between identities in `parentsOf`, so the pedigree is readable 
 state. An edge means both holders said so, not that the child is biologically
 descended. The DNA pairing narrows that; it does not close it.
 
+**A record's parents are fixed once it has confirmed offspring** (`hasOffspring`). An
+ancestor therefore cannot change the pedigree of material already descended from it,
+and no cycle can form: the edge that would close one gives a parent a new parent.
+Record a line oldest first.
+
 **Obligations.** An obligation is `obligationKey(record identity, obligation commitment,
 beneficiary identity)`. The obligation commitment is a hash of the terms, kept off chain.
 - A beneficiary proposes (`proposeObligation`); it binds nobody until the holder accepts
@@ -146,8 +160,12 @@ beneficiary identity)`. The obligation commitment is a hash of the terms, kept o
   example a breeder marking a licensed mother.
 - **Only the beneficiary's current head can release it** (`discharge`). After recovery,
   a thief holding an old secret cannot.
-- The holder can reject a proposal (`rejectObligation`), so proposals cannot pile up
-  against a record.
+- The holder can reject a proposal (`rejectObligation`). Anyone anchored can file
+  proposals against any record, at a fee each; they bind nothing, and clearing them
+  costs the holder a transaction each.
+- **Obligations follow material down, including ones added later.** An obligation an
+  ancestor's holder accepts after a descendant was linked shows on the descendant's
+  lineage too, until its beneficiary releases it.
 - `obligationCountOf(identity)` counts obligations in force. It is a `Counter`, so
   concurrent accepts and discharges on one record commute rather than failing each other.
 
@@ -166,23 +184,28 @@ exercise each one.
    identity, not the commitment presented (`identityOf`, `isLive`, `commitmentsOf`).
 2. **Walk the pedigree yourself.** Start from the record's identity and follow
    `parentsOf` upward. Never accept a pedigree from the party it benefits.
-3. **Clean means nothing owes.** A lineage is clean when neither the record's identity
-   nor any ancestor has `obligationCountOf > 0` (`checkLineage().clean`).
+3. **Clean means nothing owes.** A lineage is clean when the record is anchored and
+   neither its identity nor any ancestor has `obligationCountOf > 0`
+   (`checkLineage().clean`). A commitment the chain has never seen is not clean.
 4. **Clean is not complete.** Accept a lineage only if it is clean, has no cycle, and
    every root (ancestor with no confirmed parent) is an identity you recognise as the
    start of a line (`checkLineage(ledger, record, recognisedRoots).accepted`). Anyone can
-   anchor fresh material with no history, and a cycle has no root to check.
+   anchor fresh material with no history. The contract makes cycles impossible; the walk
+   refuses one anyway, in case an indexer reports one.
 5. **Presentations.** Send the licensee a fresh 32-byte random challenge, privately, and
-   use it once. The licensee gives you the presentation's transaction id. Check that it
-   is a successful transaction containing exactly one `proveLicense` call **on this
-   contract's address** (not a later transaction, not a look-alike contract). Read the
-   contract state **recorded for that call** (not later: a seal landing after it would
-   hide a revocation) and accept only if:
+   use it once: keep the challenges you issued, when, and whether each was used, and
+   refuse a presentation that landed before you issued its challenge. The licensee gives
+   you the presentation's transaction id. Check that it is a successful transaction whose
+   only call **on this contract's address** is one `proveLicense` (no seal or anything
+   else bundled with it, not a later transaction, not a look-alike contract). Read the
+   contract state recorded for that call and accept only if:
    - its `lastPresentation` equals `presentationTag(c, challenge)` for some commitment
      `c` of the issuing identity (a licence issued after a rotation is tagged under the
      successor). Never take the tag from the licensee, who can compute any tag; and
    - its `lastPresentationRoot` is the licence tree's current root in that state, or
-     `unsealedChanges` is false in it.
+     its `lastPresentationUnsealed` is false: no revocation was waiting when the
+     presentation was proved. Never use the live `unsealedChanges` for this; a seal
+     clears it without making an older root any safer.
 
    (`acceptPresentation`; `presentationState` in `api/src/presentation-lookup.ts` does
    the lookup, and `VeilcoreAPI.checkPresentation` both.) It proves that someone holding
@@ -205,6 +228,10 @@ exercise each one.
 - **Record contents are the holder's assertion.** The chain proves when a claim was made
   and that it has not changed, not that the genetics are what the holder says.
 - **Participation is voluntary.** A market-access filter, not enforcement.
+- **The indexer is trusted for what it reports.** Verifiers read chain state through an
+  indexer (Blockfrost for mainnet). A wrong or compromised indexer can report any state:
+  make a presentation pass, or a lineage look clean. For a decision that matters, ask a
+  second indexer or your own node and compare.
 - **The VeilCore registry service is not the source of truth.** It stores records and
   answers lineage queries for the website, attested by VeilCore, not by the chain. Its
   lineage responses are labelled that way. Anything a decision rests on is checked
@@ -214,7 +241,8 @@ exercise each one.
 
 midnight-js always installs a maintenance authority on deployment. It can add and remove
 verifier keys, so it can repair or disable any circuit, and a key for a new circuit could
-rewrite state: whoever holds it controls the contract. VeilCore keeps it for launch, held offline by the deployer, and
+rewrite state: whoever holds it controls the contract. VeilCore keeps it for launch, held offline by the deployer (the client shows it before
+deploying and removes it from the local store afterwards), and
 will retire it on a date published in the deployment record, using
 `retireMaintenanceAuthority` (api/src/maintenance.ts). Until then, holders should treat
 the circuit set as changeable by VeilCore.
@@ -240,9 +268,17 @@ the circuit set as changeable by VeilCore.
   following rule 5 does not accept such a presentation.
 - **Record commitments are stable pseudonyms.** Actions under one record link to each
   other.
-- **Licences issued by a thief** before recovery stay PENDING under the identity. The
-  owner learns their commitments when they are countersigned (`lastActivatedLicense`)
-  and can revoke them then.
+- **Licences issued by a thief** before recovery stay PENDING under the identity, and
+  the owner cannot revoke what it does not know. The thief can activate one later and
+  present it straight away, and a verifier asking about the identity accepts it. The
+  owner learns its commitment when it is countersigned (`lastActivatedLicense`) and can
+  revoke it then.
+- **A presentation names the issuer, not the licence.** Any live licence against a
+  record passes a check about that record, including one the issuer granted itself.
+  Issue licences on different terms from different records if verifiers must tell them
+  apart.
+- **Rotation does not unlink.** Rotation and recovery publish the old and new commitment;
+  a holder who rotates keeps the same, linked identity.
 - **An edge whose parent has no holder** (a landrace, a lapsed breeder) can never be
   confirmed. Such pedigrees stop there (rule 4).
 
@@ -259,6 +295,7 @@ compiled contract, in the style of Midnight's examples (`veilcore-simulator.ts`)
 | `licences.test.ts` | Lifecycle, forgery through transfer, squatting, starvation of revocation, sealing and its rate limit, slot contention |
 | `lineage.test.ts` | Consent, release by beneficiary only, survival across rotation and recovery, identity merging, the verifier walk |
 | `interface.test.ts` | Published vectors, protocol version, the circuit list, no secret or caller record as an argument |
+| `attack-*.test.ts` | The 1 October attack round, one file per area. What held up passes; the attacks the fixes now block are kept as `it.fails`, so each still runs and must still fail |
 
 The contention tests prove a call against one state and land its public transcript on a
 later one with the on-chain runtime (`prove` / `land`). That is what happens when other

@@ -323,3 +323,31 @@ in the contract. Findings and fixes:
 | M2 | The midnight-js `txId` stream ignores the contract address, so a look-alike contract's state could be read. | Replaced with a direct indexer query that checks status, contract address and entry point, with a timeout (`api/src/presentation-lookup.ts`). Tested against a fake indexer for each impostor case; the preprod smoke test checks it for real. |
 | S1 | The lineage walk was recursive and overflowed on very long pedigrees. | Iterative, with an explicit stack. |
 | P1 | `lastPresentationRoot` hints when the licensee fetched their path. | Stated in rule 5. |
+
+
+---
+
+# Round 8: four independent attackers, one per area (1 Oct, morning)
+
+Licences, lineage, identity and recovery, and the verifier and client, each attacked by a
+reviewer who had seen none of the earlier rounds and was asked to prove every finding
+with a test. Their tests are `contract/src/test/attack-*.test.ts`.
+
+| Severity | Finding | Fix |
+|---|---|---|
+| HIGH | A revoked licensee could put a stale `proveLicense` and a `sealRevocations` in one transaction; a verifier reading state after the whole transaction saw no revocation waiting and accepted. | `proveLicense` records `lastPresentationUnsealed` at proof time and the verifier reads that, never the live flag. The lookup refuses a presentation bundled with any other call on the contract. |
+| MEDIUM | A recovery secret stayed valid after use; anyone who saw it typed in could recover the identity back and replace it, locking the owner out. | `recoverRecordSecret` installs a new recovery commitment in the same call; the client shows the new secret before sending. |
+| MEDIUM | An ancestor could add parents, a loop or an unrecognised root to itself after descendants were linked, failing every descendant's check permanently. | A record's parents are fixed once it has confirmed offspring (`hasOffspring`); cycles can no longer form. |
+| MEDIUM | Griefers can make honest presentations re-prove, more often than the old design note said. | Documented honestly (design.md, Licences). Costs re-proofs, never a wrong answer. |
+| MEDIUM | The recovery secret was shown only after the anchor transaction returned; a failure after landing lost it for good. | Shown, and stored, before the anchor is sent. |
+| MEDIUM | The indexer is a trusted party, and the design said "chain state alone". | Stated in the trust model; compare a second source for decisions that matter. |
+| LOW | The maintenance key stayed in the local signing-key store after deploy. | Removed from the store after deploy. |
+| LOW | `checkLineage` called a never-anchored commitment clean. | Reports `anchored`; clean requires it. |
+| LOW | Challenges were not tracked as used or dated. | Rule 5 now requires it of the verifier. |
+| LOW | The log scrubber missed child bindings, Errors and circular objects. | Secrets are scrubbed from each finished log line. |
+| LOW | A countersign that landed could be reported as failed. | The client checks the licence is active before retrying. |
+| LOW | A thief's pending licences cannot be revoked until activated; obligation proposals can be piled on at the filer's cost; a presentation names the issuer, not the licence; rotation does not unlink. | Known limits, stated in design.md. |
+
+What held up, by test: no licence forgery, no double activation, revocation cannot be
+starved, no identity takeover, fork or merge, obligation counts cannot drift.
+

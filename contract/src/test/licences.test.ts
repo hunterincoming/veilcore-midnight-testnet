@@ -9,6 +9,7 @@ import {
   as,
   hex,
   secret,
+  freshRecovery,
 } from "./veilcore-simulator.js";
 import { LicenseState } from "../managed/veilcore/contract/index.js";
 import { acceptPresentation } from "../verify.js";
@@ -206,6 +207,7 @@ describe("who controls a licence", () => {
       "recoverRecordSecret",
       A_REC,
       C_REC,
+      freshRecovery(),
     );
     expect(() => sim.call(as(THIEF), "revokeLicense", lc, A_REC)).toThrow(
       "rotated or recovered",
@@ -341,18 +343,61 @@ describe("revocation and sealing", () => {
     expect(() => sim.land(revoke)).toThrow();
   });
 
-  it("presentations survive activations and revocations elsewhere; only a seal invalidates them", () => {
+  it("a presentation in flight survives activations elsewhere and is accepted", () => {
+    activeA();
+    const M = secret("spam"),
+      M_REC = C.commit(M);
+    issue(M, secret("spam-lic"));
+    const ch = secret("c");
+    const presentation = sim.withLicence(
+      { secret: L1, record: A_REC, challenge: ch },
+      () => sim.prove(anyone, "proveLicense"),
+    );
+    countersign(secret("spam-lic"), M_REC); // the root moves on
+    sim.land(presentation);
+    expect(acceptPresentation(sim.state, A_REC, ch).accepted).toBe(true);
+  });
+
+  it("a revocation anywhere sends presentations in flight back to be re-proved", () => {
+    // The presentation records whether a revocation was waiting when it was proved, so
+    // a revocation landing first changes what it read. A verifier would refuse it anyway
+    // (older root, revocation waiting), so this costs a re-proof, not a wrong answer.
     activeA();
     const M = secret("spam"),
       M_REC = C.commit(M);
     const spam = issue(M, secret("spam-lic"));
+    countersign(secret("spam-lic"), M_REC);
     const presentation = sim.withLicence(
       { secret: L1, record: A_REC, challenge: secret("c") },
       () => sim.prove(anyone, "proveLicense"),
     );
-    countersign(secret("spam-lic"), M_REC);
-    sim.call(as(M), "revokeLicense", spam, M_REC); // the griefing move that used to cancel it
-    sim.land(presentation);
+    sim.call(as(M), "revokeLicense", spam, M_REC);
+    expect(() => sim.land(presentation)).toThrow();
+    const ch = secret("c2");
+    sim.withLicence({ secret: L1, record: A_REC, challenge: ch }, () =>
+      sim.call(anyone, "proveLicense"),
+    );
+    expect(acceptPresentation(sim.state, A_REC, ch).accepted).toBe(true); // current root
+  });
+
+  it("a revoked licensee gains nothing by landing a seal after a stale presentation", () => {
+    // Attack round, 1 Oct: proveLicense against the pre-revocation root, then a seal in
+    // the same transaction, used to leave unsealedChanges false for the verifier to read.
+    const lc = activeA();
+    const oldPath = sim.pathFor(L1, A_REC); // fetched while the licence was live
+    sim.call(as(A), "revokeLicense", lc, A_REC);
+    untilSealable();
+    const ch = secret("bundle");
+    // The old root is still in history until the seal, so the stale path still proves.
+    sim.withLicence(
+      { secret: L1, record: A_REC, challenge: ch, path: oldPath },
+      () => sim.call(anyone, "proveLicense"),
+    );
+    sim.call(anyone, "sealRevocations", sim.now + 1n); // same transaction, or right after
+    expect(sim.state.unsealedChanges).toBe(false);
+    expect(acceptPresentation(sim.state, A_REC, ch)).toMatchObject({
+      accepted: false,
+    });
   });
 
   it("anyone may seal, only when something is waiting, and never twice within the interval of block time", () => {
@@ -390,36 +435,40 @@ describe("revocation and sealing", () => {
     sim.call(anyone, "sealRevocations", sim.now + 300n);
   });
 
-  it("a griefer can cancel in-flight presentations at most once per interval", () => {
+  it("griefing costs honest licensees re-proofs, never a wrong answer (known limit)", () => {
     activeA();
     const M = secret("griefer"),
       M_REC = C.commit(M);
     const grief = (): void => {
-      const x = secret(`g-${sim.now}`);
+      const x = secret(`g-${sim.now}-${Math.random()}`);
       const lc = issue(M, x);
       countersign(x, M_REC);
       sim.call(as(M), "revokeLicense", lc, M_REC);
     };
-    const inFlight = (): ReturnType<VeilcoreSimulator["prove"]> =>
-      sim.withLicence(
-        { secret: L1, record: A_REC, challenge: secret(`c-${sim.now}`) },
-        () => sim.prove(anyone, "proveLicense"),
+    const inFlight = (ch: Uint8Array): ReturnType<VeilcoreSimulator["prove"]> =>
+      sim.withLicence({ secret: L1, record: A_REC, challenge: ch }, () =>
+        sim.prove(anyone, "proveLicense"),
       );
 
-    // A seal keeps the current root, so it cancels only presentations proved against an
-    // older one: the griefer must change the tree first, then seal.
-    const p = inFlight();
-    grief();
-    seal();
-    expect(() => sim.land(p)).toThrow(); // cancelled once
-    const q = inFlight();
-    grief();
-    expect(() => seal()).toThrow("Too soon");
-    sim.land(q); // not again within the interval
+    const p = inFlight(secret("p"));
+    grief(); // nothing was waiting: the revocation changes what p read
+    expect(() => sim.land(p)).toThrow();
+
+    const ch = secret("q");
+    const q = inFlight(ch);
+    const y = secret("g-activation");
+    issue(M, y);
+    countersign(y, M_REC); // a revocation is already waiting: q lands, on a root that is no longer current
+    sim.land(q);
+    expect(acceptPresentation(sim.state, A_REC, ch)).toMatchObject({
+      accepted: false,
+    });
+
     untilSealable();
-    const r = inFlight();
-    seal(); // the tree has not changed since r was proved
-    sim.land(r);
+    seal();
+    const ch2 = secret("r");
+    sim.land(inFlight(ch2)); // nothing changed in between
+    expect(acceptPresentation(sim.state, A_REC, ch2).accepted).toBe(true);
   });
 });
 

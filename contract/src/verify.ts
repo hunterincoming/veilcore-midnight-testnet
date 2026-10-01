@@ -50,6 +50,8 @@ export const openObligations = (ledger: Ledger, record: Uint8Array): bigint => {
 export type LineageReport = {
   /** The identity checked. */
   readonly identity: Uint8Array;
+  /** Whether the chain has ever seen this record anchored. Nothing else here means anything if not. */
+  readonly anchored: boolean;
   /** Every ancestor identity reachable through confirmed parentage. */
   readonly ancestors: readonly Uint8Array[];
   /**
@@ -61,7 +63,10 @@ export type LineageReport = {
   readonly cyclic: boolean;
   /** Rule 3. The record itself, and ancestors, carrying an obligation in force. */
   readonly encumbered: readonly Uint8Array[];
-  /** No obligation in force on the record or any ancestor. Not the same as complete (rule 4). */
+  /**
+   * Anchored, and no obligation in force on the record or any ancestor. Not the same as
+   * complete (rule 4).
+   */
   readonly clean: boolean;
   /** Clean, acyclic, and every root is one the caller recognises. */
   readonly accepted: boolean;
@@ -114,11 +119,13 @@ export const checkLineage = (
     ledger.obligationCountOf.member(id) &&
     ledger.obligationCountOf.lookup(id).read() > 0n;
   const encumbered = [identity, ...ancestors].filter(owes);
-  const clean = encumbered.length === 0;
+  const anchored = isAnchored(ledger, record);
+  const clean = anchored && encumbered.length === 0;
   const known = new Set(recognisedRoots.map((r) => hex(identityOf(ledger, r))));
   const rootsKnown = roots.length > 0 && roots.every((r) => known.has(hex(r)));
   return {
     identity,
+    anchored,
     ancestors,
     roots,
     cyclic,
@@ -139,8 +146,10 @@ export const checkLineage = (
  *
  * The presentation is accepted when the root it proved against is the tree's current
  * root in that state (the leaf was live then, whatever was revoked earlier), or when no
- * revocation was waiting for a seal (so every older root still accepted excludes revoked
- * leaves).
+ * revocation was waiting for a seal AT THE MOMENT IT WAS PROVED (so every older root it
+ * could have used excludes revoked leaves). That flag is the one the presentation itself
+ * recorded, never the live one: a seal landing after it, even in the same transaction,
+ * clears the live flag without making the presentation's root any safer.
  */
 export const acceptPresentation = (
   afterTx: Ledger,
@@ -171,7 +180,7 @@ export const acceptPresentation = (
       reason:
         "a live licence from this issuer, proved against the current root",
     };
-  if (!afterTx.unsealedChanges)
+  if (!afterTx.lastPresentationUnsealed)
     return {
       accepted: true,
       reason: "a live licence from this issuer; no revocation was waiting",

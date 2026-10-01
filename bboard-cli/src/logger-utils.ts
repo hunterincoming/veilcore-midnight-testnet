@@ -19,20 +19,16 @@ import pinoPretty from 'pino-pretty';
 import pino from 'pino';
 import { createWriteStream } from 'node:fs';
 
-/** Replace every occurrence of each secret in a log argument (strings, and objects via JSON). */
-const scrub = (secrets: readonly string[], v: unknown): unknown => {
-  if (secrets.length === 0) return v;
-  const clean = (t: string): string => secrets.reduce((acc, sec) => acc.split(sec).join('[redacted]'), t);
-  if (typeof v === 'string') return clean(v);
-  if (v !== null && typeof v === 'object') {
-    try {
-      return JSON.parse(clean(JSON.stringify(v))) as unknown;
-    } catch {
-      return v;
-    }
-  }
-  return v;
-};
+/**
+ * A destination that replaces every secret in each finished log line before passing it
+ * on. Scrubbing the serialised line, rather than each argument, also covers child
+ * loggers' bindings, Errors and objects that cannot be turned into JSON.
+ */
+const scrubbing = (secrets: readonly string[], target: { write: (line: string) => unknown }) => ({
+  write: (line: string): void => {
+    void target.write(secrets.reduce((acc, sec) => acc.split(sec).join('[redacted]'), line));
+  },
+});
 
 /**
  * A logger for the terminal and a log file. `secrets` (for example an API token carried
@@ -49,19 +45,12 @@ export const createLogger = async (logPath: string, secrets: readonly string[] =
     process.env.DEBUG_LEVEL !== undefined && process.env.DEBUG_LEVEL !== null && process.env.DEBUG_LEVEL !== ''
       ? process.env.DEBUG_LEVEL
       : 'info';
+  const wanted = secrets.filter((x) => x.length > 0);
   return pino(
-    {
-      level,
-      depthLimit: 20,
-      hooks: {
-        logMethod(args, method) {
-          method.apply(this, args.map((a) => scrub(secrets, a)) as Parameters<typeof method>);
-        },
-      },
-    },
+    { level, depthLimit: 20 },
     pino.multistream([
-      { stream: pretty, level },
-      { stream: createWriteStream(logPath), level },
+      { stream: scrubbing(wanted, pretty), level },
+      { stream: scrubbing(wanted, createWriteStream(logPath)), level },
     ]),
   );
 };

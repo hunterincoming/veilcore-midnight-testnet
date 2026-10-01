@@ -7,6 +7,7 @@
 import { createHash } from 'node:crypto';
 import { createInterface, type Interface } from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
+import { Writable } from 'node:stream';
 import { Buffer } from 'node:buffer';
 import { WebSocket } from 'ws';
 import {
@@ -637,7 +638,37 @@ const buildWallet = async (config: Config, rli: Interface, logger: Logger): Prom
  * will wait for Docker to be ready before doing anything else.
  */
 
+/** Reads a line without echoing it, for the password. Uses its own short-lived prompt. */
+const askHidden = async (question: string): Promise<string> => {
+  let muted = false;
+  const quiet = new Writable({
+    write(chunk, _encoding, done) {
+      if (!muted) output.write(chunk);
+      done();
+    },
+  });
+  const r = createInterface({ input, output: quiet, terminal: true });
+  const answer = r.question(question);
+  muted = true;
+  try {
+    return (await answer).trim();
+  } finally {
+    r.close();
+    output.write('\n');
+  }
+};
+
 export const run = async (config: Config, testEnv: TestEnvironment, logger: Logger): Promise<void> => {
+  // Asked for up front, before the chain starts and the wallet syncs, so a missing
+  // password is found in the first second rather than after the sync at deploy time.
+  if (!process.env.VEILCORE_PRIVATE_STATE_PASSWORD) {
+    const typed = await askHidden('Private-state password (paste it, nothing will show, then press Enter): ');
+    if (typed.length < 16) {
+      logger.error(`That was ${typed.length} characters. The password is 16 or more. Nothing was started.`);
+      return;
+    }
+    process.env.VEILCORE_PRIVATE_STATE_PASSWORD = typed;
+  }
   const rli = createInterface({ input, output, terminal: true });
   const providersToBeStopped: MidnightWalletProvider[] = [];
   try {

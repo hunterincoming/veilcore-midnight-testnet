@@ -29,16 +29,18 @@ import { WalletFacade } from '@midnight-ntwrk/wallet-sdk-facade';
 import {
   DustWallet,
   InMemoryTransactionHistoryStorage,
+  PublicKey,
   ShieldedWallet,
   UnshieldedWallet,
   WalletEntrySchema,
+  createKeystore,
   mergeWalletEntries,
 } from '@midnight-ntwrk/wallet-sdk';
 import { WalletStateFile } from './wallet-state';
 import type { Logger } from 'pino';
 
 import { getInitialShieldedState } from './wallet-utils';
-import { type DustWalletOptions, type EnvironmentConfiguration, FluentWalletBuilder } from '@midnight-ntwrk/testkit-js';
+import { type DustWalletOptions, type EnvironmentConfiguration, WalletSeeds } from '@midnight-ntwrk/testkit-js';
 
 type UnshieldedKeystore = {
   getPublicKey(): unknown;
@@ -155,23 +157,26 @@ export class MidnightWalletProvider implements MidnightProvider, WalletProvider 
       additionalFeeOverhead: env.walletNetworkId === 'undeployed' ? 500_000_000_000_000_000n : 1_000n,
       feeBlocksMargin: 5,
     };
-    const base = FluentWalletBuilder.forEnvironment(env).withDustOptions(dustOptions);
-    const builder = mnemonic ? base.withMnemonic(mnemonic) : seed ? base.withSeed(seed) : base.withRandomSeed();
-    const buildResult = await builder.buildWithoutStarting();
-    const { seeds, keystore } = buildResult as unknown as {
-      seeds: { masterSeed: string; shielded: Uint8Array; dust: Uint8Array };
-      keystore: UnshieldedKeystore;
-    };
-    let wallet = buildResult.wallet;
+    // Built here rather than with testkit's FluentWalletBuilder: its WalletFactory logs
+    // "Creating dust wallet with params: {...}" (every endpoint URL, so the Blockfrost
+    // project id) and its withRandomSeed logs the new seed, both through testkit's own
+    // logger, to the terminal and <cwd>/logs/tests, past this CLI's scrubber.
+    // createWallets logs nothing.
+    const seeds = mnemonic
+      ? WalletSeeds.fromMnemonic(mnemonic)
+      : seed
+        ? WalletSeeds.fromMasterSeed(seed)
+        : WalletSeeds.generateRandom();
+    const created = await createWallets(env, seeds, dustOptions);
+    const { config, keystore } = created;
+    let wallet = created.wallet;
 
     // Resume from saved sync progress when there is some for this wallet and network.
     const stateFile = new WalletStateFile(logger, env.walletNetworkId, seeds.masterSeed);
     const saved = await stateFile.load();
     if (saved !== null) {
       try {
-        // The builder's own configuration, so the restored wallet is set up exactly as a
-        // fresh one would be (testkit-js does not expose a restore path itself).
-        const config = (builder as unknown as { config: Record<string, unknown> }).config;
+        // The same configuration as a fresh wallet (testkit-js has no restore path itself).
         const shielded = ShieldedWallet(config as never).restore(saved.shielded);
         const unshielded = UnshieldedWallet({
           ...config,
@@ -220,3 +225,47 @@ export class MidnightWalletProvider implements MidnightProvider, WalletProvider 
     return provider;
   }
 }
+
+/** The wallet configuration testkit derives from an environment (its mapEnvironmentToConfiguration). */
+export const walletConfiguration = (env: EnvironmentConfiguration): Record<string, unknown> => ({
+  indexerClientConnection: { indexerHttpUrl: env.indexer, indexerWsUrl: env.indexerWS },
+  provingServerUrl: new URL(env.proofServer),
+  networkId: env.walletNetworkId,
+  relayURL: new URL(env.nodeWS),
+  txHistoryStorage: new InMemoryTransactionHistoryStorage(WalletEntrySchema, mergeWalletEntries),
+  costParameters: { feeBlocksMargin: 5 },
+});
+
+/**
+ * The three wallets and their facade, not started: what testkit's
+ * FluentWalletBuilder.buildWithoutStarting does, without any of its logging. Nothing
+ * here writes to a logger, the terminal or a file (test: attack-round11-deploy.test.ts).
+ */
+export const createWallets = async (
+  env: EnvironmentConfiguration,
+  seeds: { shielded: Uint8Array; unshielded: Uint8Array; dust: Uint8Array },
+  dustOptions: DustWalletOptions,
+): Promise<{ wallet: WalletFacade; keystore: UnshieldedKeystore; config: Record<string, unknown> }> => {
+  const config = walletConfiguration(env);
+  const keystore = createKeystore(seeds.unshielded, env.walletNetworkId);
+  const shielded = ShieldedWallet(config as never).startWithSeed(seeds.shielded);
+  const unshielded = UnshieldedWallet({
+    ...config,
+    txHistoryStorage: new InMemoryTransactionHistoryStorage(WalletEntrySchema, mergeWalletEntries),
+  } as never).startWithPublicKey(PublicKey.fromKeyStore(keystore));
+  const dust = DustWallet({
+    ...config,
+    costParameters: {
+      ledgerParams: dustOptions.ledgerParams,
+      additionalFeeOverhead: dustOptions.additionalFeeOverhead,
+      feeBlocksMargin: dustOptions.feeBlocksMargin,
+    },
+  } as never).startWithSeed(seeds.dust, LedgerParameters.initialParameters().dust);
+  const wallet = await WalletFacade.init({
+    configuration: config as never,
+    shielded: () => shielded,
+    unshielded: () => unshielded,
+    dust: () => dust,
+  });
+  return { wallet, keystore: keystore as unknown as UnshieldedKeystore, config };
+};

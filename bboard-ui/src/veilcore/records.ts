@@ -4,9 +4,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useSyncExternalStore } from 'react';
-import { store } from './store';
+import { store, type SaveResult } from './store';
 import { sealEnvelope } from './envelope';
-import { holderKey } from './holder';
+import { holderPartyId } from './holder';
+import { reportSave, describeRefusals } from './save-status';
 import { newNonce, fingerprintRecord } from './commitment';
 
 /**
@@ -153,14 +154,32 @@ if (typeof window !== 'undefined') {
   });
 }
 
+/**
+ * Save the whole set and act on what the registry says. A refusal used to be ignored,
+ * so a record the registry never stored stayed on screen as though it had been. On a
+ * refusal the set is reloaded from the registry — the rollback — and the holder is told.
+ */
+const saveAll = async (): Promise<SaveResult> => {
+  const result = await store.save(KEY, records);
+  reportSave('records', result);
+  if (!result.ok && !result.offline) await hydrate();
+  return result;
+};
+
 const persist = () => {
-  void store.save(KEY, records);
+  void saveAll();
   notify();
 };
 
+/**
+ * 128 random bits. Ids were 24 bits (and corrections were the original id plus four
+ * clock characters), so an attacker could store the next id first: the victim's save
+ * was refused for that id and, for a correction, the original ended up pointing at the
+ * attacker's record (attack round 11). Older short ids stay valid; only new ones change.
+ */
 const genId = (): string =>
   'VEIL-' +
-  Array.from(crypto.getRandomValues(new Uint8Array(3)), (b) => b.toString(16).padStart(2, '0'))
+  Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, '0'))
     .join('')
     .toUpperCase();
 
@@ -212,7 +231,7 @@ export const conflictsFor = (dnaFingerprint: string, exceptId: string): StrainRe
 export const exportEnvelope = async (id: string): Promise<void> => {
   const r = getRecord(id);
   if (!r) return;
-  const env = await sealEnvelope(r, holderKey().slice(0, 16));
+  const env = await sealEnvelope(r, await holderPartyId());
   const blob = new Blob([JSON.stringify(env, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -308,13 +327,13 @@ export const issueCorrection = async (
   const draft = {
     ...before,
     ...edits,
-    id: `${before.id}-C${Date.now().toString(36).slice(-4).toUpperCase()}`,
+    id: genId(),
     nonce,
     loggedAt: Date.now(),
     supersededBy: undefined,
   } as StrainRecord;
 
-  const holder = holderKey().slice(0, 16);
+  const holder = await holderPartyId();
   const supersedes = supersedesFor(toEnvelope(before, holder), await sealEnvelope(draft, holder), reason, 'holder');
 
   const corrected: StrainRecord = {
@@ -323,8 +342,23 @@ export const issueCorrection = async (
     supersedes,
   };
 
+  const previous = records;
   records = [corrected, ...records.map((r) => (r.id === originalId ? { ...r, supersededBy: corrected.id } : r))];
-  persist();
   notify();
+
+  // Awaited, not fire-and-forget: a correction only exists once the registry holds both
+  // halves. If it refused either, put everything back as it was — locally and on the
+  // registry — and say why, rather than showing a correction nobody can verify.
+  const result = await store.save(KEY, records);
+  const refusedHere = result.refused.filter((x) => x.id === '*' || x.id === corrected.id || x.id === originalId);
+  if (!result.offline && refusedHere.length) {
+    records = previous;
+    notify();
+    await store.save(KEY, records);
+    await hydrate();
+    throw new Error(`The registry refused this correction, so nothing was changed. ${describeRefusals(refusedHere)}`);
+  }
+  reportSave('records', result);
+  if (!result.ok && !result.offline) await hydrate();
   return corrected;
 };

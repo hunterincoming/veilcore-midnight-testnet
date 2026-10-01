@@ -7,6 +7,7 @@ import { useSyncExternalStore } from 'react';
 import { encumber as encumberRecord, discharge as dischargeRecord } from './lineage';
 import { getRecord } from './records';
 import { store } from './store';
+import { reportSave } from './save-status';
 
 export type LicenseState = 'draft' | 'sent' | 'active' | 'expired' | 'revoked';
 
@@ -106,13 +107,20 @@ const hydrate = async (): Promise<void> => {
 void hydrate();
 
 const persist = () => {
-  void store.save(KEY, licenses);
+  // A refusal is reported and the set reloaded from the registry, rather than left
+  // looking saved (attack round 11).
+  void store.save(KEY, licenses).then((result) => {
+    reportSave('agreements', result);
+    if (!result.ok && !result.offline) void hydrate();
+  });
   notify();
 };
 
+// 128 random bits: a guessable id could be stored first by someone else, and the
+// holder's save of it would then be refused.
 const genId = (): string =>
   'LIC-' +
-  Array.from(crypto.getRandomValues(new Uint8Array(3)), (b) => b.toString(16).padStart(2, '0'))
+  Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, '0'))
     .join('')
     .toUpperCase();
 

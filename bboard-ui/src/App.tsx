@@ -18,6 +18,7 @@ import { TermsBuilder } from './components/licensing/TermsBuilder';
 import { LicenseDetail } from './components/licensing/LicenseDetail';
 import { CounterSignPage } from './components/licensing/CounterSignPage';
 import { LicensingHub } from './components/licensing/LicensingHub';
+import { SaveProblemBar } from './components/SaveProblemBar';
 
 const AppLayout: React.FC<React.PropsWithChildren> = ({ children }) => (
   <Box
@@ -32,6 +33,7 @@ const AppLayout: React.FC<React.PropsWithChildren> = ({ children }) => (
         which is how a lab was told to send its own sample to a lab. */}
     <RolePicker />
     <Container maxWidth="md" sx={{ py: { xs: 3, md: 6 } }}>
+      <SaveProblemBar />
       {children}
     </Container>
     {/* Documents reachable from wherever someone happens to be, rather than only from

@@ -27,3 +27,14 @@ export const holderKey = (): string => {
 export const setHolderKey = (k: string): void => {
   localStorage.setItem(KEY, k.trim());
 };
+
+/**
+ * How this holder is named to anyone else: a one-way hash of the key, the same
+ * derivation the registry uses for party ids (lineage/routes.mjs partyId). Exported
+ * envelopes and corrections used to carry holderKey().slice(0, 16) — 64 bits of the
+ * credential itself, handed to whoever received the file (attack round 11).
+ */
+export const holderPartyId = async (): Promise<string> => {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`veilcore:party:${holderKey()}`));
+  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
+};

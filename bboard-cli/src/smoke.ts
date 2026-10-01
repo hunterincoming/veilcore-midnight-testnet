@@ -17,6 +17,44 @@ import type { VeilcoreProviders } from '../../api/src/veilcore-types.js';
 
 const same = (a: Uint8Array, b: Uint8Array): boolean => toHex(a) === toHex(b);
 
+/** Every message and name in an error and its causes (midnight-js wraps compact-js errors). */
+const errorTexts = (e: unknown): string[] => {
+  const out: string[] = [];
+  const seen = new Set<unknown>();
+  for (let cur: unknown = e; cur !== undefined && cur !== null && !seen.has(cur); ) {
+    seen.add(cur);
+    if (typeof cur === 'object') {
+      const o = cur as { name?: unknown; message?: unknown; _tag?: unknown; cause?: unknown };
+      for (const v of [o.name, o.message, o._tag]) if (typeof v === 'string') out.push(v);
+      cur = o.cause;
+    } else {
+      out.push(typeof cur === 'string' ? cur : typeof cur);
+      break;
+    }
+  }
+  return out;
+};
+
+/**
+ * Whether an error is the CONTRACT refusing a call, as opposed to anything else going
+ * wrong (the proof server down, the indexer unreachable, a timeout, a bug).
+ *
+ * - A Compact `assert` that fails throws compact-runtime's CompactError
+ *   "failed assert: <message>"; midnight-js rethrows it as `new Error(<that message>)`
+ *   (midnight-js-contracts, createUnprovenCallTx). This is how every refusal here shows
+ *   up, since midnight-js runs the circuit locally before proving.
+ * - The licensePath witness throws "No live licence for that secret and record" when the
+ *   licence is not in the tree: the call cannot even be built, which is the refusal.
+ * - A call the chain itself rejected after landing is a CallTxFailedError.
+ */
+export const isContractRefusal = (e: unknown): boolean =>
+  errorTexts(e).some(
+    (t) =>
+      /^failed assert: /.test(t) ||
+      t.includes('No live licence for that secret and record') ||
+      t === 'CallTxFailedError',
+  );
+
 export const runSmoke = async (providers: VeilcoreProviders, logger: Logger, indexerUri: string): Promise<boolean> => {
   let step = 0;
   const pass = (what: string): void => logger.info(`PASS ${++step}. ${what}`);
@@ -24,13 +62,21 @@ export const runSmoke = async (providers: VeilcoreProviders, logger: Logger, ind
     if (!ok) throw new Error(`FAILED at step ${step + 1}: ${what}`);
     pass(what);
   };
-  /** An attack: the network must refuse it. */
-  const refused = async (what: string, attempt: () => Promise<unknown>): Promise<void> => {
+  /**
+   * An attack: the contract must refuse it. Only a refusal counts (isContractRefusal, or
+   * `expected` for a refusal that is not the contract's): a network outage, a proof server
+   * that is down or any other error fails the smoke test instead of passing it.
+   */
+  const refused = async (what: string, attempt: () => Promise<unknown>, expected?: RegExp): Promise<void> => {
     try {
       await attempt();
-    } catch {
-      pass(`refused, as it should be: ${what}`);
-      return;
+    } catch (e) {
+      const ok = expected === undefined ? isContractRefusal(e) : errorTexts(e).some((t) => expected.test(t));
+      if (ok) {
+        pass(`refused, as it should be: ${what}`);
+        return;
+      }
+      throw new Error(`FAILED at step ${step + 1}: ${what} failed, but not as a refusal`, { cause: e });
     }
     throw new Error(`FAILED at step ${step + 1}: the network ACCEPTED ${what}`);
   };
@@ -87,8 +133,10 @@ export const runSmoke = async (providers: VeilcoreProviders, logger: Logger, ind
       !(await vc.checkPresentation(indexerUri, shown.txId, B, newPresentationChallenge())).accepted,
       'and rejects it for any other challenge',
     );
-    await refused('a verifier check pointed at a transaction that is not a presentation', () =>
-      vc.checkPresentation(indexerUri, activation.txId, B, ch),
+    await refused(
+      'a verifier check pointed at a transaction that is not a presentation',
+      () => vc.checkPresentation(indexerUri, activation.txId, B, ch),
+      /^That transaction is not a single licence presentation on this contract\.$/,
     );
 
     const L2 = randomBytes(32);

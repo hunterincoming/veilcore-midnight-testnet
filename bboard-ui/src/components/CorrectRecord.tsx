@@ -53,6 +53,7 @@ export const CorrectRecord: React.FC<{ record: StrainRecord }> = ({ record }) =>
   const [notes, setNotes] = useState(record.notes ?? '');
   const [reason, setReason] = useState('');
   const [preview, setPreview] = useState<CorrectionPreview | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const edited: StrainRecord = {
     ...record,
@@ -72,6 +73,7 @@ export const CorrectRecord: React.FC<{ record: StrainRecord }> = ({ record }) =>
 
   const reset = () => {
     setOpen(false);
+    setError(null);
     setPreview(null);
     setReason('');
     setName(record.strainName);
@@ -161,8 +163,13 @@ export const CorrectRecord: React.FC<{ record: StrainRecord }> = ({ record }) =>
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
                 fullWidth
-                helperText="Recorded with the correction. Anyone checking the record sees it."
+                helperText="Kept with the correction in your records. The public view shows which fields changed, not this reason."
               />
+            )}
+            {error && (
+              <Alert severity="error" variant="outlined">
+                {error}
+              </Alert>
             )}
           </Stack>
         </DialogContent>
@@ -178,14 +185,23 @@ export const CorrectRecord: React.FC<{ record: StrainRecord }> = ({ record }) =>
               disabled={busy || !reason.trim()}
               onClick={async () => {
                 setBusy(true);
-                const corrected = await issueCorrection(
-                  record.id,
-                  { strainName: name, bredBy, breedingMethod: method, notes },
-                  reason.trim(),
-                );
-                setBusy(false);
-                reset();
-                if (corrected) navigate(`/record/${corrected.id}`);
+                setError(null);
+                try {
+                  const corrected = await issueCorrection(
+                    record.id,
+                    { strainName: name, bredBy, breedingMethod: method, notes },
+                    reason.trim(),
+                  );
+                  setBusy(false);
+                  reset();
+                  if (corrected) navigate(`/record/${corrected.id}`);
+                } catch (e) {
+                  // The registry refused it and the app has put everything back. Say so
+                  // here, where the holder is looking, instead of navigating to a
+                  // correction that does not exist.
+                  setBusy(false);
+                  setError(e instanceof Error ? e.message : 'The correction could not be saved.');
+                }
               }}
             >
               Issue correction

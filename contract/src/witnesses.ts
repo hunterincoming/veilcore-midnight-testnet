@@ -53,6 +53,13 @@ export type VeilcorePrivateState = {
    * VERIFIER, 32 random bytes, used once, never published.
    */
   readonly presentationChallenge: Uint8Array;
+  /**
+   * Client bookkeeping, never read by a circuit: licence commitments this party revoked
+   * as an issuer (hex). The contract keeps no record of a revocation, so the client
+   * refuses to re-issue, or approve a transfer to, any of these (VeilcoreAPI). Absent
+   * in private state written before it existed, which reads as none.
+   */
+  readonly revokedLicenses?: readonly string[];
 };
 
 const ZERO32 = (): Uint8Array => new Uint8Array(32);

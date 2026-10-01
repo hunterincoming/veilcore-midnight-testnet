@@ -21,7 +21,7 @@ import {
 } from '@mui/material';
 import SendIcon from '@mui/icons-material/SendOutlined';
 import ContentCopyIcon from '@mui/icons-material/ContentCopyOutlined';
-import { offerTransfer } from '../veilcore/transfers';
+import { offerTransfer, shareCodeFor } from '../veilcore/transfers';
 import type { StrainRecord } from '../veilcore/records';
 
 export const SendToLab: React.FC<{ record: StrainRecord }> = ({ record }) => {
@@ -43,7 +43,7 @@ export const SendToLab: React.FC<{ record: StrainRecord }> = ({ record }) => {
       note: note.trim() || undefined,
     });
     if ('error' in res) setError(res.error);
-    else setTransferId(res.transferId);
+    else setTransferId(shareCodeFor(res.transferId, res.claimCode));
     setBusy(false);
   };
 
@@ -87,6 +87,7 @@ export const SendToLab: React.FC<{ record: StrainRecord }> = ({ record }) => {
                   fontSize: 20,
                   textAlign: 'center',
                   letterSpacing: 1,
+                  wordBreak: 'break-all',
                 }}
               >
                 {transferId}
@@ -96,7 +97,7 @@ export const SendToLab: React.FC<{ record: StrainRecord }> = ({ record }) => {
               </Button>
               <Typography variant="caption" color="text.secondary">
                 Nothing has moved yet. The transfer completes when they claim it, and until then your record is
-                unchanged.
+                unchanged. The code includes a secret part: send it only to them, the same way you agreed the transfer.
               </Typography>
             </Stack>
           ) : (

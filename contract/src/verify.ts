@@ -198,11 +198,17 @@ export const acceptPresentation = (
  * `challenge` (32 fresh random bytes, used once) and asked about `record`, any
  * commitment of the identity. Accepted when that call answered this challenge, for this
  * identity, from the commitment that was its live head at the time.
+ *
+ * Pass `now`, the contract state as it is now, and a proof is also refused when the
+ * proving commitment is no longer the identity's head: the identity was rotated since,
+ * or recovered away from whoever made the proof (a thief, possibly). Either way, ask
+ * for a fresh proof. VeilcoreAPI.checkOwnership always passes it.
  */
 export const acceptOwnership = (
   afterTx: Ledger,
   record: Uint8Array,
   challenge: Uint8Array,
+  now?: Ledger,
 ): { readonly accepted: boolean; readonly reason: string } => {
   if (challenge.length !== 32 || challenge.every((b) => b === 0))
     return { accepted: false, reason: "not a usable challenge" };
@@ -227,8 +233,151 @@ export const acceptOwnership = (
       accepted: false,
       reason: "the proving commitment was not the live, anchored head",
     };
+  if (now !== undefined && !isLive(now, prover))
+    return {
+      accepted: false,
+      reason:
+        "this identity has moved to a new secret since the proof (rotated or recovered); ask for a fresh proof",
+    };
   return {
     accepted: true,
     reason: "the holder of this record answered your challenge",
   };
+};
+
+// ───────────────────────────────────────────── rules 5 and 8: each challenge used once
+
+/** What a challenge is for. Never shared: an ownership proof publishes its challenge. */
+export type ChallengeKind = "licence" | "ownership";
+
+/** One challenge a verifier issued: when, for what, and whether (when) it was used. */
+export type ChallengeEntry = {
+  readonly challenge: string; // hex
+  readonly kind: ChallengeKind;
+  readonly issuedAt: number; // ms since epoch
+  readonly usedAt?: number;
+};
+
+export type ChallengeVerdict = {
+  readonly ok: boolean;
+  readonly reason: string;
+};
+
+/** A week: time enough for the other party to answer, short enough to bound the book. */
+export const DEFAULT_CHALLENGE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+const fresh32 = (): Uint8Array =>
+  globalThis.crypto.getRandomValues(new Uint8Array(32));
+
+/**
+ * Rules 5 and 8: "keep the challenges you issued, when, and whether each was used".
+ * issue(kind) makes a fresh 32-byte challenge and records it; consume(challenge, kind)
+ * says ok exactly once, for a challenge this book issued, for that kind, younger than
+ * `maxAgeMs`. In memory; a caller that must remember across runs saves `entries()` and
+ * passes them back in (the CLI keeps them in an encrypted file under ~/.veilcore).
+ */
+export class ChallengeBook {
+  private readonly book = new Map<string, ChallengeEntry>();
+  readonly maxAgeMs: number;
+  private readonly now: () => number;
+  private readonly random: () => Uint8Array;
+
+  constructor(
+    options: {
+      readonly entries?: readonly ChallengeEntry[];
+      readonly maxAgeMs?: number;
+      readonly now?: () => number;
+      readonly random?: () => Uint8Array;
+    } = {},
+  ) {
+    this.maxAgeMs = options.maxAgeMs ?? DEFAULT_CHALLENGE_MAX_AGE_MS;
+    this.now = options.now ?? Date.now;
+    this.random = options.random ?? fresh32;
+    for (const e of options.entries ?? []) this.book.set(e.challenge, e);
+  }
+
+  /** A fresh challenge for `kind`, recorded as issued now. */
+  issue(kind: ChallengeKind): { challenge: Uint8Array; issuedAt: number } {
+    let challenge = this.random();
+    while (this.book.has(hex(challenge))) challenge = this.random();
+    const issuedAt = this.now();
+    this.book.set(hex(challenge), {
+      challenge: hex(challenge),
+      kind,
+      issuedAt,
+    });
+    return { challenge, issuedAt };
+  }
+
+  /** Whether `challenge` could be used now for `kind`. Changes nothing. */
+  check(challenge: Uint8Array, kind: ChallengeKind): ChallengeVerdict {
+    const e = this.book.get(hex(challenge));
+    if (e === undefined)
+      return { ok: false, reason: "that is not a challenge you issued here" };
+    if (e.kind !== kind)
+      return {
+        ok: false,
+        reason: `that challenge was issued for ${e.kind === "licence" ? "a licence presentation" : "an ownership proof"}, not this`,
+      };
+    if (e.usedAt !== undefined)
+      return {
+        ok: false,
+        reason: `that challenge was already used (${new Date(e.usedAt).toISOString()}); issue a new one`,
+      };
+    if (this.now() - e.issuedAt > this.maxAgeMs)
+      return {
+        ok: false,
+        reason: "that challenge is too old; issue a new one",
+      };
+    return { ok: true, reason: "an unused challenge you issued" };
+  }
+
+  /** Use `challenge` for `kind`: ok once, then never again. */
+  consume(challenge: Uint8Array, kind: ChallengeKind): ChallengeVerdict {
+    const v = this.check(challenge, kind);
+    if (!v.ok) return v;
+    const e = this.book.get(hex(challenge));
+    if (e === undefined) return { ok: false, reason: "not issued" }; // unreachable after check
+    this.book.set(e.challenge, { ...e, usedAt: this.now() });
+    return { ok: true, reason: "used now" };
+  }
+
+  /** Everything recorded, minus entries older than the maximum age (no longer usable anyway). */
+  entries(): ChallengeEntry[] {
+    const cutoff = this.now() - this.maxAgeMs;
+    return [...this.book.values()].filter((e) => e.issuedAt >= cutoff);
+  }
+}
+
+/**
+ * Rule 5 with its "use it once": refused if the book does not allow the challenge;
+ * otherwise acceptPresentation, and the challenge is used up only when it accepts (a
+ * refusal, such as the wrong transaction id, leaves it usable for the right one).
+ */
+export const acceptPresentationOnce = (
+  book: ChallengeBook,
+  afterTx: Ledger,
+  issuer: Uint8Array,
+  challenge: Uint8Array,
+): { readonly accepted: boolean; readonly reason: string } => {
+  const c = book.check(challenge, "licence");
+  if (!c.ok) return { accepted: false, reason: c.reason };
+  const v = acceptPresentation(afterTx, issuer, challenge);
+  if (v.accepted) book.consume(challenge, "licence");
+  return v;
+};
+
+/** Rule 8 with its "use it once", as acceptPresentationOnce. */
+export const acceptOwnershipOnce = (
+  book: ChallengeBook,
+  afterTx: Ledger,
+  record: Uint8Array,
+  challenge: Uint8Array,
+  now?: Ledger,
+): { readonly accepted: boolean; readonly reason: string } => {
+  const c = book.check(challenge, "ownership");
+  if (!c.ok) return { accepted: false, reason: c.reason };
+  const v = acceptOwnership(afterTx, record, challenge, now);
+  if (v.accepted) book.consume(challenge, "ownership");
+  return v;
 };

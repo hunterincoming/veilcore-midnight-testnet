@@ -136,16 +136,27 @@ export class VeilcoreAPI {
    * Move the caller's record to a new secret. The caller must hold the new secret,
    * which the circuit checks. Everything keyed to the identity (licences, parentage,
    * obligations) stays with it. On success this client acts under the new secret.
+   *
+   * If the call fails, the chain is checked: when the rotation landed and only its
+   * confirmation failed, this client switches to the new secret anyway and throws
+   * {@link LandedButUnconfirmedError}. Any other error means it was not seen on chain.
    */
   async rotateRecordSecret(
     newRecordCommitment: Uint8Array,
     incomingSecret: Uint8Array,
   ): Promise<TxRef & { previousCommitment: Uint8Array }> {
-    const txData = await this.withPrivate(
-      { incomingGeneticSecret: incomingSecret },
-      { incomingGeneticSecret: ZERO32() },
-      () => this.deployedContract.callTx.rotateRecordSecret(newRecordCommitment),
-    );
+    const previous = Veilcore.pureCircuits.commit(await this.currentSecret());
+    let txData;
+    try {
+      txData = await this.withPrivate(
+        { incomingGeneticSecret: incomingSecret },
+        { incomingGeneticSecret: ZERO32() },
+        () => this.deployedContract.callTx.rotateRecordSecret(newRecordCommitment),
+      );
+    } catch (e) {
+      await this.adoptIfLanded('rotation', previous, newRecordCommitment, incomingSecret, e);
+      throw e;
+    }
     await this.patchPrivateState({ geneticSecret: incomingSecret });
     return { ...this.logged('rotateRecordSecret', txData), previousCommitment: txData.private.result };
   }
@@ -156,6 +167,7 @@ export class VeilcoreAPI {
    * it since. The recovery secret is used up: the same call installs
    * `newRecoveryCommitment`, built from a NEW recovery secret the caller has already
    * stored. The recovery secret is cleared from this client when the call ends.
+   * A recovery that landed but could not be confirmed is handled as in rotateRecordSecret.
    */
   async recoverRecordSecret(
     recordCommitment: Uint8Array,
@@ -164,12 +176,22 @@ export class VeilcoreAPI {
     recoverySecret: Uint8Array,
     incomingSecret: Uint8Array,
   ): Promise<TxRef> {
-    const txData = await this.withPrivate(
-      { recoverySecret, incomingGeneticSecret: incomingSecret },
-      { recoverySecret: ZERO32(), incomingGeneticSecret: ZERO32() },
-      () =>
-        this.deployedContract.callTx.recoverRecordSecret(recordCommitment, newRecordCommitment, newRecoveryCommitment),
-    );
+    let txData;
+    try {
+      txData = await this.withPrivate(
+        { recoverySecret, incomingGeneticSecret: incomingSecret },
+        { recoverySecret: ZERO32(), incomingGeneticSecret: ZERO32() },
+        () =>
+          this.deployedContract.callTx.recoverRecordSecret(
+            recordCommitment,
+            newRecordCommitment,
+            newRecoveryCommitment,
+          ),
+      );
+    } catch (e) {
+      await this.adoptIfLanded('recovery', recordCommitment, newRecordCommitment, incomingSecret, e);
+      throw e;
+    }
     await this.patchPrivateState({ geneticSecret: incomingSecret });
     return this.logged('recoverRecordSecret', txData);
   }
@@ -193,6 +215,7 @@ export class VeilcoreAPI {
    * licenseCommit(licenseeSecret, yourRecord), built by the LICENSEE.
    */
   async issueLicense(licenseCommitment: Uint8Array): Promise<TxRef> {
+    await this.refuseRevoked(licenseCommitment, 'issue a licence to');
     return this.logged('issueLicense', await this.deployedContract.callTx.issueLicense(licenseCommitment));
   }
 
@@ -234,8 +257,16 @@ export class VeilcoreAPI {
    * Revoke a licence issued by the caller's identity (`issuingRecord` may be an earlier
    * commitment of it). The licence is gone at once; paths proved before it stop
    * verifying at the next seal, which this tries to make straight away.
+   *
+   * The commitment is also remembered in this client's private state, and issueLicense
+   * and approveTransfer refuse it from then on: the contract keeps no record of
+   * revocations, so without this a revoked licensee could come back through a transfer
+   * from another licensee, or through a re-issue made by mistake.
    */
   async revokeLicense(licenseCommitment: Uint8Array, issuingRecord: Uint8Array): Promise<TxRef & SealResult> {
+    // Remembered before sending, so even a revocation whose confirmation fails is never
+    // undone by re-issuing or approving a transfer to the same commitment from here.
+    await this.rememberRevoked(licenseCommitment);
     const ref = this.logged(
       'revokeLicense',
       await this.deployedContract.callTx.revokeLicense(licenseCommitment, issuingRecord),
@@ -287,6 +318,7 @@ export class VeilcoreAPI {
     issuingRecord: Uint8Array,
     expectedNewLicense: Uint8Array,
   ): Promise<TxRef & SealResult> {
+    await this.refuseRevoked(expectedNewLicense, 'approve a transfer to');
     const ref = this.logged(
       'approveTransfer',
       await this.deployedContract.callTx.approveTransfer(licenseCommitment, issuingRecord, expectedNewLicense),
@@ -399,10 +431,13 @@ export class VeilcoreAPI {
     record: Uint8Array,
     challenge: Uint8Array,
   ): Promise<ReturnType<typeof acceptOwnership>> {
+    // The state now as well as the state after the proof: if the proving commitment is
+    // no longer the head (rotated, or recovered away from a thief), the proof is refused.
     return acceptOwnership(
       await callState(indexerUri, this.deployedContractAddress, txId, 'proveOwnership'),
       record,
       challenge,
+      await this.currentLedger(),
     );
   }
 
@@ -439,15 +474,28 @@ export class VeilcoreAPI {
    * from the deployer's offline copy: deploy removes it from the local store.
    */
   async retireMaintenanceAuthority(currentKey?: SigningKey): Promise<void> {
-    if (currentKey !== undefined) {
-      await this.providers.privateStateProvider.setSigningKey(this.deployedContractAddress, currentKey);
+    if (currentKey === undefined) {
+      await retireMaintenanceAuthority(
+        this.deployedContract,
+        this.providers.privateStateProvider,
+        this.deployedContractAddress,
+        this.logger,
+      );
+      return;
     }
-    await retireMaintenanceAuthority(
-      this.deployedContract,
-      this.providers.privateStateProvider,
-      this.deployedContractAddress,
-      this.logger,
-    );
+    await this.providers.privateStateProvider.setSigningKey(this.deployedContractAddress, currentKey);
+    try {
+      await retireMaintenanceAuthority(
+        this.deployedContract,
+        this.providers.privateStateProvider,
+        this.deployedContractAddress,
+        this.logger,
+      );
+    } finally {
+      // The key was typed in for this one transaction. Whether it landed or not, it does
+      // not stay on this machine: the deployer still has the offline copy.
+      await this.providers.privateStateProvider.removeSigningKey(this.deployedContractAddress);
+    }
   }
 
   private async randomFreeLicenseSlot(): Promise<bigint> {
@@ -458,6 +506,65 @@ export class VeilcoreAPI {
       if (!taken.member(slot)) return slot;
     }
     throw new Error('could not find a free licence slot; the tree is nearly full');
+  }
+
+  /** How long to look for a rotation or recovery on chain after its call failed. */
+  landedCheck = { tries: 6, intervalMs: 10_000 };
+
+  private async currentSecret(): Promise<Uint8Array> {
+    const s = (await this.providers.privateStateProvider.get(veilcorePrivateStateKey))?.geneticSecret;
+    if (s === undefined) throw new Error('No record secret in private state.');
+    return s;
+  }
+
+  /**
+   * After a rotation or recovery call failed: if the chain shows `fromRecord`'s identity
+   * now headed by `newRecord`, the call landed and only its confirmation failed. Then act
+   * as the new secret (the old one can do nothing any more) and say so. Otherwise
+   * return, and the caller rethrows the original error.
+   */
+  private async adoptIfLanded(
+    what: 'rotation' | 'recovery',
+    fromRecord: Uint8Array,
+    newRecord: Uint8Array,
+    newSecret: Uint8Array,
+    cause: unknown,
+  ): Promise<void> {
+    const { tries, intervalMs } = this.landedCheck;
+    for (let i = 0; i < tries; i++) {
+      if (i > 0) await sleep(intervalMs);
+      let ledger: Veilcore.Ledger;
+      try {
+        ledger = await this.currentLedger();
+      } catch {
+        continue; // the chain could not be read this time; try again
+      }
+      const origin = identityOf(ledger, fromRecord);
+      if (ledger.headOf.member(origin) && toHex(ledger.headOf.lookup(origin)) === toHex(newRecord)) {
+        await this.patchPrivateState({ geneticSecret: newSecret });
+        throw new LandedButUnconfirmedError(what, cause);
+      }
+    }
+  }
+
+  private async revokedLicenses(): Promise<readonly string[]> {
+    const ps = await this.providers.privateStateProvider.get(veilcorePrivateStateKey);
+    return ps?.revokedLicenses ?? [];
+  }
+
+  private async rememberRevoked(licenseCommitment: Uint8Array): Promise<void> {
+    const known = await this.revokedLicenses();
+    const h = toHex(licenseCommitment);
+    if (!known.includes(h)) await this.patchPrivateState({ revokedLicenses: [...known, h] });
+  }
+
+  private async refuseRevoked(licenseCommitment: Uint8Array, action: string): Promise<void> {
+    if ((await this.revokedLicenses()).includes(toHex(licenseCommitment))) {
+      throw new RevokedLicenceError(
+        `Refused: you revoked licence ${toHex(licenseCommitment)} before. Nothing was sent. ` +
+          `It cannot be used to ${action} again; the licensee makes a new licence secret (option 7) if you agree to license them again.`,
+      );
+    }
   }
 
   /** Set private-state fields for one call and reset them afterwards, success or failure. */
@@ -613,3 +720,27 @@ export type SealResult = {
   /** When waiting, the earliest time (Unix seconds) a seal can be made. */
   readonly sealableAt?: number;
 };
+
+/**
+ * A rotation or recovery that the chain shows as done, though confirming it failed. This
+ * client already acts as the new secret; the secrets shown before sending are the real ones.
+ */
+export class LandedButUnconfirmedError extends Error {
+  constructor(
+    readonly what: 'rotation' | 'recovery',
+    cause: unknown,
+  ) {
+    super(`The ${what} DID land on chain; only confirming it failed. This client now uses the new record secret.`, {
+      cause,
+    });
+    this.name = 'LandedButUnconfirmedError';
+  }
+}
+
+/** issueLicense or approveTransfer named a licence commitment this client revoked before. */
+export class RevokedLicenceError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'RevokedLicenceError';
+  }
+}

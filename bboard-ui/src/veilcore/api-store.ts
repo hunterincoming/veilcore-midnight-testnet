@@ -5,9 +5,9 @@
 // records. One holder cannot read another's set.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { Store } from './store';
+import type { Store, SaveRefusal, SaveResult } from './store';
 import { holderKey } from './holder';
-import { readJson } from './json';
+import { readJson, isObject, isString } from './json';
 
 const BASE = import.meta.env.VITE_API_BASE ?? '';
 
@@ -30,15 +30,44 @@ export const apiStore: Store = {
     }
   },
 
-  async save<T>(key: string, value: T[]): Promise<void> {
+  /**
+   * Save, and report what the registry actually stored. The response used to be thrown
+   * away, so an item the registry refused looked saved (attack round 11).
+   */
+  async save<T>(key: string, value: T[]): Promise<SaveResult> {
+    let res: Response;
     try {
-      await fetch(`${BASE}${pathFor(key)}`, {
+      res = await fetch(`${BASE}${pathFor(key)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', 'x-holder-key': holderKey() },
         body: JSON.stringify(value),
       });
     } catch {
       /* offline — in-memory state stays authoritative for this session */
+      return { ok: false, refused: [], offline: true };
     }
+    let body: unknown = null;
+    try {
+      body = await readJson(res);
+    } catch {
+      /* not JSON — handled below */
+    }
+    if (!res.ok) {
+      const reason =
+        isObject(body) && isString(body.error) ? body.error : `the registry answered ${String(res.status)}`;
+      return { ok: false, refused: [{ id: '*', reason }] };
+    }
+    if (!isObject(body)) return { ok: false, refused: [{ id: '*', reason: 'unexpected response from the registry' }] };
+    const refused: SaveRefusal[] = [];
+    if (Array.isArray(body.rejected)) {
+      for (const r of body.rejected) {
+        if (isObject(r) && isString(r.id) && isString(r.reason)) refused.push({ id: r.id, reason: r.reason });
+      }
+    }
+    if (Array.isArray(body.notWritten)) {
+      const reason = isString(body.reason) ? body.reason : 'this id already belongs to another holder';
+      for (const id of body.notWritten) if (isString(id)) refused.push({ id, reason });
+    }
+    return { ok: body.ok === true && refused.length === 0, refused };
   },
 };

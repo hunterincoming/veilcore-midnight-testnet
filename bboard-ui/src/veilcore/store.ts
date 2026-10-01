@@ -9,9 +9,25 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
+/** One item the registry did not store, and why. */
+export type SaveRefusal = { readonly id: string; readonly reason: string };
+
+/**
+ * What a save actually did. The registry can refuse individual items (an id another
+ * holder owns, a commitment that does not match) while storing the rest, and a caller
+ * that assumed success showed a holder a record the registry never kept (attack
+ * round 11: a refused correction left the app believing it had been issued).
+ */
+export type SaveResult = {
+  readonly ok: boolean;
+  readonly refused: readonly SaveRefusal[];
+  /** Could not reach the store at all; local state is all there is for now. */
+  readonly offline?: boolean;
+};
+
 export interface Store {
   load<T>(key: string, isValid: (v: unknown) => v is T): Promise<T[]>;
-  save<T>(key: string, value: T[]): Promise<void>;
+  save<T>(key: string, value: T[]): Promise<SaveResult>;
 }
 
 /** Browser localStorage. Records only exist in the browser that created them. */
@@ -26,13 +42,14 @@ export const localStore: Store = {
       return Promise.resolve([]);
     }
   },
-  save<T>(key: string, value: T[]): Promise<void> {
+  save<T>(key: string, value: T[]): Promise<SaveResult> {
     try {
       localStorage.setItem(key, JSON.stringify(value));
+      return Promise.resolve({ ok: true, refused: [] });
     } catch {
       /* quota or availability — stay in memory */
+      return Promise.resolve({ ok: false, refused: [], offline: true });
     }
-    return Promise.resolve();
   },
 };
 

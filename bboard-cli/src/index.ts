@@ -5,9 +5,7 @@
 // licences and lineage. Secrets are shown with showSecret (screen only, never logged).
 
 import { createHash } from 'node:crypto';
-import { createInterface, type Interface } from 'node:readline/promises';
-import { stdin as input, stdout as output } from 'node:process';
-import { Writable } from 'node:stream';
+import { type Interface } from 'node:readline/promises';
 import { oneAtATime } from './one-at-a-time.js';
 import { Buffer } from 'node:buffer';
 import { WebSocket } from 'ws';
@@ -19,7 +17,7 @@ import {
   type VeilcorePrivateStateId,
   type VeilcoreCircuitKeys,
   type SealResult,
-  newPresentationChallenge,
+  LandedButUnconfirmedError,
 } from '../../api/src/index';
 import { type WalletFacade } from '@midnight-ntwrk/wallet-sdk-facade';
 import { pureCircuits } from '../../contract/src/managed/veilcore/contract/index.js';
@@ -43,6 +41,11 @@ import { assertKeysMatchRecord } from './keys-check';
 import path from 'node:path';
 import { getNetworkId } from '@midnight-ntwrk/midnight-js-network-id';
 import { type VeilcorePrivateState } from '../../contract/src/witnesses.js';
+import { type ChallengeBook } from '../../contract/src/verify.js';
+import { createPrompt, parseSecret32, parseSigningKey } from './prompt';
+import { settlePassword } from './password';
+import { ChallengeFile } from './challenge-file';
+import { redactThisSession } from './logger-utils';
 
 // @ts-expect-error: It's needed to enable WebSocket usage through apollo
 globalThis.WebSocket = WebSocket;
@@ -62,6 +65,18 @@ const ask32 = async (rli: Interface, prompt: string): Promise<Uint8Array> => {
   const v = parse32(await rli.question(prompt));
   if (v === null) throw new InputError('That is not 64 hex characters (32 bytes). Nothing was sent.');
   return v;
+};
+
+/** Reads one answer without echoing it. Set in run(), on the CLI's one readline. */
+let askHidden: (question: string) => Promise<string> = () => {
+  throw new Error('askHidden used before the prompt was created');
+};
+
+/** Ask for a 32-byte SECRET, hidden as it is typed; refuses anything but 64 hex characters. */
+const askSecret32 = async (prompt: string): Promise<Uint8Array> => {
+  const r = parseSecret32(await askHidden(prompt));
+  if ('problem' in r) throw new InputError(r.problem);
+  return r.value;
 };
 
 /** A 32-byte value, or blank for a default. */
@@ -133,9 +148,23 @@ const askMaintenanceAuthority = async (rli: Interface, logger: Logger): Promise<
     }
     logger.info('Not retired. Keeping the authority.');
   }
-  const key = (await rli.question('Signing key (blank to generate one): ')).trim() || sampleSigningKey();
-  showSecret('MAINTENANCE AUTHORITY SIGNING KEY — write it down now and keep it offline:', key);
-  return key;
+  for (;;) {
+    const typed = await askHidden(
+      'Signing key (64 hex characters; nothing shows as you type or paste; blank to generate one): ',
+    );
+    if (typed === '') {
+      const key = sampleSigningKey();
+      redactThisSession(key);
+      showSecret('MAINTENANCE AUTHORITY SIGNING KEY — write it down now and keep it offline:', key);
+      return key;
+    }
+    const r = parseSigningKey(typed);
+    if ('value' in r) {
+      logger.info('Signing key accepted (not shown: you already hold it).');
+      return r.value;
+    }
+    logger.error(`${r.problem} Try again, or leave it blank to generate one.`);
+  }
 };
 
 export const deployOrJoin = async (
@@ -197,6 +226,25 @@ export const deployOrJoin = async (
   }
 };
 
+/** Mark an accepted challenge used, and save that before the verdict is shown. */
+const useUp = async (
+  book: ChallengeBook,
+  file: ChallengeFile,
+  ch: Uint8Array,
+  kind: 'licence' | 'ownership',
+  logger: Logger,
+): Promise<void> => {
+  book.consume(ch, kind);
+  try {
+    await file.save(book);
+  } catch (e) {
+    logger.error(
+      `Could not save that this challenge is now used (${e instanceof Error ? e.message : String(e)}). ` +
+        'Do not accept it again, even if this program would after a restart.',
+    );
+  }
+};
+
 /* **********************************************************************
  * The main menu.
  */
@@ -237,6 +285,12 @@ const mainLoop = async (
 ): Promise<void> => {
   const api = await deployOrJoin(providers, rli, logger, zkConfigPath, indexerUri);
   if (api === null) return;
+
+  // Rules 5 and 8: every challenge this verifier issues is recorded, and used once.
+  const challengeFile = new ChallengeFile(getNetworkId(), process.env.VEILCORE_PRIVATE_STATE_PASSWORD ?? '');
+  const loaded = await challengeFile.load();
+  const book: ChallengeBook = loaded.book;
+  if (loaded.warning !== undefined) logger.warn(loaded.warning);
 
   let derived: VeilcoreDerivedState | undefined;
   const subscription = api.state$.subscribe({ next: (s) => (derived = s) });
@@ -286,15 +340,27 @@ const mainLoop = async (
             const next = randomBytes(32);
             showSecret('YOUR NEW RECORD SECRET — store it now, before the rotation is sent:', toHex(next));
             await rli.question('Press Enter once it is stored. ');
-            const r = await api.rotateRecordSecret(C.commit(next), next);
-            logger.info(`Rotated from ${toHex(r.previousCommitment)} to ${toHex(C.commit(next))}.`);
-            tx(r);
+            try {
+              const r = await api.rotateRecordSecret(C.commit(next), next);
+              logger.info(`Rotated from ${toHex(r.previousCommitment)} to ${toHex(C.commit(next))}.`);
+              tx(r);
+            } catch (e) {
+              if (!(e instanceof LandedButUnconfirmedError)) {
+                logger.error(
+                  'The rotation was not seen on chain, so this client keeps your OLD secret, which still works. ' +
+                    'If option 31 later says "Current: no", it landed late: keep the new secret shown above and get help before going on.',
+                );
+                throw e;
+              }
+              // The API has already switched this client to the new secret.
+              logger.warn(`${e.message} The new secret shown above is the real one; the old one can do nothing now.`);
+            }
             logger.info('Licences, parentage and obligations stay with your identity.');
             break;
           }
           case '5': {
             const origin = await ask32(rli, 'ORIGINAL anchored record (hex): ');
-            const recovery = await ask32(rli, 'Recovery secret (hex): ');
+            const recovery = await askSecret32('Recovery secret (64 hex; nothing shows as you type or paste): ');
             const next = randomBytes(32);
             const nextRecovery = randomBytes(32);
             showSecret('YOUR NEW RECORD SECRET — store it now, before the recovery is sent:', toHex(next));
@@ -307,18 +373,16 @@ const mainLoop = async (
               tx(await api.recoverRecordSecret(origin, C.commit(next), C.recoveryCommit(nextRecovery), recovery, next));
             } catch (e) {
               // A recovery that landed uses up the recovery secret, so a retry would fail and
-              // show new secrets that control nothing. Check before reporting failure.
-              const l = await api.currentLedger();
-              if (l.headOf.member(origin) && toHex(l.headOf.lookup(origin)) === toHex(C.commit(next))) {
-                logger.warn(
-                  'The recovery DID land; only confirming it failed. The two secrets shown above are the real ones.',
-                );
-              } else {
+              // show new secrets that control nothing. The API checks the chain before failing.
+              if (!(e instanceof LandedButUnconfirmedError)) {
                 logger.error(
-                  'The recovery did not land. Your old recovery secret still works; the secrets above do not.',
+                  'The recovery was not seen on chain. Your old recovery secret still works; the secrets above do not. ' +
+                    'If option 31 later says "Current: no", it landed late: keep both new secrets and get help before going on.',
                 );
                 throw e;
               }
+              // The API has already switched this client to the new record secret.
+              logger.warn(`${e.message} The two secrets shown above are the real ones.`);
             }
             logger.info('Recovered. Whoever held an earlier secret, including a thief, can no longer act from now on.');
             logger.info('The recovery secret you typed in is used up; only the new one works.');
@@ -329,7 +393,7 @@ const mainLoop = async (
           }
           case '6': {
             const origin = await ask32(rli, 'ORIGINAL anchored record (hex): ');
-            const current = await ask32(rli, 'CURRENT recovery secret (hex): ');
+            const current = await askSecret32('CURRENT recovery secret (64 hex; nothing shows as you type or paste): ');
             const next = randomBytes(32);
             showSecret('NEW RECOVERY SECRET — store it now, before it is sent:', toHex(next));
             await rli.question('Press Enter once it is stored. ');
@@ -354,14 +418,14 @@ const mainLoop = async (
             break;
           }
           case '9': {
-            const secret = await ask32(rli, 'YOUR licence secret (hex): ');
+            const secret = await askSecret32('YOUR licence secret (64 hex; nothing shows as you type or paste): ');
             const issuer = await ask32(rli, "Issuer's record (hex): ");
             tx(await api.countersignLicense(secret, issuer));
             logger.info(`Licence active: ${toHex(C.licenseCommit(secret, issuer))}`);
             break;
           }
           case '10': {
-            const secret = await ask32(rli, 'YOUR licence secret (hex): ');
+            const secret = await askSecret32('YOUR licence secret (64 hex; nothing shows as you type or paste): ');
             const issuer = await ask32(rli, "Issuer's record (hex): ");
             const ch = await ask32(rli, "Verifier's challenge (hex, from the verifier's option 26): ");
             const shown = await api.proveLicense(secret, issuer, ch);
@@ -370,7 +434,7 @@ const mainLoop = async (
             break;
           }
           case '11': {
-            const secret = await ask32(rli, 'YOUR licence secret (hex): ');
+            const secret = await askSecret32('YOUR licence secret (64 hex; nothing shows as you type or paste): ');
             const issuer = await ask32(rli, "Issuer's record (hex): ");
             const incoming = await ask32(rli, "Incoming holder's licence commitment (hex, from their option 7): ");
             tx(await api.proposeTransfer(secret, issuer, incoming));
@@ -391,7 +455,7 @@ const mainLoop = async (
             break;
           }
           case '13': {
-            const secret = await ask32(rli, 'YOUR licence secret (hex): ');
+            const secret = await askSecret32('YOUR licence secret (64 hex; nothing shows as you type or paste): ');
             const issuer = await ask32(rli, "Issuer's record (hex): ");
             tx(await api.withdrawTransfer(secret, issuer));
             break;
@@ -451,16 +515,17 @@ const mainLoop = async (
             const kind = (await rli.question('For a (L)icence presentation or an (O)wnership proof? '))
               .trim()
               .toLowerCase();
-            const ch = newPresentationChallenge();
+            const ch = book.issue(kind.startsWith('o') ? 'ownership' : 'licence').challenge;
+            await challengeFile.save(book);
             if (kind.startsWith('o')) {
               showSecret('OWNERSHIP CHALLENGE — send it to the holder; it will be public once they answer:', toHex(ch));
-              logger.info('Use it once, only for an ownership proof (check it with 28). Never reuse it for a licence.');
+              logger.info('Recorded here: option 28 accepts it once, for an ownership proof, within 7 days.');
             } else {
               showSecret(
                 'LICENCE CHALLENGE — send it to the licensee privately, use it once, never publish it:',
                 toHex(ch),
               );
-              logger.info('Use it once, only for a licence presentation (check it with 27).');
+              logger.info('Recorded here: option 27 accepts it once, for a licence presentation, within 7 days.');
             }
             break;
           }
@@ -468,7 +533,13 @@ const mainLoop = async (
             const txId = (await rli.question("The presentation's transaction id (from the licensee): ")).trim();
             const issuer = await ask32(rli, 'Issuer you asked about (any record of that identity, hex): ');
             const ch = await ask32(rli, 'The challenge you sent (hex): ');
+            const usable = book.check(ch, 'licence');
+            if (!usable.ok) {
+              logger.info(`NOT ACCEPTED: ${usable.reason}.`);
+              break;
+            }
             const verdict = await api.checkPresentation(indexerUri, txId, issuer, ch);
+            if (verdict.accepted) await useUp(book, challengeFile, ch, 'licence', logger);
             logger.info(`${verdict.accepted ? 'ACCEPTED' : 'NOT ACCEPTED'}: ${verdict.reason}.`);
             break;
           }
@@ -476,7 +547,13 @@ const mainLoop = async (
             const txId = (await rli.question("The ownership proof's transaction id (from the holder): ")).trim();
             const record = await ask32(rli, 'Record you asked about (any record of that identity, hex): ');
             const ch = await ask32(rli, 'The challenge you sent (hex): ');
+            const usable = book.check(ch, 'ownership');
+            if (!usable.ok) {
+              logger.info(`NOT ACCEPTED: ${usable.reason}.`);
+              break;
+            }
             const verdict = await api.checkOwnership(indexerUri, txId, record, ch);
+            if (verdict.accepted) await useUp(book, challengeFile, ch, 'ownership', logger);
             logger.info(`${verdict.accepted ? 'ACCEPTED' : 'NOT ACCEPTED'}: ${verdict.reason}.`);
             break;
           }
@@ -556,9 +633,24 @@ const mainLoop = async (
             if (sure === 'RETIRE') {
               // The key is removed from this machine after deploy, so it has to be given back
               // for the one transaction that retires it.
-              const key = (await rli.question('Maintenance authority signing key (from your offline copy): ')).trim();
-              if (key === '') logger.info('Not retired: the signing key is needed.');
-              else await api.retireMaintenanceAuthority(key);
+              const typed = await askHidden(
+                'Maintenance authority signing key (from your offline copy; nothing shows as you type or paste): ',
+              );
+              const r = parseSigningKey(typed);
+              if (typed === '') logger.info('Not retired: the signing key is needed.');
+              else if ('problem' in r) logger.error(`Not retired. ${r.problem}`);
+              else {
+                try {
+                  await api.retireMaintenanceAuthority(r.value);
+                  logger.info('Retired. The key you typed was used once and removed from this machine again.');
+                } catch (e) {
+                  logger.error(
+                    'Retiring did not complete (it may or may not have landed). The key you typed has been removed ' +
+                      'from this machine again; your offline copy is unchanged.',
+                  );
+                  throw e;
+                }
+              }
             } else logger.info('Not retired.');
             break;
           }
@@ -605,22 +697,44 @@ const buildWallet = async (config: Config, rli: Interface, logger: Logger): Prom
   while (true) {
     const choice = await rli.question(WALLET_LOOP_QUESTION);
     switch (choice) {
-      case '1':
+      case '1': {
         if (config.mainnet) {
           // A fresh wallet has no DUST on mainnet and cannot get any from a faucet.
           logger.error('On mainnet, use the wallet that holds your DUST (option 3).');
           break;
         }
-        return { seed: toHex(randomBytes(32)) };
-      case '2':
-        return { seed: (await rli.question('Enter your wallet seed (hex): ')).trim() };
-      case '3': {
-        logger.info('Type the 24 words separated by spaces. They are not logged or stored.');
-        const mnemonic = (await rli.question('Recovery phrase: ')).trim().toLowerCase().split(/\s+/).join(' ');
-        if (mnemonic.split(' ').length !== 24) {
-          logger.error('That is not 24 words.');
+        // Shown once, here, before anything else happens: it is the only way back into this
+        // wallet and whatever it receives. Not logged, not stored by this program.
+        const seed = toHex(randomBytes(32));
+        redactThisSession(seed);
+        showSecret(
+          'YOUR NEW WALLET SEED — WRITE THIS DOWN NOW. It is shown once and never again; without it this wallet and its funds are lost:',
+          seed,
+        );
+        await rli.question('Press Enter once it is written down. ');
+        return { seed };
+      }
+      case '2': {
+        const seed = await askHidden('Enter your wallet seed (hex; nothing shows as you type or paste): ');
+        if (/^0x/i.test(seed)) {
+          logger.error('Leave out the 0x at the start: type only the hex characters.');
           break;
         }
+        if (!/^([0-9a-fA-F]{2}){16,64}$/.test(seed)) {
+          logger.error(`That is not a hex seed (${seed.length} characters; only 0-9 and a-f, an even number).`);
+          break;
+        }
+        redactThisSession(seed);
+        return { seed };
+      }
+      case '3': {
+        logger.info('Type the 24 words separated by spaces. Nothing shows as you type; they are not logged or stored.');
+        const mnemonic = (await askHidden('Recovery phrase: ')).toLowerCase().split(/\s+/).join(' ');
+        if (mnemonic.split(' ').length !== 24) {
+          logger.error(`That is ${mnemonic === '' ? 0 : mnemonic.split(' ').length} words, not 24.`);
+          break;
+        }
+        redactThisSession(mnemonic);
         return { mnemonic };
       }
       case '4':
@@ -639,38 +753,17 @@ const buildWallet = async (config: Config, rli: Interface, logger: Logger): Prom
  * will wait for Docker to be ready before doing anything else.
  */
 
-/** Reads a line without echoing it, for the password. Uses its own short-lived prompt. */
-const askHidden = async (question: string): Promise<string> => {
-  let muted = false;
-  const quiet = new Writable({
-    write(chunk, _encoding, done) {
-      if (!muted) output.write(chunk);
-      done();
-    },
-  });
-  const r = createInterface({ input, output: quiet, terminal: true });
-  const answer = r.question(question);
-  muted = true;
-  try {
-    return (await answer).trim();
-  } finally {
-    r.close();
-    output.write('\n');
-  }
-};
-
 export const run = async (config: Config, testEnv: TestEnvironment, logger: Logger): Promise<void> => {
-  // Asked for up front, before the chain starts and the wallet syncs, so a missing
-  // password is found in the first second rather than after the sync at deploy time.
-  if (!process.env.VEILCORE_PRIVATE_STATE_PASSWORD) {
-    const typed = await askHidden('Private-state password (paste it, nothing will show, then press Enter): ');
-    if (typed.length < 16) {
-      logger.error(`That was ${typed.length} characters. The password is 16 or more. Nothing was started.`);
-      return;
-    }
-    process.env.VEILCORE_PRIVATE_STATE_PASSWORD = typed;
+  // One readline for the whole run; secrets are read on it with the echo muted.
+  const prompt = createPrompt();
+  const rli = prompt.rli;
+  askHidden = prompt.askHidden;
+  // Asked for up front, before the chain starts and the wallet syncs, so a password
+  // midnight-js would refuse is found in the first second rather than after the sync.
+  if (!(await settlePassword(askHidden, logger))) {
+    rli.close();
+    return;
   }
-  const rli = createInterface({ input, output, terminal: true });
   const providersToBeStopped: MidnightWalletProvider[] = [];
   try {
     const envConfiguration = await testEnv.start();
@@ -736,27 +829,29 @@ export const run = async (config: Config, testEnv: TestEnvironment, logger: Logg
 
     const zkConfigProvider = new NodeZkConfigProvider<VeilcoreCircuitKeys>(config.zkConfigPath);
     const providers: VeilcoreProviders = {
-      privateStateProvider: oneAtATime(levelPrivateStateProvider<VeilcorePrivateStateId, VeilcorePrivateState>({
-        privateStateStoreName: config.privateStateStoreName,
-        signingKeyStoreName: `${config.privateStateStoreName}-signing-keys`,
-        privateStoragePasswordProvider: () => {
-          // This store holds the contract's maintenance authority key, which can
-          // insert or remove verifier keys and so decide what the contract accepts.
-          // The literal that used to sit here came from the example this was forked
-          // from and was published in a public repository, which is no password at
-          // all on a network where the contract matters.
-          const password = process.env.VEILCORE_PRIVATE_STATE_PASSWORD;
-          if (!password) {
-            throw new Error(
-              'VEILCORE_PRIVATE_STATE_PASSWORD is not set. It encrypts private state and the ' +
-                'maintenance authority signing key. Sixteen characters or more, with at least ' +
-                'three of uppercase, lowercase, digits and symbols.',
-            );
-          }
-          return password;
-        },
-        accountId: seed,
-      })),
+      privateStateProvider: oneAtATime(
+        levelPrivateStateProvider<VeilcorePrivateStateId, VeilcorePrivateState>({
+          privateStateStoreName: config.privateStateStoreName,
+          signingKeyStoreName: `${config.privateStateStoreName}-signing-keys`,
+          privateStoragePasswordProvider: () => {
+            // This store holds the contract's maintenance authority key, which can
+            // insert or remove verifier keys and so decide what the contract accepts.
+            // The literal that used to sit here came from the example this was forked
+            // from and was published in a public repository, which is no password at
+            // all on a network where the contract matters.
+            const password = process.env.VEILCORE_PRIVATE_STATE_PASSWORD;
+            if (!password) {
+              throw new Error(
+                'VEILCORE_PRIVATE_STATE_PASSWORD is not set. It encrypts private state and the ' +
+                  'maintenance authority signing key. Sixteen characters or more, with at least ' +
+                  'three of uppercase, lowercase, digits and symbols.',
+              );
+            }
+            return password;
+          },
+          accountId: seed,
+        }),
+      ),
       publicDataProvider: indexerPublicDataProvider(envConfiguration.indexer, envConfiguration.indexerWS),
       zkConfigProvider: zkConfigProvider,
       proofProvider: httpClientProofProvider(envConfiguration.proofServer, zkConfigProvider),

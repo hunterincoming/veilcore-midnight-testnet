@@ -25,10 +25,11 @@ export type Disclosure = Record<DisclosureKey, boolean>;
 
 /** The togglable facts, in display order, with their default on/off state. */
 export const DISCLOSURE_FIELDS: { key: DisclosureKey; label: string; def: boolean }[] = [
-  { key: 'existence', label: 'Prior possession (proven, not claimed)', def: true },
-  { key: 'attestation-status', label: 'DNA-verified', def: true },
-  { key: 'descent-clean', label: 'Lineage intact', def: true },
-  { key: 'sealed-at', label: 'Sealed date', def: true },
+  // Labels say what the recipient is actually shown, not the best case.
+  { key: 'existence', label: 'Prior possession (shown only once anchored)', def: true },
+  { key: 'attestation-status', label: 'DNA report pairing', def: true },
+  { key: 'descent-clean', label: 'Lineage check status', def: true },
+  { key: 'sealed-at', label: 'Date you stated', def: true },
   { key: 'parent-names', label: 'Parent cultivar names', def: false },
   { key: 'breeding-method', label: 'Breeding method', def: false },
   { key: 'holder-portfolio', label: 'My other cultivars', def: false },

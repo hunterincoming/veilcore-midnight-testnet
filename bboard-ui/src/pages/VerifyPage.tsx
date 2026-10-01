@@ -27,12 +27,19 @@ type VerifyResult = {
   recordFingerprint?: string;
   /** The holder paired a DNA report fingerprint themselves. Not a lab's confirmation. */
   dnaPairedByHolder?: boolean;
-  /** A signed, unretracted lab attestation exists. Nothing the holder typed counts. */
+  /**
+   * Older field. From a current registry it means attestedByVettedLab; from an older one
+   * it meant any valid signature, so it is never read as "a lab" on its own.
+   */
   attested?: boolean;
+  /** A valid, unretracted signed attestation exists. Says nothing about who signed. */
+  signedAttestation?: boolean;
+  /** One of them is from a key the registry operator has checked. */
+  attestedByVettedLab?: boolean;
   /** The record's fingerprint is in a batch whose root is anchored on a ledger. */
   anchored?: boolean;
-  /** The holder's own statement of when it was logged. */
-  loggedAtClaimedByHolder?: string | null;
+  /** The holder's own statement of when it was logged. The app stores it as epoch ms. */
+  loggedAtClaimedByHolder?: string | number | null;
   /** When the registry first received the record. The registry's word, not a ledger's. */
   registryFirstSeen?: string | null;
   disclosed?: string[];
@@ -68,9 +75,14 @@ const isVerifyResult = (v: unknown): v is VerifyResult => {
     str(r.breedingMethod) &&
     bool(r.dnaPairedByHolder) &&
     bool(r.attested) &&
+    bool(r.signedAttestation) &&
+    bool(r.attestedByVettedLab) &&
     bool(r.anchored) &&
     bool(r.priorPossession) &&
-    str(r.loggedAtClaimedByHolder) &&
+    // The app writes loggedAt as a number, so the registry echoes a number. Accepting
+    // only a string made this guard reject every record the app had made, and the page
+    // said "No record found" for a record that exists.
+    (str(r.loggedAtClaimedByHolder) || num(r.loggedAtClaimedByHolder)) &&
     str(r.registryFirstSeen) &&
     // null is a valid answer here and means "not checked". Requiring a boolean made
     // the guard reject a well-formed response, and the page then reported no record
@@ -167,13 +179,14 @@ export const VerifyPage: React.FC = () => {
               <VerifiedIcon sx={{ color: TEAL, fontSize: 30 }} />
               <Box>
                 {/* The headline is the line a reader takes away, so it claims only what was
-                    checked: a ledger anchor, or else that the record is unaltered. */}
+                    checked: a ledger anchor, or else that the record is unaltered since the
+                    registry first saw it. "Since logged" read as the holder's own date. */}
                 <Typography variant="overline" sx={{ color: result.recordFingerprint ? TEAL : 'text.secondary' }}>
                   {!result.recordFingerprint
                     ? 'Record found — nothing sealed'
                     : result.anchored
                       ? 'Anchored on a public ledger'
-                      : 'Record unaltered since logged'}
+                      : 'Unaltered since first seen by this registry'}
                 </Typography>
                 <Typography variant="h5">{result.cultivar}</Typography>
               </Box>
@@ -194,7 +207,7 @@ export const VerifyPage: React.FC = () => {
                   Record exists and its fingerprint is intact: unaltered since
                   {result.registryFirstSeen
                     ? ` this registry first saw it on ${fmt(result.registryFirstSeen)}`
-                    : ' it was logged'}
+                    : ' this registry first saw it'}
                   .
                 </Fact>
               ) : (
@@ -268,9 +281,19 @@ export const VerifyPage: React.FC = () => {
                   <Fact ok={!!result.anchored}>
                     {result.anchored ? 'Anchored on a public ledger' : 'Not yet anchored on a ledger'}
                   </Fact>
-                  <Fact ok={!!result.attested}>
-                    {result.attested ? 'Signed lab attestation on record' : 'No signed lab attestation'}
-                  </Fact>
+                  {/* Only a key the registry operator has checked is called a lab. Anyone can
+                      register a key in a lab's name and sign their own record (attack
+                      round 11). */}
+                  {result.attestedByVettedLab === true ? (
+                    <Fact>Signed attestation from a lab whose key VeilCore has checked</Fact>
+                  ) : result.signedAttestation === true ||
+                    (result.attestedByVettedLab === undefined && result.attested === true) ? (
+                    <Fact ok={false}>
+                      Signed attestation on record from a key not verified by VeilCore — it does not show who signed
+                    </Fact>
+                  ) : (
+                    <Fact ok={false}>No signed attestation</Fact>
+                  )}
                   <Fact ok={!!result.dnaPairedByHolder}>
                     {result.dnaPairedByHolder
                       ? 'DNA report paired by the holder (not lab-confirmed)'

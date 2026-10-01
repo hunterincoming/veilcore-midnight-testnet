@@ -12,7 +12,7 @@
 
 import { supersedesFor, diffRecords, classifyCorrection } from 'veilcore-records';
 import { toEnvelope, sealEnvelope } from './envelope';
-import { holderKey } from './holder';
+import { holderPartyId } from './holder';
 import type { StrainRecord } from './records';
 
 export type CorrectionPreview = {
@@ -42,7 +42,9 @@ const CONSEQUENCE: Record<string, string> = {
  * parent should be told that everything downstream re-checks.
  */
 export const previewCorrection = (before: StrainRecord, after: StrainRecord): CorrectionPreview => {
-  const id = holderKey().slice(0, 16);
+  // Both envelopes carry the same holder id, so it cannot show up as a change; a fixed
+  // placeholder keeps this synchronous without putting any part of the key in it.
+  const id = 'preview';
   const changes = diffRecords(toEnvelope(before, id), toEnvelope(after, id));
   const sev = classifyCorrection(changes);
   return {
@@ -66,7 +68,7 @@ export const buildCorrection = async (
   after: StrainRecord,
   reason: string,
 ): Promise<{ envelope: unknown; supersedes: unknown }> => {
-  const id = holderKey().slice(0, 16);
+  const id = await holderPartyId();
   const beforeEnv = toEnvelope(before, id);
   const afterEnv = await sealEnvelope(after, id);
   const supersedes = supersedesFor(beforeEnv, afterEnv, reason, 'holder');

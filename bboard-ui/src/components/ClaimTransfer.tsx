@@ -21,7 +21,7 @@ import {
 } from '@mui/material';
 import InboxIcon from '@mui/icons-material/MoveToInboxOutlined';
 import { useNavigate } from 'react-router-dom';
-import { claimTransfer } from '../veilcore/transfers';
+import { claimTransfer, parseShareCode } from '../veilcore/transfers';
 import { hydrate, getRecord, sealReceived } from '../veilcore/records';
 import { loadAttester, attestRecord } from '../veilcore/attester-keys';
 
@@ -33,11 +33,11 @@ export const ClaimTransfer: React.FC<{ variant?: 'button' | 'text' }> = ({ varia
   const navigate = useNavigate();
 
   const claim = async () => {
-    const id = code.trim().toUpperCase();
-    if (!id) return;
+    if (!code.trim()) return;
+    const { transferId, claimCode } = parseShareCode(code);
     setBusy(true);
     setError(null);
-    const res = await claimTransfer(id);
+    const res = await claimTransfer(transferId, claimCode);
     if ('error' in res) {
       setError(res.error);
       setBusy(false);
@@ -88,7 +88,7 @@ export const ClaimTransfer: React.FC<{ variant?: 'button' | 'text' }> = ({ varia
             </Typography>
             <TextField
               label="Transfer code"
-              placeholder="TR-XXXXXXXX"
+              placeholder="TR-XXXXXXXX.xxxxxxxx…"
               value={code}
               onChange={(e) => setCode(e.target.value)}
               onKeyDown={(e) => {

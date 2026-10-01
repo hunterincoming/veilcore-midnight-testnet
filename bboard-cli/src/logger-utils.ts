@@ -26,9 +26,32 @@ import { createWriteStream } from 'node:fs';
  */
 const scrubbing = (secrets: readonly string[], target: { write: (line: string) => unknown }) => ({
   write: (line: string): void => {
-    void target.write(secrets.reduce((acc, sec) => acc.split(sec).join('[redacted]'), line));
+    void target.write(scrub(line, secrets));
   },
 });
+
+/** Secrets typed in during this session (keys, seeds, recovery and licence secrets). */
+const typedHex = new Set<string>();
+const typedText = new Set<string>();
+
+/**
+ * Add a value the user typed to what every logger created here redacts, from now on.
+ * A 64-hex value is redacted whatever its case, so an error message that quotes it back
+ * in another form (compact-js upper- or lower-cases) is caught too.
+ */
+export const redactThisSession = (value: string): void => {
+  const t = value.trim();
+  if (/^(0x)?[0-9a-fA-F]{64}$/.test(t)) typedHex.add(t.replace(/^0x/i, '').toLowerCase());
+  else if (t.length >= 8) typedText.add(t);
+};
+
+/** One log line with every configured and typed secret replaced by [redacted]. */
+export const scrub = (line: string, secrets: readonly string[] = []): string => {
+  let out = secrets.reduce((acc, sec) => acc.split(sec).join('[redacted]'), line);
+  for (const h of typedHex) out = out.replace(new RegExp(h, 'gi'), '[redacted]');
+  for (const t of typedText) out = out.split(t).join('[redacted]');
+  return out;
+};
 
 /**
  * A logger for the terminal and a log file. `secrets` (for example an API token carried

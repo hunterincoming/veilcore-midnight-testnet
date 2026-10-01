@@ -57,8 +57,17 @@ export const DisclosedFacts: React.FC<{ record: StrainRecord; disclosure: Disclo
             : 'DNA report not yet paired.'}
         </Fact>
       )}
-      {disclosure['descent-clean'] && <Fact>Lineage intact — unbroken chain back to the sealed record.</Fact>}
-      {disclosure['sealed-at'] && <Fact>Sealed {fmtDate(record.loggedAt)} — the moment it was logged.</Fact>}
+      {/* Says what the verify page will say. It printed "Lineage intact" here while the
+          registry answers that descent is not checked on a shared link. */}
+      {disclosure['descent-clean'] && (
+        <Fact ok={false}>Lineage: the recipient is told it is not checked on this link, not that it is intact.</Fact>
+      )}
+      {disclosure['sealed-at'] && (
+        <Fact>
+          Date you stated: {fmtDate(record.loggedAt)} — shown as your own statement, beside the date this registry first
+          saw the record.
+        </Fact>
+      )}
 
       {disclosure['parent-names'] && (
         <Fact ok={parents.length > 0}>

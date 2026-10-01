@@ -1,4 +1,4 @@
-// StatusChain — a strain's progress at a glance: Logged → DNA paired → Lab attested → Licensed.
+// StatusChain — a strain's progress at a glance: Logged → DNA paired → Receipt confirmed → Licensed.
 // SPDX-License-Identifier: Apache-2.0
 
 import React from 'react';
@@ -13,7 +13,9 @@ type Seg = { label: string; done: boolean };
 export const chainOf = (r: StrainRecord, licenseCount = 0): Seg[] => [
   { label: 'Logged', done: true },
   { label: 'DNA paired', done: !!r.dnaFingerprint },
-  { label: 'Lab attested', done: !!r.attestation },
+  // Lit by a transfer claim, which shows that someone holding the sender's code took
+  // delivery — not that a lab, or anyone identified, confirmed anything.
+  { label: 'Receipt confirmed', done: !!r.attestation },
   { label: `Licensed${licenseCount ? ` (${licenseCount})` : ''}`, done: licenseCount > 0 },
 ];
 

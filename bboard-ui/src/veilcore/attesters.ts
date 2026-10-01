@@ -15,9 +15,16 @@ const BASE = import.meta.env.VITE_API_BASE ?? '';
 
 export type ResolvedAttestation = SignedAttestation & {
   strength: AttestationStrength;
+  /**
+   * True only when the registry operator has checked who holds this key. Absent from
+   * older registry versions, which is read as false.
+   */
+  vettedAttester?: boolean;
   registeredAs: {
     displayName?: string;
+    /** The attester's own claim, recorded and not verified. */
     accreditation?: { scheme: string; identifier: string; accreditor: string };
+    vetted?: boolean;
   } | null;
   retraction: Retraction | null;
   /** Verified in this browser, not taken from the registry's word for it. */
@@ -83,19 +90,25 @@ export const strengthLabel = (a: ResolvedAttestation): { label: string; why: str
       ok: false,
     };
   }
-  if (a.strength === 'signed-and-accredited') {
+  // Only a key the registry operator has checked is described as the party it names.
+  // Anyone can register a key under a lab's name and sign their own record, and the
+  // accreditation inside an attestation is whatever the signer typed — "Signed ·
+  // accredited attester" used to be shown on exactly that (attack round 11).
+  if (a.strength !== 'unsigned' && a.vettedAttester === true) {
     const acc = a.registeredAs?.accreditation;
     return {
-      label: 'Signed · accredited attester',
-      why: `Signed by a key registered to ${a.registeredAs?.displayName ?? 'an attester'}, who lists ${acc?.scheme} accreditation ${acc?.identifier} from ${acc?.accreditor}. We record that claim — we do not verify it, and you can check it with ${acc?.accreditor} directly.`,
+      label: 'Signed · checked by VeilCore',
+      why: `Signed by ${a.registeredAs?.displayName ?? 'a second party'}. VeilCore has checked that this key belongs to them.${acc ? ` They list ${acc.scheme} accreditation from ${acc.accreditor}; confirm that with ${acc.accreditor}.` : ''}`,
       ok: true,
     };
   }
-  if (a.strength === 'signed') {
+  if (a.strength !== 'unsigned') {
     return {
-      label: 'Signed',
-      why: `Signed by a key${a.registeredAs?.displayName ? ` registered to ${a.registeredAs.displayName}` : ''}. The signature proves the same party issued it; it does not prove who that party is.`,
-      ok: true,
+      label: 'Signed · signer not verified',
+      why: a.registeredAs?.displayName
+        ? `Signed by a key self-registered as “${a.registeredAs.displayName}” — not verified by VeilCore. Anyone can register a key under any name, so this does not show who signed.`
+        : 'Signed by a key nobody has registered. The signature is valid; who holds the key is not known.',
+      ok: false,
     };
   }
   return {

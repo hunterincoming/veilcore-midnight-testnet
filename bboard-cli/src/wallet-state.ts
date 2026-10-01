@@ -11,6 +11,7 @@
  * still private: written with mode 0600 under ~/.veilcore/wallet-state, never logged.
  * Without the password nothing is saved and every start syncs from the beginning.
  * VEILCORE_FRESH_SYNC=1 ignores a saved file; a file that cannot be read is ignored too.
+ * Never used on the local chain, which is new on every run.
  */
 import { createCipheriv, createDecipheriv, createHash, randomBytes, scryptSync } from 'node:crypto';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
@@ -44,10 +45,15 @@ export class WalletStateFile {
     const id = createHash('sha256').update(`veilcore:wallet-state:${networkId}:${masterSeed}`).digest('hex');
     this.path = path.join(directory, `${networkId}-${id.slice(0, 24)}.bin`);
     this.password = password === undefined || password === '' ? undefined : password;
+    // The local chain ('undeployed') starts from nothing on every run, so progress saved
+    // from an earlier run describes coins on a chain that no longer exists.
+    this.local = networkId === 'undeployed';
   }
 
+  private readonly local: boolean;
+
   get enabled(): boolean {
-    return this.password !== undefined;
+    return this.password !== undefined && !this.local;
   }
 
   private key(salt: Buffer): Buffer {

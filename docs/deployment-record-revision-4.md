@@ -1123,9 +1123,16 @@ detects a change after it happens. It does not prevent one.
   `proposeObligation`, `acceptObligation`, `rejectObligation` or `withdrawObligation`.
   Run by the founder on his MacBook; the closing line was `SMOKE TEST PASSED: 26 checks
   passed. Contract 84cca6f1…`.
-- **Smoke test on preprod, this build: PENDING.**
-  Contract address: [preprod contract address — to be filled after the run].
-  Date and result: [to be filled after the run].
+- **Smoke test on preprod, this build: PASSED 26 of 26** on 2 October 2026, closing at
+  14:35 EDT (operator tool `455cf05`; last transaction, `discharge`, at preprod block
+  2808047). Contract address:
+  `9c7b69275e53acc38fcbebff93c53febe46a3898580c11fd2c4b923fc5efb7a3`. Run by the founder
+  on his MacBook; the closing line was `SMOKE TEST PASSED: 26 checks passed. Contract
+  9c7b6927…`. An earlier attempt the same morning (`b0008e3`) was refused before any
+  contract was created with `1010: Invalid Transaction: Custom error: 171`
+  (OutOfDustValidityWindow) while the preprod indexer lagged the chain; the operator tool
+  then misread that refusal as a block limit, fixed in `455cf05`
+  (`docs/security-pass-30sep.md`).
   The operator runbook makes a passed preprod run a precondition of the mainnet deploy.
   The code does not check it.
 - **Earlier deployments, none of them this build:** V1 on Preview at

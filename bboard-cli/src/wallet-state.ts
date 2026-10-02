@@ -121,7 +121,16 @@ export class WalletStateFile {
     return kept;
   }
 
-  async save(wallet: SavableWallet): Promise<void> {
+  /** Saves run one after another: two at once would share the temporary file. */
+  private saving: Promise<void> = Promise.resolve();
+
+  save(wallet: SavableWallet): Promise<void> {
+    const run = this.saving.then(() => this.saveNow(wallet));
+    this.saving = run.catch(() => undefined);
+    return run;
+  }
+
+  private async saveNow(wallet: SavableWallet): Promise<void> {
     if (!this.enabled) return;
     const state: SavedWalletState = {
       shielded: await wallet.shielded.serializeState(),

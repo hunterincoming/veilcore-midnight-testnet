@@ -98,6 +98,10 @@ Preprod is Midnight's test network. Use the **test wallet only**.
    send it to Claude. This is the result mainnet waits on.
 10. **Failed:** copy the lines above `SMOKE TEST FAILED` and send them to Claude. Do not go on
     to mainnet.
+11. **`custom error 171` (OutOfDustValidityWindow):** the network refused the deploy because
+    the preprod indexer was behind the chain. Nothing was created and nothing was spent.
+    Wait (an hour, or until Midnight says preprod is healthy) and run again. Lots of
+    `Wallet.Sync` errors during the sync are the same lag; the wallet reconnects by itself.
 
 ---
 

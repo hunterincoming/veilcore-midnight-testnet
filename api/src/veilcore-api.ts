@@ -53,9 +53,22 @@ export const FIRST_FRAGMENT = 8;
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 const operationName = (o: string | Uint8Array): string => (typeof o === 'string' ? o : Buffer.from(o).toString('utf8'));
 
-/** The network's refusal of a transaction too big for a block, however it is wrapped. */
-const isBlockLimit = (e: unknown): boolean =>
-  /block limit|BlockLimitExceeded|ExhaustsResources|\b1010\b/i.test(inspect(e, { depth: 6 }));
+/**
+ * The refusal of a transaction too big for a block, however it is wrapped: the wallet's
+ * fee computation ("exceeded block limit in transaction fee computation") or the node's
+ * LedgerApiError::BlockLimitExceededError (1010, custom error 154). A bare 1010 is any
+ * refusal at all, so it is not enough: a stale-clock DUST refusal (171) must not be
+ * taken for size and retried smaller at new addresses.
+ */
+export const isBlockLimit = (e: unknown): boolean =>
+  /block limit|BlockLimitExceeded|ExhaustsResources|Custom error:\s*154\b/i.test(inspect(e, { depth: 6 }));
+
+/**
+ * The node's "custom error 171", OutOfDustValidityWindow: the fee payment was built with a
+ * time the chain is already past, which happens when the indexer the wallet reads the
+ * chain's time from is behind the chain. Nothing landed; retrying later is the remedy.
+ */
+export const isStaleDustTime = (e: unknown): boolean => /Custom error:\s*171\b/i.test(inspect(e, { depth: 6 }));
 
 /** A landed transaction. Give a verifier `txId`: it finds the state right after it. */
 export type TxRef = { readonly txId: string; readonly txHash: string; readonly blockHeight: number };
@@ -664,6 +677,16 @@ export class VeilcoreAPI {
               `trying again with ${size} circuit keys in it (a new address)`,
           );
           continue;
+        }
+        if (isStaleDustTime(e)) {
+          // Refused before entering a block: that contract never existed, so its key goes.
+          await providers.privateStateProvider.removeSigningKey(candidate);
+          logger?.error(
+            `The network refused the deploy (custom error 171, OutOfDustValidityWindow): the indexer ` +
+              `this wallet reads the chain's time from is behind the chain. Nothing was created at ${candidate} ` +
+              'and nothing was spent. Wait, then run again; if it repeats, the indexer is lagging.',
+          );
+          throw e;
         }
         logger?.error(
           `The deploy did not complete. It may still have landed at contract address ${candidate}. ` +

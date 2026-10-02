@@ -523,3 +523,23 @@ Three fresh reviewers, one per area, at `56b119a`.
   deploy warns instead of stopping silently; log files are private (0600). The new deploy
   order has been tested with the transaction functions faked; it needs a run on a real
   chain (the local smoke test) before mainnet.
+
+## Preprod smoke run, 2 October 2026
+
+The preprod node refused the deploy with `1010: Invalid Transaction: Custom error: 171`
+(OutOfDustValidityWindow: the preprod indexer, which the wallet reads the chain's time
+from, was behind the chain; the sync before it had logged repeated `Wallet.Sync`
+reconnects). Two operator-tool faults showed, both fixed with tests that fail on the old
+code (`bboard-cli/src/preprod-1002.test.ts`):
+
+- **The deploy took any 1010 refusal for "over the block limit"** and retried smaller at
+  new addresses (three in this run), then reported a deploy that "may still have landed".
+  Only the block-limit refusals now count (the wallet's fee-computation message, or the
+  node's custom error 154). A 171 is tried once, its unused key dropped, and the reason
+  given in plain words. Nothing could land from a 1010, so no funds were at risk.
+- **Two saves of wallet progress could run at once** (the 2-minute timer and the save on
+  stop), sharing one temporary file: the second failed with ENOENT, and interleaved
+  writes could have left a file the password cannot open (which the tool would move
+  aside, costing a fresh sync). Saves now run one at a time.
+
+The contract is unchanged; its fingerprints still match.

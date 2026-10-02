@@ -363,6 +363,12 @@ encrypted under `~/.veilcore/challenges`, one file per network
 **Assumed, and stated plainly**
 - **Record contents are the holder's assertion.** The chain proves when a claim was made
   and that it has not changed, not that the genetics are what the holder says.
+- **A parent edge is an agreement, not a genetic test.** It proves both holders said
+  the child descends from the parent. Whether it does is for a DNA test and the parties.
+- **The recovery secret is the master key.** Whoever holds an identity's current
+  recovery secret controls it, at once and without a waiting period, and an identity can
+  be recovered at most 16 times. Generate it offline, keep it offline (on paper, in two
+  places), and never type it on the machine that holds the record secret.
 - **Participation is voluntary.** A market-access filter, not enforcement.
 - **The indexer is trusted for what it reports.** Verifiers read chain state through an
   indexer (Blockfrost for mainnet). A wrong or compromised indexer can report any state:

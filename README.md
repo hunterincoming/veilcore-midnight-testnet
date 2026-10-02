@@ -110,6 +110,7 @@ Midnight's standards repository.
 
 - On chain, a record is dated by the block its anchor lands in. In the web app, the logging time comes from the browser's clock and the creation date is typed by the holder: both are the holder's own claims. The registry adds the time it first saw the record, which is the registry's word, not the chain's. None of this proves a backdated date wrong.
 - A record establishes **prior possession, not ownership**. It is evidence a lawyer can rely on, not a verdict.
+- A parent link on chain means both holders **agreed** the child descends from the parent. It is not a genetic test.
 - It **pairs** the DNA report a laboratory returns, as the holder's own statement. It does not sequence anything, check the report, or confirm it came from a laboratory.
 - In-app "signing" and countersigning of a licence record a time in the registry. They are not cryptographic signatures, and not qualified eIDAS signatures. On chain, a countersign is proved with the licensee's licence secret.
 - The royalty log records and proves obligations. It does not move money.

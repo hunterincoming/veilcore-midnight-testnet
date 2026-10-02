@@ -1117,7 +1117,7 @@ detects a change after it happens. It does not prevent one.
   test (`SLOW_TESTS=1`) has not been run to completion.
 - **Smoke test on a local Midnight chain, this build: PASSED 26 of 26** on 1 October
   2026 at 20:56 EDT (node 0.22.3, indexer 4.0.1, proof server 8.0.3; local contract
-  `84cca6f12d5035eeda3b9277872b38ce87e3614c9410ba8f86fed04fce7c13a8`). It deploys
+  `84cca6f12d5035eeda3b9277872b38ce87e3614c9410ba8f86fed04fce7c13a8`). Run again on 2 October 2026 at 05:26 EDT with the final operator tool (`db1cd3e`, which changed the deploy order): PASSED 26 of 26, local contract `0b784aadba3507eeb522fbe27684849927ded8d4412c1a1a6c95ce5bd04cc2ee`. It deploys
   a fresh contract and calls 16 of the 24 circuits with real proofs. It does not call
   `anchorBatch`, `replaceRecoveryCommitment`, `withdrawTransfer`, `withdrawParent`,
   `proposeObligation`, `acceptObligation`, `rejectObligation` or `withdrawObligation`.

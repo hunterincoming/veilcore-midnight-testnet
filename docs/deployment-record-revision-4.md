@@ -3,7 +3,7 @@
 **Contract repository:** https://github.com/hunterincoming/veilcore-midnight-testnet
 
 > **Revision 4.** This header describes the contract as it is now: one contract, 24
-> circuits, source at [commit — to be filled]. It replaces the header approved in August and
+> circuits, source at `ceb3a16`. It replaces the header approved in August and
 > revised on 13 September. That header is kept as filed under *Superseded: the contract
 > to 13 September 2026*. What changed, what was found, and what is still open are in
 > *Revision 4* at the end of this document.
@@ -125,7 +125,7 @@ together with which circuit that transaction called (verifier rule 6 in
 
 ## Source and build
 
-- **Compact source:** `contract/src/veilcore.compact` at [commit — to be filled].
+- **Compact source:** `contract/src/veilcore.compact` at `ceb3a16`.
 - **compactc:** 0.31.1 · **language version:** 0.23. CI builds with 0.31.1.
 - **Build:** `cd contract && npm run compact`, which runs
   `compact compile src/veilcore.compact ./src/managed/veilcore`
@@ -140,13 +140,109 @@ SHA-256 of compiled artefacts (`contract/src/managed/veilcore/`), copied from
 `docs/fingerprints.md`: a prover and a verifier key for each of the 24 circuits, the ZKIR
 of each circuit in two forms, and the compiled contract code (97 rows).
 
-**[fingerprints of the new build — to be filled from docs/fingerprints.md after the build
-on the founder's machine]**
+Built from commit `ceb3a16` with compactc 0.31.1 on the founder's machine (fingerprints committed in `e89a387`). The circuit ZKIR and `contract/index.js` were also reproduced byte for byte by an independent build.
 
-The table that stood here was for the build before the state bounds. The contract has
-changed since, so those hashes no longer describe what is being approved.
+| Artefact | SHA-256 |
+|---|---|
+| `keys/acceptObligation.prover` | `987fbe45b55acc56658b8f0b0c915e7834eb09696af8033a4d54311a8f7c591e` |
+| `keys/acceptObligation.verifier` | `ef9db27c4691f23d744cc7fdab7bedc99c8a218f15b59636c9e5622790f4b5a3` |
+| `keys/anchor.prover` | `aa537acec7d6d18dbd5d355a8e770b202f6e3551c5a7a533f7a272d1c00a1206` |
+| `keys/anchor.verifier` | `198c0740486feba610b9e1c7ae3037399f95d4f157c930b120748d66db5e748b` |
+| `keys/anchorBatch.prover` | `530a62ad31a19e93df7e58efd684db79a72742ae6362694e65e62b26a0eab954` |
+| `keys/anchorBatch.verifier` | `8ae5b4c15c3a20993e8d34b4022d180d95ed2d88927fca184527ca6857f06104` |
+| `keys/approveTransfer.prover` | `33fb0354d3d92071ad977aa12d1318d02d203e1146d719b9b524ad40467e29fa` |
+| `keys/approveTransfer.verifier` | `881a484ee1db8b1308da672e921d7035908b7a7e7be321cb34266afc3b09ae1b` |
+| `keys/confirmParent.prover` | `0a6bd6a0b39a2b3597bfc6eadf1e0d710f4f052b91b72aa2d475565f343a7265` |
+| `keys/confirmParent.verifier` | `39f8c5e68b5b73b6df5a4842c0a9d856b405412f49067b8df062baf18b33e7a1` |
+| `keys/countersignLicense.prover` | `951fd5a73d674e2021f96e3d4da411853d0af943840a41fdf3747c7adbbc6a15` |
+| `keys/countersignLicense.verifier` | `71149411b93b5f7dea286a4a651d5bc35f2a28f3e07f23ffc0c31cbb4779df68` |
+| `keys/discharge.prover` | `4fe5207ccff22c23ee9792b3bfa4409a265ecbf35aca4a7f9a0814fdbd00e516` |
+| `keys/discharge.verifier` | `6e5c082a07834d71bdcef4b00209761da598674625df29209cdb34589c1f2bfe` |
+| `keys/encumberOwnRecord.prover` | `0a631517bb08a8b3eec793246d10cd948a7bbf689b4f703077efec428bf17aca` |
+| `keys/encumberOwnRecord.verifier` | `64450fe400ff5b17ae07d5a5f619f7aa3598f6601a7a8e27d10c1fd8a1d4c743` |
+| `keys/issueLicense.prover` | `1cc2311835932c6428810fb88b73aa3165e6ec1de037ef7c7754b2b4bd82e449` |
+| `keys/issueLicense.verifier` | `7fd3f48b02763c7a99f7cb7571a3fe5923e37b08c1bc57f8fe6ec78ca16b952e` |
+| `keys/pairDna.prover` | `bcc2b1cde706a038d6aee96704929d6e0c812b7abac11f5b426cc983576f1090` |
+| `keys/pairDna.verifier` | `be1f3fb649332b832548a23b6c873a28a2fa21e1227c8501eec8b594466fbe4c` |
+| `keys/proposeObligation.prover` | `4aba5096018525521b7522ab584256a361c7cbd7c85670292751f176fa068793` |
+| `keys/proposeObligation.verifier` | `587f78f979b38bd46e9d0a2e210f54b819ca28253b04e4a97ec0f5632b879dfd` |
+| `keys/proposeParent.prover` | `963e52a4b2227ea079f1a40fe517391dd994f59c18614e340fcf64c31d43afc4` |
+| `keys/proposeParent.verifier` | `4eeb3cc9f91246278c7ba5f6a99148da06eec56ec5094cd2bd6c8211661c7a64` |
+| `keys/proposeTransfer.prover` | `2f1efaac8919ab4c213a12d07c073486aa4dc87cae854e4b66c76a9c84a4c8a6` |
+| `keys/proposeTransfer.verifier` | `b74d32cd0cbc9d9aa0ada29badca4dd315796dbb43c4120d1d8d40adb58ab686` |
+| `keys/proveLicense.prover` | `9e191bb84a5ca5a771da0265297c734e09be3fae46a303fc3a76dbe64394d11a` |
+| `keys/proveLicense.verifier` | `b338dda3501ae2dec26b241b353495580debcb359455b0671b6619197f29d59b` |
+| `keys/proveOwnership.prover` | `bcaabf722cf456ee06d362b88b50bcf2dc8e90f16659ed17268afab507fad329` |
+| `keys/proveOwnership.verifier` | `348ea64c7c532fa9ab4d1ad9097de2d2f0f3e4dd4b9369bda4d0fcdc7ae38462` |
+| `keys/recoverRecordSecret.prover` | `b70e052751d77e607ff7a536a5e6d3fd618e0c528cb196ce658091fc69579e8b` |
+| `keys/recoverRecordSecret.verifier` | `d31abbf23545e823fcbac5211812e4e8102083055a120da590769d63f5ee89ed` |
+| `keys/rejectObligation.prover` | `c9a94cd60339368c3559a5cdf119384532da65758ab705780285c42ab3576f1c` |
+| `keys/rejectObligation.verifier` | `61b2301586c3c9bf4a283a0774d6b7ace2782916854e1d4fcfeb534beb08b282` |
+| `keys/replaceRecoveryCommitment.prover` | `30a84ee352fd383026907272a42afa4f366b6c9bb2185238f26344e53958445c` |
+| `keys/replaceRecoveryCommitment.verifier` | `8e694ea480f2d9227c5a89c8d75ae570119124296819350e85207fb3d77483f6` |
+| `keys/revokeLicense.prover` | `4bf25562b50ae3f9b95281849a4c14bba5bd3a2d5a23fd86f86bedf13d00284f` |
+| `keys/revokeLicense.verifier` | `56b8ab4be3548195a8eb2dc56a8f678a2f29ef0ffd8f4f97793593eac3333c83` |
+| `keys/rotateRecordSecret.prover` | `c57c6146dfe5f4319026704157726f42eb1c9da8bdeddb422e6680d2d5f4a0a8` |
+| `keys/rotateRecordSecret.verifier` | `e078ccbafad46cd43a3157eb41b715dc0cfcdefbe3a46761ce38b214996e5d71` |
+| `keys/sealRevocations.prover` | `4ebaceaad233bebb5cfb0763de213d205a36ad1c35a00cb93120911501f14d1a` |
+| `keys/sealRevocations.verifier` | `694d4cbcc5d865550f01af1d9b03ade91690a5e5a41b221a713f1f87b02d7d06` |
+| `keys/withdrawObligation.prover` | `09111b2983933b67102ec9f85952661748bd5128818b11ff16b161f987e552bd` |
+| `keys/withdrawObligation.verifier` | `9757f321082f0239b499c22004d1b66a6b9051607a549175f249c9dbc404a27a` |
+| `keys/withdrawParent.prover` | `6df81f4c4df374efa3efb010a0ef27d3f915d426fcf9e200897c834f307b15fc` |
+| `keys/withdrawParent.verifier` | `7cb48b4cf19a9f2a1aa8890678f499c3ab5a0dc592799a71c1a3d3181aca1068` |
+| `keys/withdrawTransfer.prover` | `df817d4568d0bf186f9c4483690090660c0a064be02e94322c7c786ae0aeb728` |
+| `keys/withdrawTransfer.verifier` | `8ac9fb09ff1f7e74a663faa7b4369fbd7ee5011e3709015e28e0567f9954803f` |
+| `zkir/acceptObligation.bzkir` | `f2a767fb36ff57908e721e519fff520ae0fb997175be749d4f0c36daa1692ee5` |
+| `zkir/acceptObligation.zkir` | `a7e7d862fa96d68055efffafa831e7e545600742cd3d405b76815c86985c4ec0` |
+| `zkir/anchor.bzkir` | `eda2c09ca15e01855e1a017c3d200988043a250b02f2335d63d2b9613582c76b` |
+| `zkir/anchor.zkir` | `bac1066f7a62ce2c7e560068e41b00319e62b85741b4750aee11f2934d5a1d4e` |
+| `zkir/anchorBatch.bzkir` | `a0e18c980c17127ae64aeb12149f8ef4d78af37333cb4e9e100cbad732b70006` |
+| `zkir/anchorBatch.zkir` | `5c5b7cb86dffa017b359bccb05ab67c67c85b9e84249d9bfea8162d96e559eaf` |
+| `zkir/approveTransfer.bzkir` | `b42b5bf329d2f056eacf9f0207357a255defb1a1d8656f2f73e08e81727d6daf` |
+| `zkir/approveTransfer.zkir` | `de731f03a94b1f3de76dfb45a1a8e0b00bcf46719c104d85a4e4e281275306cd` |
+| `zkir/confirmParent.bzkir` | `e36fb986a0e9c123a089cdfb72202cf287cb95a6d6650e12a656f194bbfe87a6` |
+| `zkir/confirmParent.zkir` | `b06a315cddef0b71c47814cbfb6f24fc8be945826deb9f87b57d8dfe06905990` |
+| `zkir/countersignLicense.bzkir` | `482a7c264537602fd18dd66af1a1ee53e1a06206fe4e2401e3398bd2705aac59` |
+| `zkir/countersignLicense.zkir` | `26ffe4d5a07829a43ada1fd55b0b47572e250cd9b02289df222fe9d7e528f4a0` |
+| `zkir/discharge.bzkir` | `58a6bd0cd2eda514a5fa56b63918aded099f50483f0f3e1c7f0b73a341e8242b` |
+| `zkir/discharge.zkir` | `37d4b2c0ac0f3f51fdf279b051ca2a13b96cbd5aa3a7b5e82947a57c96db1a3e` |
+| `zkir/encumberOwnRecord.bzkir` | `64fe84b4dd663fad815794e1a2e1df17b8f678196bfe2d41693cd3c1d26378ac` |
+| `zkir/encumberOwnRecord.zkir` | `94cdfcbf81987bcae61492737a3586838a05fd51ae5d360e805ab892b5a6a749` |
+| `zkir/issueLicense.bzkir` | `ba0949cfaedd41dd02f98f7ae367b234e71afddb0737200c9b61902252661768` |
+| `zkir/issueLicense.zkir` | `4f3baed4be5154a5e5a3c65c1208570c33c21b325f328a72edf3f35e99cf06f1` |
+| `zkir/pairDna.bzkir` | `25c249d3fc744988ff76669731db293bf80a88c0cba0c9bd09927f827ea67676` |
+| `zkir/pairDna.zkir` | `0dcd742a2efee30a9b9eaae451179e0af0fa935c6493fb4c919fdb6e3e0293f4` |
+| `zkir/proposeObligation.bzkir` | `3abc7f4ba2a3dea1a23b1bf6cc409418a3ac14a4f2ee961fd32dcf8dcb5c5f01` |
+| `zkir/proposeObligation.zkir` | `2273be490bf9ec7d9a615f80c319fb0d0873d3678c99f85a45b438f16d1f3a05` |
+| `zkir/proposeParent.bzkir` | `3364503895ef390606c8fd9fffee95ec8d1200a5fad6c04ef370e7406f5712d9` |
+| `zkir/proposeParent.zkir` | `fc7f235c1af5a2e1bb32c38260b07a87f9301dd6cb8807c747c6584d6c2d1d4a` |
+| `zkir/proposeTransfer.bzkir` | `b5813fec8bec1ce5babadd56a61060a5d71dbe9cb2d7e64e04daf7d5d61383b7` |
+| `zkir/proposeTransfer.zkir` | `a5cfd2b2cb5f11cfaad4e89c25ffea9f2218f0113bcd4c223bbeef5988c4a1b5` |
+| `zkir/proveLicense.bzkir` | `50428b86cecdb5d759a9a1af52d5b3998d95fd091e231ebf716226631954e0a8` |
+| `zkir/proveLicense.zkir` | `bc5ae6bf3cceabcbe9a51bc6b4337ee724997461a7ac067ec5e6bdb050c36d6a` |
+| `zkir/proveOwnership.bzkir` | `27400218fe6aa22ae3e7c22a7f97ecb8122f9a2ded9d426140b790fe2c2cb71e` |
+| `zkir/proveOwnership.zkir` | `36526d88747e918c88cb0f664954268c384fca2165b50a3e714b21c2338391d3` |
+| `zkir/recoverRecordSecret.bzkir` | `a37ff42c633bd2b659198b946e79ac6cf0e4bbe654b9e6f6a0544e8be86e4767` |
+| `zkir/recoverRecordSecret.zkir` | `e1c1292e1adc75469284301467bc4f6aa550bc246e9a499d8b761ea137480983` |
+| `zkir/rejectObligation.bzkir` | `965216e42fc22bde45b9a2d0b95c8ba2224d71a6eb456c5c001366613912564e` |
+| `zkir/rejectObligation.zkir` | `7f918dd6362d3dbc8328fb9672a6cd61aaf42a26c7dcc54665888bb2600c31e9` |
+| `zkir/replaceRecoveryCommitment.bzkir` | `d7c0ce21b113a5bbb188e2b46496d5e062b490a5f784d1663e7037f93377cde4` |
+| `zkir/replaceRecoveryCommitment.zkir` | `11177e8f616fd4f1256420df9f272ae6e535f2328d15936b13150419289a77ae` |
+| `zkir/revokeLicense.bzkir` | `0e860a2acac01b277c9c840c2d508dd454904cbd7c13cd487afef437026adb08` |
+| `zkir/revokeLicense.zkir` | `a24609ff839e4f4cf43851d6c77afaf9465d60582369e3739cb42177fd73b9c0` |
+| `zkir/rotateRecordSecret.bzkir` | `534cb3558d749b993673e0f9f1aed970dcfd369fa4db729f2c328cc656c9993d` |
+| `zkir/rotateRecordSecret.zkir` | `76d217a6a7587e85467ff1905272682eaf54dbd7969f676d99f306a401066fb7` |
+| `zkir/sealRevocations.bzkir` | `36dfee86566f1569f10f1464e06ce976436dc8a90c0b5c56aeedd1eb97a14cd1` |
+| `zkir/sealRevocations.zkir` | `734fb049584993d6b4ec6e97b6ab0c399a0ed0c27613372c91a7cea483b1b78a` |
+| `zkir/withdrawObligation.bzkir` | `f735f8f4cd3e226693e7b0ec8045e294655c2737f5a0ca1b74c4d9339c688d0a` |
+| `zkir/withdrawObligation.zkir` | `a0550dc303b29b5e3111e108548c8faf5a84b581b6fa8c92d6fcc6763e9b8f7e` |
+| `zkir/withdrawParent.bzkir` | `59c1fd185a89fdfca9ffde3646bd086e6fad19fa137a0e2a8c28a2937becfbfc` |
+| `zkir/withdrawParent.zkir` | `b8ef43b8ad128c9b05c71cbe313fbc1e34ca7bd7427393b4a21e0618e8c72a35` |
+| `zkir/withdrawTransfer.bzkir` | `a6cc18da40ece2ee34c8cfb93c87683ff010e320dfc8a4f9c57ead589f6d23b7` |
+| `zkir/withdrawTransfer.zkir` | `64cc7b9bb7b3f13cb206126548394e3156ae5ee88b9877943411e200879d9a99` |
+| `contract/index.js` | `4e23ffc28f3de3ce670d9cea2896301dfeec8b4593d1b65332eb18f74ba5d286` |
 
-Reviewers can reproduce the table by building at [commit — to be filled] with compactc
+Reviewers can reproduce the table by building at `ceb3a16` with compactc
 0.31.1, running `npm run fingerprints`, and comparing. A mainnet deploy or join from the
 CLI is refused unless the local build matches `docs/fingerprints.md` as committed
 (`bboard-cli/src/keys-check.ts`).
@@ -616,7 +712,7 @@ at the top of this document now describes this contract. What it replaced is kep
 
 ### What is being approved
 
-- `contract/src/veilcore.compact` at [commit — to be filled], built with compactc 0.31.1.
+- `contract/src/veilcore.compact` at `ceb3a16`, built with compactc 0.31.1.
 - The 97 artefacts in the fingerprint table at the top, once filled: 48 keys, 48 ZKIR
   files and `contract/index.js`.
 - Deployed in fragments, as described below, with a maintenance authority kept at
@@ -960,13 +1056,13 @@ the local copy. `docs/design.md` says the date will be published in this record.
 with one nobody stores. The chain cannot show that nobody kept it, so outsiders take the
 deployer's word. What they can check: the retirement is a maintenance transaction, so its
 date is public. And anyone can compare the circuits and keys on chain with a build of
-[commit — to be filled], as `join` does, to see whether the circuit set has changed since. That
+`ceb3a16`, as `join` does, to see whether the circuit set has changed since. That
 detects a change after it happens. It does not prevent one.
 
 ### Testing and deployment status
 
-- **Contract tests on this build:** [suites, tests and result — to be filled from `cd
-  contract && npm test` at [commit — to be filled]]. The suites now include
+- **Contract tests on this build:** 18 suites, 266 tests pass and 9 attacks that must
+  fail do fail (`cd contract && npm test` at `ceb3a16`, 1 October 2026). The suites now include
   `state-bounds.test.ts` and `attack-bounds.test.ts`. One test, the 1024-active-licence
   cap, runs only with `SLOW_TESTS=1`.
 - **Smoke test on a local Midnight chain, this build: PENDING.** The previous build
@@ -1006,5 +1102,5 @@ detects a change after it happens. It does not prevent one.
   4 fixed in the contract (F1, F2, F3, F5) and 3 documented (F4, F6, F7). A second
   attack on the fixes found 2 more, both fixed in the contract (R1: 16 more obligation
   places per recovery; R2: an approved transfer publishes the new commitment). The change
-  invalidated the earlier fingerprints, commit references and test results, which are
-  marked to be filled from the new build.
+  invalidated the earlier fingerprints, commit references and test results; this
+  revision carries the new ones (build `ceb3a16`, fingerprints `e89a387`).

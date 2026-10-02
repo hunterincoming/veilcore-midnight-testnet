@@ -10,7 +10,8 @@
  * The file holds what the wallet learned while syncing (its coins), not the seed. It is
  * still private: written with mode 0600 under ~/.veilcore/wallet-state, never logged.
  * Without the password nothing is saved and every start syncs from the beginning.
- * VEILCORE_FRESH_SYNC=1 ignores a saved file; a file that cannot be read is ignored too.
+ * VEILCORE_FRESH_SYNC=1 ignores a saved file. A file this password cannot open is never
+ * written over: it is moved aside (and on mainnet the CLI stops and asks first).
  * Never used on the local chain, which is new on every run.
  */
 import { createCipheriv, createDecipheriv, createHash, randomBytes, scryptSync } from 'node:crypto';
@@ -60,13 +61,17 @@ export class WalletStateFile {
     return scryptSync(this.password ?? '', salt, 32, { N: 1 << 15, r: 8, p: 1, maxmem: 64 * 1024 * 1024 });
   }
 
-  async load(): Promise<SavedWalletState | null> {
-    if (!this.enabled || process.env.VEILCORE_FRESH_SYNC === '1') return null;
+  /**
+   * What is saved: nothing, progress this password opens, or a file it cannot open (a
+   * different password, or damage; AES-GCM cannot tell the two apart).
+   */
+  async read(): Promise<{ kind: 'none' } | { kind: 'ok'; state: SavedWalletState } | { kind: 'unreadable' }> {
+    if (!this.enabled || process.env.VEILCORE_FRESH_SYNC === '1') return { kind: 'none' };
     let blob: Buffer;
     try {
       blob = await readFile(this.path);
     } catch {
-      return null; // nothing saved yet
+      return { kind: 'none' }; // nothing saved yet
     }
     try {
       if (!blob.subarray(0, MAGIC.length).equals(MAGIC)) throw new Error('not a wallet-state file');
@@ -84,11 +89,36 @@ export class WalletStateFile {
       ) {
         throw new Error('incomplete');
       }
-      return parsed as SavedWalletState;
+      return { kind: 'ok', state: parsed as SavedWalletState };
     } catch {
-      this.logger.warn('Saved wallet progress could not be read (wrong password or damaged); syncing from the start.');
-      return null;
+      return { kind: 'unreadable' };
     }
+  }
+
+  /**
+   * Saved progress, or null. A file that cannot be opened is moved aside, never written
+   * over: with the right password it is still good. (On mainnet the CLI asks first.)
+   */
+  async load(): Promise<SavedWalletState | null> {
+    const r = await this.read();
+    if (r.kind === 'ok') return r.state;
+    if (r.kind === 'unreadable') {
+      const kept = await this.setAside();
+      this.logger.warn(
+        `Saved wallet progress could not be read (wrong password or damaged); syncing from the start. The old file is kept as ${kept}.`,
+      );
+    }
+    return null;
+  }
+
+  /**
+   * Move a saved file this password cannot open out of the way, so the progress saved
+   * from now on does not replace it. Returns where it went.
+   */
+  async setAside(): Promise<string> {
+    const kept = `${this.path}.unopened-${new Date().toISOString().replace(/[:.]/g, '-')}`;
+    await rename(this.path, kept);
+    return kept;
   }
 
   async save(wallet: SavableWallet): Promise<void> {

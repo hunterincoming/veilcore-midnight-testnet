@@ -19,6 +19,10 @@ import {
   type SealResult,
   LandedButUnconfirmedError,
   assertDeploymentRecordCurrent,
+  decide,
+  resolveNetwork,
+  REQUIRED_RECORD_REVISION,
+  REVISION_VAR,
 } from '../../api/src/index';
 import { type WalletFacade } from '@midnight-ntwrk/wallet-sdk-facade';
 import { pureCircuits } from '../../contract/src/managed/veilcore/contract/index.js';
@@ -31,7 +35,7 @@ import { levelPrivateStateProvider } from '@midnight-ntwrk/midnight-js-level-pri
 import { toHex } from '@midnight-ntwrk/midnight-js-utils';
 import { sampleSigningKey } from '@midnight-ntwrk/midnight-js-protocol/compact-runtime';
 import { TestEnvironment } from '@midnight-ntwrk/testkit-js';
-import { MidnightWalletProvider } from './midnight-wallet-provider';
+import { MidnightWalletProvider, SavedProgressNotOpenedError } from './midnight-wallet-provider';
 import { randomBytes } from '../../api/src/utils';
 import { showSecret } from './secret-out';
 import { unshieldedToken } from '@midnight-ntwrk/midnight-js-protocol/ledger';
@@ -43,7 +47,15 @@ import path from 'node:path';
 import { getNetworkId } from '@midnight-ntwrk/midnight-js-network-id';
 import { type VeilcorePrivateState } from '../../contract/src/witnesses.js';
 import { type ChallengeBook } from '../../contract/src/verify.js';
-import { createPrompt, parseSecret32, parseSigningKey } from './prompt';
+import {
+  createPrompt,
+  groupKey,
+  parseSecret32,
+  parseSigningKey,
+  PromptClosedError,
+  sameKey,
+  type Prompt,
+} from './prompt';
 import { settlePassword } from './password';
 import { ChallengeFile } from './challenge-file';
 import { redactThisSession } from './logger-utils';
@@ -71,6 +83,44 @@ const ask32 = async (rli: Interface, prompt: string): Promise<Uint8Array> => {
 /** Reads one answer without echoing it. Set in run(), on the CLI's one readline. */
 let askHidden: (question: string) => Promise<string> = () => {
   throw new Error('askHidden used before the prompt was created');
+};
+
+/** Hidden, over several lines until done (a recovery phrase pasted as two lines). Set in run(). */
+let askHiddenLines: Prompt['askHiddenLines'] = () => {
+  throw new Error('askHiddenLines used before the prompt was created');
+};
+
+/**
+ * What a wrong menu answer gets. The answer itself is NEVER repeated, on screen or in the
+ * log: a recovery phrase pasted at the wrong moment would otherwise land in
+ * logs/<network>/*.log in plain text.
+ */
+export const NOT_AN_OPTION = 'Not an option. Type a number from the list.';
+
+/** Deploy or maintenance transactions under way; Ctrl+C then says to wait (run()). */
+let txInProgress = 0;
+const during = async <T>(f: () => Promise<T>): Promise<T> => {
+  txInProgress++;
+  try {
+    return await f();
+  } finally {
+    txInProgress--;
+  }
+};
+
+/** A contract address: 64 hex characters. Asked again until it is one; never echoed back. */
+const askContractAddress = async (rli: Interface, logger: Logger): Promise<string> => {
+  for (;;) {
+    const a = (await rli.question('Contract address (hex): ')).trim();
+    if (/^[0-9a-fA-F]{64}$/.test(a)) return a.toLowerCase();
+    logger.error('That is not a contract address (64 characters, each 0-9 or a-f, no 0x). Nothing was sent.');
+  }
+};
+
+/** On mainnet: the build is the committed one (docs/fingerprints.md), or this throws. */
+const checkBuild = (zkConfigPath: string, logger: Logger): void => {
+  const n = assertKeysMatchRecord(zkConfigPath, path.resolve(zkConfigPath, '..', '..', '..', '..'));
+  logger.info(`All ${n} build artefacts match the committed fingerprints (docs/fingerprints.md).`);
 };
 
 /** Ask for a 32-byte SECRET, hidden as it is typed; refuses anything but 64 hex characters. */
@@ -137,7 +187,11 @@ Which would you like to do? `;
  * "no" means deploy and then retire it (api/src/maintenance.ts). Keeping it is the
  * default: it is the only way to repair a deployed contract, and it can be retired later.
  */
-const askMaintenanceAuthority = async (rli: Interface, logger: Logger): Promise<string | null> => {
+export const askMaintenanceAuthority = async (
+  rli: Interface,
+  logger: Logger,
+  hidden: (question: string) => Promise<string> = (q) => askHidden(q),
+): Promise<string | null> => {
   logger.info('The maintenance authority can add and remove verifier keys: it can repair, or disable, any circuit.');
   logger.info('Retired, the contract can never be changed by anyone. Sealed records verify by SHA-256 either way.');
   const answer = (await rli.question('Keep a maintenance authority? (Y/n): ')).trim().toLowerCase();
@@ -150,19 +204,40 @@ const askMaintenanceAuthority = async (rli: Interface, logger: Logger): Promise<
     logger.info('Not retired. Keeping the authority.');
   }
   for (;;) {
-    const typed = await askHidden(
+    const typed = await hidden(
       'Signing key (64 hex characters; nothing shows as you type or paste; blank to generate one): ',
     );
     if (typed === '') {
       const key = sampleSigningKey();
       redactThisSession(key);
-      showSecret('MAINTENANCE AUTHORITY SIGNING KEY — write it down now and keep it offline:', key);
-      // Nothing is sent until the operator says the key is written down.
+      const show = (): void =>
+        showSecret(
+          'MAINTENANCE AUTHORITY SIGNING KEY — write it down now and keep it offline (the spaces are only to make copying easier):',
+          groupKey(key),
+        );
+      show();
+      // Nothing is sent until the operator says the key is written down...
       for (;;) {
         const ok = (await rli.question('Type WRITTEN once the key is on paper and checked (nothing is sent before): '))
           .trim()
           .toUpperCase();
         if (ok === 'WRITTEN') break;
+      }
+      // ...and has typed it back from the paper: a copying mistake found now costs a minute;
+      // found later, it costs the only key that can repair the contract.
+      for (;;) {
+        const back = await hidden(
+          'Now type the key back FROM YOUR PAPER (spaces or dashes are fine; nothing shows; SHOW to see it again): ',
+        );
+        if (sameKey(back, key)) {
+          logger.info('Your paper copy matches the key.');
+          break;
+        }
+        if (back.trim().toUpperCase() === 'SHOW') {
+          show();
+          continue;
+        }
+        logger.error('That does not match the key shown. Check your paper copy, correct it, and type it again.');
       }
       return key;
     }
@@ -181,30 +256,27 @@ export const deployOrJoin = async (
   logger: Logger,
   zkConfigPath: string,
   indexerUri: string,
+  hidden: (question: string) => Promise<string> = (q) => askHidden(q),
 ): Promise<VeilcoreAPI | null> => {
   while (true) {
     const choice = (await rli.question(DEPLOY_OR_JOIN_QUESTION)).trim();
     switch (choice) {
       case '1': {
-        if (getNetworkId() === 'mainnet') {
-          const n = assertKeysMatchRecord(zkConfigPath, path.resolve(zkConfigPath, '..', '..', '..', '..'));
-          logger.info(`All ${n} build artefacts match the committed fingerprints (docs/fingerprints.md).`);
-        }
+        if (getNetworkId() === 'mainnet') checkBuild(zkConfigPath, logger);
         // Checked again inside deploy; here so a missing record revision is found before a
         // maintenance key is made and written down for nothing.
         assertDeploymentRecordCurrent('veilcore', logger);
-        const api = await VeilcoreAPI.deploy(providers, await askMaintenanceAuthority(rli, logger), logger);
-        logger.info(`Deployed VeilCore contract at address: ${api.deployedContractAddress}`);
+        const authority = await askMaintenanceAuthority(rli, logger, hidden);
+        const api = await during(() => VeilcoreAPI.deploy(providers, authority, logger));
+        logger.info('Deployed. Every circuit key is on chain.');
+        logger.info(`Contract address: ${api.deployedContractAddress}`);
         return api;
       }
       case '2': {
         // On mainnet, check this build against the committed fingerprints before joining,
         // as deploy does: join compares the chain's keys with THIS build's keys.
-        if (getNetworkId() === 'mainnet') {
-          const n = assertKeysMatchRecord(zkConfigPath, path.resolve(zkConfigPath, '..', '..', '..', '..'));
-          logger.info(`All ${n} build artefacts match the committed fingerprints (docs/fingerprints.md).`);
-        }
-        const api = await VeilcoreAPI.join(providers, (await rli.question('Contract address (hex): ')).trim(), logger);
+        if (getNetworkId() === 'mainnet') checkBuild(zkConfigPath, logger);
+        const api = await VeilcoreAPI.join(providers, await askContractAddress(rli, logger), logger);
         logger.info(`Joined contract at address: ${api.deployedContractAddress}`);
         return api;
       }
@@ -219,26 +291,52 @@ export const deployOrJoin = async (
       }
       case '4': {
         // A deploy is one transaction plus one per remaining circuit key. If it stopped
-        // partway, the authority's key is still in the local store; this adds the rest.
-        if (getNetworkId() === 'mainnet') {
-          const n = assertKeysMatchRecord(zkConfigPath, path.resolve(zkConfigPath, '..', '..', '..', '..'));
-          logger.info(`All ${n} build artefacts match the committed fingerprints (docs/fingerprints.md).`);
+        // partway, the authority's key is normally still in the local store; this adds the
+        // rest. If it is not (a deploy that stopped before the key was saved), it is asked for.
+        if (getNetworkId() === 'mainnet') checkBuild(zkConfigPath, logger);
+        const address = await askContractAddress(rli, logger);
+        let typedIn = false;
+        if (!(await providers.privateStateProvider.getSigningKey(address))) {
+          logger.info('This computer does not hold the maintenance key for that contract. It is on your paper copy.');
+          for (;;) {
+            const typed = await hidden(
+              'Maintenance authority signing key, from your paper (64 hex; spaces fine; nothing shows; blank to stop): ',
+            );
+            if (typed === '') {
+              logger.info('Stopped: finishing the deploy needs the signing key. Nothing was sent.');
+              return null;
+            }
+            const r = parseSigningKey(typed.replace(/[\s-]/g, ''));
+            if ('value' in r) {
+              await providers.privateStateProvider.setSigningKey(address, r.value);
+              typedIn = true;
+              break;
+            }
+            logger.error(`${r.problem} Try again.`);
+          }
         }
-        const address = (await rli.question('Contract address (hex): ')).trim();
-        await VeilcoreAPI.addMissingCircuitKeys(providers, address, logger);
-        const api = await VeilcoreAPI.join(providers, address, logger);
+        let api: VeilcoreAPI;
+        try {
+          await during(() => VeilcoreAPI.addMissingCircuitKeys(providers, address, logger));
+          api = await VeilcoreAPI.join(providers, address, logger);
+        } catch (e) {
+          // A key typed in for this does not stay on this machine; the paper copy is unchanged.
+          if (typedIn) await providers.privateStateProvider.removeSigningKey(address);
+          throw e;
+        }
         const retire = (
           await rli.question('Retire the maintenance authority now? Type RETIRE, or Enter to keep it: ')
         ).trim();
-        if (retire === 'RETIRE') await api.retireMaintenanceAuthority();
+        if (retire === 'RETIRE') await during(() => api.retireMaintenanceAuthority());
         await providers.privateStateProvider.removeSigningKey(address);
-        logger.info(`Deploy finished: every circuit key is on chain at ${address}.`);
+        logger.info('Deploy finished: every circuit key is on chain.');
+        logger.info(`Contract address: ${address}`);
         return api;
       }
       case '5':
         return null;
       default:
-        logger.error(`Invalid choice: ${choice}`);
+        logger.error(NOT_AN_OPTION);
     }
   }
 };
@@ -601,9 +699,11 @@ const mainLoop = async (
             const recognised =
               rootsText === ''
                 ? []
-                : rootsText.split(',').map((t) => {
+                : rootsText.split(',').map((t, i) => {
                     const v = parse32(t);
-                    if (v === null) throw new InputError(`Not a record: ${t.trim()}`);
+                    // Which one, not what was typed: answers are never echoed into the log.
+                    if (v === null)
+                      throw new InputError(`Item ${i + 1} of that list is not a record (64 hex characters).`);
                     return v;
                   });
             const report = await api.checkLineage(record, recognised);
@@ -665,7 +765,7 @@ const mainLoop = async (
               else if ('problem' in r) logger.error(`Not retired. ${r.problem}`);
               else {
                 try {
-                  await api.retireMaintenanceAuthority(r.value);
+                  await during(() => api.retireMaintenanceAuthority(r.value));
                   logger.info('Retired. The key you typed was used once and removed from this machine again.');
                 } catch (e) {
                   logger.error(
@@ -681,7 +781,7 @@ const mainLoop = async (
           case '0':
             return;
           default:
-            logger.error(`Invalid choice: ${choice}`);
+            logger.error(NOT_AN_OPTION);
         }
       } catch (e) {
         logError(logger, e);
@@ -719,7 +819,7 @@ const buildWallet = async (config: Config, rli: Interface, logger: Logger): Prom
     return { seed: GENESIS_MINT_WALLET_SEED };
   }
   while (true) {
-    const choice = await rli.question(WALLET_LOOP_QUESTION);
+    const choice = (await rli.question(WALLET_LOOP_QUESTION)).trim();
     switch (choice) {
       case '1': {
         if (config.mainnet) {
@@ -752,12 +852,29 @@ const buildWallet = async (config: Config, rli: Interface, logger: Logger): Prom
         return { seed };
       }
       case '3': {
-        logger.info('Type the 24 words separated by spaces. Nothing shows as you type; they are not logged or stored.');
-        const mnemonic = (await askHidden('Recovery phrase: ')).toLowerCase().split(/\s+/).join(' ');
-        if (mnemonic.split(' ').length !== 24) {
-          logger.error(`That is ${mnemonic === '' ? 0 : mnemonic.split(' ').length} words, not 24.`);
+        logger.info(
+          'Type or paste the 24 words, separated by spaces. Nothing shows; they are not logged or stored. ' +
+            'If they are on several lines, paste them all: this keeps reading until it has 24 words.',
+        );
+        const words = (lines: readonly string[]): string[] =>
+          lines
+            .join(' ')
+            .split(/\s+/)
+            .filter((w) => w !== '');
+        const lines = await askHiddenLines(
+          'Recovery phrase: ',
+          (ls) => words(ls).length >= 24,
+          (ls) =>
+            `${words(ls).length} of 24 words so far. Paste or type the rest, then press Enter (an empty line stops).`,
+        );
+        // Each line as typed, and the phrase, are redacted from the log for the rest of the run.
+        for (const l of lines) redactThisSession(l);
+        const list = words(lines).map((w) => w.toLowerCase());
+        if (list.length !== 24) {
+          logger.error(`That is ${list.length} words, not 24. Nothing was used. Choose 3 to try again.`);
           break;
         }
+        const mnemonic = list.join(' ');
         redactThisSession(mnemonic);
         return { mnemonic };
       }
@@ -765,7 +882,7 @@ const buildWallet = async (config: Config, rli: Interface, logger: Logger): Prom
         logger.info('Exiting...');
         return undefined;
       default:
-        logger.error(`Invalid choice: ${choice}`);
+        logger.error(NOT_AN_OPTION);
     }
   }
 };
@@ -782,21 +899,94 @@ export const run = async (config: Config, testEnv: TestEnvironment, logger: Logg
   const prompt = createPrompt();
   const rli = prompt.rli;
   askHidden = prompt.askHidden;
-  // Asked for up front, before the chain starts and the wallet syncs, so a password
-  // midnight-js would refuse is found in the first second rather than after the sync.
-  if (!(await settlePassword(askHidden, logger))) {
-    rli.close();
-    return;
-  }
+  askHiddenLines = prompt.askHiddenLines;
   const providersToBeStopped: MidnightWalletProvider[] = [];
+  let envStarted = false;
+
+  // Clean-up, run once: by the normal end of the run, or by Ctrl+C.
+  let stopping: Promise<void> | undefined;
+  const stopAll = (): Promise<void> =>
+    (stopping ??= (async () => {
+      try {
+        rli.close();
+      } catch (e) {
+        logError(logger, e);
+      }
+      try {
+        for (const wallet of providersToBeStopped) {
+          logger.info('Stopping wallet...');
+          await wallet.stop();
+        }
+        if (testEnv && envStarted) {
+          logger.info('Stopping test environment...');
+          await testEnv.shutdown();
+        }
+      } catch (e) {
+        logError(logger, e);
+      }
+    })());
+
+  // Ctrl+C. During a deploy or maintenance transaction it is refused: stopping between
+  // the transactions of a deploy leaves it half done. Otherwise the run stops cleanly.
+  let interrupted = false;
+  const onInterrupt = (): void => {
+    if (txInProgress > 0) {
+      logger.warn('A deploy is in progress. Do not close this window. It is safe to stop when the menu comes back.');
+      return;
+    }
+    if (interrupted) return;
+    interrupted = true;
+    logger.info('Stopping…');
+    // At a prompt, closing it ends the run through the normal clean-up below.
+    if (prompt.asking()) rli.close();
+    // Anywhere else (the wallet sync, say), stop the wallet here and leave.
+    else void stopAll().finally(() => process.exit(130));
+  };
+  rli.on('SIGINT', onInterrupt);
+  process.on('SIGINT', onInterrupt);
+
   try {
+    // Asked for up front, before the chain starts and the wallet syncs, so a password
+    // midnight-js would refuse is found in the first second rather than after the sync.
+    if (!(await settlePassword(askHidden, logger))) return;
+
+    if (config.mainnet) {
+      // Also checked before the long sync: a build that does not match the record, or a
+      // deploy the record gate will refuse, is found now rather than an hour from now.
+      try {
+        checkBuild(config.zkConfigPath, logger);
+      } catch (e) {
+        logError(logger, e);
+        logger.error('Nothing was started.');
+        return;
+      }
+      const gate = decide(resolveNetwork(), process.env[REVISION_VAR]);
+      if (gate.allow) logger.info(`Deployment record: ${gate.because}. Deploying is allowed.`);
+      else
+        logger.warn(
+          `Deployment record: ${gate.where} ${gate.why} Deploying (option 1) will be refused; joining still works. ` +
+            `To deploy, stop now (Ctrl+C), set ${REVISION_VAR}=${REQUIRED_RECORD_REVISION}, and start again.`,
+        );
+    }
+
+    envStarted = true; // shut down even if starting fails partway
     const envConfiguration = await testEnv.start();
     logger.info(`Environment started with configuration: ${JSON.stringify(envConfiguration)}`);
     const source = await buildWallet(config, rli, logger);
     if (source === undefined) {
       return;
     }
-    const walletProvider = await MidnightWalletProvider.build(logger, envConfiguration, source);
+    const walletProvider = await MidnightWalletProvider.build(logger, envConfiguration, source, {
+      // On mainnet a progress file this password cannot open is never silently replaced.
+      confirmFreshSync: config.mainnet
+        ? async () =>
+            (
+              await rli.question(
+                'That password does not open your saved progress. If you are sure, type CONTINUE to sync from the start: ',
+              )
+            ).trim() === 'CONTINUE'
+        : undefined,
+    });
     providersToBeStopped.push(walletProvider);
     const walletFacade: WalletFacade = walletProvider.wallet;
     const seed = walletProvider.masterSeed;
@@ -885,28 +1075,14 @@ export const run = async (config: Config, testEnv: TestEnvironment, logger: Logg
 
     await mainLoop(providers, rli, logger, config.zkConfigPath, envConfiguration.indexer);
   } catch (e) {
-    logError(logger, e);
+    if (e instanceof SavedProgressNotOpenedError) logger.info(e.message);
+    // Stopped at a prompt (Ctrl+C, or the input closed): nothing went wrong.
+    else if (!interrupted && !(e instanceof PromptClosedError)) logError(logger, e);
     logger.info('Exiting...');
   } finally {
-    try {
-      rli.close();
-      rli.removeAllListeners();
-    } catch (e) {
-      logError(logger, e);
-    } finally {
-      try {
-        for (const wallet of providersToBeStopped) {
-          logger.info('Stopping wallet...');
-          await wallet.stop();
-        }
-        if (testEnv) {
-          logger.info('Stopping test environment...');
-          await testEnv.shutdown();
-        }
-      } catch (e) {
-        logError(logger, e);
-      }
-    }
+    process.off('SIGINT', onInterrupt);
+    await stopAll();
+    rli.removeAllListeners();
   }
 };
 

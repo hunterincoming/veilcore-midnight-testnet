@@ -111,7 +111,7 @@ every rotation and recovery, and a retired secret controls nothing.
 | `proveOwnership(challenge)` | Publishes the caller's live record in `lastOwnershipProof` and the verifier's challenge in `lastOwnershipChallenge`, so the proof answers one verifier (rule 8). The interval since its anchor is the evidence of prior possession. |
 | `pairDna(dnaCommitment)` | Records any non-zero 32-byte value the holder chooses against the caller's record. It is the holder's own statement that a report belongs to the record; the contract cannot check it. |
 | `rotateRecordSecret(newRecord)` | Moves the identity; the caller must hold the new secret. Anchored identities only. At most 16 since the anchor or the last recovery. |
-| `recoverRecordSecret(origin, newRecord)` | Moves the identity with the recovery secret, whoever holds the head. At most 16 per identity; each one resets the rotation count. |
+| `recoverRecordSecret(origin, newRecord, newRecoveryCommitment)` | Moves the identity with the recovery secret, whoever holds the head. At most 16 per identity; each one resets the rotation count. |
 | `replaceRecoveryCommitment(origin, new)` | Replaces a recovery secret that may have leaked. |
 | `anchorBatch(root)` | Timestamps a batch root. **Unauthenticated**: inclusion in a batch is not possession. |
 
@@ -408,15 +408,17 @@ the circuit set as changeable by VeilCore.
   confirmed edge. Disputes of that kind are for the parties and, while it is held, the
   maintenance authority, which could add a remedy circuit. Keep secrets on devices you
   control and the recovery secret offline.
-- **Licence activity is public apart from presentations.** Every licence call except a
-  presentation publishes the licence key, which links them to each other, and the
-  issuing record. Issue and countersign both publish the licence commitment
-  (`lastIssuedLicense`, `lastActivatedLicense`). Issue publishes it so that an owner who
-  recovers from a theft can revoke PENDING licences the thief issued: revoking needs the
-  commitment, and the key alone does not give it. A transfer proposal publishes the
-  incoming commitment, and an approved transfer writes it to `lastTransferredLicense`,
-  so the same owner can revoke a licence the thief activated and then transferred. Revoke and approve publish the caller's record. Only a
-  presentation hides the licence and the licensee. Whether fee payments can link a
+- **Licence activity is public apart from presentations.** Issue, countersign, approve
+  and revoke publish the licence key and the issuing record; a transfer proposal and its
+  withdrawal publish the licence key; a seal publishes neither. The licence key links
+  these calls to each other. Issue, countersign and an approved transfer publish a
+  licence commitment (`lastIssuedLicense`, `lastActivatedLicense`,
+  `lastTransferredLicense`). Issue publishes it so that an owner who recovers from a
+  theft can revoke PENDING licences the thief issued: revoking needs the commitment, and
+  the key alone does not give it. An approved transfer publishes it so the same owner can
+  revoke a licence the thief activated and then transferred. A transfer proposal
+  publishes the incoming commitment. Revoke and approve publish the caller's record.
+  Only a presentation hides the licence and the licensee. Whether fee payments can link a
   presentation to its countersign is an open question for the Midnight wallet, not this
   contract.
 - **Obligation proposals are public.** A proposal publishes who proposed what against
@@ -429,10 +431,11 @@ the circuit set as changeable by VeilCore.
   never removed. Each is capped per identity ("State bounds"). Keeping old successors in
   `originOf` is the price of a retired secret ceasing to work.
 - **The caps can refuse legitimate use.** A record cannot take a third parent. A record
-  with 16 obligations in force cannot accept another until one is discharged. A
+  that has never been recovered, with 16 obligations in force, cannot accept another
+  until one is discharged (the cap is 16 per record, plus 16 per recovery, at most 272). A
   proposer with 8 proposals waiting, or an issuer with 32 licences waiting for
   countersignature, must wait for answers or withdraw. An issuer with 1024 active
-  licences must revoke one, or issue from another record, to activate more. After 16
+  licences must revoke one, or issue from another anchored identity, to activate more. After 16
   recoveries an identity cannot be recovered again, and once it has also used the 16
   rotations after its last recovery it cannot move at all. Obligations a thief accepted
   owed to himself stay in force after recovery (only their beneficiary can release
@@ -530,8 +533,9 @@ transactions arrive first. The smoke test (`bboard-cli/src/smoke.ts`) deploys a 
 contract and calls 16 of the 24 circuits with real proofs, checking 26 results. It does
 not call `anchorBatch`, `replaceRecoveryCommitment`, `withdrawTransfer`, `withdrawParent`,
 `proposeObligation`, `acceptObligation`, `rejectObligation` or `withdrawObligation`. It
-passed 26 of 26 on a local Midnight chain on 1 October 2026, on the build before the
-state bounds; neither the local nor the preprod run has been done on this build. The attack history behind these tests is
+passed 26 of 26 on a local Midnight chain on this build (the state bounds, `ceb3a16`) on
+1 October 2026 at 20:56 EDT. The preprod run on this build has not been done yet. The
+attack history behind these tests is
 in `docs/security-pass-30sep.md`.
 
 ## Repository

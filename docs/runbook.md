@@ -40,11 +40,10 @@ confirmed from the code.
    `npm install --legacy-peer-deps`
 4. The contract is compiled: the folder `contract/src/managed/veilcore` exists. If not:
    `cd contract && npm run compact` (needs the Compact toolchain; see README.md).
-   The contract changed on the evening of 1 October (state bounds), so
-   `docs/fingerprints.md` must be regenerated from a build of it on the Mac (compiler
-   0.31.1) before mainnet; the earlier hashes no longer match. Do not rebuild with a
-   different compiler; the mainnet deploy checks the hashes again and refuses if they
-   differ.
+   `docs/fingerprints.md` was regenerated for the state-bounds build (`e89a387`). Do not
+   regenerate it. The CLI checks the local build against it when you pick 1, 2 or 4 on
+   mainnet, and refuses if they differ. Do not rebuild with a different compiler (use
+   0.31.1).
 
 The password rule (the CLI checks it in the first second): 16 or more characters; at
 least 3 of capital letters, small letters, numbers and symbols; no character more than
@@ -107,6 +106,9 @@ Preprod is Midnight's test network. Use the **test wallet only**.
 ### Have ready
 
 - The preprod smoke test has passed on this build (section B).
+- `git log -1` shows the latest commit.
+- A zero-spend mainnet rehearsal has been done: steps 1 to 13, then 5 (Exit) at the
+  deploy menu.
 - **CHECK WITH CLAUDE BEFORE MAINNET:** deployment record revision 4 is filed and names
   the fingerprints in `docs/fingerprints.md`. The CLI refuses to deploy until you declare
   revision 4 (step 6), but it cannot check that the record was really filed.
@@ -135,15 +137,20 @@ Preprod is Midnight's test network. Use the **test wallet only**.
 9. It connects. You should see `Connected to the mainnet indexer (Blockfrost): block …`
    and `Connected to the mainnet node RPC (Blockfrost)`. An error saying `HTTP 403` means
    the Blockfrost project id is wrong: start again from step 4.
-10. The wallet menu appears. Type `3`. Type or paste the 24 words, separated by spaces
-    (nothing shows), Enter. (Option 1 is refused on mainnet.)
+10. The wallet menu appears. Type `3`, press Enter, wait for the phrase prompt
+    (`Recovery phrase:`), then paste the 24 words, separated by spaces (nothing shows),
+    and press Enter. Never paste the phrase at `Which would you like to do?`. (Option 1
+    is refused on mainnet.)
 11. It shows `This wallet's DUST address: …`. If you skipped step 5, it asks you to paste
     the DUST address your wallet app shows. If they differ it stops: `That is not this
     wallet.` Nothing was sent. Check you used the right phrase.
-12. `DUST address matches. Syncing with mainnet`. Wait. Progress is saved every 2 minutes,
-    so a stop does not lose the whole sync.
-13. It shows `DUST available for fees: …`. If it says `This wallet has no DUST`, it stops
-    and nothing was sent. Do **not** register NIGHT for DUST again. Ask Claude.
+12. `DUST address matches. Syncing with mainnet`. Wait. Nothing shows while it syncs
+    until `Sync complete`. Do not press Ctrl+C. Progress is saved every 2 minutes, so a
+    stop does not lose the whole sync.
+13. It shows `DUST available for fees: …`. The number is printed in DUST's smallest unit,
+    so it looks large. If it says `This wallet has no DUST`, it stops and nothing was
+    sent. DUST is generated over time by the NIGHT already registered; do **not**
+    register NIGHT for DUST again. Ask Claude.
 14. The deploy menu appears. Type `1` (Deploy a new VeilCore contract).
 15. It checks the build: `All … build artefacts match the committed fingerprints`. If you
     see an error instead, nothing was sent. Stop and send the error to Claude.
@@ -152,14 +159,17 @@ Preprod is Midnight's test network. Use the **test wallet only**.
 17. `Keep a maintenance authority? (Y/n)`: press **Enter** (keep). design.md says VeilCore
     keeps it for launch and retires it on a published date. Do not type `n`.
 18. `Signing key (… blank to generate one)`: press **Enter**. The key appears under
-    `MAINTENANCE AUTHORITY SIGNING KEY`. **Write it on paper, all 64 characters, and check
-    it twice.** Then type `WRITTEN` and press Enter. Nothing is sent until you do. The key
-    is removed from this Mac when the deploy finishes.
-19. The deploy runs. Early on, a log line contains `contractDeployed` and the
-    `contractAddress`. **Copy that address onto paper as soon as it appears.** Then it
-    prints `adding circuit key 1 of …` and so on, one transaction each.
-20. Done when you see `Deployed VeilCore contract at address: …`. Copy the address again
-    and check it matches.
+    `MAINTENANCE AUTHORITY SIGNING KEY`, in groups of 8. **Write it on paper, all 64
+    characters.** Type `WRITTEN` and press Enter, then type the key back from your paper
+    (nothing shows; spaces are fine). If it doesn't match, fix the paper and type it again
+    (type `SHOW` to see the key again). Nothing is sent until it matches. The key is
+    removed from this Mac when the deploy finishes.
+19. The deploy runs. First it prints `Contract address: …` on its own line, before
+    anything is sent. **Copy that address onto paper now.** The `contractDeployed` line
+    comes after the first transaction is confirmed. Then it prints `adding circuit key 1 of 16` (if the first
+    transaction carried 8 keys) and so on, one transaction each.
+20. Done when you see `all 24 circuit keys are on chain`, then `Deployed VeilCore
+    contract at address: …`. Copy the address again and check it matches.
 21. The main menu appears. Optional: type `30` to see `Protocol version 1.` Type `0` to exit.
 22. Close the Terminal window.
 
@@ -185,9 +195,9 @@ that deploys a second contract.
    RETIRE, or Enter to keep it`, press **Enter**.
 5. It says `Deploy finished: every circuit key is on chain at …`. Then step 21.
 
-**CHECK WITH CLAUDE BEFORE MAINNET:** what to do if it stops before any `contractDeployed`
-line appeared. The code suggests nothing was deployed and starting over with `1` is
-safe, but confirm before spending fees.
+If it stopped before any `contractDeployed` line, send Claude the end of the newest log
+in `bboard-cli/logs/mainnet/` before doing anything. Do not start over with `1` without
+checking.
 
 ### Sealing after licence activations
 

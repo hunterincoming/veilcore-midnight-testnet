@@ -4,8 +4,8 @@
 
 > **Revision 4.** This header describes the contract as it is now: one contract, 24
 > circuits, source at `ceb3a16`. It replaces the header approved in August and
-> revised on 13 September. That header is kept as filed under *Superseded: the contract
-> to 13 September 2026*. What changed, what was found, and what is still open are in
+> revised on 13 September. That header is kept as filed, with headings moved down one
+> level and notes added, under *Superseded: the contract to 13 September 2026*. What changed, what was found, and what is still open are in
 > *Revision 4* at the end of this document.
 
 **Brief description:**
@@ -14,8 +14,9 @@ VeilCore records who held a genetic record and when, the licences granted agains
 and the parentage and obligations its holders agreed to. It is for plant and animal
 genetics; cannabis is the first market. A record is the commitment to a 32-byte random
 secret its holder keeps. The contract never receives genetic data, names, licence terms
-or amounts. Licences, parentage and obligations are keyed by the record's identity, so
-they survive the holder rotating or recovering their secret.
+or amounts. Parentage and obligations are keyed by the origin. A licence is keyed by the
+commitment that issued it and controlled by whichever commitment is that identity's
+head. All three survive the holder rotating or recovering their secret.
 
 One contract exposes 24 circuits:
 
@@ -32,15 +33,14 @@ Six pure circuits compute the published hashes and carry no keys: `commit`,
 `recoveryCommit`, `licenseCommit`, `licenseKey`, `presentationTag`, `obligationKey`.
 
 The contract holds no funds and never has. It stores commitments, counters, three flags, a
-seal time and a protocol version. It also stores links between commitments, and those
-are public: which record descends from which, which record owes something to which,
+seal time and a protocol version. It also publishes links between commitments: which record descends from which, which record owes something to which,
 which record issued a licence, which commitment replaced which.
 
 | Category | Self-assessed score (1–3) | Rationale | Mitigations |
 |---|---|---|---|
-| Privacy-at-risk | 2 | No genetic data, names, terms or amounts reach the chain. The witnesses are secrets, a verifier's challenge, a record commitment and a tree path. What is public is a graph between pseudonymous identities, with timing: confirmed parentage, obligations and obligation proposals and their beneficiaries, licence issue, activation, transfer and revocation, ownership proofs, rotations and recoveries. That is counterparty and timing data, Tier 2. It is one step from identity-level: holders show their records to buyers and verifiers by design, and anyone who learns who holds one identity can read its whole public history. Cannabis is a stigmatised market, so we do not claim Tier 1. A ZK fault that leaked witnesses would expose record, recovery or licence secrets: control of a record until its holder recovers it, and which licensee stands behind a presentation. | Commitments are domain-separated SHA-256 of random secrets. Obligation terms are hashed with a random salt off chain. A presentation publishes a tag only the verifier can recognise and hides the licence and the licensee. Ownership proofs and presentations answer a single-use verifier challenge. Holders can split activity across records; rotation does not unlink, and we say so. |
+| Privacy-at-risk | 2 | No genetic data, names, terms or amounts reach the chain. The witnesses are secrets, a verifier's challenge, a record commitment and a tree path. What is public is a graph between pseudonymous identities, with timing: confirmed parentage, obligations and obligation proposals and their beneficiaries, licence issue, activation, transfer and revocation, ownership proofs, rotations and recoveries. That is counterparty and timing data, Tier 2. It is one step from identity-level: holders show their records to buyers and verifiers by design, and anyone who learns who holds one identity can read its whole public history. Cannabis is a stigmatised market, and the rubric lists such markets under Tier 3. We claim 2 because nothing on chain names a party: linking an identity needs its holder to disclose it off chain. Once disclosed, that identity's public history reads as Tier 3. A ZK fault that leaked witnesses would expose record, recovery or licence secrets: control of a record until its holder recovers it, and which licensee stands behind a presentation. | Commitments are domain-separated SHA-256 of random secrets. Obligation terms are hashed with a random salt off chain. A presentation publishes a tag only the verifier can recognise and hides the licence and the licensee. Ownership proofs and presentations answer a verifier's challenge, which verifier rules 5 and 8 require be used once. Holders can split activity across records; rotation does not unlink, and we say so. |
 | Value-at-risk | 1 | The contract holds no funds. No circuit receives, holds or sends tokens. Obligations record royalties; they do not move money. An exploit could produce wrong licence, lineage or obligation state, or let someone act as a record's holder until recovery. That can cost money off chain. It cannot drain a balance, because there is none. | N/A |
-| State-space-at-risk | 2 | Bounded per identity, growing with the number of identities. Every entry is overwritten, cleared by the party who created it, or capped per anchored identity: at most 16 rotations (reset by recovery) and 16 recoveries, so at most 288 `originOf` entries; 2 parents; 16 obligations in force per record (16 more per recovery); 8 waiting proposals per proposer; 32 pending and 1024 active licences per issuer. Each identity costs an `anchor` transaction and its fee, so state grows with the number of anchored records, not with how often anyone calls. There is no global ceiling on identities, so not Tier 1. Two things are not bounded per identity: the licence tree's root history, cleared only when someone seals (at most once per 600–900 s), and the total one party can create with many anchors, one fee each. | The caps are enforced in the contract. Waiting proposals, licences and obligations in force each have a clearing move that frees a place; identity and parentage entries are permanent and capped. The operator runs a sealer after licence activations. Bound table: *State* in Revision 4; full table in `docs/design.md`, *State bounds*. |
+| State-space-at-risk | 2 | Bounded per identity, growing with the number of identities. Every entry is overwritten, cleared by the party who created it, or capped per anchored identity: at most 16 rotations (reset by recovery) and 16 recoveries, so at most 288 `originOf` entries; 2 parents; 16 obligations in force per record, plus 16 per recovery (at most 272); 8 waiting proposals per proposer; 32 pending and 1024 active licences per issuer. Each anchor writes seven entries that are never removed, and an identity can hold at most 299 permanent entries; fees are paid in DUST, which regenerates, so creating identities is rate-limited, not priced. State grows with the number of anchored records, not with how often anyone calls. Why we still score 2, and why reviewers may read it as 3: *State* in Revision 4. There is no global ceiling on identities, so not Tier 1. Two things are not bounded per identity: the licence tree's root history, cleared only when someone seals (no more often than every 600 s; up to 900 s after the previous seal if its sealer set the bound 300 s ahead), and the total one party can create with many anchors, one fee each. | The caps are enforced in the contract. Waiting proposals, licences and obligations in force each have a clearing move that frees a place; identity and parentage entries are permanent and capped. There is no automated sealer; the operator seals by hand (CLI option 15) after licence activations. Bound table: *State* in Revision 4; full table in `docs/design.md`, *State bounds*. |
 
 ---
 
@@ -74,6 +74,7 @@ export ledger lastPresentationRoot: MerkleTreeDigest;      // fixed event cell
 export ledger lastPresentationUnsealed: Boolean;           // fixed event cell
 export ledger lastIssuedLicense: Bytes<32>;                // fixed event cell
 export ledger lastActivatedLicense: Bytes<32>;             // fixed event cell
+export ledger lastTransferredLicense: Bytes<32>;           // fixed event cell
 export ledger lastActivatedRecord: Bytes<32>;              // fixed event cell
 export ledger lastDescentChild: Bytes<32>;                 // fixed event cell
 export ledger lastDescentParent: Bytes<32>;                // fixed event cell
@@ -100,7 +101,7 @@ export ledger pendingParentOf: Map<Bytes<32>, Bytes<32>>;      // at most 1 per 
 export ledger parentsOf: Map<Bytes<32>, Set<Bytes<32>>>;       // at most 2 per child; never removed
 export ledger hasOffspring: Set<Bytes<32>>;                    // at most 1 per identity; never removed
 export ledger pendingObligations: Set<Bytes<32>>;              // at most 8 per proposer; removed by withdraw, reject, accept
-export ledger openObligations: Set<Bytes<32>>;                 // at most 16 per record; removed by discharge
+export ledger openObligations: Set<Bytes<32>>;                 // 16 per record, plus 16 per recovery (at most 272); removed by discharge
 export ledger obligationCountOf: Map<Bytes<32>, Counter>;      // 1 per anchor; never removed
 
 export ledger rotationsOf: Map<Bytes<32>, Counter>;            // 1 per anchor; never removed; caps rotations at 16, reset by recovery
@@ -111,7 +112,7 @@ export ledger activeLicensesBy: Map<Bytes<32>, Counter>;       // 1 per anchor; 
 export ledger rootsSinceSeal: Boolean;                         // fixed
 ```
 
-37 fixed slots: the protocol version, ten counters, 23 event cells, the seal time and two
+38 fixed slots: the protocol version, ten counters, 24 event cells, the seal time and two
 flags (`unsealedChanges`, `rootsSinceSeal`). Nineteen containers. Eight are cleared by the
 circuit that ends what filled them. Eleven are never cleared, and each is capped per
 anchored identity: `originOf`, `headOf`, `recoveryOf`, `parentsOf`, `hasOffspring`,
@@ -140,7 +141,7 @@ SHA-256 of compiled artefacts (`contract/src/managed/veilcore/`), copied from
 `docs/fingerprints.md`: a prover and a verifier key for each of the 24 circuits, the ZKIR
 of each circuit in two forms, and the compiled contract code (97 rows).
 
-Built from commit `ceb3a16` with compactc 0.31.1 on the founder's machine (fingerprints committed in `e89a387`). The circuit ZKIR and `contract/index.js` were also reproduced byte for byte by an independent build.
+Built from commit `ceb3a16` with compactc 0.31.1 on the founder's machine (fingerprints committed in `e89a387`). A second build with compactc 0.31.1, without key generation, reproduced the 24 `.zkir` files and `contract/index.js` byte for byte. The proving and verifying keys and `.bzkir` files were built once, on the founder's machine.
 
 | Artefact | SHA-256 |
 |---|---|
@@ -251,7 +252,8 @@ CLI is refused unless the local build matches `docs/fingerprints.md` as committe
 
 ## Superseded: the contract to 13 September 2026
 
-> **Superseded by Revision 4.** Kept as filed. It describes the 13-circuit contract
+> **Superseded by Revision 4.** Kept as filed, with headings moved down one level and
+> notes added. It describes the 13-circuit contract
 > (eight circuits at approval) and its fingerprints. None of it is the build Revision 4
 > asks to approve. Where a statement below is now false, a note says so.
 
@@ -592,9 +594,8 @@ is read from the environment with no fallback.
 For mainnet the authority will be named at deploy time and held jointly, not by
 one person and not in a file on a laptop.
 
-> **Changed in Revision 4.** The implementation installs one signing key, held on paper
-> by the deployer. See *The maintenance authority* in Revision 4, which records the
-> decision the founders still have to make.
+> **Changed in Revision 4.** The implementation installs one signing key.
+> [DECISION NEEDED — see *The maintenance authority* in Revision 4]
 
 It will not be relinquished at deployment. Circuits are bound to the proof system
 that compiled them, and an un-upgradable contract cannot be repaired when that
@@ -713,8 +714,8 @@ at the top of this document now describes this contract. What it replaced is kep
 ### What is being approved
 
 - `contract/src/veilcore.compact` at `ceb3a16`, built with compactc 0.31.1.
-- The 97 artefacts in the fingerprint table at the top, once filled: 48 keys, 48 ZKIR
-  files and `contract/index.js`.
+- The 97 artefacts in the fingerprint table at the top: 48 keys, 48 ZKIR files and
+  `contract/index.js`.
 - Deployed in fragments, as described below, with a maintenance authority kept at
   launch.
 
@@ -762,8 +763,9 @@ history of `main`, which now begins at `f652ae2` on 27 September. And
   release what they were owed. It was merged in and keyed by identity.
 - **Identity.** A record is an origin (anchored) or a successor (moved to by rotation or
   recovery). `originOf` maps a successor to its origin; `headOf` maps a moved origin to
-  its live head. Only the head can act. Licences, parentage and obligations are keyed by
-  the origin, so they survive every move. Moves are capped (see *State*).
+  its live head. Only the head can act. Parentage and obligations are keyed by the
+  origin. A licence is keyed by the commitment that issued it and controlled by
+  whichever commitment is that identity's head. All survive every move. Moves are capped (see *State*).
 - **Recovery.** `anchor` now takes a recovery commitment. `recoverRecordSecret` moves the
   identity with the recovery secret, whoever holds the head, including a thief. It
   installs a new recovery commitment in the same call, so a recovery secret works once.
@@ -771,8 +773,8 @@ history of `main`, which now begins at `f652ae2` on 27 September. And
 - **Licences.** An entry is keyed by `licenseKey(licence, issuing record)`, so a licence
   names its issuer. Active licences are leaves of a `HistoricMerkleTree<24>`. Revocation
   and transfer clear a leaf at once; older roots stop verifying at the next
-  `sealRevocations`, which anyone may call once 600 seconds have passed since the last
-  seal. `licenseRecordOf` is gone, and so is the `licenseStatus` circuit, which leaked
+  `sealRevocations`, which anyone may call no more often than every 600 s; up to 900 s
+  after the previous seal if its sealer set the bound 300 s ahead. `licenseRecordOf` is gone, and so is the `licenseStatus` circuit, which leaked
   what was looked up.
 - **Presentations.** `proveLicense` takes the licence secret, its record, its tree path and
   the verifier's challenge as witnesses. It publishes a tag only the verifier can recognise,
@@ -807,7 +809,7 @@ bounds*):
 
 | Field | Bound | Cleared by |
 |---|---|---|
-| 37 fixed slots (version, 10 counters, 23 event cells, seal time, 2 flags) | one value each | overwritten |
+| 38 fixed slots (version, 10 counters, 24 event cells, seal time, 2 flags) | one value each | overwritten |
 | `recoveryOf` and six counters (`obligationCountOf`, `rotationsOf`, `recoveriesOf`, `pendingObligationsBy`, `pendingLicensesBy`, `activeLicensesBy`) | 1 each per identity, made at anchor | nothing |
 | `originOf` | at most 288 per identity: 16 rotations (`MAX_ROTATIONS`), reset by each of at most 16 recoveries (`MAX_RECOVERIES`) | nothing |
 | `headOf` | 1 per identity that has moved; overwritten | nothing |
@@ -817,9 +819,9 @@ bounds*):
 | `licenseStatusOf` | per issuer, at most 32 PENDING (`MAX_PENDING_LICENSES`) and 1024 ACTIVE (`MAX_ACTIVE_LICENSES`) | `revokeLicense` (issuer); a transfer swaps one for one |
 | `pendingTransferOf` | at most 1 per active licence | `approveTransfer`, `withdrawTransfer`, `revokeLicense` |
 | `licenseSlotOf`, `licenseAtSlot`, tree leaves | 1 per active licence; at most 2^24 in all | `revokeLicense` |
-| `activeLicenses` root history | one root per tree change since the last seal | `sealRevocations` (anyone, at most once per 600–900 s) |
+| `activeLicenses` root history | one root per tree change since the last seal | `sealRevocations` (anyone, no more often than every 600 s; up to 900 s after the previous seal if its sealer set the bound 300 s ahead) |
 | `pendingObligations` | at most 8 per proposer (`MAX_PENDING_OBLIGATIONS`) | `withdrawObligation` (proposer), `acceptObligation` or `rejectObligation` (holder) |
-| `openObligations` | at most 16 per record (`MAX_OPEN_OBLIGATIONS`) | `discharge` (beneficiary only) |
+| `openObligations` | 16 per record, plus 16 per recovery, at most 272 (`MAX_OPEN_OBLIGATIONS`) | `discharge` (beneficiary only) |
 
 **Why that is a 2.** Each identity's share of state is capped, and each identity costs an
 `anchor` transaction and its fee. State grows with the number of anchored records, not
@@ -828,19 +830,41 @@ a cap, or clears what it created (`contract/src/test/state-bounds.test.ts`). Tha
 shape of the rubric's Tier 2 examples, such as an ERC-20 balance map that grows with the
 number of holders. It is not a 1: nothing caps the number of identities.
 
+**The August self-score of 3, faced directly.** In August we scored V1 a 3 ourselves,
+because it stored an entry per anchor that nothing removed (*Why anchoring writes no
+state*, under *Superseded*). This contract again writes permanent entries per anchor:
+`anchor` writes `recoveryOf` and six counters (`obligationCountOf`, `rotationsOf`,
+`recoveriesOf`, `pendingObligationsBy`, `pendingLicensesBy`, `activeLicensesBy`), and
+nothing removes them. The worst case of permanent entries per anchored identity:
+
+- 7 written at anchor (`recoveryOf` and the six counters);
+- at most 288 in `originOf` (16 rotations, then up to 16 recoveries each followed by 16
+  more rotations);
+- 1 in `headOf`;
+- at most 2 parents in `parentsOf`;
+- 1 in `hasOffspring`.
+
+That is at most 299 per identity. Fees are paid in DUST, which regenerates, so the cost
+of creating identities is a rate limit, not a price: a party with NIGHT can keep
+anchoring as its DUST comes back. We nonetheless score 2. Every per-identity quantity is
+capped. The identity is the unit of use, as a token holder is in the rubric's Tier 2
+example. Everything else is cleared by its creator or overwritten. Reviewers may read
+this as Tier 3; we would rather say so than have it found.
+
 **Where the bound is weaker, stated plainly.**
 
 - **Root history depends on someone sealing.** Every activation, approved transfer and
   revocation adds a root to the licence tree's history, and only a seal clears it. The
   contract never seals on its own. A seal is now allowed when only activations changed
-  the tree, and the operator will run one (CLI option 15) after activations. If nobody
+  the tree. There is no automated sealer; the operator seals by hand (CLI option 15)
+  after licence activations. If nobody
   seals, the history grows with every tree change.
 - **Many anchors get many caps.** The caps are per anchored identity. One party who pays
   for many anchors gets a fresh set with each, for example 8 waiting proposals per
   anchor against one record. The holder can find each from the proposal cells and
   reject it, a transaction each.
 - **The caps can refuse legitimate use** at the limits: a third parent, a 17th
-  obligation in force on one record, a 33rd licence waiting for countersignature, a
+  obligation in force on a record that has never been recovered, a 33rd licence waiting for countersignature, a
   1025th active licence from one issuer, or a move after an identity has used its 16
   recoveries and the 16 rotations after the last one.
 
@@ -856,8 +880,9 @@ call.
 ### Privacy
 
 The approved header said genetic preimages, licence terms *and counterparties* never
-leave the holder's device, and that disclosed values have no identity linkage. The first
-two still hold for the contract. The third does not. This contract publishes, as
+leave the holder's device, and that disclosed values have no identity linkage.
+Preimages and licence terms still stay off chain. The claims that counterparties stay
+off chain and that disclosed values have no identity linkage are no longer true. This contract publishes, as
 commitments:
 
 - **Parentage** between identities, readable from state (`parentsOf`) and per
@@ -867,11 +892,13 @@ commitments:
   publishes the same three before the holder answers (`lastProposedObligation`,
   `lastProposedAgainst`, `lastProposedBy`), so a rejected proposal still shows it was
   made. Terms stay off chain, hashed with a random salt.
-- **Licences:** every licence call except a presentation publishes the licence key, which
-  links them to each other, and the issuing record. Issue and countersign publish the
-  licence commitment (`lastIssuedLicense`, `lastActivatedLicense`); issue does so that a
-  recovered owner can revoke PENDING licences a thief issued. A transfer proposal publishes the incoming
-  commitment. Revoke and approve publish the caller's record.
+- **Licences:** issue, countersign, approve and revoke publish the licence key and the
+  issuing record; a transfer proposal and its withdrawal publish the licence key; a seal
+  publishes neither. The licence key links these calls to each other. Issue, countersign
+  and an approved transfer publish a licence commitment (`lastIssuedLicense`,
+  `lastActivatedLicense`, `lastTransferredLicense`); issue and approve do so that a
+  recovered owner can revoke licences a thief issued or transferred. A transfer proposal
+  publishes the incoming commitment. Revoke and approve publish the caller's record.
 - **Presentations** publish a tag and a tree root. The root narrows the issuer to those
   with live licences at that root. At launch that can be one issuer.
 - **Ownership proofs** publish the record and the verifier's challenge.
@@ -881,8 +908,10 @@ commitments:
 Whether fee payments can link a presentation to its countersign is an open question for
 the Midnight wallet, not this contract. We keep the score at 2: counterparty and timing
 data between pseudonyms, with no identity data on chain. It is the score we are least
-sure of after state. One disclosed holder exposes that identity's history, and the
-market is stigmatised.
+sure of after state. Cannabis is a stigmatised market, and the rubric lists such
+markets under Tier 3. We claim 2 because nothing on chain names a party: linking an
+identity needs its holder to disclose it off chain. Once disclosed, that identity's
+public history reads as Tier 3.
 
 ### Value
 
@@ -896,11 +925,12 @@ August ([issue #22](https://github.com/hunterincoming/veilcore-midnight-testnet/
 build against its public transcripts, which found the defect in *Correction — 16
 September 2026*. The repository records no review by him of this build.
 
-**Twelve rounds of adversarial review**, by AI and human reviewers, on 30 September and 1
-October 2026, recorded in `docs/security-pass-30sep.md`. Round 1 was our own. Rounds 2
-to 12 were by reviewers who had not seen the fixes they attacked, and two rounds were
-followed by an independent re-attack of their fixes. Every finding was first confirmed as
-a working attack, then fixed or written up as a known limit. Contract attacks are kept
+**Twelve rounds of adversarial review** on 30 September and 1 October 2026, recorded in
+`docs/security-pass-30sep.md`. Round 1 was our own. Rounds 2 to 12 were by AI reviewers
+in separate sessions that had not seen the fixes, directed by the founders (Max Weber's
+August and September passes, above, are the human reviews). Three rounds (8, 11 and 12)
+were followed by an independent re-attack of their fixes. Contract findings were
+demonstrated against the build before being fixed or documented. Contract attacks are kept
 as tests in `contract/src/test/`. Not every finding has a test. These were adversarial
 reviews, not a formal security audit.
 
@@ -948,6 +978,13 @@ edges are permanent; F6, the root history is cleared only when someone seals; F7
 caps are per anchored identity, so a party with many anchors gets more. All three are
 under *Known and not fixed*.
 
+A second attacker found R1 and R2 (both fixed in `ceb3a16`); P2 documented. R1: a thief
+could fill a record's 16 obligation places with obligations only he can release; a record
+now gets 16 more places per recovery (at most 272). R2: a thief could transfer a licence
+to a commitment no event cell showed; `approveTransfer` now publishes the new commitment
+(`lastTransferredLicense`). P2: a proposal publishes the obligation commitment even if
+rejected, harmless when salted, as the CLI does.
+
 ### Known and not fixed
 
 From `docs/design.md`, *Known limits* and *Trust model*. Each is stated there.
@@ -960,13 +997,16 @@ From `docs/design.md`, *Known limits* and *Trust model*. Each is stated there.
   name are the same.
 - **A thief can fill both parent slots** with records whose holders confirm (F4). The
   edges are permanent, so the true parent can never be recorded.
-- **Root history is bounded only while someone seals** (F6). Nothing seals on its own;
-  the operator runs a sealer after licence activations.
+- **A parent proposal a thief filed survives recovery.** If the named parent confirms,
+  the edge is permanent. The owner should withdraw it (`withdrawParent`).
+- **Root history is bounded only while someone seals** (F6). Nothing seals on its own.
+  There is no automated sealer; the operator seals by hand (CLI option 15) after licence
+  activations.
 - **The caps are per anchored identity** (F7). Each anchor costs one fee and brings a
   fresh set; a party with many anchors can, for example, keep 8 proposals per anchor
   waiting against one record, which the holder rejects one transaction at a time.
 - **The caps can refuse legitimate use:** a third parent, a 17th obligation in force on
-  one record, a 33rd pending or 1025th active licence from one issuer, or any move after
+  a record that has never been recovered, a 33rd pending or 1025th active licence from one issuer, or any move after
   16 recoveries and the 16 rotations after the last one.
 - **The revocation window.** A revoked licence's old path verifies on chain until the
   next seal: up to 600 s plus 300 s plus the time until someone seals. A verifier
@@ -984,8 +1024,8 @@ From `docs/design.md`, *Known limits* and *Trust model*. Each is stated there.
 - **An edge whose parent has no holder** can never be confirmed.
 - **A thief holding a beneficiary's secret** can release what is owed to it before
   recovery.
-- **The indexer is trusted for what it reports.** On mainnet that is Blockfrost, since
-  Midnight's own mainnet indexer shut on 30 September. For a decision that matters,
+- **The indexer is trusted for what it reports.** On mainnet that is Blockfrost:
+  Midnight's hosted mainnet indexer endpoint was retired on 30 September. For a decision that matters,
   compare a second indexer or your own node.
 - **`verify.ts` does not implement one part of rule 5:** refusing a presentation that
   landed before its challenge was issued. That needs the presentation's block time.
@@ -1026,13 +1066,20 @@ authority would be "held jointly, not by one person and not in a file on a lapto
 implementation does not hold it jointly. `VeilcoreAPI.deploy` installs one signing key
 as the authority. The midnight-js calls it uses, `deployContract` and
 `replaceAuthority`, take a single key. There is no second signer and no threshold. The
-repository records no reason for the change.
+ledger supports a committee with a threshold (`ContractMaintenanceAuthority`); using it
+needs our own deploy and maintenance code.
 
-How it is handled. The CLI generates the key, or takes one typed in, and shows it once.
-Nothing is sent until the operator types WRITTEN to confirm it is on paper. The key sits
+How it is handled. The CLI generates the key, or takes one typed in. A typed-in key is
+hidden as it is typed and is not shown again. A generated key is shown on screen only,
+in groups of eight characters; nothing is sent until the operator types WRITTEN and then
+types the key back from paper, hidden, and it matches.
+The deploy transaction is built first; the contract address is logged and the key and
+private state are stored before it is sent, so an interrupted deploy can always be
+finished (CLI option 4, which also accepts the key typed back from paper). The key sits
 in the encrypted local private-state store while the remaining circuit keys are added,
-and is removed when the deploy finishes. If a deploy stops partway, it stays there until
-option 4 finishes it. After that, the only copy is the paper one, held by the deployer.
+and is removed when the deploy finishes. If a deploy stops partway, it stays
+there until option 4 finishes it. After that the client keeps no copy; VeilCore's copy is
+on paper, held by [name].
 
 **[DECISION NEEDED: confirm a single key held by [name], stored [where], or change to a
 multi-signature authority before mainnet. A multi-signature authority needs a code change
@@ -1048,8 +1095,8 @@ to the proof system that compiled them, and a contract nobody can maintain can o
 replaced.
 
 How it ends. `retireMaintenanceAuthority` (`api/src/maintenance.ts`; CLI main menu
-option 33) replaces the key with one generated in memory and never stored, then deletes
-the local copy. `docs/design.md` says the date will be published in this record.
+option 33) replaces it with a freshly sampled key, which midnight-js writes to the local
+store and the function deletes straight after; nobody is given a copy. `docs/design.md` says the date will be published in this record.
 **[DECISION NEEDED: retirement date, or the condition that sets it.]**
 
 **A retired authority looks the same on chain as a live one.** Retiring replaces the key
@@ -1061,16 +1108,21 @@ detects a change after it happens. It does not prevent one.
 
 ### Testing and deployment status
 
-- **Contract tests on this build:** 18 suites, 266 tests pass and 9 attacks that must
-  fail do fail (`cd contract && npm test` at `ceb3a16`, 1 October 2026). The suites now include
-  `state-bounds.test.ts` and `attack-bounds.test.ts`. One test, the 1024-active-licence
-  cap, runs only with `SLOW_TESTS=1`.
+- **Contract tests on this build:** `Test Files 18 passed; Tests 266 passed | 9
+  expected fail | 1 skipped (276)` (`cd contract && npm test`, run on the founder's Mac
+  at `ceb3a16` with `FUZZ_RUNS` unset, 1 October 2026). The 9 expected failures are
+  attacks that must fail. The suites now include `state-bounds.test.ts`,
+  `attack-bounds.test.ts` and `reattack-bounds.test.ts`. The skipped test is the
+  1024-active-licence cap, which runs only with `SLOW_TESTS=1`. The 1024-active-licence
+  test (`SLOW_TESTS=1`) has not been run to completion.
 - **Smoke test on a local Midnight chain, this build: PASSED 26 of 26** on 1 October
   2026 at 20:56 EDT (node 0.22.3, indexer 4.0.1, proof server 8.0.3; local contract
   `84cca6f12d5035eeda3b9277872b38ce87e3614c9410ba8f86fed04fce7c13a8`). It deploys
   a fresh contract and calls 16 of the 24 circuits with real proofs. It does not call
   `anchorBatch`, `replaceRecoveryCommitment`, `withdrawTransfer`, `withdrawParent`,
   `proposeObligation`, `acceptObligation`, `rejectObligation` or `withdrawObligation`.
+  Run by the founder on his MacBook; the closing line was `SMOKE TEST PASSED: 26 checks
+  passed. Contract 84cca6f1…`.
 - **Smoke test on preprod, this build: PENDING.**
   Contract address: [preprod contract address — to be filled after the run].
   Date and result: [to be filled after the run].
@@ -1091,8 +1143,8 @@ detects a change after it happens. It does not prevent one.
 
 - The header now describes this contract: the brief description, the scores, the ledger
   layout, source and build, and the fingerprint table.
-- The header as it stood on 13 September is kept unchanged under *Superseded*, with notes
-  where it is now false.
+- The header as it stood on 13 September is kept as filed, with headings moved down one
+  level and notes added, under *Superseded*.
 - Short notes were added to the 13 September revision and the 16 September correction
   where Revision 4 changes or answers them. Nothing in them was deleted.
 - **The state bounds came after a first draft of this revision.** That draft scored the
@@ -1101,6 +1153,7 @@ detects a change after it happens. It does not prevent one.
   (*State*), and the score is now 2. An independent attack on the bounds found 7 issues:
   4 fixed in the contract (F1, F2, F3, F5) and 3 documented (F4, F6, F7). A second
   attack on the fixes found 2 more, both fixed in the contract (R1: 16 more obligation
-  places per recovery; R2: an approved transfer publishes the new commitment). The change
+  places per recovery; R2: an approved transfer publishes the new commitment), and P2 was
+  documented. The change
   invalidated the earlier fingerprints, commit references and test results; this
   revision carries the new ones (build `ceb3a16`, fingerprints `e89a387`).

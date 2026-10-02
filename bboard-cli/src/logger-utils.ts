@@ -61,7 +61,10 @@ export const scrub = (line: string, secrets: readonly string[] = []): string => 
  * it reaches either.
  */
 export const createLogger = async (logPath: string, secrets: readonly string[] = []): Promise<pino.Logger> => {
-  await fs.mkdir(path.dirname(logPath), { recursive: true });
+  await fs.mkdir(path.dirname(logPath), { recursive: true, mode: 0o700 });
+  // Readable by its owner only (0600), even if the file already existed with wider rights.
+  await fs.writeFile(logPath, '', { flag: 'a', mode: 0o600 });
+  await fs.chmod(logPath, 0o600);
   const pretty: pinoPretty.PrettyStream = pinoPretty({
     colorize: true,
     sync: true,
@@ -75,7 +78,7 @@ export const createLogger = async (logPath: string, secrets: readonly string[] =
     { level, depthLimit: 20 },
     pino.multistream([
       { stream: scrubbing(wanted, pretty), level },
-      { stream: scrubbing(wanted, createWriteStream(logPath)), level },
+      { stream: scrubbing(wanted, createWriteStream(logPath, { mode: 0o600 })), level },
     ]),
   );
 };

@@ -53,6 +53,8 @@ export const settlePassword = async (ask: (q: string) => Promise<string>, logger
       return false;
     }
     redactThisSession(fromEnv);
+    // Said, so nobody wonders why they were not asked; the value itself is never shown.
+    logger.info('Using the password from VEILCORE_PRIVATE_STATE_PASSWORD.');
     return true;
   }
   const typed = await ask('Private-state password (paste it, nothing will show, then press Enter): ');

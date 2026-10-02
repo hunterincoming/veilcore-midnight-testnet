@@ -1,9 +1,9 @@
 # VeilCore contract: attack pass, 30 Sep 2026
 
-Last updated 1 October 2026 (round 12). Twelve rounds in all: round 1 (this first pass and
-the lineage pass, our own) and rounds 2 to 7 by reviewers who had not seen the fixes, on
-30 September; rounds 8 to 12 on 1 October, rounds 8 and 11 each followed by an independent
-re-attack of their fixes. Times in headings are commit times from `git log` (EDT); they
+Last updated 1 October 2026 (final audit, night). Twelve rounds in all: round 1 (this
+first pass and the lineage pass, our own) and rounds 2 to 7 by reviewers who had not seen
+the fixes, on 30 September; rounds 8 to 12 on 1 October, rounds 8, 11 and 12 each followed
+by an independent re-attack of their fixes. A final audit followed (last section). Times in headings are commit times from `git log` (EDT); they
 replace earlier time-of-day labels that were out of order.
 
 > **Note, 30 Sep (round 4).** The contracts were merged into one, `veilcore.compact`, and
@@ -504,3 +504,22 @@ Held: `lastIssuedLicense` adds nothing linkable the issue transcript did not alr
 carry; `activeLicensesBy` stays in step through rotation, recovery, transfer and double
 revoke; the rotation reset cannot push `originOf` past 288 entries per identity; every
 circuit is under 700 ZKIR instructions (largest: approveTransfer 686).
+
+# Final audit (1 Oct, night)
+
+Three fresh reviewers, one per area, at `56b119a`.
+
+- **Contract and verifier:** no HIGH or MEDIUM finding. The build was reproduced byte
+  for byte (the 24 `.zkir` files and `contract/index.js`). Three documentation fixes.
+- **Deployment record:** about 25 accuracy items corrected in
+  `docs/deployment-record-revision-4.md`. The State-Space and Privacy scores are now
+  argued in the record, including why a reviewer may read either as Tier 3.
+- **Operator dry run:** two blockers and several majors in the CLI, fixed the same night
+  (tests in `bboard-cli/src/final-audit-cli.test.ts`): the recovery phrase can no longer
+  reach the log through a menu answer or a multi-line paste; a generated maintenance key
+  must be typed back from paper; the deploy logs the address and stores the key before
+  sending, and option 4 accepts the paper key; the fingerprint check runs before the
+  sync; a wrong password stops instead of re-syncing over saved progress; Ctrl+C during a
+  deploy warns instead of stopping silently; log files are private (0600). The new deploy
+  order has been tested with the transaction functions faked; it needs a run on a real
+  chain (the local smoke test) before mainnet.

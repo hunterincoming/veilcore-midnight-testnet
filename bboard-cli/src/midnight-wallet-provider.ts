@@ -36,7 +36,7 @@ import {
   createKeystore,
   mergeWalletEntries,
 } from '@midnight-ntwrk/wallet-sdk';
-import { WalletStateFile } from './wallet-state';
+import { type SavedWalletState, WalletStateFile } from './wallet-state';
 import type { Logger } from 'pino';
 
 import { getInitialShieldedState } from './wallet-utils';
@@ -145,11 +145,17 @@ export class MidnightWalletProvider implements MidnightProvider, WalletProvider 
   /**
    * Build from a hex master seed, a 24-word recovery phrase (the same derivation
    * Midnight wallets use), or neither for a fresh random wallet.
+   *
+   * `confirmFreshSync` is asked when saved progress exists that this password cannot
+   * open. False stops the build ({@link SavedProgressNotOpenedError}); true moves the old
+   * file aside (never written over) and syncs from the start. Without it, the file is
+   * moved aside with a warning.
    */
   static async build(
     logger: Logger,
     env: EnvironmentConfiguration,
     source: { seed?: string; mnemonic?: string } = {},
+    options: { confirmFreshSync?: () => Promise<boolean> } = {},
   ): Promise<MidnightWalletProvider> {
     const { seed, mnemonic } = source;
     const dustOptions: DustWalletOptions = {
@@ -173,7 +179,16 @@ export class MidnightWalletProvider implements MidnightProvider, WalletProvider 
 
     // Resume from saved sync progress when there is some for this wallet and network.
     const stateFile = new WalletStateFile(logger, env.walletNetworkId, seeds.masterSeed);
-    const saved = await stateFile.load();
+    let saved: SavedWalletState | null;
+    if (options.confirmFreshSync === undefined) saved = await stateFile.load();
+    else {
+      const found = await stateFile.read();
+      saved = found.kind === 'ok' ? found.state : null;
+      if (found.kind === 'unreadable') {
+        if (!(await options.confirmFreshSync())) throw new SavedProgressNotOpenedError();
+        logger.info(`The saved progress this password does not open is kept as ${await stateFile.setAside()}.`);
+      }
+    }
     if (saved !== null) {
       try {
         // The same configuration as a fresh wallet (testkit-js has no restore path itself).
@@ -223,6 +238,14 @@ export class MidnightWalletProvider implements MidnightProvider, WalletProvider 
     );
     provider.stateFile = stateFile;
     return provider;
+  }
+}
+
+/** The operator chose to stop rather than sync again over progress their password did not open. */
+export class SavedProgressNotOpenedError extends Error {
+  constructor() {
+    super('Stopped. Nothing was changed: your saved progress is untouched.');
+    this.name = 'SavedProgressNotOpenedError';
   }
 }
 

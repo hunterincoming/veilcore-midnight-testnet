@@ -7,7 +7,11 @@
 // secret being rotated into) are cleared from private state when that call ends,
 // whether it succeeded or not.
 
-import { type ContractAddress, type SigningKey } from '@midnight-ntwrk/midnight-js-protocol/compact-runtime';
+import {
+  type ContractAddress,
+  sampleSigningKey,
+  type SigningKey,
+} from '@midnight-ntwrk/midnight-js-protocol/compact-runtime';
 import { inspect } from 'node:util';
 import { type Logger } from 'pino';
 import * as Veilcore from '../../contract/src/managed/veilcore/contract/index.js';
@@ -23,9 +27,12 @@ import {
 } from '../../contract/src/verify.js';
 import {
   createCircuitMaintenanceTxInterfaces,
-  deployContract,
+  createUnprovenDeployTx,
+  DeployTxFailedError,
   findDeployedContract,
+  submitTxAsync,
 } from '@midnight-ntwrk/midnight-js-contracts';
+import { SucceedEntirely } from '@midnight-ntwrk/midnight-js-types';
 import { combineLatest, map, from, defer, type Observable } from 'rxjs';
 import { toHex } from '@midnight-ntwrk/midnight-js-utils';
 import { assertDeploymentRecordCurrent } from './deploy-guard.js';
@@ -621,22 +628,47 @@ export class VeilcoreAPI {
     let address: ContractAddress;
     for (;;) {
       const keep = PROVABLE_CIRCUITS.slice(0, size);
+      // What deployContract does, in an order that survives a confirmation that fails or
+      // hangs. midnight-js stores the authority's key and the private state only AFTER the
+      // deploy is confirmed, so a deploy that landed unconfirmed left the address unknown
+      // and the key nowhere. Here the address is known before anything is sent: it is
+      // logged, and the key and private state are stored, first.
+      const unsubmitted = await createUnprovenDeployTx(providers, {
+        compiledContract: compiledVeilcoreDeploying(keep),
+        initialPrivateState: createVeilcorePrivateState(utils.randomBytes(32)),
+        signingKey: signingKey ?? sampleSigningKey(),
+      });
+      const candidate = unsubmitted.public.contractAddress;
+      providers.privateStateProvider.setContractAddress(candidate);
+      await providers.privateStateProvider.set(veilcorePrivateStateKey, unsubmitted.private.initialPrivateState);
+      await providers.privateStateProvider.setSigningKey(candidate, unsubmitted.private.signingKey);
+      logger?.info(`Contract address: ${candidate}`);
       try {
-        const deployed = await deployContract(providers, {
-          compiledContract: compiledVeilcoreDeploying(keep),
-          privateStateId: veilcorePrivateStateKey,
-          initialPrivateState: createVeilcorePrivateState(utils.randomBytes(32)),
-          ...(signingKey === null ? {} : { signingKey }),
+        const txId = await submitTxAsync(providers, { unprovenTx: unsubmitted.private.unprovenTx });
+        logger?.info(`deploy transaction submitted (${txId}); waiting for it to be confirmed`);
+        const finalized = await providers.publicDataProvider.watchForTxData(txId);
+        if (finalized.status !== SucceedEntirely) throw new DeployTxFailedError(finalized);
+        logger?.info({
+          contractDeployed: { ...finalized, contractAddress: candidate },
+          circuitKeysInDeploy: keep.length,
         });
-        address = deployed.deployTxData.public.contractAddress;
-        logger?.info({ contractDeployed: deployed.deployTxData.public, circuitKeysInDeploy: keep.length });
+        address = candidate;
         break;
       } catch (e) {
         if (size > 1 && isBlockLimit(e)) {
+          // Refused by the network: that contract never existed, so its key goes.
+          await providers.privateStateProvider.removeSigningKey(candidate);
           size = Math.ceil(size / 2);
-          logger?.info(`the deploy was over the block limit; trying again with ${size} circuit keys in it`);
+          logger?.info(
+            `the deploy was over the block limit, so contract ${candidate} was never created; ` +
+              `trying again with ${size} circuit keys in it (a new address)`,
+          );
           continue;
         }
+        logger?.error(
+          `The deploy did not complete. It may still have landed at contract address ${candidate}. ` +
+            'The maintenance key is kept in the local store for it: finish it with "Finish a deploy" and that address.',
+        );
         throw e;
       }
     }

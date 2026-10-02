@@ -1044,7 +1044,10 @@ key per circuit, and all 24 do not fit.
 authority then adds each remaining key in its own transaction, waiting for the indexer to
 show each before the next. CLI deploy option 4 finishes an interrupted deploy. The ledger
 and every circuit are the compiled ones; only which keys ride the first transaction
-differs. Whether 8 fits on preprod and mainnet is not known until the preprod run.
+differs. On preprod (2 October 2026) 8 fitted at the first try: the deploy transaction
+carried 8 keys (block 2807919) and the 16 maintenance transactions that followed took
+under five minutes, all 24 keys on chain at 14:27 EDT. Whether 8 fits on mainnet is
+known only at the deploy; if not, the tool halves as above.
 
 During the deploy the contract is on chain with some keys and not others. Circuits
 already keyed can be called. Only the authority can add keys (checked in round 9).

@@ -1065,9 +1065,9 @@ detects a change after it happens. It does not prevent one.
   fail do fail (`cd contract && npm test` at `ceb3a16`, 1 October 2026). The suites now include
   `state-bounds.test.ts` and `attack-bounds.test.ts`. One test, the 1024-active-licence
   cap, runs only with `SLOW_TESTS=1`.
-- **Smoke test on a local Midnight chain, this build: PENDING.** The previous build
-  passed 26 of 26 on 1 October 2026 (node 0.22.3, indexer 4.0.1, proof server 8.0.3),
-  before the state bounds. It deploys
+- **Smoke test on a local Midnight chain, this build: PASSED 26 of 26** on 1 October
+  2026 at 20:56 EDT (node 0.22.3, indexer 4.0.1, proof server 8.0.3; local contract
+  `84cca6f12d5035eeda3b9277872b38ce87e3614c9410ba8f86fed04fce7c13a8`). It deploys
   a fresh contract and calls 16 of the 24 circuits with real proofs. It does not call
   `anchorBatch`, `replaceRecoveryCommitment`, `withdrawTransfer`, `withdrawParent`,
   `proposeObligation`, `acceptObligation`, `rejectObligation` or `withdrawObligation`.

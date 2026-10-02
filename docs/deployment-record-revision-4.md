@@ -1136,6 +1136,10 @@ detects a change after it happens. It does not prevent one.
   (OutOfDustValidityWindow) while the preprod indexer lagged the chain; the operator tool
   then misread that refusal as a block limit, fixed in `455cf05`
   (`docs/security-pass-30sep.md`).
+  After this run an independent review changed the operator tool's failure paths only
+  (messages, a forced stop, terminal scrubbing; `docs/security-pass-30sep.md`); the
+  successful path and the contract are as run here. The local smoke test is re-run on
+  the final tool before the mainnet deploy.
   The operator runbook makes a passed preprod run a precondition of the mainnet deploy.
   The code does not check it.
 - **Earlier deployments, none of them this build:** V1 on Preview at

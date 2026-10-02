@@ -543,3 +543,32 @@ code (`bboard-cli/src/preprod-1002.test.ts`):
   aside, costing a fresh sync). Saves now run one at a time.
 
 The contract is unchanged; its fingerprints still match.
+
+## Independent review, 2 October 2026 afternoon
+
+Two fresh reviewers, one on the contract, one on the mainnet operator path.
+
+**Contract:** no blocker, high or medium. Two low items, both damage a thief can do
+before recovery, now in design.md Known limits: freezing an identity's parents with one
+confirmation (a throwaway child), and filling the 1,024 active-licence cap. A wording fix:
+design.md no longer says re-proofs are limited to "about twice per seal interval". The
+contract is unchanged.
+
+**Operator tool,** fixed with tests (`bboard-cli/src/preprod-1002.test.ts`):
+- HIGH: a transaction whose confirmation never arrives (a dropped websocket the libraries
+  do not report) held the run for ever with Ctrl+C refused. The third Ctrl+C now stops it,
+  saying not to deploy again and to finish with option 4; the key and address were saved
+  before sending.
+- HIGH: a failure while adding circuit keys, after the contract existed, showed only the
+  raw error. It now says the contract IS on chain, not to deploy again, and to finish with
+  option 4. The key stays on the computer for it.
+- MEDIUM: every node refusal (1010) other than a block limit or 171 was reported as "may
+  still have landed". A 1010 was never admitted, so it now says nothing was created and to
+  ask before retrying. Option 4's "no contract" and "never showed the key" messages now say
+  the indexer may be behind, and not to deploy again until an explorer confirms nothing is
+  there.
+- MEDIUM: polkadot's websocket provider prints "disconnected from wss://…?project_id=…"
+  straight to the terminal on reconnects, past the logger's scrubber. On mainnet the
+  terminal itself is now scrubbed of the Blockfrost project id and typed secrets.
+- LOW: option 33 (retire) now accepts the key with spaces, as option 4 does. Runbook lines
+  now match what the tool prints.

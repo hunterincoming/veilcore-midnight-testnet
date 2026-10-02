@@ -82,3 +82,24 @@ export const createLogger = async (logPath: string, secrets: readonly string[] =
     ]),
   );
 };
+
+let stdioScrubbed = false;
+
+/**
+ * Scrub everything written to the terminal, not only what this logger writes. Libraries
+ * print through console on their own: polkadot's websocket provider, for one, prints
+ * "disconnected from wss://…?project_id=<id>" on every reconnect, past the logger. With
+ * this, the configured secrets and anything typed in this session are replaced there too.
+ */
+export const scrubTerminal = (secrets: readonly string[]): void => {
+  if (stdioScrubbed) return;
+  stdioScrubbed = true;
+  const wanted = secrets.filter((x) => x.length > 0);
+  for (const stream of [process.stdout, process.stderr]) {
+    const write = stream.write.bind(stream) as (...a: unknown[]) => boolean;
+    stream.write = (chunk: unknown, ...rest: unknown[]): boolean => {
+      const text = typeof chunk === 'string' ? chunk : Buffer.isBuffer(chunk) ? chunk.toString('utf8') : undefined;
+      return text === undefined ? write(chunk, ...rest) : write(scrub(text, wanted), ...rest);
+    };
+  }
+};

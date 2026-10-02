@@ -13,12 +13,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { createLogger } from '../logger-utils.js';
+import { createLogger, scrubTerminal } from '../logger-utils.js';
 import { run } from '../index.js';
 import { MainnetConfig, blockfrostProjectId } from '../config.js';
 
 const config = new MainnetConfig();
 // The Blockfrost project id travels in the endpoint URLs; keep it out of the terminal and log file.
 const logger = await createLogger(config.logDir, [blockfrostProjectId()]);
+// Libraries print to the terminal past the logger (websocket reconnects name the URL).
+scrubTerminal([blockfrostProjectId()]);
 const testEnvironment = config.getEnvironment(logger);
 await run(config, testEnvironment, logger);

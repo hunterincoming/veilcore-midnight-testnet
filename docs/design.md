@@ -172,9 +172,8 @@ Why not drop old roots on every revocation, as version 0 did: then on chain anyo
 could revoke a throwaway licence of their own each block and make every older path
 fail. Sealing limits that on chain. It does not stop a griefer from costing honest
 licensees re-proofs: a presentation records whether a revocation was waiting when it was
-proved, so a revocation landing before it, or a seal, sends it back (at most about twice
-per `SEAL_INTERVAL`, since a seal clears the flag and the next revocation sets it), and
-while one is waiting, a
+proved, so a revocation landing before it, or a seal, sends it back, and while one is
+waiting, a
 verifier following rule 5 refuses a presentation whose root has since moved on. That is
 a cost in re-proofs, paid in fees by the griefer too, never a wrong answer. A verifier
 that wants to accept more can check the presentation's root against every root since
@@ -449,7 +448,10 @@ the circuit set as changeable by VeilCore.
 - **A thief can fill both parent slots for good.** Someone holding an identity's current
   secret can propose two parents and, with the holders of those records (their own
   anchors, say), confirm them. Recovery does not remove confirmed edges, so the true
-  parent can never be recorded (`attack-bounds.test.ts`, F4).
+  parent can never be recorded (`attack-bounds.test.ts`, F4). A shorter route needs one
+  confirmation: the thief anchors a throwaway record, proposes the stolen identity as
+  ITS parent, and confirms that as the identity. The identity then has offspring, so its
+  own parents are fixed as they stand, even with none recorded. Record parents first.
 - **The licence tree's root history is bounded only while someone seals.** Every
   activation, approved transfer and revocation adds a root, and only `sealRevocations`
   clears them. Nothing in the contract seals on its own: if nobody calls it, the history
@@ -479,7 +481,10 @@ the circuit set as changeable by VeilCore.
   issue. The client does not do this lookup for you yet. Until then the thief can
   activate one and present it, and a verifier asking
   about the identity accepts it. The same applies to obligation proposals a thief made
-  in the identity's name (`lastProposed*`, `withdrawObligation`).
+  in the identity's name (`lastProposed*`, `withdrawObligation`). A thief can also
+  activate licences, one countersign each, up to the identity's 1,024-active cap, and
+  recovery adds no room: the owner revokes each from the indexer record
+  (`lastIssuedLicense`, `lastActivatedLicense`) before new licensees fit.
 - **A presentation names the issuer, not the licence.** Any live licence against a
   record passes a check about that record, including one the issuer granted itself.
   Issue licences on different terms from different records if verifiers must tell them

@@ -172,8 +172,9 @@ Preprod is Midnight's test network. Use the **test wallet only**.
     anything is sent. **Copy that address onto paper now.** The `contractDeployed` line
     comes after the first transaction is confirmed. Then it prints `adding circuit key 1 of 16` (if the first
     transaction carried 8 keys) and so on, one transaction each.
-20. Done when you see `all 24 circuit keys are on chain`, then `Deployed VeilCore
-    contract at address: …`. Copy the address again and check it matches.
+20. Done when you see `all 24 circuit keys are on chain`, then `Deployed. Every circuit
+    key is on chain.` and `Contract address: …`. Copy the address again and check it
+    matches.
 21. The main menu appears. Optional: type `30` to see `Protocol version 1.` Type `0` to exit.
 22. Close the Terminal window.
 
@@ -197,7 +198,16 @@ that deploys a second contract.
 3. At the deploy menu, type `4` (Finish a deploy that stopped partway). Paste the address.
 4. It adds the missing keys. When asked `Retire the maintenance authority now? Type
    RETIRE, or Enter to keep it`, press **Enter**.
-5. It says `Deploy finished: every circuit key is on chain at …`. Then step 21.
+5. It says `Deploy finished: every circuit key is on chain.` and `Contract address: …`.
+   Then step 21.
+
+If the screen says `The contract IS on chain at …`, that is this case: use `4` as above.
+If it says `The network refused the deploy`, nothing was created and nothing was spent:
+send Claude that line before trying again.
+
+**If it seems frozen:** a key transaction normally takes under a minute. Ctrl+C is
+refused during a transaction. If nothing has changed for 15 minutes, press Ctrl+C three
+times: it stops, keeping the key and the address. Then follow the steps above with `4`.
 
 If it stopped before any `contractDeployed` line, send Claude the end of the newest log
 in `bboard-cli/logs/mainnet/` before doing anything. Do not start over with `1` without

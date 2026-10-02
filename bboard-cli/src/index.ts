@@ -760,7 +760,7 @@ const mainLoop = async (
               const typed = await askHidden(
                 'Maintenance authority signing key (from your offline copy; nothing shows as you type or paste): ',
               );
-              const r = parseSigningKey(typed);
+              const r = parseSigningKey(typed.replace(/[\s-]/g, ''));
               if (typed === '') logger.info('Not retired: the signing key is needed.');
               else if ('problem' in r) logger.error(`Not retired. ${r.problem}`);
               else {
@@ -929,9 +929,30 @@ export const run = async (config: Config, testEnv: TestEnvironment, logger: Logg
   // Ctrl+C. During a deploy or maintenance transaction it is refused: stopping between
   // the transactions of a deploy leaves it half done. Otherwise the run stops cleanly.
   let interrupted = false;
+  // A transaction that never confirms (a dropped connection the libraries do not report)
+  // would otherwise hold the run for ever with Ctrl+C refused. The third press stops it:
+  // every key and the contract address were saved before anything was sent.
+  let refusedPresses = 0;
   const onInterrupt = (): void => {
     if (txInProgress > 0) {
-      logger.warn('A deploy is in progress. Do not close this window. It is safe to stop when the menu comes back.');
+      refusedPresses++;
+      if (refusedPresses < 3) {
+        logger.warn(
+          'A deploy or maintenance transaction is in progress. Wait for the menu to come back. ' +
+            'If nothing has changed for 15 minutes or more, press Ctrl+C three times to stop anyway.',
+        );
+        return;
+      }
+      logger.warn(
+        'Stopping during a transaction. Nothing saved on this computer is lost. Do NOT choose 1 (Deploy) again. ' +
+          'Run again with the same password and wallet, choose 4 (Finish a deploy), and give it the contract ' +
+          'address from your paper or from the newest file in logs/mainnet.',
+      );
+      interrupted = true;
+      // The wallet may be stuck on the same dead connection: give it 10 seconds, then go.
+      void Promise.race([stopAll(), new Promise((r) => setTimeout(r, 10_000).unref())]).finally(() =>
+        process.exit(130),
+      );
       return;
     }
     if (interrupted) return;

@@ -70,6 +70,17 @@ export const isBlockLimit = (e: unknown): boolean =>
  */
 export const isStaleDustTime = (e: unknown): boolean => /Custom error:\s*171\b/i.test(inspect(e, { depth: 6 }));
 
+/**
+ * A refusal by the node's transaction pool ("1010: Invalid Transaction"): the transaction
+ * was never admitted, so it cannot land in a block. Returns the node's custom error code
+ * when it gives one, or 'none'.
+ */
+export const nodeRefusal = (e: unknown): string | undefined => {
+  const text = inspect(e, { depth: 6 });
+  if (!/\b1010:\s*Invalid Transaction/i.test(text)) return undefined;
+  return /Custom error:\s*(\d+)/i.exec(text)?.[1] ?? 'none';
+};
+
 /** A landed transaction. Give a verifier `txId`: it finds the state right after it. */
 export type TxRef = { readonly txId: string; readonly txHash: string; readonly blockHeight: number };
 
@@ -688,6 +699,16 @@ export class VeilcoreAPI {
           );
           throw e;
         }
+        const refused = nodeRefusal(e);
+        if (refused !== undefined) {
+          // Refused before entering a block: that contract never existed, so its key goes.
+          await providers.privateStateProvider.removeSigningKey(candidate);
+          logger?.error(
+            `The network refused the deploy (1010, custom error ${refused}). Nothing was created at ${candidate} ` +
+              'and nothing was spent. Do not try again until the cause is known: send this message to Claude.',
+          );
+          throw e;
+        }
         logger?.error(
           `The deploy did not complete. It may still have landed at contract address ${candidate}. ` +
             'The maintenance key is kept in the local store for it: finish it with "Finish a deploy" and that address.',
@@ -695,8 +716,19 @@ export class VeilcoreAPI {
         throw e;
       }
     }
-    await VeilcoreAPI.addMissingCircuitKeys(providers, address, logger);
-    const api = await VeilcoreAPI.join(providers, address, logger); // checks every key on chain
+    let api: VeilcoreAPI;
+    try {
+      await VeilcoreAPI.addMissingCircuitKeys(providers, address, logger);
+      api = await VeilcoreAPI.join(providers, address, logger); // checks every key on chain
+    } catch (e) {
+      // The contract exists from here on. Deploying again would make a second one.
+      logger?.error(
+        `The contract IS on chain at ${address}, but not every circuit key was added. ` +
+          'Do NOT choose Deploy again. The maintenance key is kept on this computer for it: run again with ' +
+          'the same password and wallet, choose "Finish a deploy", and give it this address.',
+      );
+      throw e;
+    }
     if (signingKey === null) await api.retireMaintenanceAuthority();
     // midnight-js keeps the authority's signing key in the local private-state store.
     // The deployer was shown it before deploying and holds it offline; it should not
@@ -721,7 +753,11 @@ export class VeilcoreAPI {
         if (state !== null && state !== undefined) return new Set(state.operations().map(operationName));
         await sleep(2_000);
       }
-      throw new Error(`The indexer has no contract at ${address}.`);
+      throw new Error(
+        `The indexer shows no contract at ${address} after a minute. Either the deploy never landed, or the ` +
+          'indexer is behind. Wait 15 minutes and choose Finish a deploy again. Do not choose Deploy again ' +
+          'until a block explorer also shows nothing at this address.',
+      );
     };
     const present = await onChain();
     const todo = PROVABLE_CIRCUITS.filter((c) => !present.has(c));
@@ -739,7 +775,11 @@ export class VeilcoreAPI {
       // The next insert signs over the authority's counter as the indexer reports it, so
       // wait until the indexer shows this one before building the next.
       for (let tries = 0; !(await onChain()).has(circuit); tries++) {
-        if (tries >= 30) throw new Error(`The indexer never showed the key for ${circuit}.`);
+        if (tries >= 30)
+          throw new Error(
+            `The indexer has not shown the key for ${circuit} after a minute; it may be behind. ` +
+              'Wait 15 minutes, then choose Finish a deploy again with the same address.',
+          );
         await sleep(2_000);
       }
     }

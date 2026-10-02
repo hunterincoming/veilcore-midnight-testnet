@@ -572,3 +572,11 @@ contract is unchanged.
   terminal itself is now scrubbed of the Blockfrost project id and typed secrets.
 - LOW: option 33 (retire) now accepts the key with spaces, as option 4 does. Runbook lines
   now match what the tool prints.
+
+A re-check of those fixes found one regression, fixed: the Ctrl+C count did not reset
+between transactions, so presses during one could make a single press during a later one
+force a stop. It now resets when a new transaction starts. Also: the forced-stop message
+covers non-deploy transactions; a wallet save stuck on a dead connection no longer keeps
+the wallet from stopping (15 s limit); terminal scrubbing leaves a byte chunk cut
+mid-character untouched; a deploy over the block limit even with one key now says nothing
+was created.

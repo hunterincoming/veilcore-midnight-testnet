@@ -99,7 +99,10 @@ export const NOT_AN_OPTION = 'Not an option. Type a number from the list.';
 
 /** Deploy or maintenance transactions under way; Ctrl+C then says to wait (run()). */
 let txInProgress = 0;
+/** Ctrl+C presses refused during the current transaction(s); the third forces a stop. */
+let refusedPresses = 0;
 const during = async <T>(f: () => Promise<T>): Promise<T> => {
+  if (txInProgress === 0) refusedPresses = 0;
   txInProgress++;
   try {
     return await f();
@@ -932,7 +935,6 @@ export const run = async (config: Config, testEnv: TestEnvironment, logger: Logg
   // A transaction that never confirms (a dropped connection the libraries do not report)
   // would otherwise hold the run for ever with Ctrl+C refused. The third press stops it:
   // every key and the contract address were saved before anything was sent.
-  let refusedPresses = 0;
   const onInterrupt = (): void => {
     if (txInProgress > 0) {
       refusedPresses++;
@@ -944,9 +946,10 @@ export const run = async (config: Config, testEnv: TestEnvironment, logger: Logg
         return;
       }
       logger.warn(
-        'Stopping during a transaction. Nothing saved on this computer is lost. Do NOT choose 1 (Deploy) again. ' +
-          'Run again with the same password and wallet, choose 4 (Finish a deploy), and give it the contract ' +
-          'address from your paper or from the newest file in logs/mainnet.',
+        'Stopping during a transaction. Nothing saved on this computer is lost. If this was a deploy: do NOT ' +
+          'choose 1 (Deploy) again; run again with the same password and wallet, choose 4 (Finish a deploy), and ' +
+          'give it the contract address from your paper or the newest log. Anything else: run again and check ' +
+          'whether it landed before repeating it.',
       );
       interrupted = true;
       // The wallet may be stuck on the same dead connection: give it 10 seconds, then go.

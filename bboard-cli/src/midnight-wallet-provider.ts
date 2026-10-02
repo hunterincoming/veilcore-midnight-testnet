@@ -128,7 +128,8 @@ export class MidnightWalletProvider implements MidnightProvider, WalletProvider 
 
   async stop(): Promise<void> {
     if (this.saveTimer !== undefined) clearInterval(this.saveTimer);
-    await this.saveProgress();
+    // A save stuck on a dead connection must not keep the wallet from stopping.
+    await Promise.race([this.saveProgress(), new Promise((r) => setTimeout(r, 15_000).unref())]);
     return this.wallet.stop();
   }
 

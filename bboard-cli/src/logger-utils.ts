@@ -98,8 +98,14 @@ export const scrubTerminal = (secrets: readonly string[]): void => {
   for (const stream of [process.stdout, process.stderr]) {
     const write = stream.write.bind(stream) as (...a: unknown[]) => boolean;
     stream.write = (chunk: unknown, ...rest: unknown[]): boolean => {
-      const text = typeof chunk === 'string' ? chunk : Buffer.isBuffer(chunk) ? chunk.toString('utf8') : undefined;
-      return text === undefined ? write(chunk, ...rest) : write(scrub(text, wanted), ...rest);
+      if (typeof chunk === 'string') return write(scrub(chunk, wanted), ...rest);
+      if (chunk instanceof Uint8Array) {
+        const bytes = Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength);
+        const text = bytes.toString('utf8');
+        // Only a chunk that is whole UTF-8 is rewritten; one cut mid-character passes as is.
+        if (Buffer.from(text, 'utf8').equals(bytes)) return write(scrub(text, wanted), ...rest);
+      }
+      return write(chunk, ...rest);
     };
   }
 };

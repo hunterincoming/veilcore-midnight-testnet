@@ -689,6 +689,15 @@ export class VeilcoreAPI {
           );
           continue;
         }
+        if (isBlockLimit(e)) {
+          // Too big even with one key: refused or never built, so that contract never existed.
+          await providers.privateStateProvider.removeSigningKey(candidate);
+          logger?.error(
+            `The deploy is over the block limit even with one circuit key. Nothing was created at ${candidate} ` +
+              'and nothing was spent. Send this message to Claude.',
+          );
+          throw e;
+        }
         if (isStaleDustTime(e)) {
           // Refused before entering a block: that contract never existed, so its key goes.
           await providers.privateStateProvider.removeSigningKey(candidate);

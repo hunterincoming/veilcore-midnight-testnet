@@ -775,3 +775,57 @@ describe("laboratory-signed claims", () => {
     ).toThrow(/signature does not verify/);
   });
 });
+
+describe("record binding (gaps found by mutation testing)", () => {
+  it("a range claim refuses an opening from another record, even with a true number", () => {
+    const sim = new ClaimsSimulator({ terms: TERMS });
+    // B's germination is 9100: a true statement about B, claimed as being about A.
+    expect(() =>
+      sim.call(
+        { opening: openSlot(B.fs, 12), number: 9100n },
+        "proveRange",
+        A.c,
+        SCHEMA,
+        12n,
+        RangeOp.AT_LEAST,
+        9000n,
+      ),
+    ).toThrow(/does not belong/);
+  });
+
+  it("a distinctness claim refuses a first field set from another record", () => {
+    const sim = new ClaimsSimulator({ terms: TERMS });
+    // C2's field set is real and differs from B's, but the claim names A.
+    expect(() =>
+      sim.call({ first: C2.fs, second: B.fs }, "proveDistinct", A.c, B.c),
+    ).toThrow(/first field set does not belong/);
+    expect(() =>
+      sim.call({ first: A.fs, second: C2.fs }, "proveDistinct", A.c, B.c),
+    ).toThrow(/second field set does not belong/);
+  });
+
+  it("an unchanged claim refuses either field set from another record", () => {
+    const sim = new ClaimsSimulator({ terms: TERMS });
+    const none = Array.from({ length: SLOTS }, () => false);
+    expect(() =>
+      sim.call(
+        { first: B.fs, second: A.fs },
+        "proveUnchanged",
+        A.c,
+        C2.c,
+        SCHEMA,
+        none,
+      ),
+    ).toThrow(/does not belong to the original/);
+    expect(() =>
+      sim.call(
+        { first: A.fs, second: B.fs },
+        "proveUnchanged",
+        A.c,
+        C2.c,
+        SCHEMA,
+        none,
+      ),
+    ).toThrow(/does not belong to the correction/);
+  });
+});

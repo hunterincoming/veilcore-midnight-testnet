@@ -16,9 +16,18 @@ import LockIcon from '@mui/icons-material/LockOutlined';
 import { shortFingerprint } from '../veilcore/commitment';
 import { GENETICS_LABEL } from '../veilcore/disclosure';
 import { TEAL } from '../config/theme';
+import { NETWORK, isTestNetwork, networkLabel } from '../config/network';
 
 const API = import.meta.env.VITE_API_BASE ?? '';
 const fmt = (t: number | string) => new Date(t).toLocaleString();
+
+/** "Anchored on Midnight preprod (test network)", from the anchor's own network. */
+const anchoredOn = (r: { anchor?: { network?: string } | null }): string => {
+  const n = typeof r.anchor?.network === 'string' ? r.anchor.network : NETWORK;
+  return `Anchored on ${networkLabel(n)}`;
+};
+const anchorIsTest = (r: { anchor?: { network?: string } | null }): boolean =>
+  isTestNetwork(typeof r.anchor?.network === 'string' ? r.anchor.network : NETWORK);
 
 type VerifyResult = {
   found: boolean;
@@ -38,6 +47,8 @@ type VerifyResult = {
   attestedByVettedLab?: boolean;
   /** The record's fingerprint is in a batch whose root is anchored on a ledger. */
   anchored?: boolean;
+  /** Where the batch root was anchored, when it was. The network says whether it is a test one. */
+  anchor?: { network?: string; txHash?: string } | null;
   /** The holder's own statement of when it was logged. The app stores it as epoch ms. */
   loggedAtClaimedByHolder?: string | number | null;
   /** When the registry first received the record. The registry's word, not a ledger's. */
@@ -185,7 +196,7 @@ export const VerifyPage: React.FC = () => {
                   {!result.recordFingerprint
                     ? 'Record found — nothing sealed'
                     : result.anchored
-                      ? 'Anchored on a public ledger'
+                      ? anchoredOn(result)
                       : 'Unaltered since first seen by this registry'}
                 </Typography>
                 <Typography variant="h5">{result.cultivar}</Typography>
@@ -221,7 +232,12 @@ export const VerifyPage: React.FC = () => {
                 <>
                   {disclosed.has('own') &&
                     (result.priorPossession ? (
-                      <Fact>Prior possession: the record is anchored on a public ledger, which fixes its date.</Fact>
+                      <Fact>
+                        {anchoredOn(result)}, which fixes its date.
+                        {anchorIsTest(result)
+                          ? ' A test network can be reset and its dates carry no evidential weight.'
+                          : ''}
+                      </Fact>
                     ) : (
                       <Fact ok={false}>
                         Not yet anchored on a ledger. Its date rests on this registry&apos;s records, not on a ledger.
@@ -279,7 +295,9 @@ export const VerifyPage: React.FC = () => {
               ) : (
                 <>
                   <Fact ok={!!result.anchored}>
-                    {result.anchored ? 'Anchored on a public ledger' : 'Not yet anchored on a ledger'}
+                    {result.anchored
+                      ? `${anchoredOn(result)}${anchorIsTest(result) ? '. Test-network dates carry no evidential weight.' : ''}`
+                      : 'Not yet anchored on a ledger'}
                   </Fact>
                   {/* Only a key the registry operator has checked is called a lab. Anyone can
                       register a key in a lab's name and sign their own record (attack

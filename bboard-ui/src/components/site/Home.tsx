@@ -129,6 +129,7 @@ const Post: React.FC<{
 export const Home: React.FC = () => {
   const { t, lang } = useI18n();
   const { hash } = useLocation();
+  const [showVideo, setShowVideo] = useState(false);
 
   // Arriving from another page at /#section: the router does not scroll to it.
   useEffect(() => {
@@ -289,6 +290,26 @@ export const Home: React.FC = () => {
                 <span className="chip">{t('m.chip.1min')}</span>
               </div>
             </RouterLink>
+            <button
+              type="button"
+              className="demo"
+              aria-expanded={showVideo}
+              aria-controls="walkthrough"
+              onClick={() => setShowVideo(!showVideo)}
+            >
+              <span className="ic">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <rect x="3" y="5" width="18" height="14" rx="2" />
+                  <path d="M10 9.5l5 2.5-5 2.5z" />
+                </svg>
+              </span>
+              <h3>{t('m.demo.video.title')}</h3>
+              <p>{t('m.demo.video.text')}</p>
+              <div className="meta-row">
+                <span className="chip">{t('m.chip.video')}</span>
+                <span className="chip">{t('m.chip.75s')}</span>
+              </div>
+            </button>
             <a className="demo" href="mailto:mako@veilcore.org?cc=hunter@veilcore.org&subject=Distinctness%20demo">
               <span className="ic">
                 <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -304,6 +325,19 @@ export const Home: React.FC = () => {
               </div>
             </a>
           </div>
+          {showVideo && (
+            <div className="walkthrough" id="walkthrough">
+              <video
+                src="/media/veilcore-walkthrough.mp4"
+                poster="/media/veilcore-walkthrough.jpg"
+                controls
+                autoPlay
+                playsInline
+                preload="metadata"
+                aria-label={t('m.demo.video.title')}
+              />
+            </div>
+          )}
         </div>
       </section>
 

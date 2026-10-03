@@ -103,6 +103,11 @@ export const fr: Strings = {
   'm.demo.distinct.title': 'Preuve de distinction',
   'm.demo.distinct.text':
     'Prouvez que deux variétés diffèrent sur plusieurs marqueurs sans en révéler aucun. Démontré sur des marqueurs synthétiques ; présentation sur demande.',
+  'm.demo.video.title': 'Voir la présentation',
+  'm.demo.video.text':
+    'Tout le parcours en 75 secondes : sceller un enregistrement, y associer un rapport de laboratoire, le vérifier, et les conditions de licence.',
+  'm.chip.video': 'Vidéo',
+  'm.chip.75s': '75 s',
   'm.chip.interactive': 'Interactif',
   'm.chip.3min': '~3 min',
   'm.chip.1min': '~1 min',

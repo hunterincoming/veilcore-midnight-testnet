@@ -101,6 +101,10 @@ export const ja: Strings = {
   'm.demo.distinct.title': '区別性の証明',
   'm.demo.distinct.text':
     'どのマーカーも明かさずに、2つの品種が複数のマーカーで異なることを証明します。合成マーカーで実証済みです。ご説明はご依頼に応じて行います。',
+  'm.demo.video.title': '紹介動画を見る',
+  'm.demo.video.text': '75秒で全体の流れを紹介します。記録の封印、検査報告書のひも付け、確認、ライセンス条件まで。',
+  'm.chip.video': '動画',
+  'm.chip.75s': '75秒',
   'm.chip.interactive': 'インタラクティブ',
   'm.chip.3min': '約3分',
   'm.chip.1min': '約1分',

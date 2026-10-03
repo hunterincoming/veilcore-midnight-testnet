@@ -1383,3 +1383,21 @@ Some headings are split in two or three parts; the later part is shown in colour
 **EN:** Portrait of {name}
 
 **FR:** Portrait de {name}
+
+### m.demo.video.title
+
+**EN:** Watch the walkthrough
+
+**FR:** Voir la présentation
+
+### m.demo.video.text
+
+**EN:** The whole flow in 75 seconds: sealing a record, pairing a lab report, checking it, and licence terms.
+
+**FR:** Tout le parcours en 75 secondes : sceller un enregistrement, y associer un rapport de laboratoire, le vérifier, et les conditions de licence.
+
+### m.chip.video
+
+**EN:** Video
+
+**FR:** Vidéo

@@ -1383,3 +1383,21 @@ Some headings are split in two or three parts; the later part is shown in colour
 **EN:** Portrait of {name}
 
 **JA:** {name}の肖像
+
+### m.demo.video.title
+
+**EN:** Watch the walkthrough
+
+**JA:** 紹介動画を見る
+
+### m.demo.video.text
+
+**EN:** The whole flow in 75 seconds: sealing a record, pairing a lab report, checking it, and licence terms.
+
+**JA:** 75秒で全体の流れを紹介します。記録の封印、検査報告書のひも付け、確認、ライセンス条件まで。
+
+### m.chip.video
+
+**EN:** Video
+
+**JA:** 動画

@@ -428,7 +428,7 @@ html:has(.vcm) {
 /* demos */
 .vcm .demos {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 14px;
   margin-top: 40px;
 }
@@ -972,4 +972,26 @@ html:has(.vcm) {
   html:has(.vcm) {
     scroll-behavior: auto;
   }
+}
+
+/* The walkthrough video under the demo tiles. */
+.vcm button.demo {
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  width: 100%;
+}
+.vcm .walkthrough {
+  margin-top: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  overflow: hidden;
+  background: #000;
+}
+.vcm .walkthrough video {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 9;
 }

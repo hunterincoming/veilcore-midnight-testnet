@@ -105,6 +105,11 @@ export const de: Strings = {
   'm.demo.distinct.title': 'Unterscheidbarkeitsnachweis',
   'm.demo.distinct.text':
     'Beweisen Sie, dass sich zwei Sorten in mehreren Markern unterscheiden, ohne einen davon offenzulegen. Mit synthetischen Markern demonstriert; Vorführung auf Anfrage.',
+  'm.demo.video.title': 'Rundgang ansehen',
+  'm.demo.video.text':
+    'Der ganze Ablauf in 75 Sekunden: einen Datensatz versiegeln, einen Laborbericht zuordnen, ihn prüfen und die Lizenzbedingungen.',
+  'm.chip.video': 'Video',
+  'm.chip.75s': '75 s',
   'm.chip.interactive': 'Interaktiv',
   'm.chip.3min': '~3 Min.',
   'm.chip.1min': '~1 Min.',

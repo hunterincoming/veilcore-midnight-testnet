@@ -107,6 +107,11 @@ export const en = {
   'm.demo.distinct.title': 'Distinctness proof',
   'm.demo.distinct.text':
     'Prove two varieties differ at several markers without revealing any of them. Demonstrated on synthetic markers; walkthrough on request.',
+  'm.demo.video.title': 'Watch the walkthrough',
+  'm.demo.video.text':
+    'The whole flow in 75 seconds: sealing a record, pairing a lab report, checking it, and licence terms.',
+  'm.chip.video': 'Video',
+  'm.chip.75s': '75 s',
   'm.chip.interactive': 'Interactive',
   'm.chip.3min': '~3 min',
   'm.chip.1min': '~1 min',

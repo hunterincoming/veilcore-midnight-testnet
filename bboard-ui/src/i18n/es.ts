@@ -103,6 +103,11 @@ export const es: Strings = {
   'm.demo.distinct.title': 'Prueba de distinción',
   'm.demo.distinct.text':
     'Demuestre que dos variedades difieren en varios marcadores sin revelar ninguno. Demostrado con marcadores sintéticos; recorrido guiado a pedido.',
+  'm.demo.video.title': 'Ver el recorrido',
+  'm.demo.video.text':
+    'Todo el flujo en 75 segundos: sellar un registro, vincular un informe de laboratorio, verificarlo y los términos de licencia.',
+  'm.chip.video': 'Video',
+  'm.chip.75s': '75 s',
   'm.chip.interactive': 'Interactiva',
   'm.chip.3min': '~3 min',
   'm.chip.1min': '~1 min',

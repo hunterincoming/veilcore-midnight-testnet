@@ -189,7 +189,7 @@ export const en = {
     "Makoto (Mako) Steiner is VeilCore's co-founder and CEO, leading commercial strategy, fundraising, and VeilCore's relationships with partners, institutions, and investors worldwide.",
   'm.mako.bio2': 'He studied Environmental Studies at Denison University and is based in Tokyo.',
   'm.mako.leads': 'Japan|EU|Standards bodies|Business development',
-  'm.mako.also': 'Build Club, Cohort 1',
+  'm.mako.also': 'Midnight Nightforce Leader (Japan) · Build Club, Cohort 1',
   'm.mako.languages': 'English · Japanese',
   'm.hunter.bio1':
     "Hunter Roberts is VeilCore's co-founder and COO, leading product and the VeilCore protocol, from the record format to the contracts on Midnight. He leads VeilCore's work with US institutions, including seed certification, standards and plant-variety bodies.",

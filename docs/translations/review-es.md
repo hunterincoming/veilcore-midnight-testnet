@@ -1314,9 +1314,9 @@ Some headings are split in two or three parts; the later part is shown in colour
 
 ### m.mako.also
 
-**EN:** Build Club, Cohort 1
+**EN:** Midnight Nightforce Leader (Japan) · Build Club, Cohort 1
 
-**ES:** Build Club, Cohorte 1
+**ES:** Midnight Nightforce Leader (Japón) · Build Club, Cohorte 1
 
 ### m.mako.languages
 

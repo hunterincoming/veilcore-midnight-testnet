@@ -177,7 +177,7 @@ export const ja: Strings = {
     'Makoto（Mako）SteinerはVeilCoreの共同創業者兼CEOです。事業戦略、資金調達、そして世界各地のパートナー、機関、投資家とのVeilCoreの関係を統括しています。',
   'm.mako.bio2': 'デニソン大学で環境学を専攻し、東京を拠点としています。',
   'm.mako.leads': '日本|EU|標準化団体|事業開発',
-  'm.mako.also': 'Build Club 第1期',
+  'm.mako.also': 'Midnight Nightforce Leader（日本） · Build Club 第1期',
   'm.mako.languages': '英語 · 日本語',
   'm.hunter.bio1':
     'Hunter RobertsはVeilCoreの共同創業者兼COOです。記録フォーマットからMidnight上のコントラクトまで、プロダクトとVeilCoreプロトコルを統括しています。種子認証、標準化、植物品種関係の機関を含む、米国の機関とのVeilCoreの取り組みを主導しています。',

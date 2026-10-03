@@ -1138,8 +1138,9 @@ detects a change after it happens. It does not prevent one.
   (`docs/security-pass-30sep.md`).
   After this run an independent review changed the operator tool's failure paths only
   (messages, a forced stop, terminal scrubbing; `docs/security-pass-30sep.md`); the
-  successful path and the contract are as run here. The local smoke test is re-run on
-  the final tool before the mainnet deploy.
+  successful path and the contract are as run here. The local smoke test was re-run on
+  the final tool (`c0647dc`) on 2 October 2026, closing at 19:46 EDT: PASSED 26 of 26,
+  local contract `88ef3d861c043f4d48be4d2aacd63d1118266ccfed32be5ac160ee7f0563d428`.
   The operator runbook makes a passed preprod run a precondition of the mainnet deploy.
   The code does not check it.
 - **Earlier deployments, none of them this build:** V1 on Preview at

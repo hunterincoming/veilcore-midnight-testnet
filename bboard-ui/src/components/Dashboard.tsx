@@ -16,6 +16,8 @@ import RestartAltIcon from '@mui/icons-material/RestartAltOutlined';
 import EastIcon from '@mui/icons-material/East';
 import { motion } from 'framer-motion';
 import { useRecords, exportRecords, importRecords, resetDemo } from '../veilcore/records';
+import { REAL_CHAIN } from '../veilcore/chain/config';
+import { keysWithoutBackup } from '../veilcore/record-keys';
 import { useLicenses, activeLicenseCount } from '../veilcore/licenses';
 import { StatusChain } from './StatusChain';
 import { AttentionBar } from './AttentionBar';
@@ -77,7 +79,12 @@ export const Dashboard: React.FC = () => {
   };
 
   const onReset = () => {
-    if (window.confirm('Clear all records on this device and start the demo fresh?')) {
+    const unsaved = REAL_CHAIN ? keysWithoutBackup().length : 0;
+    const question =
+      unsaved > 0
+        ? `Clear all records on this device and start the demo fresh? ${unsaved} record${unsaved === 1 ? ' has' : 's have'} on-chain keys with no backup. The keys stay in this browser, but download their backups first: clearing the browser later would lose them for good.`
+        : 'Clear all records on this device and start the demo fresh?';
+    if (window.confirm(question)) {
       resetDemo();
       setToast('Demo reset.');
     }

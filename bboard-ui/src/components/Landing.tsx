@@ -15,14 +15,20 @@ import { Box, Button, Container, Stack, TextField, Typography } from '@mui/mater
 import { Link as RouterLink } from 'react-router-dom';
 import { computeCommitment, newNonce } from 'veilcore-records';
 import { TEAL, TEAL_DIM } from '../config/theme';
+import { useI18n } from '../i18n';
+import { DraftBanner, LanguagePicker } from '../i18n/LanguagePicker';
 
 const MONO = '"SFMono-Regular", ui-monospace, Menlo, monospace';
 
 /* ---------------------------------------------------------------- hero ---- */
 
 const Hero: React.FC = () => {
+  const { t, lang } = useI18n();
+  // Japanese has no spaces to break at: a smaller size and balanced lines keep a
+  // headline from splitting mid-word.
+  const cjk = lang === 'ja';
   const [name, setName] = useState('Harbour Mist');
-  const [bred, setBred] = useState('Your name here');
+  const [bred, setBred] = useState(() => t('hero.bredByDefault'));
   const [hash, setHash] = useState('');
   const [settling, setSettling] = useState(false);
   const [nonce] = useState(() => newNonce());
@@ -56,26 +62,47 @@ const Hero: React.FC = () => {
   return (
     <Box sx={{ pt: { xs: 7, md: 12 }, pb: { xs: 6, md: 10 } }}>
       <Typography variant="overline" sx={{ color: TEAL, display: 'block', mb: 2.5 }}>
-        Proof of what you hold
+        {t('hero.overline')}
       </Typography>
 
-      <Typography variant="h1" sx={{ fontSize: { xs: 40, sm: 56, md: 72 }, lineHeight: 1.0, mb: 3.5, maxWidth: 900 }}>
-        Prove you had it first.
+      <Typography
+        variant="h1"
+        sx={{
+          fontSize: cjk ? { xs: 32, sm: 44, md: 56 } : { xs: 40, sm: 56, md: 72 },
+          lineHeight: cjk ? 1.25 : 1.0,
+          mb: 3.5,
+          maxWidth: 900,
+          textWrap: 'balance',
+          ...(cjk ? { lineBreak: 'strict' } : {}),
+        }}
+      >
+        {t('hero.title1')}
         <br />
         <Box component="span" sx={{ color: TEAL }}>
-          Without showing anyone what it is.
+          {t('hero.title2')}
         </Box>
       </Typography>
 
       <Typography variant="h6" sx={{ color: 'text.secondary', maxWidth: 560, mb: 6, fontWeight: 400, lineHeight: 1.6 }}>
-        A record format for genetic material. Change anything below — it stays on this page. Only the value underneath
-        is ever published.
+        {t('hero.lead')}
       </Typography>
 
       <Box sx={{ maxWidth: 700 }}>
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-          <TextField label="Cultivar" value={name} onChange={(e) => setName(e.target.value)} size="small" fullWidth />
-          <TextField label="Bred by" value={bred} onChange={(e) => setBred(e.target.value)} size="small" fullWidth />
+          <TextField
+            label={t('hero.cultivar')}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            size="small"
+            fullWidth
+          />
+          <TextField
+            label={t('hero.bredBy')}
+            value={bred}
+            onChange={(e) => setBred(e.target.value)}
+            size="small"
+            fullWidth
+          />
         </Stack>
 
         {/* The collapse. Everything above reduces to the line below. */}
@@ -100,17 +127,16 @@ const Hero: React.FC = () => {
         </Box>
 
         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1.5, maxWidth: 560 }}>
-          Thirty-two bytes. It cannot be reversed, and it could not have come from a different record. This is the only
-          part anyone else ever sees.
+          {t('hero.caption')}
         </Typography>
       </Box>
 
       <Stack direction="row" spacing={2} sx={{ mt: 5, flexWrap: 'wrap', gap: 2 }}>
         <Button variant="contained" size="large" component={RouterLink} to="/docs/spec">
-          Read the specification
+          {t('hero.readSpec')}
         </Button>
         <Button variant="outlined" size="large" component={RouterLink} to="/new">
-          Try the reference implementation
+          {t('hero.tryReference')}
         </Button>
       </Stack>
     </Box>
@@ -195,167 +221,141 @@ const Person: React.FC<{ name: string; role: string; bio: string; photo: string;
   bio,
   photo,
   extra,
-}) => (
-  <Box sx={{ py: 3.5, borderTop: '1px solid', borderColor: 'rgba(255,255,255,0.07)' }}>
-    <Stack direction={{ xs: 'column', md: 'row' }} spacing={{ xs: 1, md: 4 }} sx={{ alignItems: { md: 'flex-start' } }}>
-      <Box sx={{ minWidth: { md: 210 } }}>
-        <Box
-          component="img"
-          src={photo}
-          alt={`Portrait of ${name}`}
-          width={112}
-          height={112}
-          loading="lazy"
-          sx={{
-            display: 'block',
-            width: 112,
-            height: 112,
-            objectFit: 'cover',
-            borderRadius: 2,
-            border: '1px solid rgba(255,255,255,0.08)',
-            mb: 1.5,
-            filter: 'grayscale(1)',
-            transition: 'filter .4s ease',
-            '&:hover': { filter: 'none' },
-          }}
-        />
-        <Typography variant="subtitle1">{name}</Typography>
-        <Typography variant="body2" sx={{ color: TEAL_DIM }}>
-          {role}
-        </Typography>
-      </Box>
-      <Box sx={{ flex: 1 }}>
-        <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 620, lineHeight: 1.7 }}>
-          {bio}
-        </Typography>
-        {extra && (
-          <Typography variant="body2" sx={{ color: TEAL_DIM, mt: 1 }}>
-            {extra}
+}) => {
+  const { t } = useI18n();
+  return (
+    <Box sx={{ py: 3.5, borderTop: '1px solid', borderColor: 'rgba(255,255,255,0.07)' }}>
+      <Stack
+        direction={{ xs: 'column', md: 'row' }}
+        spacing={{ xs: 1, md: 4 }}
+        sx={{ alignItems: { md: 'flex-start' } }}
+      >
+        <Box sx={{ minWidth: { md: 210 } }}>
+          <Box
+            component="img"
+            src={photo}
+            alt={t('team.portraitOf', { name })}
+            width={112}
+            height={112}
+            loading="lazy"
+            sx={{
+              display: 'block',
+              width: 112,
+              height: 112,
+              objectFit: 'cover',
+              borderRadius: 2,
+              border: '1px solid rgba(255,255,255,0.08)',
+              mb: 1.5,
+              filter: 'grayscale(1)',
+              transition: 'filter .4s ease',
+              '&:hover': { filter: 'none' },
+            }}
+          />
+          <Typography variant="subtitle1">{name}</Typography>
+          <Typography variant="body2" sx={{ color: TEAL_DIM }}>
+            {role}
           </Typography>
-        )}
-      </Box>
-    </Stack>
-  </Box>
-);
+        </Box>
+        <Box sx={{ flex: 1 }}>
+          <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 620, lineHeight: 1.7 }}>
+            {bio}
+          </Typography>
+          {extra && (
+            <Typography variant="body2" sx={{ color: TEAL_DIM, mt: 1 }}>
+              {extra}
+            </Typography>
+          )}
+        </Box>
+      </Stack>
+    </Box>
+  );
+};
 
 /* --------------------------------------------------------------- page ----- */
 
-export const Landing: React.FC = () => (
-  <Container maxWidth="lg" sx={{ pb: 12 }}>
-    <Hero />
-
-    <Rule eyebrow="Why this exists" title="Genetics replicate. Paper does not keep up." />
-    <Stack spacing={2.5} sx={{ maxWidth: 700, pb: { xs: 2, md: 4 } }}>
-      <Typography variant="body1" color="text.secondary" sx={{ lineHeight: 1.8, fontSize: 16 }}>
-        A cutting becomes a thousand cuttings. Whoever bred it is paid once, at the door, and only if someone chose to
-        pay. When material turns up where it should not be, the breeder&apos;s evidence is their own dated notes —
-        produced by the party relying on them, and creatable after the fact.
-      </Typography>
-      <Typography variant="body1" color="text.secondary" sx={{ lineHeight: 1.8, fontSize: 16 }}>
-        The usual remedies do not fit. Depositing a specimen needs storage that is impractical for anything grown from a
-        cutting. Having a description notarised means handing it to a stranger — the one thing you cannot do with
-        material that is valuable and unprotected.
-      </Typography>
-    </Stack>
-
-    <Rule
-      eyebrow="What a record accumulates"
-      title="From your notebook to a licence, without showing anyone the genetics."
-    />
-    <Box sx={{ pt: 1 }}>
-      <Stage
-        head="Log what you bred"
-        body="Write down the cultivar, its parents, when you selected it. It is sealed on your own device and only a hash of it is published — so from that moment you can prove to anyone that this description existed on this date, without showing them a word of it. You can even prove you hold the material without producing the description at all."
-        limit="It fixes what you wrote and when. It does not prove what you wrote is true — that is what the next stages are for."
-      />
-      <Stage
-        head="Send a sample for testing"
-        body="Give a lab a transfer code with the sample. When they confirm it arrived, that confirmation is signed with their key and lands on your record. The material they hold is now traceable back to yours, and any royalty you attached travels with it — including into cuttings that do not exist yet."
-        limit="It cannot see material nobody declares. It bites when that material surfaces commercially."
-      />
-      <Stage
-        head="Their report becomes your evidence"
-        body="The lab attaches the DNA report they produced, signed by them. Your record is now tied to actual genetics rather than a name anyone could reuse — and it carries a statement from someone other than you. Only that lab can withdraw it. Nobody, including us, can forge one."
-        limit="We record which accreditation a lab claims, and who accredited them. We never vouch for it — you check that with the accreditor."
-      />
-      <Stage
-        head="License it, and get paid on what grows from it"
-        body="Set terms, including a royalty on offspring, and both parties sign. The terms bind to the record and to the DNA report rather than to a memory of a conversation. If a licensee stops holding up their end, you revoke — which does not stop their grow, but does stop them showing clean title to the next buyer, the next lab, or any programme that asks for a record."
-        limit="We record what is owed. We never take payments and never hold your money."
-      />
-    </Box>
-
-    <Rule eyebrow="Who decides what is seen" title="You do, recipient by recipient." />
-    <Stack spacing={2} sx={{ maxWidth: 700, pb: { xs: 2, md: 4 } }}>
-      <Typography variant="body1" color="text.secondary" sx={{ lineHeight: 1.8, fontSize: 16 }}>
-        A buyer might see only that a record exists, that it is clean, and that a lab confirmed it. A licensee sees the
-        terms. A customs officer sees a date. Facts you do not grant are absent from what you send, not hidden inside
-        it.
-      </Typography>
-      <Typography variant="body1" sx={{ color: TEAL, lineHeight: 1.8, fontSize: 16 }}>
-        The genetics themselves are never disclosable. There is no setting that reveals them.
-      </Typography>
-    </Stack>
-
-    <Rule eyebrow="Where this is" />
-    <Typography variant="body1" color="text.secondary" sx={{ maxWidth: 700, mt: 2.5, lineHeight: 1.7 }}>
-      The format is published with a conformance suite, and three independent implementations in three languages pass
-      the same tests. Records anchor in batches on Midnight, currently on a test network. No independent security audit
-      has been completed yet, and the format has been used by its authors and by nobody else.
-    </Typography>
-    <Typography variant="body1" sx={{ color: TEAL_DIM, maxWidth: 700, mt: 2, lineHeight: 1.7 }}>
-      We would rather say that here than have you find it out.
-    </Typography>
-
-    <Rule eyebrow="Depending on who you are" title="Different people need different things from it." />
-    <Box>
-      <Audience
-        who="Laboratories"
-        line="Keep your own system and your own sample numbers. Add a commitment to records you already create, and sign the reports you already issue. A day of intakes anchors in one transaction."
-        to="/docs/integrate"
-        label="Integration guide"
-      />
-      <Audience
-        who="Anyone who wants to see it work"
-        line="A reference implementation, free and open. Log a variety, send a sample, watch a laboratory's signed report land on your record. It exists to show the format works and to give you something to check your own implementation against. It is not the product. The format is."
-        to="/new"
-        label="Try it"
-      />
-      <Audience
-        who="Registries and rights bodies"
-        line="Run a registry under your own domain and define a profile for your own kind of material. Nobody grants permission and nothing routes through us."
-        to="/docs/spec"
-        label="Read the specification"
-      />
-      <Audience
-        who="Counsel"
-        line="How a record is authenticated, which jurisdictions attach a presumption to what, and — set out at length — what it does not prove."
-        to="/docs/evidence"
-        label="Evidence note"
-      />
-      <Audience
-        who="Anyone checking a record"
-        line="Verification is free, needs no account, and always will be. If we disappear, records already issued keep verifying against the ledger with open-source software."
-        to="/docs/integrate"
-        label="How verification works"
-      />
-    </Box>
-
-    <Rule eyebrow="Who is building it" />
-    <Box sx={{ pt: 1 }}>
-      <Person
-        name="Makoto (Mako) Steiner"
-        role="Co-founder & CEO"
-        photo="/team/mako.jpg"
-        bio="Makoto (Mako) Steiner is VeilCore's co-founder and CEO, leading commercial strategy, fundraising, and VeilCore's relationships with partners, institutions, and investors worldwide. He studied Environmental Studies at Denison University and is based in Tokyo."
-        extra="Languages: English, Japanese"
-      />
-      <Person
-        name="Hunter Roberts"
-        role="Co-founder & COO"
-        photo="/team/hunter.jpg"
-        bio="Hunter Roberts is VeilCore's co-founder and COO, leading product and the VeilCore protocol, from the record format to the contracts on Midnight. He comes from hands-on plant work, including breeding and tissue culture, and is building a cultivation facility in New Jersey. He is Midnight Foundation's Nightforce Leader (US)."
-      />
-    </Box>
-  </Container>
+const P: React.FC<{ text: string; teal?: boolean }> = ({ text, teal }) => (
+  <Typography
+    variant="body1"
+    color={teal ? undefined : 'text.secondary'}
+    sx={{ lineHeight: 1.8, fontSize: 16, ...(teal ? { color: TEAL } : {}) }}
+  >
+    {text}
+  </Typography>
 );
+
+export const Landing: React.FC = () => {
+  const { t, lang } = useI18n();
+  return (
+    <Container maxWidth="lg" sx={{ pb: 12 }}>
+      <Stack direction="row" sx={{ justifyContent: 'flex-end', pt: 1, mb: 2 }}>
+        <LanguagePicker />
+      </Stack>
+      <DraftBanner />
+      <Hero key={lang} />
+
+      <Rule eyebrow={t('why.eyebrow')} title={t('why.title')} />
+      <Stack spacing={2.5} sx={{ maxWidth: 700, pb: { xs: 2, md: 4 } }}>
+        <P text={t('why.p1')} />
+        <P text={t('why.p2')} />
+      </Stack>
+
+      <Rule eyebrow={t('stages.eyebrow')} title={t('stages.title')} />
+      <Box sx={{ pt: 1 }}>
+        <Stage head={t('stage1.head')} body={t('stage1.body')} limit={t('stage1.limit')} />
+        <Stage head={t('stage2.head')} body={t('stage2.body')} limit={t('stage2.limit')} />
+        <Stage head={t('stage3.head')} body={t('stage3.body')} limit={t('stage3.limit')} />
+        <Stage head={t('stage4.head')} body={t('stage4.body')} limit={t('stage4.limit')} />
+      </Box>
+
+      <Rule eyebrow={t('disclose.eyebrow')} title={t('disclose.title')} />
+      <Stack spacing={2} sx={{ maxWidth: 700, pb: { xs: 2, md: 4 } }}>
+        <P text={t('disclose.p1')} />
+        <P text={t('disclose.p2')} teal />
+      </Stack>
+
+      <Rule eyebrow={t('status.eyebrow')} />
+      <Typography variant="body1" color="text.secondary" sx={{ maxWidth: 700, mt: 2.5, lineHeight: 1.7 }}>
+        {t('status.p1')}
+      </Typography>
+      <Typography variant="body1" sx={{ color: TEAL_DIM, maxWidth: 700, mt: 2, lineHeight: 1.7 }}>
+        {t('status.p2')}
+      </Typography>
+
+      <Rule eyebrow={t('aud.eyebrow')} title={t('aud.title')} />
+      <Box>
+        <Audience who={t('aud.labs.who')} line={t('aud.labs.line')} to="/docs/integrate" label={t('aud.labs.label')} />
+        <Audience who={t('aud.try.who')} line={t('aud.try.line')} to="/new" label={t('aud.try.label')} />
+        <Audience who={t('aud.reg.who')} line={t('aud.reg.line')} to="/docs/spec" label={t('aud.reg.label')} />
+        <Audience
+          who={t('aud.counsel.who')}
+          line={t('aud.counsel.line')}
+          to="/docs/evidence"
+          label={t('aud.counsel.label')}
+        />
+        <Audience
+          who={t('aud.check.who')}
+          line={t('aud.check.line')}
+          to="/docs/integrate"
+          label={t('aud.check.label')}
+        />
+      </Box>
+
+      <Rule eyebrow={t('team.eyebrow')} />
+      <Box sx={{ pt: 1 }}>
+        <Person
+          name="Makoto (Mako) Steiner"
+          role={t('team.mako.role')}
+          photo="/team/mako.jpg"
+          bio={t('team.mako.bio')}
+          extra={t('team.mako.extra')}
+        />
+        <Person
+          name="Hunter Roberts"
+          role={t('team.hunter.role')}
+          photo="/team/hunter.jpg"
+          bio={t('team.hunter.bio')}
+        />
+      </Box>
+    </Container>
+  );
+};

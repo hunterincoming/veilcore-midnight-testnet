@@ -11,12 +11,15 @@ import { Link as RouterLink, useLocation } from 'react-router-dom';
 import AddIcon from '@mui/icons-material/Add';
 import { WalletBadge } from './veilcore/WalletBadge';
 import { TEAL } from '../config/theme';
+import { useI18n } from '../i18n';
+import { LanguagePicker } from '../i18n/LanguagePicker';
 
 const network = import.meta.env.VITE_NETWORK_ID ?? 'preview';
 const demoMode = !(import.meta.env.VITE_VEILCORE_CONTRACT_ADDRESS as string);
 
 export const AppHeader: React.FC = () => {
   const loc = useLocation();
+  const { t } = useI18n();
   return (
     <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between', mb: { xs: 4, md: 5 } }}>
       <Stack direction="row" spacing={3} sx={{ alignItems: 'center' }}>
@@ -34,12 +37,12 @@ export const AppHeader: React.FC = () => {
         </Stack>
         {loc.pathname !== '/new' && (
           <Button component={RouterLink} to="/new" size="small" variant="outlined" startIcon={<AddIcon />}>
-            New cultivar
+            {t('nav.newCultivar')}
           </Button>
         )}
         {loc.pathname !== '/licenses' && (
           <Button component={RouterLink} to="/licenses" size="small" variant="text">
-            Licenses
+            {t('nav.licenses')}
           </Button>
         )}
         {/* A recipient may have no records at all — receiving has to be reachable
@@ -54,7 +57,10 @@ export const AppHeader: React.FC = () => {
         )}
         <HolderKeyPanel />
       </Stack>
-      <WalletBadge network={network} demo={demoMode} />
+      <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center' }}>
+        <LanguagePicker />
+        <WalletBadge network={network} demo={demoMode} />
+      </Stack>
     </Stack>
   );
 };

@@ -108,7 +108,7 @@ export const provableRetirementUpdate = (
   return update.addSignature(0n, signData(signingKey, update.dataToSign));
 };
 
-type RetireProviders = SubmitTxProviders<Contract.Any, never> & {
+type RetireProviders = SubmitTxProviders<Contract.Any, Contract.ProvableCircuitId<Contract.Any>> & {
   readonly privateStateProvider: SigningKeyStore & {
     getSigningKey: (address: ContractAddress) => Promise<SigningKey | undefined | null>;
   };

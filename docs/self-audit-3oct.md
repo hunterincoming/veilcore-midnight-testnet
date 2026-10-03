@@ -113,6 +113,29 @@ boundaries of no consequence:
 - `acceptOwnership` refusing challenges that contain any zero byte, which only refuses
   more.
 
+## 6. Dynamic scan (DAST) of the registry API
+
+Static scanning (SAST) already runs: Aikido on every repository and GitHub code
+scanning. For the dynamic side, OWASP ZAP 2.16.1 ran its spider and full active scan
+against a local copy of the registry API (veilcore-api), every route seeded with a
+request, the rate limit lifted for the harness only.
+
+**No injection, cross-site scripting, path traversal or authentication bypass found.**
+It reported header gaps, fixed in veilcore-api `117794c` with tests:
+
+- the JSON routes' CSP lacked `form-action` and `base-uri`, which do not fall back to
+  `default-src`;
+- the embed fragment had no CSP (it now has one that still lets any site frame it);
+- Express's default 404 replaced the CSP with a shorter one.
+
+Accepted, by design: `Access-Control-Allow-Origin: *` (a public read API with no cookies;
+writes need a holder key or operator token in a header), and no `X-Frame-Options` on the
+embed, which exists to be framed.
+
+The live website and live API could not be reached from the review environment. The
+operator runs ZAP's baseline (passive) scan against them; see the runbook commands in the
+3 October notes.
+
 ## Not covered by this round
 
 - An independent human review of the frozen commit.

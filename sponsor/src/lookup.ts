@@ -46,7 +46,7 @@ export const lookupCall = async (
   readState: StateReader,
   fetchFn: typeof fetch = fetch,
   timeoutMs = 20_000,
-): Promise<Landing & { paidFees?: string }> => {
+): Promise<Landing> => {
   const res = await fetchFn(indexer, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },

@@ -57,6 +57,8 @@ export type Landing =
       /** From the contract state right after this transaction; undefined if it had no single anchorBatch call. */
       readonly lastBatchRoot?: string;
       readonly batchSeq?: bigint;
+      /** The fee the network charged, in SPECKs, as the indexer reports it. */
+      readonly paidFees?: string;
     };
 
 export interface AnchorChain {
@@ -79,6 +81,7 @@ export type Attempt = {
   readonly txHash?: string;
   readonly blockHeight?: number;
   readonly anchoredAt?: string;
+  readonly paidFees?: string;
   readonly verifyTries?: number;
 };
 
@@ -269,6 +272,7 @@ export class Anchorer {
       txHash: norm(landing.txHash),
       blockHeight: landing.blockHeight,
       anchoredAt: new Date(landing.blockTime ?? this.now()).toISOString(),
+      paidFees: landing.paidFees,
     };
     this.store.save(verified);
     return this.record(verified);
@@ -285,7 +289,12 @@ export class Anchorer {
     });
     this.store.clear();
     this.status_.lastAnchoredBatch = a.batchId;
-    this.log('info', 'anchoring: recorded', { batchId: a.batchId, txHash: a.txHash, blockHeight: a.blockHeight });
+    this.log('info', 'anchoring: recorded', {
+      batchId: a.batchId,
+      txHash: a.txHash,
+      blockHeight: a.blockHeight,
+      paidFeesSpecks: a.paidFees,
+    });
     return this.done(`anchored ${a.batchId} in ${a.txHash}`, true);
   }
 }

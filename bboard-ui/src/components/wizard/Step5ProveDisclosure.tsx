@@ -1,7 +1,8 @@
-// Wizard step 5 — Prove what you choose. Midnight's core capability, made concrete: the
-// breeder generates a proof for a specific recipient and picks exactly which facts that
-// recipient sees. A live preview shows precisely what they'll get; the genetics are never
-// disclosable. The proof runs the real `commit` circuit locally — only settlement is simulated.
+// Wizard step 5 — Share what you choose. The breeder makes a share link for a specific
+// recipient and picks exactly which facts that recipient sees. A live preview shows
+// precisely what they'll get; the genetics are never disclosable. The link carries a
+// fingerprint computed on this device (the `commit` hash, run as a plain function). No
+// zero-knowledge proof is made here and nothing is sent to a network.
 // SPDX-License-Identifier: Apache-2.0
 
 import React, { useState } from 'react';
@@ -58,8 +59,8 @@ export const Step5ProveDisclosure: React.FC<{ recordId: string; onDone: () => vo
     setBusy(true);
     try {
       const show = encodeDisclosure(disclosure);
-      // Runs the real commit circuit locally — a genuine local commitment over exactly what
-      // this recipient will see. Nothing is submitted on-chain here.
+      // A fingerprint of exactly what this recipient will see, computed on this device with
+      // the commit hash. Not a zero-knowledge proof, and nothing is sent to a network.
       const token = await fingerprintText(JSON.stringify({ r: record.recordFingerprint, show, to: recipient.trim() }));
       const query = `show=${show}${recipient.trim() ? `&to=${encodeURIComponent(recipient.trim())}` : ''}`;
       setResult({
@@ -93,9 +94,9 @@ export const Step5ProveDisclosure: React.FC<{ recordId: string; onDone: () => vo
       </Box>
 
       <TextField
-        label="Who is this proof for? (optional)"
+        label="Who is this link for? (optional)"
         placeholder="e.g. a potential licensee, a lab, a buyer"
-        helperText="The proof link is prepared for this recipient."
+        helperText="The link is prepared for this recipient."
         value={recipient}
         onChange={(e) => {
           setRecipient(e.target.value);
@@ -145,7 +146,9 @@ export const Step5ProveDisclosure: React.FC<{ recordId: string; onDone: () => vo
 
       {result ? (
         <Alert severity="success" variant="outlined" icon={<VerifiedIcon />}>
-          <Typography variant="subtitle2">Proof sealed locally · {shortFingerprint(result.token)}</Typography>
+          <Typography variant="subtitle2">
+            Share link ready · fingerprint computed on your device {shortFingerprint(result.token)}
+          </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, mb: 1 }}>
             Share this recipient-specific link. It shows only what you selected — the withheld facts are not shown, and
             the genetics are never disclosed. Proving a withheld fact without revealing it needs the per-field scheme,
@@ -183,7 +186,7 @@ export const Step5ProveDisclosure: React.FC<{ recordId: string; onDone: () => vo
             startIcon={busy ? <CircularProgress size={18} color="inherit" /> : undefined}
             onClick={onGenerate}
           >
-            {busy ? 'Proving locally…' : 'Generate proof & share link'}
+            {busy ? 'Computing on your device…' : 'Make the share link'}
           </Button>
         </Box>
       )}

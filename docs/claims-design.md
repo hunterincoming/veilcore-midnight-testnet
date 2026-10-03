@@ -8,11 +8,11 @@ which stays frozen. Closes the "Per-field commitments" entry in SPEC section 12.
 Four claims, each about a sealed record, each provable only by someone who holds the
 record's sealed values, and none of them revealing anything beyond the claim:
 
-| Claim | Proves | Publishes | Who asked for it |
+| Claim | Proves | Publishes | Who needs it |
 |---|---|---|---|
-| **value** | slot *i* of record *c* holds exactly value *v* | *c*, schema, *i*, *v* | an examiner who was shown a value and must establish later that it is the sealed one |
-| **range** | the number in slot *i* of *c* is at least (or at most) *t* | *c*, schema, *i*, at-least/at-most, *t*; never the number | a certifying agency (AOSCA ACR: a trait cleared a specified threshold) |
-| **distinct** | records *a* and *b* differ in at least *k* of the schema's comparable slots | *a*, *b*, schema; never which slots or how many | a plant-variety examiner (USDA PVPO: distinctness without exposing proprietary markers) |
+| **value** | slot *i* of record *c* holds exactly value *v* | *c*, schema, *i*, *v* | anyone who was shown a value and must establish later that it is the sealed one |
+| **range** | the number in slot *i* of *c* is at least (or at most) *t* | *c*, schema, *i*, at-least/at-most, *t*; never the number | a certifying agency checking that a trait cleared a specified threshold (as in AOSCA's Additional Certification Requirements) |
+| **distinct** | records *a* and *b* differ in at least *k* of the schema's comparable slots | *a*, *b*, schema; never which slots or how many | a breeder showing an examiner that markers differ without exposing them (the problem a USDA plant-variety examiner described to us; no office has asked for or used this) |
 | **unchanged** | two records under one schema have equal values outside a published mask (nothing else: not which is the correction) | *old*, *new*, schema, mask | a verifier of a corrected record, together with the `supersedes` link (SPEC section 6) |
 
 A claim the sealed values do not support cannot be constructed: the proof fails on the

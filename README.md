@@ -68,7 +68,14 @@ cd ../bboard-ui && npm run build
 
 ## Current status
 
-**One contract, `contract/src/veilcore.compact`, protocol version 1, planned for mainnet and not deployed there yet.**
+**Two contracts, planned for mainnet and not deployed there yet.** `contract/src/veilcore.compact`
+(protocol version 1, frozen) covers records, licences and lineage. `contract/src/veilcore-claims.compact`
+proves one fact about a sealed record without showing the rest (a value, a bound on a number,
+that two records differ, that a correction changed only some values), optionally on values a
+laboratory signed; see [`docs/claims-design.md`](docs/claims-design.md) and SPEC 4.5 in veilcore-sdk.
+It is deployed with no maintenance authority (an empty committee).
+
+The main contract:
 It covers records, licences and lineage in 24 circuits. The design, the normative
 verifier rules and the trust model are in [`docs/design.md`](docs/design.md).
 
@@ -97,7 +104,8 @@ Midnight's tooling.
 the chain. The CLI in `bboard-cli/` talks to a deployed contract. Its smoke test
 (`bboard-cli/src/smoke.ts`) deploys a fresh contract and calls 16 of the 24 circuits with
 real proofs, checking 26 results, including 8 attempts that must be refused (7 by the contract,
-1 by the verifier's transaction lookup). It does
+1 by the verifier's transaction lookup). An optional claims phase adds 11 checks (37 in all);
+it has run only against a local stand-in so far, not yet with real proofs. It does
 not call `anchorBatch`, `replaceRecoveryCommitment`, `withdrawTransfer`, `withdrawParent`,
 `proposeObligation`, `acceptObligation`, `rejectObligation` or `withdrawObligation`. It
 passed 26 of 26 on a local Midnight chain on this build (the state bounds, `ceb3a16`) on

@@ -1,4 +1,4 @@
-// Veilcore record store — persisted to localStorage so a breeder's proof survives a
+// VeilCore record store — persisted to localStorage so a breeder's proof survives a
 // browser refresh. Real hashing lives in commitment.ts; this only holds records and
 // their status. Simulated settlement in demo mode.
 // SPDX-License-Identifier: Apache-2.0
@@ -32,7 +32,7 @@ export type Attestation = {
   readonly lab?: string;
 };
 
-/** A parent strain: linked to a logged record (recordId set) or free-typed (name only). */
+/** A parent cultivar: linked to a logged record (recordId set) or free-typed (name only). */
 export type ParentRef = { readonly recordId?: string; readonly name: string };
 
 export type StrainRecord = {
@@ -43,10 +43,17 @@ export type StrainRecord = {
   readonly bredBy: string;
   readonly dateCreated: string; // breeder's self-asserted claim (not cryptographically proven)
   readonly notes: string;
-  readonly loggedAt: number; // sealed timestamp — the un-forgeable moment of logging
+  readonly loggedAt: number; // when it was sealed, by this device's clock (not a trusted time until anchored)
   readonly recordFingerprint: string;
   readonly parents?: ParentRef[];
   readonly breedingMethod?: string;
+  /**
+   * The profile this record was sealed under. Absent on records sealed before
+   * 3 October 2026, which keep the profile they were exported under (see envelope.ts).
+   */
+  readonly profile?: string;
+  /** Species or other taxon, as the holder entered it. Optional. */
+  readonly taxon?: string;
   readonly photoFingerprints?: string[]; // photos hashed locally, never uploaded
   readonly refId?: string; // breeder's own reference / lot ID
   readonly dnaFingerprint?: string;
@@ -101,6 +108,8 @@ export const isStrainRecord = (v: unknown): v is StrainRecord => {
     str(r.recordFingerprint) &&
     str(r.nonce) &&
     str(r.dnaFingerprint) &&
+    str(r.profile) &&
+    str(r.taxon) &&
     num(r.loggedAt) &&
     num(r.dnaPairedAt) &&
     (r.parents === undefined || Array.isArray(r.parents))
@@ -117,6 +126,8 @@ export type NewRecordInput = {
   recordFingerprint: string;
   parents?: ParentRef[];
   breedingMethod?: string;
+  profile?: string;
+  taxon?: string;
   photoFingerprints?: string[];
   refId?: string;
 };
@@ -209,6 +220,19 @@ export const pairDna = (id: string, dnaFingerprint: string, dnaFileName: string)
 // sets one is a way to manufacture the exact evidence this system exists to produce —
 // a back door whether or not anything calls it.
 
+/**
+ * Recompute a record's fingerprint from its stored fields and compare it with the one it
+ * was sealed with. This is the integrity check a certificate shows: it is computed, not
+ * asserted. A record with no stored nonce (very early records) cannot be recomputed.
+ */
+export type IntegrityCheck = 'match' | 'mismatch' | 'unsealed' | 'no-nonce';
+export const checkIntegrity = async (r: StrainRecord): Promise<IntegrityCheck> => {
+  if (!r.recordFingerprint) return 'unsealed';
+  if (!r.nonce) return 'no-nonce';
+  const recomputed = await fingerprintRecord({ ...r, nonce: r.nonce });
+  return recomputed === r.recordFingerprint ? 'match' : 'mismatch';
+};
+
 export const getRecord = (id: string): StrainRecord | undefined => records.find((r) => r.id === id);
 
 export const allRecords = (): StrainRecord[] => records;
@@ -255,7 +279,7 @@ export const exportRecords = (): void => {
 
 export const importRecords = async (file: File): Promise<number> => {
   const parsed: unknown = JSON.parse(await file.text());
-  if (!Array.isArray(parsed)) throw new Error('That file is not a Veilcore records export.');
+  if (!Array.isArray(parsed)) throw new Error('That file is not a VeilCore records export.');
   const valid = parsed.filter(isStrainRecord);
   // Refuse a file with unreadable entries rather than importing the rest. A partial
   // import looks like a success and leaves the holder believing they restored

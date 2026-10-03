@@ -32,7 +32,23 @@ import { computeCommitment } from 'veilcore-records';
 import { FORMAT_VERSION, COMMITMENT_ALGORITHM } from 'veilcore-records';
 import type { StrainRecord } from './records';
 
-export const CANNABIS_PROFILE = 'veilcore/profile/cannabis/v0.1';
+/** The profile every new record is sealed under: plant varieties, any crop. */
+export const PLANT_VARIETY_PROFILE = 'veilcore/profile/plant-variety/v1';
+
+/**
+ * What records sealed before 3 October 2026 were exported under. Those records carry no
+ * `profile` field; their envelope keeps this profile and taxon so that an export made
+ * today matches one made when they were sealed. Only new records change.
+ */
+const LEGACY_PROFILE = 'veilcore/profile/cannabis/v0.1';
+const LEGACY_TAXON = 'Cannabis sativa';
+
+/** The profile a record was sealed under. */
+export const profileOf = (r: Pick<StrainRecord, 'profile'>): string => r.profile ?? LEGACY_PROFILE;
+
+/** The taxon a record carries: what its holder entered, or none. Legacy records keep theirs. */
+const taxonOf = (r: Pick<StrainRecord, 'profile' | 'taxon'>): string | undefined =>
+  r.profile ? r.taxon || undefined : LEGACY_TAXON;
 
 const rfc3339 = (ms: number): string => new Date(ms).toISOString().replace(/\.\d{3}Z$/, 'Z');
 
@@ -72,7 +88,7 @@ export const toEnvelope = (r: StrainRecord, holderId: string, anchor?: Partial<A
     formatVersion: FORMAT_VERSION,
     recordId: r.id,
     subjectType: 'plant-genetic-material',
-    profile: CANNABIS_PROFILE,
+    profile: profileOf(r),
     commitment: r.recordFingerprint,
     commitmentAlgorithm: COMMITMENT_ALGORITHM,
     anchor: {
@@ -89,7 +105,7 @@ export const toEnvelope = (r: StrainRecord, holderId: string, anchor?: Partial<A
     subject: {
       name: r.strainName,
       originator: r.bredBy || undefined,
-      taxon: 'Cannabis sativa',
+      taxon: taxonOf(r),
       internalDesignation: r.refId || undefined,
       // The holder's own claim about when it came into existence, distinct from
       // sealedAt. The field a prior-possession argument turns on.

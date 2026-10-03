@@ -12,7 +12,6 @@ import {
   sampleSigningKey,
   type SigningKey,
 } from '@midnight-ntwrk/midnight-js-protocol/compact-runtime';
-import { inspect } from 'node:util';
 import { type Logger } from 'pino';
 import * as Veilcore from '../../contract/src/managed/veilcore/contract/index.js';
 import { CompiledVeilcore, PROVABLE_CIRCUITS, compiledVeilcoreDeploying } from '../../contract/src/veilcore';
@@ -28,14 +27,13 @@ import {
 import {
   createCircuitMaintenanceTxInterfaces,
   createUnprovenDeployTx,
-  DeployTxFailedError,
   findDeployedContract,
   submitTxAsync,
 } from '@midnight-ntwrk/midnight-js-contracts';
-import { SucceedEntirely } from '@midnight-ntwrk/midnight-js-types';
 import { combineLatest, map, from, defer, type Observable } from 'rxjs';
 import { toHex } from '@midnight-ntwrk/midnight-js-utils';
 import { assertDeploymentRecordCurrent } from './deploy-guard.js';
+import { FIRST_FRAGMENT, addMissingKeys, deployInFragments, unknownCircuits } from './deploy-fragments.js';
 import { retireMaintenanceAuthority } from './maintenance.js';
 import { callState, presentationState } from './presentation-lookup.js';
 import * as utils from './utils/index.js';
@@ -47,39 +45,10 @@ import {
   veilcorePrivateStateKey,
 } from './veilcore-types.js';
 
-/** Circuit keys carried by the deploy transaction itself; the rest follow it. */
-export const FIRST_FRAGMENT = 8;
+// The deploy helpers live in deploy-fragments.ts, shared with the claims contract.
+export { FIRST_FRAGMENT, isBlockLimit, isStaleDustTime, nodeRefusal } from './deploy-fragments.js';
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
-const operationName = (o: string | Uint8Array): string => (typeof o === 'string' ? o : Buffer.from(o).toString('utf8'));
-
-/**
- * The refusal of a transaction too big for a block, however it is wrapped: the wallet's
- * fee computation ("exceeded block limit in transaction fee computation") or the node's
- * LedgerApiError::BlockLimitExceededError (1010, custom error 154). A bare 1010 is any
- * refusal at all, so it is not enough: a stale-clock DUST refusal (171) must not be
- * taken for size and retried smaller at new addresses.
- */
-export const isBlockLimit = (e: unknown): boolean =>
-  /block limit|BlockLimitExceeded|ExhaustsResources|Custom error:\s*154\b/i.test(inspect(e, { depth: 6 }));
-
-/**
- * The node's "custom error 171", OutOfDustValidityWindow: the fee payment was built with a
- * time the chain is already past, which happens when the indexer the wallet reads the
- * chain's time from is behind the chain. Nothing landed; retrying later is the remedy.
- */
-export const isStaleDustTime = (e: unknown): boolean => /Custom error:\s*171\b/i.test(inspect(e, { depth: 6 }));
-
-/**
- * A refusal by the node's transaction pool ("1010: Invalid Transaction"): the transaction
- * was never admitted, so it cannot land in a block. Returns the node's custom error code
- * when it gives one, or 'none'.
- */
-export const nodeRefusal = (e: unknown): string | undefined => {
-  const text = inspect(e, { depth: 6 });
-  if (!/\b1010:\s*Invalid Transaction/i.test(text)) return undefined;
-  return /Custom error:\s*(\d+)/i.exec(text)?.[1] ?? 'none';
-};
 
 /** A landed transaction. Give a verifier `txId`: it finds the state right after it. */
 export type TxRef = { readonly txId: string; readonly txHash: string; readonly blockHeight: number };
@@ -644,87 +613,28 @@ export class VeilcoreAPI {
     firstFragment = FIRST_FRAGMENT,
   ): Promise<VeilcoreAPI> {
     assertDeploymentRecordCurrent('veilcore', logger);
-    // The network refuses a deploy carrying a verifier key for every circuit ("exceeded
-    // block limit"). Deploy with the first `size` keys, halving on that refusal, then add
-    // the rest one maintenance transaction each. The authority's key, which those
-    // transactions need, stays in the local store until every key is on chain.
-    let size = Math.min(Math.max(1, firstFragment), PROVABLE_CIRCUITS.length);
-    let address: ContractAddress;
-    for (;;) {
-      const keep = PROVABLE_CIRCUITS.slice(0, size);
-      // What deployContract does, in an order that survives a confirmation that fails or
-      // hangs. midnight-js stores the authority's key and the private state only AFTER the
-      // deploy is confirmed, so a deploy that landed unconfirmed left the address unknown
-      // and the key nowhere. Here the address is known before anything is sent: it is
-      // logged, and the key and private state are stored, first.
-      const unsubmitted = await createUnprovenDeployTx(providers, {
-        compiledContract: compiledVeilcoreDeploying(keep),
-        initialPrivateState: createVeilcorePrivateState(utils.randomBytes(32)),
-        signingKey: signingKey ?? sampleSigningKey(),
-      });
-      const candidate = unsubmitted.public.contractAddress;
-      providers.privateStateProvider.setContractAddress(candidate);
-      await providers.privateStateProvider.set(veilcorePrivateStateKey, unsubmitted.private.initialPrivateState);
-      await providers.privateStateProvider.setSigningKey(candidate, unsubmitted.private.signingKey);
-      logger?.info(`Contract address: ${candidate}`);
-      try {
-        const txId = await submitTxAsync(providers, { unprovenTx: unsubmitted.private.unprovenTx });
-        logger?.info(`deploy transaction submitted (${txId}); waiting for it to be confirmed`);
-        const finalized = await providers.publicDataProvider.watchForTxData(txId);
-        if (finalized.status !== SucceedEntirely) throw new DeployTxFailedError(finalized);
-        logger?.info({
-          contractDeployed: { ...finalized, contractAddress: candidate },
-          circuitKeysInDeploy: keep.length,
-        });
-        address = candidate;
-        break;
-      } catch (e) {
-        if (size > 1 && isBlockLimit(e)) {
-          // Refused by the network: that contract never existed, so its key goes.
-          await providers.privateStateProvider.removeSigningKey(candidate);
-          size = Math.ceil(size / 2);
-          logger?.info(
-            `the deploy was over the block limit, so contract ${candidate} was never created; ` +
-              `trying again with ${size} circuit keys in it (a new address)`,
-          );
-          continue;
-        }
-        if (isBlockLimit(e)) {
-          // Too big even with one key: refused or never built, so that contract never existed.
-          await providers.privateStateProvider.removeSigningKey(candidate);
-          logger?.error(
-            `The deploy is over the block limit even with one circuit key. Nothing was created at ${candidate} ` +
-              'and nothing was spent. Send this message to Claude.',
-          );
-          throw e;
-        }
-        if (isStaleDustTime(e)) {
-          // Refused before entering a block: that contract never existed, so its key goes.
-          await providers.privateStateProvider.removeSigningKey(candidate);
-          logger?.error(
-            `The network refused the deploy (custom error 171, OutOfDustValidityWindow): the indexer ` +
-              `this wallet reads the chain's time from is behind the chain. Nothing was created at ${candidate} ` +
-              'and nothing was spent. Wait, then run again; if it repeats, the indexer is lagging.',
-          );
-          throw e;
-        }
-        const refused = nodeRefusal(e);
-        if (refused !== undefined) {
-          // Refused before entering a block: that contract never existed, so its key goes.
-          await providers.privateStateProvider.removeSigningKey(candidate);
-          logger?.error(
-            `The network refused the deploy (1010, custom error ${refused}). Nothing was created at ${candidate} ` +
-              'and nothing was spent. Do not try again until the cause is known: send this message to Claude.',
-          );
-          throw e;
-        }
-        logger?.error(
-          `The deploy did not complete. It may still have landed at contract address ${candidate}. ` +
-            'The maintenance key is kept in the local store for it: finish it with "Finish a deploy" and that address.',
+    const address = await deployInFragments({
+      providers,
+      circuits: PROVABLE_CIRCUITS,
+      firstFragment,
+      create: (keep) =>
+        createUnprovenDeployTx(providers, {
+          compiledContract: compiledVeilcoreDeploying(keep),
+          initialPrivateState: createVeilcorePrivateState(utils.randomBytes(32)),
+          signingKey: signingKey ?? sampleSigningKey(),
+        }),
+      submit: (unprovenTx) => submitTxAsync(providers, { unprovenTx }),
+      store: async (candidate, unsubmitted) => {
+        providers.privateStateProvider.setContractAddress(candidate);
+        await providers.privateStateProvider.set(
+          veilcorePrivateStateKey,
+          unsubmitted.private.initialPrivateState as VeilcorePrivateState,
         );
-        throw e;
-      }
-    }
+        await providers.privateStateProvider.setSigningKey(candidate, unsubmitted.private.signingKey);
+      },
+      finish: 'Finish a deploy',
+      logger,
+    });
     let api: VeilcoreAPI;
     try {
       await VeilcoreAPI.addMissingCircuitKeys(providers, address, logger);
@@ -756,43 +666,19 @@ export class VeilcoreAPI {
     address: ContractAddress,
     logger?: Logger,
   ): Promise<void> {
-    const onChain = async (): Promise<Set<string>> => {
-      for (let i = 0; i < 30; i++) {
-        const state = await providers.publicDataProvider.queryContractState(address);
-        if (state !== null && state !== undefined) return new Set(state.operations().map(operationName));
-        await sleep(2_000);
-      }
-      throw new Error(
-        `The indexer shows no contract at ${address} after a minute. Either the deploy never landed, or the ` +
-          'indexer is behind. Wait 15 minutes and choose Finish a deploy again. Do not choose Deploy again ' +
-          'until a block explorer also shows nothing at this address.',
-      );
-    };
-    const present = await onChain();
-    const todo = PROVABLE_CIRCUITS.filter((c) => !present.has(c));
     const maintenance = createCircuitMaintenanceTxInterfaces(providers, CompiledVeilcore, address);
     type Circuit = keyof typeof maintenance;
-    for (const [i, circuit] of todo.entries()) {
-      logger?.info(`adding circuit key ${i + 1} of ${todo.length}: ${circuit}`);
-      const vk = await providers.zkConfigProvider.getVerifierKey(circuit as Circuit);
-      try {
-        await maintenance[circuit as Circuit].insertVerifierKey(vk);
-      } catch (e) {
-        // It may have landed with only the confirmation failing; the chain decides.
-        if (!(await onChain()).has(circuit)) throw e;
-      }
-      // The next insert signs over the authority's counter as the indexer reports it, so
-      // wait until the indexer shows this one before building the next.
-      for (let tries = 0; !(await onChain()).has(circuit); tries++) {
-        if (tries >= 30)
-          throw new Error(
-            `The indexer has not shown the key for ${circuit} after a minute; it may be behind. ` +
-              'Wait 15 minutes, then choose Finish a deploy again with the same address.',
-          );
-        await sleep(2_000);
-      }
-    }
-    logger?.info(`all ${PROVABLE_CIRCUITS.length} circuit keys are on chain`);
+    await addMissingKeys({
+      providers,
+      address,
+      circuits: PROVABLE_CIRCUITS,
+      insert: async (circuit) =>
+        maintenance[circuit as Circuit].insertVerifierKey(
+          await providers.zkConfigProvider.getVerifierKey(circuit as Circuit),
+        ),
+      finish: 'Finish a deploy',
+      logger,
+    });
   }
 
   static async join(
@@ -811,9 +697,7 @@ export class VeilcoreAPI {
     // findDeployedContract checks every circuit in this build has its key on chain. Also
     // refuse a contract carrying a circuit this build does not know: one the maintenance
     // authority added would otherwise pass silently.
-    const onChain =
-      (await providers.publicDataProvider.queryContractState(contractAddress))?.operations().map(operationName) ?? [];
-    const extra = onChain.filter((c) => !PROVABLE_CIRCUITS.includes(c));
+    const extra = await unknownCircuits(providers, contractAddress, PROVABLE_CIRCUITS);
     if (extra.length > 0) {
       throw new Error(`The contract carries circuits this build does not have: ${extra.join(', ')}. Do not use it.`);
     }

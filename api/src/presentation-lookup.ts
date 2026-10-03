@@ -49,7 +49,35 @@ export const callState = async (
   entryPoint: string,
   timeoutMs = 20_000,
 ): Promise<Veilcore.Ledger> => {
-  const wanted = entryNames(entryPoint);
+  const found = await singleCallState(
+    indexerUri,
+    contractAddress,
+    txId,
+    [entryPoint],
+    entryPoint === 'proveLicense'
+      ? 'That transaction is not a single licence presentation on this contract.'
+      : `That transaction is not a single ${entryPoint} call on this contract.`,
+    timeoutMs,
+  );
+  return Veilcore.ledger(found.state.data);
+};
+
+/**
+ * The contract state the indexer recorded for the ONE call a transaction made on a
+ * contract, when that call is one of `entryPoints`. Any contract's state, so the claims
+ * contract uses it too (claims-api.ts, readClaim). Refused, with `refusal`, when the
+ * transaction made no call or several on this contract, or a call of another kind.
+ */
+export const singleCallState = async (
+  indexerUri: string,
+  contractAddress: string,
+  txId: string,
+  entryPoints: readonly string[],
+  refusal: string,
+  timeoutMs = 20_000,
+): Promise<{ entryPoint: string; state: ContractState }> => {
+  const byName = new Map<string, string>();
+  for (const e of entryPoints) for (const n of entryNames(e)) byName.set(n, e);
   if (!/^(0x)?[0-9a-fA-F]+$/.test(txId)) throw new Error('That is not a transaction id.');
   const res = await fetch(indexerUri, {
     method: 'POST',
@@ -63,18 +91,16 @@ export const callState = async (
   const tx = (body.data?.transactions ?? []).find((t) => (t.identifiers ?? []).map(norm).includes(norm(txId)));
   if (tx === undefined) throw new Error('No such transaction.');
   if (tx.transactionResult?.status !== 'SUCCESS') throw new Error('That transaction did not succeed.');
-  // Every action on this contract, whatever it is: a presentation bundled with anything
-  // else (a seal above all) is refused outright, so the verdict never depends on which
-  // point in the transaction the indexer's state describes.
+  // Every action on this contract, whatever it is: a call bundled with anything else (a
+  // seal above all) is refused outright, so the verdict never depends on which point in
+  // the transaction the indexer's state describes.
   const calls = (tx.contractActions ?? []).filter(
     (a) => a.address !== undefined && norm(a.address) === norm(contractAddress),
   );
-  if (calls.length !== 1 || !wanted.has(norm(calls[0].entryPoint ?? '')) || calls[0].state === undefined) {
-    throw new Error(
-      entryPoint === 'proveLicense'
-        ? 'That transaction is not a single licence presentation on this contract.'
-        : `That transaction is not a single ${entryPoint} call on this contract.`,
-    );
-  }
-  return Veilcore.ledger(ContractState.deserialize(Uint8Array.from(Buffer.from(norm(calls[0].state), 'hex'))).data);
+  const entryPoint = calls.length === 1 ? byName.get(norm(calls[0].entryPoint ?? '')) : undefined;
+  if (entryPoint === undefined || calls[0].state === undefined) throw new Error(refusal);
+  return {
+    entryPoint,
+    state: ContractState.deserialize(Uint8Array.from(Buffer.from(norm(calls[0].state), 'hex'))),
+  };
 };

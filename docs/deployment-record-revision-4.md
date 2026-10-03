@@ -1084,9 +1084,14 @@ and is removed when the deploy finishes. If a deploy stops partway, it stays
 there until option 4 finishes it. After that the client keeps no copy; VeilCore's copy is
 on paper, held by [name].
 
-**[DECISION NEEDED: confirm a single key held by [name], stored [where], or change to a
-multi-signature authority before mainnet. A multi-signature authority needs a code change
-and a rerun of the deploy tests.]**
+**[DECISION NEEDED — PROPOSED, 3 October 2026, awaiting both founders:]** one key at
+launch, on paper only, two copies held separately by Hunter Roberts and Makoto Steiner;
+then a two-of-three committee with an independent holder, built and tested with the move
+to midnight-js 5 that the ledger v8 to v9 upgrade requires anyway, and installed by one
+published `replaceAuthority` transaction. Full terms: `docs/maintenance-policy.md`.
+This changes the 13 September statement that the authority would be "held jointly" at
+deployment: midnight-js 4.x supports one key only, and building committee signing on a
+toolchain about to be replaced was judged the larger risk.
 
 What it can do. It can add and remove verifier keys, so it can repair or disable any
 circuit, and a key for a new circuit could rewrite state. Whoever holds it controls the
@@ -1100,7 +1105,13 @@ replaced.
 How it ends. `retireMaintenanceAuthority` (`api/src/maintenance.ts`; CLI main menu
 option 33) replaces it with a freshly sampled key, which midnight-js writes to the local
 store and the function deletes straight after; nobody is given a copy. `docs/design.md` says the date will be published in this record.
-**[DECISION NEEDED: retirement date, or the condition that sets it.]**
+**[DECISION NEEDED — PROPOSED, 3 October 2026, awaiting both founders:]** no retirement
+date. Midnight's maintainers state that circuits which compile differently after a
+ledger upgrade need "a maintenance verifier-key update" (midnight-node #1969); a retired
+authority could not make one. The end state named on 13 September, relinquishment,
+changes to custody by independent parties under published rules
+(`docs/maintenance-policy.md`). Retirement remains possible if Midnight stops requiring
+maintenance across upgrades.
 
 **A retired authority looks the same on chain as a live one.** Retiring replaces the key
 with one nobody stores. The chain cannot show that nobody kept it, so outsiders take the

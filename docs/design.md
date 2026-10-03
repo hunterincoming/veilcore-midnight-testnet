@@ -398,11 +398,13 @@ midnight-js always installs a maintenance authority on deployment. It can add an
 verifier keys, so it can repair or disable any circuit, and a key for a new circuit could
 rewrite state: whoever holds it controls the contract. VeilCore keeps it for launch, held offline by the deployer (the client shows it before
 deploying and removes it from the local store afterwards), and
-will retire it on a date published in the deployment record, using
+keeps it under `docs/maintenance-policy.md` (proposed 3 October 2026): no retirement
+date, because Midnight network upgrades can require verifier-key updates; every use
+announced ahead and published with fingerprints; custody moving to a two-of-three
+committee with an independent holder. Retiring stays possible through
 `retireMaintenanceAuthority` (api/src/maintenance.ts; CLI main menu option 33, which asks
 for the key from the offline copy. Option 32 shows the record secret; do not confuse
-them). Until then, holders should treat
-the circuit set as changeable by VeilCore.
+them). Holders should treat the circuit set as changeable by VeilCore under that policy.
 
 ## Known limits
 

@@ -3,7 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import React from 'react';
-import { Landing } from './components/Landing';
+import { Home } from './components/site/Home';
+import { Founders, VerifyLookup } from './components/site/Founders';
 import { DocPage } from './components/DocPage';
 import { Implementations } from './components/Implementations';
 import { AppFooter } from './components/AppFooter';
@@ -54,7 +55,9 @@ const App: React.FC = () => (
   <Routes>
     {/* A stranger arriving from a specification or a government submission needs
         somewhere to understand what this is. The dashboard assumes you already do. */}
-    <Route path="/" element={withLayout(<Landing />)} />
+    <Route path="/" element={<Home />} />
+    <Route path="/founders" element={<Founders />} />
+    <Route path="/verify" element={<VerifyLookup />} />
     <Route path="/records" element={withLayout(<Dashboard />)} />
     {/* Documents read here rather than in a code repository. */}
     <Route path="/docs/:doc" element={withLayout(<DocPage />)} />

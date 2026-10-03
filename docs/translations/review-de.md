@@ -467,3 +467,919 @@ Preview: open veilcore.org/?lang=de once the preview build is deployed.
 
 **DE:** Hunter Roberts ist Mitgründer und COO von VeilCore und verantwortet das Produkt und das VeilCore-Protokoll, vom Datensatzformat bis zu den Verträgen auf Midnight. Er kommt aus der praktischen Arbeit mit Pflanzen, darunter Züchtung und Gewebekultur, und baut derzeit eine Anbauanlage in New Jersey auf. Er ist Nightforce Leader (US) der Midnight Foundation.
 
+
+## Public pages (new layout, 3 October)
+
+Some headings are split in two or three parts; the later part is shown in colour. Check that the parts read naturally in order and that the coloured part is the right idea.
+
+### m.nav.about
+
+**EN:** About
+
+**DE:** Über
+
+### m.nav.team
+
+**EN:** Team
+
+**DE:** Team
+
+### m.nav.updates
+
+**EN:** Updates
+
+**DE:** Neuigkeiten
+
+### m.nav.spec
+
+**EN:** Spec
+
+**DE:** Spezifikation
+
+### m.nav.demo
+
+**EN:** Try the demo
+
+**DE:** Demo testen
+
+### m.nav.menu
+
+**EN:** Menu
+
+**DE:** Menü
+
+### m.hero.label
+
+**EN:** Proof of what you hold
+
+**DE:** Nachweis dessen, was Sie besitzen
+
+### m.hero.title1
+
+**EN:** Prove you had it first.
+
+**DE:** Beweisen Sie, dass Sie es zuerst hatten.
+
+### m.hero.title2
+
+**EN:** Without showing anyone what it is.
+
+**DE:** Ohne jemandem zu zeigen, was es ist.
+
+### m.hero.lede
+
+**EN:** A record format for genetic material. Your record stays with you. Only a fingerprint is ever published, and anyone can check its date.
+
+**DE:** Ein Datensatzformat für genetisches Material. Ihr Datensatz bleibt bei Ihnen. Veröffentlicht wird immer nur ein Fingerabdruck, und jeder kann dessen Datum prüfen.
+
+### m.hero.chooseDemo
+
+**EN:** Choose a demo
+
+**DE:** Demo wählen
+
+### m.hero.how
+
+**EN:** How it works
+
+**DE:** So funktioniert es
+
+### m.hero.cultivar
+
+**EN:** Cultivar
+
+**DE:** Sorte
+
+### m.hero.bredBy
+
+**EN:** Bred by
+
+**DE:** Gezüchtet von
+
+### m.hero.bredByDefault
+
+**EN:** Your name here
+
+**DE:** Ihr Name
+
+### m.hero.demoLabel
+
+**EN:** Live fingerprint demo
+
+**DE:** Live-Demo des Fingerabdrucks
+
+### m.hero.note
+
+**EN:** Change anything above; it stays on this page. The line in mint is the fingerprint: thirty-two bytes that can't be reversed. It's the only part anyone else ever sees.
+
+**DE:** Ändern Sie oben, was Sie möchten; es bleibt auf dieser Seite. Die mintgrüne Zeile ist der Fingerabdruck: zweiunddreißig Bytes, die sich nicht umkehren lassen. Er ist der einzige Teil, den jemand anderes je zu sehen bekommt.
+
+### m.choose.label
+
+**EN:** Start here
+
+**DE:** Hier starten
+
+### m.choose.title
+
+**EN:** Where do you want to go?
+
+**DE:** Wohin möchten Sie?
+
+### m.choose.about.title
+
+**EN:** About
+
+**DE:** Über
+
+### m.choose.about.text
+
+**EN:** What the format is, how it works, and what it doesn't do.
+
+**DE:** Was das Format ist, wie es funktioniert und was es nicht leistet.
+
+### m.choose.about.go
+
+**EN:** Read →
+
+**DE:** Lesen →
+
+### m.choose.demo.title
+
+**EN:** Demo
+
+**DE:** Demo
+
+### m.choose.demo.text
+
+**EN:** Make a record or verify one.
+
+**DE:** Einen Datensatz erstellen oder prüfen.
+
+### m.choose.demo.go
+
+**EN:** Choose a demo →
+
+**DE:** Demo wählen →
+
+### m.choose.team.title
+
+**EN:** Team
+
+**DE:** Team
+
+### m.choose.team.text
+
+**EN:** Two founders, in Tokyo and New Jersey.
+
+**DE:** Zwei Gründer, in Tokio und New Jersey.
+
+### m.choose.team.go
+
+**EN:** Meet them →
+
+**DE:** Kennenlernen →
+
+### m.choose.updates.title
+
+**EN:** Updates
+
+**DE:** Neuigkeiten
+
+### m.choose.updates.text
+
+**EN:** What changed, what shipped, and what we learned.
+
+**DE:** Was sich geändert hat, was veröffentlicht wurde und was wir gelernt haben.
+
+### m.choose.updates.go
+
+**EN:** Latest →
+
+**DE:** Aktuelles →
+
+### m.about.label
+
+**EN:** About
+
+**DE:** Über
+
+### m.about.title1
+
+**EN:** An evidentiary record format
+
+**DE:** Ein Datensatzformat für Beweiszwecke
+
+### m.about.title2
+
+**EN:** for plant genetics.
+
+**DE:** in der Pflanzengenetik.
+
+### m.about.lede
+
+**EN:** When genetics turn up somewhere they shouldn't, every dispute comes down to one question: what did you have, and when? Notebooks and lab reports are dated by whoever holds them. The usual fix, a shared registry, asks everyone to hand over the very thing they're protecting. VeilCore does neither.
+
+**DE:** Wenn Genetik irgendwo auftaucht, wo sie nicht hingehört, läuft jeder Streit auf eine Frage hinaus: Was hatten Sie, und wann? Notizbücher und Laborberichte werden von demjenigen datiert, der sie besitzt. Die übliche Lösung, ein gemeinsames Register, verlangt von allen, genau das herauszugeben, was sie schützen wollen. VeilCore tut keines von beidem.
+
+### m.step1.n
+
+**EN:** 01 · Record
+
+**DE:** 01 · Datensatz
+
+### m.step1.title
+
+**EN:** Describe the lot
+
+**DE:** Die Charge beschreiben
+
+### m.step1.text
+
+**EN:** A breeder or lab writes a record of the material: what it is, where it came from, test results.
+
+**DE:** Ein Züchter oder ein Labor erstellt einen Datensatz zum Material: was es ist, woher es stammt, Testergebnisse.
+
+### m.step2.n
+
+**EN:** 02 · Fingerprint
+
+**DE:** 02 · Fingerabdruck
+
+### m.step2.title
+
+**EN:** Hash it locally
+
+**DE:** Lokal hashen
+
+### m.step2.text
+
+**EN:** A 32-byte fingerprint is computed on your own computer. The record never leaves.
+
+**DE:** Ein 32-Byte-Fingerabdruck wird auf Ihrem eigenen Computer berechnet. Der Datensatz verlässt ihn nie.
+
+### m.step3.n
+
+**EN:** 03 · Anchor
+
+**DE:** 03 · Verankern
+
+### m.step3.title
+
+**EN:** Publish the date
+
+**DE:** Das Datum veröffentlichen
+
+### m.step3.text
+
+**EN:** Only the fingerprint is timestamped on a public network (Midnight). Nobody can move that date, including us.
+
+**DE:** Nur der Fingerabdruck erhält einen Zeitstempel in einem öffentlichen Netzwerk (Midnight). Niemand kann dieses Datum verschieben, auch wir nicht.
+
+### m.step4.n
+
+**EN:** 04 · Verify
+
+**DE:** 04 · Prüfen
+
+### m.step4.title
+
+**EN:** Show it later
+
+**DE:** Später vorlegen
+
+### m.step4.text
+
+**EN:** Show the record to a buyer, inspector or court. Anyone can check it matches, for free and with no account.
+
+**DE:** Legen Sie den Datensatz einem Käufer, einer Prüfstelle oder einem Gericht vor. Jeder kann kostenlos und ohne Konto prüfen, ob er übereinstimmt.
+
+### m.is.title
+
+**EN:** What it is
+
+**DE:** Was es ist
+
+### m.is.1a
+
+**EN:** Proof of prior possession:
+
+**DE:** Nachweis früheren Besitzes:
+
+### m.is.1b
+
+**EN:** what you held, and when.
+
+**DE:** was Sie hatten, und wann.
+
+### m.is.2a
+
+**EN:** Zero custody:
+
+**DE:** Keine Verwahrung:
+
+### m.is.2b
+
+**EN:** we never receive your data.
+
+**DE:** Wir erhalten Ihre Daten nie.
+
+### m.is.3a
+
+**EN:** An open format:
+
+**DE:** Ein offenes Format:
+
+### m.is.3b
+
+**EN:** free to implement, free to verify, with a published spec.
+
+**DE:** kostenlos zu implementieren, kostenlos zu prüfen, mit veröffentlichter Spezifikation.
+
+### m.isnt.title
+
+**EN:** What it isn't
+
+**DE:** Was es nicht ist
+
+### m.isnt.1a
+
+**EN:** Not ownership.
+
+**DE:** Kein Eigentum.
+
+### m.isnt.1b
+
+**EN:** It creates no legal right you don't already have.
+
+**DE:** Es schafft kein Recht, das Sie nicht ohnehin schon haben.
+
+### m.isnt.2a
+
+**EN:** Not a truth machine.
+
+**DE:** Keine Wahrheitsmaschine.
+
+### m.isnt.2b
+
+**EN:** It proves when you wrote something, not that it's true.
+
+**DE:** Es beweist, wann Sie etwas geschrieben haben, nicht, dass es stimmt.
+
+### m.isnt.3a
+
+**EN:** Not a DNA test.
+
+**DE:** Kein DNA-Test.
+
+### m.isnt.3b
+
+**EN:** It complements one, so a result still means something years later.
+
+**DE:** Es ergänzt einen, damit ein Ergebnis auch Jahre später noch etwas bedeutet.
+
+### m.demo.label
+
+**EN:** Demo
+
+**DE:** Demo
+
+### m.demo.title1
+
+**EN:** Pick how you
+
+**DE:** Wählen Sie, wie Sie
+
+### m.demo.title2
+
+**EN:** want to see it.
+
+**DE:** es sehen möchten.
+
+### m.demo.lede
+
+**EN:** No account, no wallet. Everything that touches your data runs in your browser.
+
+**DE:** Kein Konto, keine Wallet. Alles, was Ihre Daten berührt, läuft in Ihrem Browser.
+
+### m.demo.create.title
+
+**EN:** Create a record
+
+**DE:** Datensatz erstellen
+
+### m.demo.create.text
+
+**EN:** Fill in a sample record, generate its fingerprint and download the certificate.
+
+**DE:** Füllen Sie einen Beispieldatensatz aus, erzeugen Sie seinen Fingerabdruck und laden Sie das Zertifikat herunter.
+
+### m.demo.verify.title
+
+**EN:** Verify a record
+
+**DE:** Datensatz prüfen
+
+### m.demo.verify.text
+
+**EN:** Enter a record's identifier and check it against its published date.
+
+**DE:** Geben Sie die Kennung eines Datensatzes ein und gleichen Sie sie mit seinem veröffentlichten Datum ab.
+
+### m.demo.distinct.title
+
+**EN:** Distinctness proof
+
+**DE:** Unterscheidbarkeitsnachweis
+
+### m.demo.distinct.text
+
+**EN:** Prove two varieties differ at several markers without revealing any of them. Demonstrated on synthetic markers; walkthrough on request.
+
+**DE:** Beweisen Sie, dass sich zwei Sorten in mehreren Markern unterscheiden, ohne einen davon offenzulegen. Mit synthetischen Markern demonstriert; Vorführung auf Anfrage.
+
+### m.chip.interactive
+
+**EN:** Interactive
+
+**DE:** Interaktiv
+
+### m.chip.3min
+
+**EN:** ~3 min
+
+**DE:** ~3 Min.
+
+### m.chip.1min
+
+**EN:** ~1 min
+
+**DE:** ~1 Min.
+
+### m.chip.testnet
+
+**EN:** Test network
+
+**DE:** Testnetz
+
+### m.chip.onRequest
+
+**EN:** On request
+
+**DE:** Auf Anfrage
+
+### m.chip.zk
+
+**EN:** Zero-knowledge
+
+**DE:** Zero-Knowledge
+
+### m.team.label
+
+**EN:** Team
+
+**DE:** Team
+
+### m.team.title1
+
+**EN:** Two founders.
+
+**DE:** Zwei Gründer.
+
+### m.team.title2
+
+**EN:** Tokyo and New Jersey.
+
+**DE:** Tokio und New Jersey.
+
+### m.team.more
+
+**EN:** Full profiles →
+
+**DE:** Vollständige Profile →
+
+### m.mako.role
+
+**EN:** Co-Founder & CEO · Tokyo
+
+**DE:** Mitgründer & CEO · Tokio
+
+### m.mako.short
+
+**EN:** Commercial lead: standards and plant-rights bodies in Japan and the EU.
+
+**DE:** Kommerzielle Leitung: Normungs- und Sortenschutzgremien in Japan und der EU.
+
+### m.hunter.role
+
+**EN:** Co-Founder & COO · New Jersey
+
+**DE:** Mitgründer & COO · New Jersey
+
+### m.hunter.short
+
+**EN:** Builds the contract, app and API. Leads US institutional work.
+
+**DE:** Entwickelt den Contract, die App und die API. Leitet die institutionelle Arbeit in den USA.
+
+### m.updates.label
+
+**EN:** Updates
+
+**DE:** Neuigkeiten
+
+### m.updates.title1
+
+**EN:** Latest from
+
+**DE:** Neues aus
+
+### m.updates.title2
+
+**EN:** the build.
+
+**DE:** der Entwicklung.
+
+### m.updates.read
+
+**EN:** Read →
+
+**DE:** Lesen →
+
+### m.updates.all
+
+**EN:** Every change on GitHub →
+
+**DE:** Alle Änderungen auf GitHub →
+
+### m.updates.follow
+
+**EN:** Follow
+
+**DE:** Folgen
+
+### m.post1.date
+
+**EN:** 3 Oct 2026
+
+**DE:** 3. Okt. 2026
+
+### m.post1.tag
+
+**EN:** Security
+
+**DE:** Sicherheit
+
+### m.post1.title
+
+**EN:** Three implementations, one answer
+
+**DE:** Drei Implementierungen, eine Antwort
+
+### m.post1.text
+
+**EN:** A differential test found our TypeScript, Python and Rust implementations disagreeing on some numbers. Fixed: they now agree on every one of 81,000 inputs, and 55 conformance vectors pin it.
+
+**DE:** Ein Differenztest ergab, dass unsere Implementierungen in TypeScript, Python und Rust bei einigen Zahlen voneinander abwichen. Behoben: Sie stimmen jetzt bei jeder einzelnen von 81.000 Eingaben überein, und 55 Konformitätsvektoren legen das fest.
+
+### m.post2.date
+
+**EN:** 2 Oct 2026
+
+**DE:** 2. Okt. 2026
+
+### m.post2.tag
+
+**EN:** Contract
+
+**DE:** Contract
+
+### m.post2.title
+
+**EN:** A full run on Midnight's test network
+
+**DE:** Ein vollständiger Durchlauf im Testnetz von Midnight
+
+### m.post2.text
+
+**EN:** The contract deployed to preprod and passed all 26 end-to-end checks, including every attack it must refuse.
+
+**DE:** Der Contract wurde auf Preprod bereitgestellt und hat alle 26 End-to-End-Prüfungen bestanden, einschließlich jedes Angriffs, den er abweisen muss.
+
+### m.post3.date
+
+**EN:** 8 Sep 2026
+
+**DE:** 8. Sept. 2026
+
+### m.post3.tag
+
+**EN:** Contract
+
+**DE:** Contract
+
+### m.post3.title
+
+**EN:** Why a licence transfer is an assignment
+
+**DE:** Warum eine Lizenzübertragung eine Abtretung ist
+
+### m.post3.text
+
+**EN:** We redesigned transfer after finding that the old version let the outgoing party keep its powers.
+
+**DE:** Wir haben die Übertragung neu gestaltet, nachdem wir festgestellt hatten, dass die alte Version der abgebenden Partei ihre Befugnisse beließ.
+
+### m.status.label
+
+**EN:** Where this is
+
+**DE:** Wo wir stehen
+
+### m.status.title1
+
+**EN:** Straight about
+
+**DE:** Ehrlich darüber,
+
+### m.status.title2
+
+**EN:** where we are.
+
+**DE:** wo wir stehen.
+
+### m.status.lede
+
+**EN:** We'd rather say this now than have it come out later.
+
+**DE:** Wir sagen das lieber jetzt, als dass es später herauskommt.
+
+### m.stat1.b
+
+**EN:** 55 / 55
+
+**DE:** 55 / 55
+
+### m.stat1.s
+
+**EN:** conformance vectors passed by implementations in three languages (written by the same team)
+
+**DE:** Konformitätsvektoren, bestanden von Implementierungen in drei Sprachen (vom selben Team geschrieben)
+
+### m.stat2.b
+
+**EN:** Test net
+
+**DE:** Testnetz
+
+### m.stat2.s
+
+**EN:** Running on Midnight's test network. The live network is next.
+
+**DE:** Läuft im Testnetz von Midnight. Als Nächstes kommt das Live-Netzwerk.
+
+### m.stat3.b
+
+**EN:** No audit
+
+**DE:** Kein Audit
+
+### m.stat3.s
+
+**EN:** No independent security audit yet. Our own reviews are published in the repository.
+
+**DE:** Noch kein unabhängiges Sicherheitsaudit. Unsere eigenen Prüfungen sind im Repository veröffentlicht.
+
+### m.stat4.b
+
+**EN:** No users
+
+**DE:** Keine Nutzer
+
+### m.stat4.s
+
+**EN:** Nobody outside the two founders has used it yet. We're looking for the first.
+
+**DE:** Außer den beiden Gründern hat es noch niemand genutzt. Wir suchen den ersten.
+
+### m.contact.label
+
+**EN:** Get in touch
+
+**DE:** Kontakt aufnehmen
+
+### m.contact.title1
+
+**EN:** Tell us
+
+**DE:** Sagen Sie uns,
+
+### m.contact.title2
+
+**EN:** where it fails.
+
+**DE:** wo es versagt.
+
+### m.contact.lede
+
+**EN:** If you run a breeding programme, a lab, a seed certification agency or a plant-rights body, we'd like to talk. Nothing to buy.
+
+**DE:** Wenn Sie ein Zuchtprogramm, ein Labor, eine Saatgutanerkennungsstelle oder ein Sortenschutzgremium leiten, würden wir gern mit Ihnen sprechen. Es gibt nichts zu kaufen.
+
+### m.contact.email
+
+**EN:** Email the founders
+
+**DE:** E-Mail an die Gründer
+
+### m.contact.spec
+
+**EN:** Read the spec
+
+**DE:** Spezifikation lesen
+
+### m.foot.about
+
+**EN:** An evidentiary record format for plant genetics. Anchored on Midnight Network.
+
+**DE:** Ein Datensatzformat für Beweiszwecke in der Pflanzengenetik. Verankert im Midnight Network.
+
+### m.foot.explore
+
+**EN:** Explore
+
+**DE:** Entdecken
+
+### m.foot.build
+
+**EN:** Build
+
+**DE:** Entwicklung
+
+### m.foot.contact
+
+**EN:** Contact
+
+**DE:** Kontakt
+
+### m.foot.verify
+
+**EN:** Verify a record
+
+**DE:** Datensatz prüfen
+
+### m.foot.fine
+
+**EN:** Proof of prior possession, not ownership.
+
+**DE:** Nachweis früheren Besitzes, nicht von Eigentum.
+
+### m.verify.label
+
+**EN:** Verify
+
+**DE:** Prüfen
+
+### m.verify.title
+
+**EN:** Check a record
+
+**DE:** Einen Datensatz prüfen
+
+### m.verify.lede
+
+**EN:** Enter the record identifier printed on a certificate or shared with you. You will see what its holder chose to disclose, and whether it is intact.
+
+**DE:** Geben Sie die Datensatzkennung ein, die auf einem Zertifikat aufgedruckt ist oder Ihnen mitgeteilt wurde. Sie sehen, was der Inhaber offenlegen wollte, und ob der Datensatz unverändert ist.
+
+### m.verify.field
+
+**EN:** Record identifier
+
+**DE:** Datensatzkennung
+
+### m.verify.go
+
+**EN:** Check it
+
+**DE:** Prüfen
+
+### m.founders.label
+
+**EN:** Founders
+
+**DE:** Gründer
+
+### m.founders.lede
+
+**EN:** VeilCore is an evidentiary record format for plant genetics. It gives proof of prior possession without anyone handing over their genetic data.
+
+**DE:** VeilCore ist ein Datensatzformat für Beweiszwecke in der Pflanzengenetik. Es liefert einen Nachweis früheren Besitzes, ohne dass jemand seine genetischen Daten herausgeben muss.
+
+### m.founders.leads
+
+**EN:** Leads
+
+**DE:** Leitet
+
+### m.founders.also
+
+**EN:** Also
+
+**DE:** Außerdem
+
+### m.founders.languages
+
+**EN:** Languages
+
+**DE:** Sprachen
+
+### m.mako.bio1
+
+**EN:** Makoto (Mako) Steiner is VeilCore's co-founder and CEO, leading commercial strategy, fundraising, and VeilCore's relationships with partners, institutions, and investors worldwide.
+
+**DE:** Makoto (Mako) Steiner ist Mitgründer und CEO von VeilCore. Er leitet die kommerzielle Strategie, die Finanzierung sowie die Beziehungen von VeilCore zu Partnern, Institutionen und Investoren weltweit.
+
+### m.mako.bio2
+
+**EN:** He studied Environmental Studies at Denison University and is based in Tokyo.
+
+**DE:** Er hat Environmental Studies an der Denison University studiert und lebt in Tokio.
+
+### m.mako.leads
+
+**EN:** Japan|EU|Standards bodies|Business development
+
+**DE:** Japan|EU|Normungsgremien|Geschäftsentwicklung
+
+### m.mako.also
+
+**EN:** Build Club, Cohort 1
+
+**DE:** Build Club, Kohorte 1
+
+### m.mako.languages
+
+**EN:** English · Japanese
+
+**DE:** Englisch · Japanisch
+
+### m.hunter.bio1
+
+**EN:** Hunter Roberts is VeilCore's co-founder and COO, leading product and the VeilCore protocol, from the record format to the contracts on Midnight. He leads VeilCore's work with US institutions, including seed certification, standards and plant-variety bodies.
+
+**DE:** Hunter Roberts ist Mitgründer und COO von VeilCore. Er leitet das Produkt und das VeilCore-Protokoll, vom Datensatzformat bis zu den Contracts auf Midnight. Er führt die Arbeit von VeilCore mit US-Institutionen, darunter Saatgutanerkennungs-, Normungs- und Sortenstellen.
+
+### m.hunter.bio2
+
+**EN:** He comes from hands-on plant work, including breeding and tissue culture, and is building Chunk's Trees, a cultivation facility in New Jersey.
+
+**DE:** Er kommt aus der praktischen Arbeit mit Pflanzen, einschließlich Züchtung und Gewebekultur, und baut Chunk's Trees auf, eine Anbauanlage in New Jersey.
+
+### m.hunter.leads
+
+**EN:** United States|Protocol & spec|Engineering
+
+**DE:** USA|Protokoll & Spezifikation|Engineering
+
+### m.hunter.also
+
+**EN:** Midnight Nightforce Leader (US) · Build Club, Cohort 1
+
+**DE:** Midnight Nightforce Leader (US) · Build Club, Kohorte 1
+
+### m.founders.band1
+
+**EN:** Talk to us. We'd
+
+**DE:** Sprechen Sie mit uns. Wir
+
+### m.founders.band2
+
+**EN:** rather hear where it fails
+
+**DE:** hören lieber, wo es versagt,
+
+### m.founders.band3
+
+**EN:** than be told it works.
+
+**DE:** als dass man uns sagt, es funktioniert.
+
+### m.founders.bandText
+
+**EN:** If you run a breeding programme, a lab, a seed certification agency or a plant-rights body, we'd like to talk. The format is free to implement and free to verify.
+
+**DE:** Wenn Sie ein Zuchtprogramm, ein Labor, eine Saatgutanerkennungsstelle oder ein Sortenschutzgremium leiten, würden wir gern mit Ihnen sprechen. Das Format ist kostenlos zu implementieren und kostenlos zu prüfen.
+
+### m.founders.emailBoth
+
+**EN:** Email both founders
+
+**DE:** E-Mail an beide Gründer
+
+### m.portraitOf
+
+**EN:** Portrait of {name}
+
+**DE:** Porträt von {name}

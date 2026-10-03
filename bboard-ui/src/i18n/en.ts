@@ -25,97 +25,185 @@ export const en = {
     'Draft translation, not yet checked by a fluent speaker. The English page is the authoritative version.',
   'draft.showEnglish': 'Show English',
 
-  // Landing: hero
-  'hero.overline': 'Proof of what you hold',
-  'hero.title1': 'Prove you had it first.',
-  'hero.title2': 'Without showing anyone what it is.',
-  'hero.lead':
-    'A record format for genetic material. Change anything below — it stays on this page. Only the value underneath is ever published.',
-  'hero.cultivar': 'Cultivar',
-  'hero.bredBy': 'Bred by',
-  'hero.bredByDefault': 'Your name here',
-  'hero.caption':
-    'Thirty-two bytes. It cannot be reversed, and it could not have come from a different record. This is the only part anyone else ever sees.',
-  'hero.readSpec': 'Read the specification',
-  'hero.tryReference': 'Try the reference implementation',
+  // Public pages (home and founders), laid out from Mako's 25 September templates.
+  'm.nav.about': 'About',
+  'm.nav.team': 'Team',
+  'm.nav.updates': 'Updates',
+  'm.nav.spec': 'Spec',
+  'm.nav.demo': 'Try the demo',
+  'm.nav.menu': 'Menu',
 
-  // Landing: why
-  'why.eyebrow': 'Why this exists',
-  'why.title': 'Genetics replicate. Paper does not keep up.',
-  'why.p1':
-    "A cutting becomes a thousand cuttings. Whoever bred it is paid once, at the door, and only if someone chose to pay. When material turns up where it should not be, the breeder's evidence is their own dated notes — produced by the party relying on them, and creatable after the fact.",
-  'why.p2':
-    'The usual remedies do not fit. Depositing a specimen needs storage that is impractical for anything grown from a cutting. Having a description notarised means handing it to a stranger — the one thing you cannot do with material that is valuable and unprotected.',
+  'm.hero.label': 'Proof of what you hold',
+  'm.hero.title1': 'Prove you had it first.',
+  'm.hero.title2': 'Without showing anyone what it is.',
+  'm.hero.lede':
+    'A record format for genetic material. Your record stays with you. Only a fingerprint is ever published, and anyone can check its date.',
+  'm.hero.chooseDemo': 'Choose a demo',
+  'm.hero.how': 'How it works',
+  'm.hero.cultivar': 'Cultivar',
+  'm.hero.bredBy': 'Bred by',
+  'm.hero.bredByDefault': 'Your name here',
+  'm.hero.demoLabel': 'Live fingerprint demo',
+  'm.hero.note':
+    "Change anything above; it stays on this page. The line in mint is the fingerprint: thirty-two bytes that can't be reversed. It's the only part anyone else ever sees.",
 
-  // Landing: stages
-  'stages.eyebrow': 'What a record accumulates',
-  'stages.title': 'From your notebook to a licence, without showing anyone the genetics.',
-  'stage1.head': 'Log what you bred',
-  'stage1.body':
-    'Write down the cultivar, its parents, when you selected it. It is sealed on your own device and only a hash of it is published — so from that moment you can prove to anyone that this description existed on this date, without showing them a word of it. You can even prove you hold the material without producing the description at all.',
-  'stage1.limit':
-    'It fixes what you wrote and when. It does not prove what you wrote is true — that is what the next stages are for.',
-  'stage2.head': 'Send a sample for testing',
-  'stage2.body':
-    'Give a lab a transfer code with the sample. When they confirm it arrived, that confirmation is signed with their key and lands on your record. The material they hold is now traceable back to yours, and any royalty you attached travels with it — including into cuttings that do not exist yet.',
-  'stage2.limit': 'It cannot see material nobody declares. It bites when that material surfaces commercially.',
-  'stage3.head': 'Their report becomes your evidence',
-  'stage3.body':
-    'The lab attaches the DNA report they produced, signed by them. Your record is now tied to actual genetics rather than a name anyone could reuse — and it carries a statement from someone other than you. Only that lab can withdraw it. Nobody, including us, can forge one.',
-  'stage3.limit':
-    'We record which accreditation a lab claims, and who accredited them. We never vouch for it — you check that with the accreditor.',
-  'stage4.head': 'License it, and get paid on what grows from it',
-  'stage4.body':
-    'Set terms, including a royalty on offspring, and both parties sign. The terms bind to the record and to the DNA report rather than to a memory of a conversation. If a licensee stops holding up their end, you revoke — which does not stop their grow, but does stop them showing clean title to the next buyer, the next lab, or any programme that asks for a record.',
-  'stage4.limit': 'We record what is owed. We never take payments and never hold your money.',
+  'm.choose.label': 'Start here',
+  'm.choose.title': 'Where do you want to go?',
+  'm.choose.about.title': 'About',
+  'm.choose.about.text': "What the format is, how it works, and what it doesn't do.",
+  'm.choose.about.go': 'Read →',
+  'm.choose.demo.title': 'Demo',
+  'm.choose.demo.text': 'Make a record or verify one.',
+  'm.choose.demo.go': 'Choose a demo →',
+  'm.choose.team.title': 'Team',
+  'm.choose.team.text': 'Two founders, in Tokyo and New Jersey.',
+  'm.choose.team.go': 'Meet them →',
+  'm.choose.updates.title': 'Updates',
+  'm.choose.updates.text': 'What changed, what shipped, and what we learned.',
+  'm.choose.updates.go': 'Latest →',
 
-  // Landing: disclosure
-  'disclose.eyebrow': 'Who decides what is seen',
-  'disclose.title': 'You do, recipient by recipient.',
-  'disclose.p1':
-    'A buyer might see only that a record exists, that it is clean, and that a lab confirmed it. A licensee sees the terms. A customs officer sees a date. Facts you do not grant are absent from what you send, not hidden inside it.',
-  'disclose.p2': 'The genetics themselves are never disclosable. There is no setting that reveals them.',
+  'm.about.label': 'About',
+  'm.about.title1': 'An evidentiary record format',
+  'm.about.title2': 'for plant genetics.',
+  'm.about.lede':
+    "When genetics turn up somewhere they shouldn't, every dispute comes down to one question: what did you have, and when? Notebooks and lab reports are dated by whoever holds them. The usual fix, a shared registry, asks everyone to hand over the very thing they're protecting. VeilCore does neither.",
+  'm.step1.n': '01 · Record',
+  'm.step1.title': 'Describe the lot',
+  'm.step1.text': 'A breeder or lab writes a record of the material: what it is, where it came from, test results.',
+  'm.step2.n': '02 · Fingerprint',
+  'm.step2.title': 'Hash it locally',
+  'm.step2.text': 'A 32-byte fingerprint is computed on your own computer. The record never leaves.',
+  'm.step3.n': '03 · Anchor',
+  'm.step3.title': 'Publish the date',
+  'm.step3.text':
+    'Only the fingerprint is timestamped on a public network (Midnight). Nobody can move that date, including us.',
+  'm.step4.n': '04 · Verify',
+  'm.step4.title': 'Show it later',
+  'm.step4.text':
+    'Show the record to a buyer, inspector or court. Anyone can check it matches, for free and with no account.',
+  'm.is.title': 'What it is',
+  'm.is.1a': 'Proof of prior possession:',
+  'm.is.1b': 'what you held, and when.',
+  'm.is.2a': 'Zero custody:',
+  'm.is.2b': 'we never receive your data.',
+  'm.is.3a': 'An open format:',
+  'm.is.3b': 'free to implement, free to verify, with a published spec.',
+  'm.isnt.title': "What it isn't",
+  'm.isnt.1a': 'Not ownership.',
+  'm.isnt.1b': "It creates no legal right you don't already have.",
+  'm.isnt.2a': 'Not a truth machine.',
+  'm.isnt.2b': "It proves when you wrote something, not that it's true.",
+  'm.isnt.3a': 'Not a DNA test.',
+  'm.isnt.3b': 'It complements one, so a result still means something years later.',
 
-  // Landing: status
-  'status.eyebrow': 'Where this is',
-  'status.p1':
-    'The format is published with a conformance suite, and three independent implementations in three languages pass the same tests. Records anchor in batches on Midnight, currently on a test network. No independent security audit has been completed yet, and the format has been used by its authors and by nobody else.',
-  'status.p2': 'We would rather say that here than have you find it out.',
+  'm.demo.label': 'Demo',
+  'm.demo.title1': 'Pick how you',
+  'm.demo.title2': 'want to see it.',
+  'm.demo.lede': 'No account, no wallet. Everything that touches your data runs in your browser.',
+  'm.demo.create.title': 'Create a record',
+  'm.demo.create.text': 'Fill in a sample record, generate its fingerprint and download the certificate.',
+  'm.demo.verify.title': 'Verify a record',
+  'm.demo.verify.text': "Enter a record's identifier and check it against its published date.",
+  'm.demo.distinct.title': 'Distinctness proof',
+  'm.demo.distinct.text':
+    'Prove two varieties differ at several markers without revealing any of them. Demonstrated on synthetic markers; walkthrough on request.',
+  'm.chip.interactive': 'Interactive',
+  'm.chip.3min': '~3 min',
+  'm.chip.1min': '~1 min',
+  'm.chip.testnet': 'Test network',
+  'm.chip.onRequest': 'On request',
+  'm.chip.zk': 'Zero-knowledge',
 
-  // Landing: audiences
-  'aud.eyebrow': 'Depending on who you are',
-  'aud.title': 'Different people need different things from it.',
-  'aud.labs.who': 'Laboratories',
-  'aud.labs.line':
-    'Keep your own system and your own sample numbers. Add a commitment to records you already create, and sign the reports you already issue. A day of intakes anchors in one transaction.',
-  'aud.labs.label': 'Integration guide',
-  'aud.try.who': 'Anyone who wants to see it work',
-  'aud.try.line':
-    "A reference implementation, free and open. Log a variety, send a sample, watch a laboratory's signed report land on your record. It exists to show the format works and to give you something to check your own implementation against. It is not the product. The format is.",
-  'aud.try.label': 'Try it',
-  'aud.reg.who': 'Registries and rights bodies',
-  'aud.reg.line':
-    'Run a registry under your own domain and define a profile for your own kind of material. Nobody grants permission and nothing routes through us.',
-  'aud.reg.label': 'Read the specification',
-  'aud.counsel.who': 'Counsel',
-  'aud.counsel.line':
-    'How a record is authenticated, which jurisdictions attach a presumption to what, and — set out at length — what it does not prove.',
-  'aud.counsel.label': 'Evidence note',
-  'aud.check.who': 'Anyone checking a record',
-  'aud.check.line':
-    'Verification is free, needs no account, and always will be. If we disappear, records already issued keep verifying against the ledger with open-source software.',
-  'aud.check.label': 'How verification works',
+  'm.team.label': 'Team',
+  'm.team.title1': 'Two founders.',
+  'm.team.title2': 'Tokyo and New Jersey.',
+  'm.team.more': 'Full profiles →',
+  'm.mako.role': 'Co-Founder & CEO · Tokyo',
+  'm.mako.short': 'Commercial lead: standards and plant-rights bodies in Japan and the EU.',
+  'm.hunter.role': 'Co-Founder & COO · New Jersey',
+  'm.hunter.short': 'Builds the contract, app and API. Leads US institutional work.',
 
-  // Landing: team
-  'team.eyebrow': 'Who is building it',
-  'team.portraitOf': 'Portrait of {name}',
-  'team.mako.role': 'Co-founder & CEO',
-  'team.mako.bio':
-    "Makoto (Mako) Steiner is VeilCore's co-founder and CEO, leading commercial strategy, fundraising, and VeilCore's relationships with partners, institutions, and investors worldwide. He studied Environmental Studies at Denison University and is based in Tokyo.",
-  'team.mako.extra': 'Languages: English, Japanese',
-  'team.hunter.role': 'Co-founder & COO',
-  'team.hunter.bio':
-    "Hunter Roberts is VeilCore's co-founder and COO, leading product and the VeilCore protocol, from the record format to the contracts on Midnight. He comes from hands-on plant work, including breeding and tissue culture, and is building a cultivation facility in New Jersey. He is Midnight Foundation's Nightforce Leader (US).",
+  'm.updates.label': 'Updates',
+  'm.updates.title1': 'Latest from',
+  'm.updates.title2': 'the build.',
+  'm.updates.read': 'Read →',
+  'm.updates.all': 'Every change on GitHub →',
+  'm.updates.follow': 'Follow',
+  'm.post1.date': '3 Oct 2026',
+  'm.post1.tag': 'Security',
+  'm.post1.title': 'Three implementations, one answer',
+  'm.post1.text':
+    'A differential test found our TypeScript, Python and Rust implementations disagreeing on some numbers. Fixed: they now agree on every one of 81,000 inputs, and 55 conformance vectors pin it.',
+  'm.post2.date': '2 Oct 2026',
+  'm.post2.tag': 'Contract',
+  'm.post2.title': "A full run on Midnight's test network",
+  'm.post2.text':
+    'The contract deployed to preprod and passed all 26 end-to-end checks, including every attack it must refuse.',
+  'm.post3.date': '8 Sep 2026',
+  'm.post3.tag': 'Contract',
+  'm.post3.title': 'Why a licence transfer is an assignment',
+  'm.post3.text': 'We redesigned transfer after finding that the old version let the outgoing party keep its powers.',
+
+  'm.status.label': 'Where this is',
+  'm.status.title1': 'Straight about',
+  'm.status.title2': 'where we are.',
+  'm.status.lede': "We'd rather say this now than have it come out later.",
+  'm.stat1.b': '55 / 55',
+  'm.stat1.s': 'conformance vectors passed by implementations in three languages (written by the same team)',
+  'm.stat2.b': 'Test net',
+  'm.stat2.s': "Running on Midnight's test network. The live network is next.",
+  'm.stat3.b': 'No audit',
+  'm.stat3.s': 'No independent security audit yet. Our own reviews are published in the repository.',
+  'm.stat4.b': 'No users',
+  'm.stat4.s': "Nobody outside the two founders has used it yet. We're looking for the first.",
+
+  'm.contact.label': 'Get in touch',
+  'm.contact.title1': 'Tell us',
+  'm.contact.title2': 'where it fails.',
+  'm.contact.lede':
+    "If you run a breeding programme, a lab, a seed certification agency or a plant-rights body, we'd like to talk. Nothing to buy.",
+  'm.contact.email': 'Email the founders',
+  'm.contact.spec': 'Read the spec',
+
+  'm.foot.about': 'An evidentiary record format for plant genetics. Anchored on Midnight Network.',
+  'm.foot.explore': 'Explore',
+  'm.foot.build': 'Build',
+  'm.foot.contact': 'Contact',
+  'm.foot.verify': 'Verify a record',
+  'm.foot.fine': 'Proof of prior possession, not ownership.',
+
+  'm.verify.label': 'Verify',
+  'm.verify.title': 'Check a record',
+  'm.verify.lede':
+    'Enter the record identifier printed on a certificate or shared with you. You will see what its holder chose to disclose, and whether it is intact.',
+  'm.verify.field': 'Record identifier',
+  'm.verify.go': 'Check it',
+
+  'm.founders.label': 'Founders',
+  'm.founders.lede':
+    'VeilCore is an evidentiary record format for plant genetics. It gives proof of prior possession without anyone handing over their genetic data.',
+  'm.founders.leads': 'Leads',
+  'm.founders.also': 'Also',
+  'm.founders.languages': 'Languages',
+  'm.mako.bio1':
+    "Makoto (Mako) Steiner is VeilCore's co-founder and CEO, leading commercial strategy, fundraising, and VeilCore's relationships with partners, institutions, and investors worldwide.",
+  'm.mako.bio2': 'He studied Environmental Studies at Denison University and is based in Tokyo.',
+  'm.mako.leads': 'Japan|EU|Standards bodies|Business development',
+  'm.mako.also': 'Build Club, Cohort 1',
+  'm.mako.languages': 'English · Japanese',
+  'm.hunter.bio1':
+    "Hunter Roberts is VeilCore's co-founder and COO, leading product and the VeilCore protocol, from the record format to the contracts on Midnight. He leads VeilCore's work with US institutions, including seed certification, standards and plant-variety bodies.",
+  'm.hunter.bio2':
+    "He comes from hands-on plant work, including breeding and tissue culture, and is building Chunk's Trees, a cultivation facility in New Jersey.",
+  'm.hunter.leads': 'United States|Protocol & spec|Engineering',
+  'm.hunter.also': 'Midnight Nightforce Leader (US) · Build Club, Cohort 1',
+  'm.founders.band1': "Talk to us. We'd",
+  'm.founders.band2': 'rather hear where it fails',
+  'm.founders.band3': 'than be told it works.',
+  'm.founders.bandText':
+    "If you run a breeding programme, a lab, a seed certification agency or a plant-rights body, we'd like to talk. The format is free to implement and free to verify.",
+  'm.founders.emailBoth': 'Email both founders',
+  'm.portraitOf': 'Portrait of {name}',
 } as const;
 
 export type StringKey = keyof typeof en;

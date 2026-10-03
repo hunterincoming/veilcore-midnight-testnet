@@ -22,98 +22,178 @@ export const fr: Strings = {
   'footer.agreements': 'Contrats',
   'draft.banner': 'Traduction provisoire, pas encore relue par un locuteur natif. La page en anglais fait foi.',
   'draft.showEnglish': 'Afficher en anglais',
-
-  // Landing: hero
-  'hero.overline': 'La preuve de ce que vous détenez',
-  'hero.title1': "Prouvez que vous l'aviez en premier.",
-  'hero.title2': "Sans montrer à quiconque de quoi il s'agit.",
-  'hero.lead':
-    "Un format d'enregistrement pour le matériel génétique. Modifiez ce que vous voulez ci-dessous — cela reste sur cette page. Rien d'autre que la valeur affichée en dessous n'est jamais publié.",
-  'hero.cultivar': 'Variété',
-  'hero.bredBy': 'Obtenteur',
-  'hero.bredByDefault': 'Votre nom ici',
-  'hero.caption':
-    "Trente-deux octets. Impossible de remonter à l'original, et ils ne peuvent pas provenir d'un autre enregistrement. C'est la seule partie que quiconque d'autre voit jamais.",
-  'hero.readSpec': 'Lire la spécification',
-  'hero.tryReference': "Essayer l'implémentation de référence",
-
-  // Landing: why
-  'why.eyebrow': 'Pourquoi cela existe',
-  'why.title': 'La génétique se multiplie. Le papier ne suit pas.',
-  'why.p1':
-    "Une bouture devient mille boutures. L'obtenteur est payé une seule fois, au départ, et seulement si quelqu'un a choisi de payer. Lorsque du matériel apparaît là où il ne devrait pas être, la preuve dont dispose l'obtenteur se résume à ses propres notes datées — produites par la partie qui s'en prévaut, et qui peuvent avoir été créées après coup.",
-  'why.p2':
-    "Les solutions habituelles ne conviennent pas. Le dépôt d'un spécimen exige une conservation peu praticable pour tout ce qui est multiplié par bouture. Faire authentifier une description par un notaire revient à la confier à un tiers — précisément ce que l'on ne peut pas faire avec du matériel précieux et non protégé.",
-
-  // Landing: stages
-  'stages.eyebrow': "Ce qu'un enregistrement accumule",
-  'stages.title': 'De votre carnet à une licence, sans montrer la génétique à quiconque.',
-  'stage1.head': 'Consignez ce que vous avez sélectionné',
-  'stage1.body':
-    'Notez la variété, ses parents, la date de sélection. Le tout est scellé sur votre propre appareil et seule une empreinte (hash) en est publiée — dès lors, vous pouvez prouver à quiconque que cette description existait à cette date, sans en montrer un seul mot. Vous pouvez même prouver que vous détenez le matériel sans produire la description du tout.',
-  'stage1.limit':
-    "Cela fixe ce que vous avez écrit et à quelle date. Cela ne prouve pas que ce que vous avez écrit est vrai — c'est le rôle des étapes suivantes.",
-  'stage2.head': 'Envoyez un échantillon pour analyse',
-  'stage2.body':
-    "Remettez à un laboratoire un code de transfert avec l'échantillon. Lorsqu'il confirme la réception, cette confirmation est signée avec sa clé et ajoutée à votre enregistrement. Le matériel qu'il détient est désormais traçable jusqu'au vôtre, et toute redevance que vous y avez associée le suit — y compris dans des boutures qui n'existent pas encore.",
-  'stage2.limit':
-    'Cela ne peut pas voir le matériel que personne ne déclare. Cela prend effet lorsque ce matériel apparaît dans le commerce.',
-  'stage3.head': 'Son rapport devient votre preuve',
-  'stage3.body':
-    "Le laboratoire joint le rapport ADN qu'il a produit, signé par lui. Votre enregistrement est désormais lié à une génétique réelle plutôt qu'à un nom que n'importe qui pourrait réutiliser — et il comporte une déclaration émanant d'une autre personne que vous. Seul ce laboratoire peut la retirer. Personne, pas même nous, ne peut en falsifier une.",
-  'stage3.limit':
-    "Nous enregistrons l'accréditation dont un laboratoire se réclame, et l'organisme qui l'a accrédité. Nous ne nous en portons jamais garants — c'est auprès de l'organisme d'accréditation que vous le vérifiez.",
-  'stage4.head': 'Concédez une licence et soyez payé sur ce qui en est issu',
-  'stage4.body':
-    "Fixez les conditions, y compris une redevance sur la descendance, et les deux parties signent. Les conditions sont liées à l'enregistrement et au rapport ADN plutôt qu'au souvenir d'une conversation. Si un licencié ne respecte plus ses engagements, vous révoquez — ce qui n'arrête pas sa culture, mais l'empêche de justifier d'un titre valable auprès du prochain acheteur, du prochain laboratoire ou de tout programme qui exige un enregistrement.",
-  'stage4.limit':
-    "Nous enregistrons ce qui est dû. Nous n'encaissons jamais de paiements et ne détenons jamais votre argent.",
-
-  // Landing: disclosure
-  'disclose.eyebrow': 'Qui décide de ce qui est vu',
-  'disclose.title': 'Vous, destinataire par destinataire.',
-  'disclose.p1':
-    "Un acheteur peut ne voir que l'existence d'un enregistrement, le fait qu'il est en règle et qu'un laboratoire l'a confirmé. Un licencié voit les conditions. Un agent des douanes voit une date. Les faits que vous ne communiquez pas sont absents de ce que vous envoyez, pas cachés à l'intérieur.",
-  'disclose.p2': 'La génétique elle-même ne peut jamais être divulguée. Aucun réglage ne permet de la révéler.',
-
-  // Landing: status
-  'status.eyebrow': 'Où en est le projet',
-  'status.p1':
-    "Le format est publié avec une suite de tests de conformité, et trois implémentations indépendantes dans trois langages réussissent les mêmes tests. Les enregistrements sont ancrés par lots sur Midnight, actuellement sur un réseau de test. Aucun audit de sécurité indépendant n'a encore été réalisé, et le format n'a été utilisé que par ses auteurs, et par personne d'autre.",
-  'status.p2': 'Nous préférons le dire ici plutôt que vous le laisser découvrir.',
-
-  // Landing: audiences
-  'aud.eyebrow': 'Selon qui vous êtes',
-  'aud.title': "Chacun n'en attend pas la même chose.",
-  'aud.labs.who': 'Laboratoires',
-  'aud.labs.line':
-    "Conservez votre propre système et vos propres numéros d'échantillon. Ajoutez un engagement aux enregistrements que vous créez déjà, et signez les rapports que vous émettez déjà. Une journée de réceptions d'échantillons est ancrée en une seule transaction.",
-  'aud.labs.label': "Guide d'intégration",
-  'aud.try.who': 'Quiconque veut le voir fonctionner',
-  'aud.try.line':
-    "Une implémentation de référence, gratuite et ouverte. Enregistrez une variété, envoyez un échantillon, voyez le rapport signé d'un laboratoire s'ajouter à votre enregistrement. Elle existe pour montrer que le format fonctionne et pour vous donner de quoi tester votre propre implémentation. Ce n'est pas le produit. Le produit, c'est le format.",
-  'aud.try.label': 'Essayer',
-  'aud.reg.who': 'Registres et organismes de gestion des droits',
-  'aud.reg.line':
-    "Exploitez un registre sous votre propre domaine et définissez un profil pour votre propre type de matériel. Personne n'accorde d'autorisation et rien ne passe par nous.",
-  'aud.reg.label': 'Lire la spécification',
-  'aud.counsel.who': 'Avocats et juristes',
-  'aud.counsel.line':
-    "Comment un enregistrement est authentifié, quelles juridictions y attachent une présomption et sur quoi, et — exposé en détail — ce qu'il ne prouve pas.",
-  'aud.counsel.label': 'Note sur la valeur probante',
-  'aud.check.who': 'Quiconque vérifie un enregistrement',
-  'aud.check.line':
-    "La vérification est gratuite, ne nécessite aucun compte, et le restera toujours. Si nous disparaissons, les enregistrements déjà émis continuent d'être vérifiables par rapport au registre au moyen de logiciels open source.",
-  'aud.check.label': 'Comment fonctionne la vérification',
-
-  // Landing: team
-  'team.eyebrow': 'Qui le construit',
-  'team.portraitOf': 'Portrait de {name}',
-  'team.mako.role': 'Cofondateur et CEO',
-  'team.mako.bio':
-    "Makoto (Mako) Steiner est cofondateur et CEO de VeilCore. Il dirige la stratégie commerciale, la levée de fonds et les relations de VeilCore avec ses partenaires, les institutions et les investisseurs du monde entier. Il a étudié les sciences de l'environnement (Environmental Studies) à Denison University et vit à Tokyo.",
-  'team.mako.extra': 'Langues : anglais, japonais',
-  'team.hunter.role': 'Cofondateur et COO',
-  'team.hunter.bio':
-    "Hunter Roberts est cofondateur et COO de VeilCore. Il dirige le produit et le protocole VeilCore, du format d'enregistrement aux contrats sur Midnight. Il vient du travail pratique sur les plantes, notamment la sélection et la culture de tissus, et construit une installation de culture dans le New Jersey. Il est Nightforce Leader (US) de la Midnight Foundation.",
+  // Public pages (Mako's 25 September layout)
+  'm.nav.about': 'À propos',
+  'm.nav.team': 'Équipe',
+  'm.nav.updates': 'Actualités',
+  'm.nav.spec': 'Spécification',
+  'm.nav.demo': 'Essayer la démo',
+  'm.nav.menu': 'Menu',
+  'm.hero.label': 'La preuve de ce que vous détenez',
+  'm.hero.title1': "Prouvez que vous l'aviez en premier.",
+  'm.hero.title2': "Sans montrer à personne ce que c'est.",
+  'm.hero.lede':
+    "Un format d'enregistrement pour le matériel génétique. Votre enregistrement reste chez vous. Seule une empreinte est publiée, et n'importe qui peut en vérifier la date.",
+  'm.hero.chooseDemo': 'Choisir une démo',
+  'm.hero.how': 'Comment ça marche',
+  'm.hero.cultivar': 'Cultivar',
+  'm.hero.bredBy': 'Obtenu par',
+  'm.hero.bredByDefault': 'Votre nom ici',
+  'm.hero.demoLabel': "Démo d'empreinte en direct",
+  'm.hero.note':
+    "Modifiez ce que vous voulez ci-dessus ; cela reste sur cette page. La ligne en vert menthe est l'empreinte : trente-deux octets impossibles à inverser. C'est la seule partie que quiconque d'autre verra jamais.",
+  'm.choose.label': 'Commencer ici',
+  'm.choose.title': 'Où souhaitez-vous aller ?',
+  'm.choose.about.title': 'À propos',
+  'm.choose.about.text': "Ce qu'est le format, comment il fonctionne et ce qu'il ne fait pas.",
+  'm.choose.about.go': 'Lire →',
+  'm.choose.demo.title': 'Démo',
+  'm.choose.demo.text': 'Créez un enregistrement ou vérifiez-en un.',
+  'm.choose.demo.go': 'Choisir une démo →',
+  'm.choose.team.title': 'Équipe',
+  'm.choose.team.text': 'Deux fondateurs, à Tokyo et dans le New Jersey.',
+  'm.choose.team.go': 'Les découvrir →',
+  'm.choose.updates.title': 'Actualités',
+  'm.choose.updates.text': 'Ce qui a changé, ce que nous avons livré et ce que nous avons appris.',
+  'm.choose.updates.go': 'Les dernières →',
+  'm.about.label': 'À propos',
+  'm.about.title1': "Un format d'enregistrement probatoire",
+  'm.about.title2': 'pour la génétique végétale.',
+  'm.about.lede':
+    "Quand une génétique apparaît là où elle ne devrait pas, tout litige se ramène à une question : qu'aviez-vous, et quand ? Les cahiers et les rapports de laboratoire sont datés par ceux qui les détiennent. La solution habituelle, un registre partagé, demande à chacun de remettre précisément ce qu'il cherche à protéger. VeilCore ne fait ni l'un ni l'autre.",
+  'm.step1.n': '01 · Enregistrement',
+  'm.step1.title': 'Décrire le lot',
+  'm.step1.text':
+    "Un obtenteur ou un laboratoire rédige un enregistrement du matériel : ce que c'est, sa provenance, les résultats d'analyse.",
+  'm.step2.n': '02 · Empreinte',
+  'm.step2.title': 'Hacher localement',
+  'm.step2.text':
+    "Une empreinte de 32 octets est calculée sur votre propre ordinateur. L'enregistrement n'en sort jamais.",
+  'm.step3.n': '03 · Ancrage',
+  'm.step3.title': 'Publier la date',
+  'm.step3.text':
+    "Seule l'empreinte est horodatée sur un réseau public (Midnight). Personne ne peut modifier cette date, pas même nous.",
+  'm.step4.n': '04 · Vérification',
+  'm.step4.title': 'Le présenter plus tard',
+  'm.step4.text':
+    "Présentez l'enregistrement à un acheteur, un inspecteur ou un tribunal. N'importe qui peut vérifier qu'il correspond, gratuitement et sans compte.",
+  'm.is.title': "Ce que c'est",
+  'm.is.1a': 'Preuve de possession antérieure :',
+  'm.is.1b': 'ce que vous déteniez, et quand.',
+  'm.is.2a': 'Zéro garde :',
+  'm.is.2b': 'nous ne recevons jamais vos données.',
+  'm.is.3a': 'Un format ouvert :',
+  'm.is.3b': 'gratuit à implémenter, gratuit à vérifier, avec une spécification publiée.',
+  'm.isnt.title': "Ce que ce n'est pas",
+  'm.isnt.1a': 'Pas une propriété.',
+  'm.isnt.1b': "Il ne crée aucun droit légal que vous n'ayez déjà.",
+  'm.isnt.2a': 'Pas une machine à vérité.',
+  'm.isnt.2b': "Il prouve quand vous avez écrit quelque chose, pas que c'est vrai.",
+  'm.isnt.3a': 'Pas un test ADN.',
+  'm.isnt.3b': "Il en complète un, pour qu'un résultat ait encore un sens des années plus tard.",
+  'm.demo.label': 'Démo',
+  'm.demo.title1': 'Choisissez comment',
+  'm.demo.title2': 'vous voulez le voir.',
+  'm.demo.lede':
+    "Pas de compte, pas de portefeuille. Tout ce qui touche à vos données s'exécute dans votre navigateur.",
+  'm.demo.create.title': 'Créer un enregistrement',
+  'm.demo.create.text': "Remplissez un enregistrement d'exemple, générez son empreinte et téléchargez le certificat.",
+  'm.demo.verify.title': 'Vérifier un enregistrement',
+  'm.demo.verify.text': "Saisissez l'identifiant d'un enregistrement et comparez-le à sa date publiée.",
+  'm.demo.distinct.title': 'Preuve de distinction',
+  'm.demo.distinct.text':
+    'Prouvez que deux variétés diffèrent sur plusieurs marqueurs sans en révéler aucun. Démontré sur des marqueurs synthétiques ; présentation sur demande.',
+  'm.chip.interactive': 'Interactif',
+  'm.chip.3min': '~3 min',
+  'm.chip.1min': '~1 min',
+  'm.chip.testnet': 'Réseau de test',
+  'm.chip.onRequest': 'Sur demande',
+  'm.chip.zk': 'Zero-knowledge',
+  'm.team.label': 'Équipe',
+  'm.team.title1': 'Deux fondateurs.',
+  'm.team.title2': 'Tokyo et New Jersey.',
+  'm.team.more': 'Profils complets →',
+  'm.mako.role': 'Cofondateur et CEO · Tokyo',
+  'm.mako.short':
+    "Responsable commercial : organismes de normalisation et de protection des obtentions végétales au Japon et dans l'UE.",
+  'm.hunter.role': 'Cofondateur et COO · New Jersey',
+  'm.hunter.short': "Développe le contrat, l'application et l'API. Dirige le travail institutionnel aux États-Unis.",
+  'm.updates.label': 'Actualités',
+  'm.updates.title1': 'Les dernières nouvelles',
+  'm.updates.title2': 'du développement.',
+  'm.updates.read': 'Lire →',
+  'm.updates.all': 'Toutes les modifications sur GitHub →',
+  'm.updates.follow': 'Suivre',
+  'm.post1.date': '3 oct. 2026',
+  'm.post1.tag': 'Sécurité',
+  'm.post1.title': 'Trois implémentations, une seule réponse',
+  'm.post1.text':
+    'Un test différentiel a révélé que nos implémentations TypeScript, Python et Rust divergeaient sur certains nombres. Corrigé : elles concordent désormais sur chacune des 81 000 entrées, et 55 vecteurs de conformité le figent.',
+  'm.post2.date': '2 oct. 2026',
+  'm.post2.tag': 'Contrat',
+  'm.post2.title': 'Une exécution complète sur le réseau de test de Midnight',
+  'm.post2.text':
+    "Le contrat a été déployé en préproduction et a passé les 26 vérifications de bout en bout, y compris chaque attaque qu'il doit refuser.",
+  'm.post3.date': '8 sept. 2026',
+  'm.post3.tag': 'Contrat',
+  'm.post3.title': "Pourquoi le transfert d'une licence est une cession",
+  'm.post3.text':
+    "Nous avons repensé le transfert après avoir constaté que l'ancienne version permettait à la partie sortante de conserver ses pouvoirs.",
+  'm.status.label': 'Où nous en sommes',
+  'm.status.title1': 'Franchement,',
+  'm.status.title2': 'où nous en sommes.',
+  'm.status.lede': 'Nous préférons le dire maintenant plutôt que cela se sache plus tard.',
+  'm.stat1.b': '55 / 55',
+  'm.stat1.s':
+    'vecteurs de conformité réussis par des implémentations dans trois langages (écrites par la même équipe)',
+  'm.stat2.b': 'Réseau de test',
+  'm.stat2.s': 'Fonctionne sur le réseau de test de Midnight. Le réseau principal est la prochaine étape.',
+  'm.stat3.b': 'Aucun audit',
+  'm.stat3.s': "Pas encore d'audit de sécurité indépendant. Nos propres revues sont publiées dans le dépôt.",
+  'm.stat4.b': 'Aucun utilisateur',
+  'm.stat4.s': "Personne en dehors des deux fondateurs ne l'a encore utilisé. Nous cherchons le premier.",
+  'm.contact.label': 'Nous contacter',
+  'm.contact.title1': 'Dites-nous',
+  'm.contact.title2': 'où ça échoue.',
+  'm.contact.lede':
+    'Si vous dirigez un programme de sélection, un laboratoire, un organisme de certification des semences ou un organisme de protection des obtentions végétales, nous aimerions échanger avec vous. Rien à acheter.',
+  'm.contact.email': 'Écrire aux fondateurs',
+  'm.contact.spec': 'Lire la spécification',
+  'm.foot.about': "Un format d'enregistrement probatoire pour la génétique végétale. Ancré sur Midnight Network.",
+  'm.foot.explore': 'Explorer',
+  'm.foot.build': 'Développement',
+  'm.foot.contact': 'Contact',
+  'm.foot.verify': 'Vérifier un enregistrement',
+  'm.foot.fine': 'Preuve de possession antérieure, pas de propriété.',
+  'm.verify.label': 'Vérifier',
+  'm.verify.title': 'Vérifier un enregistrement',
+  'm.verify.lede':
+    "Saisissez l'identifiant d'enregistrement imprimé sur un certificat ou qui vous a été communiqué. Vous verrez ce que son détenteur a choisi de divulguer, et s'il est intact.",
+  'm.verify.field': "Identifiant d'enregistrement",
+  'm.verify.go': 'Vérifier',
+  'm.founders.label': 'Fondateurs',
+  'm.founders.lede':
+    "VeilCore est un format d'enregistrement probatoire pour la génétique végétale. Il apporte une preuve de possession antérieure sans que personne n'ait à remettre ses données génétiques.",
+  'm.founders.leads': 'Dirige',
+  'm.founders.also': 'Également',
+  'm.founders.languages': 'Langues',
+  'm.mako.bio1':
+    'Makoto (Mako) Steiner est cofondateur et CEO de VeilCore. Il dirige la stratégie commerciale, la levée de fonds et les relations de VeilCore avec ses partenaires, les institutions et les investisseurs dans le monde entier.',
+  'm.mako.bio2': "Il a étudié les sciences de l'environnement à Denison University et vit à Tokyo.",
+  'm.mako.leads': 'Japon|UE|Organismes de normalisation|Développement commercial',
+  'm.mako.also': 'Build Club, cohorte 1',
+  'm.mako.languages': 'Anglais · Japonais',
+  'm.hunter.bio1':
+    "Hunter Roberts est cofondateur et COO de VeilCore. Il dirige le produit et le protocole VeilCore, du format d'enregistrement aux contrats sur Midnight. Il pilote le travail de VeilCore avec les institutions américaines, notamment les organismes de certification des semences, de normalisation et des variétés végétales.",
+  'm.hunter.bio2':
+    "Il vient du travail de terrain sur les plantes, notamment la sélection et la culture de tissus, et construit Chunk's Trees, une installation de culture dans le New Jersey.",
+  'm.hunter.leads': 'États-Unis|Protocole et spécification|Ingénierie',
+  'm.hunter.also': 'Midnight Nightforce Leader (US) · Build Club, cohorte 1',
+  'm.founders.band1': 'Parlez-nous. Nous',
+  'm.founders.band2': 'préférons savoir où ça échoue',
+  'm.founders.band3': "plutôt qu'entendre que ça marche.",
+  'm.founders.bandText':
+    'Si vous dirigez un programme de sélection, un laboratoire, un organisme de certification des semences ou un organisme de protection des obtentions végétales, nous aimerions échanger avec vous. Le format est gratuit à implémenter et gratuit à vérifier.',
+  'm.founders.emailBoth': 'Écrire aux deux fondateurs',
+  'm.portraitOf': 'Portrait de {name}',
 };

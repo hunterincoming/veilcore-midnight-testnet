@@ -467,3 +467,919 @@ Preview: open veilcore.org/?lang=ja once the preview build is deployed.
 
 **JA:** ハンター・ロバーツ（Hunter Roberts）は、VeilCoreの共同創業者兼COOです。記録フォーマットからMidnight上のコントラクトに至るまで、プロダクトとVeilCoreプロトコルを統括しています。育種や組織培養を含む植物の実務経験を持ち、ニュージャージー州で栽培施設を建設中です。Midnight FoundationのNightforce Leader (US)を務めています。
 
+
+## Public pages (new layout, 3 October)
+
+Some headings are split in two or three parts; the later part is shown in colour. Check that the parts read naturally in order and that the coloured part is the right idea.
+
+### m.nav.about
+
+**EN:** About
+
+**JA:** 概要
+
+### m.nav.team
+
+**EN:** Team
+
+**JA:** チーム
+
+### m.nav.updates
+
+**EN:** Updates
+
+**JA:** お知らせ
+
+### m.nav.spec
+
+**EN:** Spec
+
+**JA:** 仕様
+
+### m.nav.demo
+
+**EN:** Try the demo
+
+**JA:** デモを試す
+
+### m.nav.menu
+
+**EN:** Menu
+
+**JA:** メニュー
+
+### m.hero.label
+
+**EN:** Proof of what you hold
+
+**JA:** 保有していることの証明
+
+### m.hero.title1
+
+**EN:** Prove you had it first.
+
+**JA:** 先に持っていたことを証明する。
+
+### m.hero.title2
+
+**EN:** Without showing anyone what it is.
+
+**JA:** それが何かは誰にも見せずに。
+
+### m.hero.lede
+
+**EN:** A record format for genetic material. Your record stays with you. Only a fingerprint is ever published, and anyone can check its date.
+
+**JA:** 遺伝資源のための記録フォーマットです。記録はお手元に残ります。公開されるのはフィンガープリントだけで、その日付は誰でも確認できます。
+
+### m.hero.chooseDemo
+
+**EN:** Choose a demo
+
+**JA:** デモを選ぶ
+
+### m.hero.how
+
+**EN:** How it works
+
+**JA:** 仕組み
+
+### m.hero.cultivar
+
+**EN:** Cultivar
+
+**JA:** 品種
+
+### m.hero.bredBy
+
+**EN:** Bred by
+
+**JA:** 育成者
+
+### m.hero.bredByDefault
+
+**EN:** Your name here
+
+**JA:** お名前
+
+### m.hero.demoLabel
+
+**EN:** Live fingerprint demo
+
+**JA:** フィンガープリントのライブデモ
+
+### m.hero.note
+
+**EN:** Change anything above; it stays on this page. The line in mint is the fingerprint: thirty-two bytes that can't be reversed. It's the only part anyone else ever sees.
+
+**JA:** 上の項目は自由に変更できます。入力内容はこのページから出ません。ミント色の行がフィンガープリントです。元に戻すことのできない32バイトの値で、他の人が目にするのはこの部分だけです。
+
+### m.choose.label
+
+**EN:** Start here
+
+**JA:** はじめに
+
+### m.choose.title
+
+**EN:** Where do you want to go?
+
+**JA:** どこに進みますか？
+
+### m.choose.about.title
+
+**EN:** About
+
+**JA:** 概要
+
+### m.choose.about.text
+
+**EN:** What the format is, how it works, and what it doesn't do.
+
+**JA:** このフォーマットとは何か、どう機能するか、そして何をしないか。
+
+### m.choose.about.go
+
+**EN:** Read →
+
+**JA:** 読む →
+
+### m.choose.demo.title
+
+**EN:** Demo
+
+**JA:** デモ
+
+### m.choose.demo.text
+
+**EN:** Make a record or verify one.
+
+**JA:** 記録を作成する、または検証する。
+
+### m.choose.demo.go
+
+**EN:** Choose a demo →
+
+**JA:** デモを選ぶ →
+
+### m.choose.team.title
+
+**EN:** Team
+
+**JA:** チーム
+
+### m.choose.team.text
+
+**EN:** Two founders, in Tokyo and New Jersey.
+
+**JA:** 東京とニュージャージーの2人の創業者。
+
+### m.choose.team.go
+
+**EN:** Meet them →
+
+**JA:** 紹介を見る →
+
+### m.choose.updates.title
+
+**EN:** Updates
+
+**JA:** お知らせ
+
+### m.choose.updates.text
+
+**EN:** What changed, what shipped, and what we learned.
+
+**JA:** 何が変わり、何をリリースし、何を学んだか。
+
+### m.choose.updates.go
+
+**EN:** Latest →
+
+**JA:** 最新情報 →
+
+### m.about.label
+
+**EN:** About
+
+**JA:** 概要
+
+### m.about.title1
+
+**EN:** An evidentiary record format
+
+**JA:** 植物遺伝資源のための
+
+### m.about.title2
+
+**EN:** for plant genetics.
+
+**JA:** 証拠記録フォーマット。
+
+### m.about.lede
+
+**EN:** When genetics turn up somewhere they shouldn't, every dispute comes down to one question: what did you have, and when? Notebooks and lab reports are dated by whoever holds them. The usual fix, a shared registry, asks everyone to hand over the very thing they're protecting. VeilCore does neither.
+
+**JA:** 遺伝資源があるべきでない場所で見つかったとき、あらゆる紛争は一つの問いに行き着きます。「何を、いつ持っていたのか」。ノートや検査報告書の日付は、それを保管している本人が付けるものです。よくある解決策である共有レジストリは、守ろうとしているものそのものを全員に差し出すよう求めます。VeilCoreはそのどちらでもありません。
+
+### m.step1.n
+
+**EN:** 01 · Record
+
+**JA:** 01 · 記録
+
+### m.step1.title
+
+**EN:** Describe the lot
+
+**JA:** ロットを記述する
+
+### m.step1.text
+
+**EN:** A breeder or lab writes a record of the material: what it is, where it came from, test results.
+
+**JA:** 育種家またはラボが、その材料の記録を作成します。何であるか、どこから来たか、検査結果などです。
+
+### m.step2.n
+
+**EN:** 02 · Fingerprint
+
+**JA:** 02 · フィンガープリント
+
+### m.step2.title
+
+**EN:** Hash it locally
+
+**JA:** 手元でハッシュ化する
+
+### m.step2.text
+
+**EN:** A 32-byte fingerprint is computed on your own computer. The record never leaves.
+
+**JA:** 32バイトのフィンガープリントがご自身のコンピューター上で計算されます。記録が外に出ることはありません。
+
+### m.step3.n
+
+**EN:** 03 · Anchor
+
+**JA:** 03 · アンカー
+
+### m.step3.title
+
+**EN:** Publish the date
+
+**JA:** 日付を公開する
+
+### m.step3.text
+
+**EN:** Only the fingerprint is timestamped on a public network (Midnight). Nobody can move that date, including us.
+
+**JA:** 公開ネットワーク（Midnight）上でタイムスタンプが付くのはフィンガープリントだけです。その日付は誰にも、私たちにも動かせません。
+
+### m.step4.n
+
+**EN:** 04 · Verify
+
+**JA:** 04 · 検証
+
+### m.step4.title
+
+**EN:** Show it later
+
+**JA:** 後から提示する
+
+### m.step4.text
+
+**EN:** Show the record to a buyer, inspector or court. Anyone can check it matches, for free and with no account.
+
+**JA:** 記録を購入者、検査官、または裁判所に提示します。一致するかどうかは誰でも、無料で、アカウントなしで確認できます。
+
+### m.is.title
+
+**EN:** What it is
+
+**JA:** これは何か
+
+### m.is.1a
+
+**EN:** Proof of prior possession:
+
+**JA:** 先行保有の証明：
+
+### m.is.1b
+
+**EN:** what you held, and when.
+
+**JA:** 何を、いつ持っていたか。
+
+### m.is.2a
+
+**EN:** Zero custody:
+
+**JA:** 預かりゼロ：
+
+### m.is.2b
+
+**EN:** we never receive your data.
+
+**JA:** 私たちがお客様のデータを受け取ることはありません。
+
+### m.is.3a
+
+**EN:** An open format:
+
+**JA:** オープンなフォーマット：
+
+### m.is.3b
+
+**EN:** free to implement, free to verify, with a published spec.
+
+**JA:** 実装も検証も無料で、仕様は公開されています。
+
+### m.isnt.title
+
+**EN:** What it isn't
+
+**JA:** これは何ではないか
+
+### m.isnt.1a
+
+**EN:** Not ownership.
+
+**JA:** 所有権ではありません。
+
+### m.isnt.1b
+
+**EN:** It creates no legal right you don't already have.
+
+**JA:** すでにお持ちでない法的権利を生み出すことはありません。
+
+### m.isnt.2a
+
+**EN:** Not a truth machine.
+
+**JA:** 真実を判定する機械ではありません。
+
+### m.isnt.2b
+
+**EN:** It proves when you wrote something, not that it's true.
+
+**JA:** 証明するのは、いつ書いたかであって、それが正しいかではありません。
+
+### m.isnt.3a
+
+**EN:** Not a DNA test.
+
+**JA:** DNA検査ではありません。
+
+### m.isnt.3b
+
+**EN:** It complements one, so a result still means something years later.
+
+**JA:** DNA検査を補完し、何年経っても結果が意味を持つようにします。
+
+### m.demo.label
+
+**EN:** Demo
+
+**JA:** デモ
+
+### m.demo.title1
+
+**EN:** Pick how you
+
+**JA:** 見たい方法を
+
+### m.demo.title2
+
+**EN:** want to see it.
+
+**JA:** お選びください。
+
+### m.demo.lede
+
+**EN:** No account, no wallet. Everything that touches your data runs in your browser.
+
+**JA:** アカウントもウォレットも不要です。お客様のデータに触れる処理はすべてブラウザ内で実行されます。
+
+### m.demo.create.title
+
+**EN:** Create a record
+
+**JA:** 記録を作成する
+
+### m.demo.create.text
+
+**EN:** Fill in a sample record, generate its fingerprint and download the certificate.
+
+**JA:** サンプルの記録を入力し、フィンガープリントを生成して、証明書をダウンロードします。
+
+### m.demo.verify.title
+
+**EN:** Verify a record
+
+**JA:** 記録を検証する
+
+### m.demo.verify.text
+
+**EN:** Enter a record's identifier and check it against its published date.
+
+**JA:** 記録の識別子を入力し、公開された日付と照合します。
+
+### m.demo.distinct.title
+
+**EN:** Distinctness proof
+
+**JA:** 区別性の証明
+
+### m.demo.distinct.text
+
+**EN:** Prove two varieties differ at several markers without revealing any of them. Demonstrated on synthetic markers; walkthrough on request.
+
+**JA:** どのマーカーも明かさずに、2つの品種が複数のマーカーで異なることを証明します。合成マーカーで実証済みです。ご説明はご依頼に応じて行います。
+
+### m.chip.interactive
+
+**EN:** Interactive
+
+**JA:** インタラクティブ
+
+### m.chip.3min
+
+**EN:** ~3 min
+
+**JA:** 約3分
+
+### m.chip.1min
+
+**EN:** ~1 min
+
+**JA:** 約1分
+
+### m.chip.testnet
+
+**EN:** Test network
+
+**JA:** テストネット
+
+### m.chip.onRequest
+
+**EN:** On request
+
+**JA:** ご依頼に応じて
+
+### m.chip.zk
+
+**EN:** Zero-knowledge
+
+**JA:** ゼロ知識
+
+### m.team.label
+
+**EN:** Team
+
+**JA:** チーム
+
+### m.team.title1
+
+**EN:** Two founders.
+
+**JA:** 2人の創業者。
+
+### m.team.title2
+
+**EN:** Tokyo and New Jersey.
+
+**JA:** 東京とニュージャージー。
+
+### m.team.more
+
+**EN:** Full profiles →
+
+**JA:** 詳しいプロフィール →
+
+### m.mako.role
+
+**EN:** Co-Founder & CEO · Tokyo
+
+**JA:** 共同創業者兼CEO · 東京
+
+### m.mako.short
+
+**EN:** Commercial lead: standards and plant-rights bodies in Japan and the EU.
+
+**JA:** 事業責任者：日本とEUの標準化団体・育成者権関係機関を担当。
+
+### m.hunter.role
+
+**EN:** Co-Founder & COO · New Jersey
+
+**JA:** 共同創業者兼COO · ニュージャージー
+
+### m.hunter.short
+
+**EN:** Builds the contract, app and API. Leads US institutional work.
+
+**JA:** コントラクト、アプリ、APIを開発。米国での機関との取り組みを主導。
+
+### m.updates.label
+
+**EN:** Updates
+
+**JA:** お知らせ
+
+### m.updates.title1
+
+**EN:** Latest from
+
+**JA:** 開発の
+
+### m.updates.title2
+
+**EN:** the build.
+
+**JA:** 最新情報。
+
+### m.updates.read
+
+**EN:** Read →
+
+**JA:** 読む →
+
+### m.updates.all
+
+**EN:** Every change on GitHub →
+
+**JA:** すべての変更はGitHubで →
+
+### m.updates.follow
+
+**EN:** Follow
+
+**JA:** フォロー
+
+### m.post1.date
+
+**EN:** 3 Oct 2026
+
+**JA:** 2026年10月3日
+
+### m.post1.tag
+
+**EN:** Security
+
+**JA:** セキュリティ
+
+### m.post1.title
+
+**EN:** Three implementations, one answer
+
+**JA:** 3つの実装、1つの答え
+
+### m.post1.text
+
+**EN:** A differential test found our TypeScript, Python and Rust implementations disagreeing on some numbers. Fixed: they now agree on every one of 81,000 inputs, and 55 conformance vectors pin it.
+
+**JA:** 差分テストにより、TypeScript、Python、Rustの各実装が一部の数値で一致しないことが判明しました。修正済みです。現在は81,000件の入力すべてで一致し、55件の適合性ベクターでそれを固定しています。
+
+### m.post2.date
+
+**EN:** 2 Oct 2026
+
+**JA:** 2026年10月2日
+
+### m.post2.tag
+
+**EN:** Contract
+
+**JA:** コントラクト
+
+### m.post2.title
+
+**EN:** A full run on Midnight's test network
+
+**JA:** Midnightのテストネットでの全工程の実行
+
+### m.post2.text
+
+**EN:** The contract deployed to preprod and passed all 26 end-to-end checks, including every attack it must refuse.
+
+**JA:** コントラクトをpreprodにデプロイし、拒否すべきすべての攻撃を含む26項目のエンドツーエンドチェックをすべて通過しました。
+
+### m.post3.date
+
+**EN:** 8 Sep 2026
+
+**JA:** 2026年9月8日
+
+### m.post3.tag
+
+**EN:** Contract
+
+**JA:** コントラクト
+
+### m.post3.title
+
+**EN:** Why a licence transfer is an assignment
+
+**JA:** ライセンスの移転がなぜ譲渡なのか
+
+### m.post3.text
+
+**EN:** We redesigned transfer after finding that the old version let the outgoing party keep its powers.
+
+**JA:** 旧バージョンでは移転元の当事者が権限を保持できてしまうことが判明したため、移転の仕組みを再設計しました。
+
+### m.status.label
+
+**EN:** Where this is
+
+**JA:** 現在の状況
+
+### m.status.title1
+
+**EN:** Straight about
+
+**JA:** 現状を
+
+### m.status.title2
+
+**EN:** where we are.
+
+**JA:** 率直にお伝えします。
+
+### m.status.lede
+
+**EN:** We'd rather say this now than have it come out later.
+
+**JA:** 後から明らかになるより、今お伝えしておきたいと考えています。
+
+### m.stat1.b
+
+**EN:** 55 / 55
+
+**JA:** 55 / 55
+
+### m.stat1.s
+
+**EN:** conformance vectors passed by implementations in three languages (written by the same team)
+
+**JA:** 3つの言語による実装が通過した適合性ベクター（同じチームが作成）
+
+### m.stat2.b
+
+**EN:** Test net
+
+**JA:** テストネット
+
+### m.stat2.s
+
+**EN:** Running on Midnight's test network. The live network is next.
+
+**JA:** Midnightのテストネットで稼働中です。次は本番ネットワークです。
+
+### m.stat3.b
+
+**EN:** No audit
+
+**JA:** 監査なし
+
+### m.stat3.s
+
+**EN:** No independent security audit yet. Our own reviews are published in the repository.
+
+**JA:** 独立したセキュリティ監査はまだ受けていません。社内レビューはリポジトリで公開しています。
+
+### m.stat4.b
+
+**EN:** No users
+
+**JA:** ユーザーなし
+
+### m.stat4.s
+
+**EN:** Nobody outside the two founders has used it yet. We're looking for the first.
+
+**JA:** 創業者2人以外で使用した人はまだいません。最初のユーザーを探しています。
+
+### m.contact.label
+
+**EN:** Get in touch
+
+**JA:** お問い合わせ
+
+### m.contact.title1
+
+**EN:** Tell us
+
+**JA:** どこで失敗するか
+
+### m.contact.title2
+
+**EN:** where it fails.
+
+**JA:** 教えてください。
+
+### m.contact.lede
+
+**EN:** If you run a breeding programme, a lab, a seed certification agency or a plant-rights body, we'd like to talk. Nothing to buy.
+
+**JA:** 育種プログラム、ラボ、種子認証機関、育成者権関係機関を運営されている方は、ぜひお話しさせてください。購入いただくものはありません。
+
+### m.contact.email
+
+**EN:** Email the founders
+
+**JA:** 創業者にメールする
+
+### m.contact.spec
+
+**EN:** Read the spec
+
+**JA:** 仕様を読む
+
+### m.foot.about
+
+**EN:** An evidentiary record format for plant genetics. Anchored on Midnight Network.
+
+**JA:** 植物遺伝資源のための証拠記録フォーマット。Midnight Networkにアンカー。
+
+### m.foot.explore
+
+**EN:** Explore
+
+**JA:** 見る
+
+### m.foot.build
+
+**EN:** Build
+
+**JA:** 開発
+
+### m.foot.contact
+
+**EN:** Contact
+
+**JA:** お問い合わせ
+
+### m.foot.verify
+
+**EN:** Verify a record
+
+**JA:** 記録を検証する
+
+### m.foot.fine
+
+**EN:** Proof of prior possession, not ownership.
+
+**JA:** 先行保有の証明であり、所有権の証明ではありません。
+
+### m.verify.label
+
+**EN:** Verify
+
+**JA:** 検証
+
+### m.verify.title
+
+**EN:** Check a record
+
+**JA:** 記録を確認する
+
+### m.verify.lede
+
+**EN:** Enter the record identifier printed on a certificate or shared with you. You will see what its holder chose to disclose, and whether it is intact.
+
+**JA:** 証明書に印字された、または共有された記録識別子を入力してください。保有者が開示を選んだ内容と、記録が改ざんされていないかどうかが表示されます。
+
+### m.verify.field
+
+**EN:** Record identifier
+
+**JA:** 記録識別子
+
+### m.verify.go
+
+**EN:** Check it
+
+**JA:** 確認する
+
+### m.founders.label
+
+**EN:** Founders
+
+**JA:** 創業者
+
+### m.founders.lede
+
+**EN:** VeilCore is an evidentiary record format for plant genetics. It gives proof of prior possession without anyone handing over their genetic data.
+
+**JA:** VeilCoreは植物遺伝資源のための証拠記録フォーマットです。誰も遺伝データを差し出すことなく、先行保有の証明を可能にします。
+
+### m.founders.leads
+
+**EN:** Leads
+
+**JA:** 担当
+
+### m.founders.also
+
+**EN:** Also
+
+**JA:** その他
+
+### m.founders.languages
+
+**EN:** Languages
+
+**JA:** 言語
+
+### m.mako.bio1
+
+**EN:** Makoto (Mako) Steiner is VeilCore's co-founder and CEO, leading commercial strategy, fundraising, and VeilCore's relationships with partners, institutions, and investors worldwide.
+
+**JA:** Makoto（Mako）SteinerはVeilCoreの共同創業者兼CEOです。事業戦略、資金調達、そして世界各地のパートナー、機関、投資家とのVeilCoreの関係を統括しています。
+
+### m.mako.bio2
+
+**EN:** He studied Environmental Studies at Denison University and is based in Tokyo.
+
+**JA:** デニソン大学で環境学を専攻し、東京を拠点としています。
+
+### m.mako.leads
+
+**EN:** Japan|EU|Standards bodies|Business development
+
+**JA:** 日本|EU|標準化団体|事業開発
+
+### m.mako.also
+
+**EN:** Build Club, Cohort 1
+
+**JA:** Build Club 第1期
+
+### m.mako.languages
+
+**EN:** English · Japanese
+
+**JA:** 英語 · 日本語
+
+### m.hunter.bio1
+
+**EN:** Hunter Roberts is VeilCore's co-founder and COO, leading product and the VeilCore protocol, from the record format to the contracts on Midnight. He leads VeilCore's work with US institutions, including seed certification, standards and plant-variety bodies.
+
+**JA:** Hunter RobertsはVeilCoreの共同創業者兼COOです。記録フォーマットからMidnight上のコントラクトまで、プロダクトとVeilCoreプロトコルを統括しています。種子認証、標準化、植物品種関係の機関を含む、米国の機関とのVeilCoreの取り組みを主導しています。
+
+### m.hunter.bio2
+
+**EN:** He comes from hands-on plant work, including breeding and tissue culture, and is building Chunk's Trees, a cultivation facility in New Jersey.
+
+**JA:** 育種や組織培養を含む植物の実務経験を持ち、ニュージャージー州で栽培施設Chunk's Treesを立ち上げています。
+
+### m.hunter.leads
+
+**EN:** United States|Protocol & spec|Engineering
+
+**JA:** 米国|プロトコルと仕様|エンジニアリング
+
+### m.hunter.also
+
+**EN:** Midnight Nightforce Leader (US) · Build Club, Cohort 1
+
+**JA:** Midnight Nightforce Leader（米国） · Build Club 第1期
+
+### m.founders.band1
+
+**EN:** Talk to us. We'd
+
+**JA:** お話しください。
+
+### m.founders.band2
+
+**EN:** rather hear where it fails
+
+**JA:** うまくいくと言われるより、
+
+### m.founders.band3
+
+**EN:** than be told it works.
+
+**JA:** どこで失敗するかを聞きたいのです。
+
+### m.founders.bandText
+
+**EN:** If you run a breeding programme, a lab, a seed certification agency or a plant-rights body, we'd like to talk. The format is free to implement and free to verify.
+
+**JA:** 育種プログラム、ラボ、種子認証機関、育成者権関係機関を運営されている方は、ぜひお話しさせてください。このフォーマットは実装も検証も無料です。
+
+### m.founders.emailBoth
+
+**EN:** Email both founders
+
+**JA:** 創業者2人にメールする
+
+### m.portraitOf
+
+**EN:** Portrait of {name}
+
+**JA:** {name}の肖像

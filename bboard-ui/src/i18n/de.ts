@@ -23,97 +23,177 @@ export const de: Strings = {
   'draft.banner':
     'Übersetzungsentwurf, noch nicht von einer muttersprachlichen Person geprüft. Maßgeblich ist die englische Seite.',
   'draft.showEnglish': 'Englisch anzeigen',
-
-  // Landing: hero
-  'hero.overline': 'Nachweis dessen, was Sie besitzen',
-  'hero.title1': 'Weisen Sie nach, dass Sie es zuerst hatten.',
-  'hero.title2': 'Ohne irgendjemandem zu zeigen, was es ist.',
-  'hero.lead':
-    'Ein Datensatzformat für genetisches Material. Ändern Sie unten, was Sie möchten – es bleibt auf dieser Seite. Veröffentlicht wird immer nur der darunterliegende Wert.',
-  'hero.cultivar': 'Sorte',
-  'hero.bredBy': 'Gezüchtet von',
-  'hero.bredByDefault': 'Ihr Name',
-  'hero.caption':
-    'Zweiunddreißig Bytes. Sie lassen sich nicht zurückrechnen und können nicht aus einem anderen Datensatz stammen. Nur diesen Teil sieht jemals ein anderer.',
-  'hero.readSpec': 'Spezifikation lesen',
-  'hero.tryReference': 'Referenzimplementierung ausprobieren',
-
-  // Landing: why
-  'why.eyebrow': 'Warum es das gibt',
-  'why.title': 'Genetik vermehrt sich. Papier kommt nicht hinterher.',
-  'why.p1':
-    'Aus einem Steckling werden tausend Stecklinge. Wer die Sorte gezüchtet hat, wird einmal bezahlt, beim ersten Verkauf – und nur, wenn sich jemand entschieden hat zu zahlen. Taucht das Material dort auf, wo es nicht sein sollte, bestehen die Nachweise der Züchterin oder des Züchters aus eigenen datierten Notizen – erstellt von der Partei, die sich darauf beruft, und auch nachträglich anfertigbar.',
-  'why.p2':
-    'Die üblichen Mittel passen nicht. Die Hinterlegung eines Exemplars erfordert eine Lagerung, die für alles, was aus einem Steckling gezogen wird, kaum praktikabel ist. Eine Beschreibung notariell beglaubigen zu lassen heißt, sie einem Fremden zu übergeben – genau das, was man mit wertvollem, ungeschütztem Material nicht tun kann.',
-
-  // Landing: stages
-  'stages.eyebrow': 'Was ein Datensatz nach und nach enthält',
-  'stages.title': 'Vom Notizbuch bis zur Lizenz, ohne irgendjemandem die Genetik zu zeigen.',
-  'stage1.head': 'Erfassen, was Sie gezüchtet haben',
-  'stage1.body':
-    'Notieren Sie die Sorte, ihre Elternlinien und wann Sie sie selektiert haben. Der Eintrag wird auf Ihrem eigenen Gerät versiegelt, und veröffentlicht wird nur ein Hash davon – so können Sie ab diesem Moment jedem nachweisen, dass diese Beschreibung zu diesem Datum existierte, ohne ein Wort davon zu zeigen. Sie können sogar nachweisen, dass Sie das Material besitzen, ohne die Beschreibung überhaupt vorzulegen.',
-  'stage1.limit':
-    'Festgehalten wird, was Sie geschrieben haben und wann. Es beweist nicht, dass das Geschriebene zutrifft – dafür sind die nächsten Schritte da.',
-  'stage2.head': 'Eine Probe zur Analyse senden',
-  'stage2.body':
-    'Geben Sie einem Labor zusammen mit der Probe einen Übergabecode. Bestätigt das Labor den Eingang, wird diese Bestätigung mit seinem Schlüssel signiert und Ihrem Datensatz hinzugefügt. Das Material im Labor ist nun auf Ihres rückverfolgbar, und eine von Ihnen festgelegte Lizenzgebühr geht mit – auch auf Stecklinge, die es noch gar nicht gibt.',
-  'stage2.limit':
-    'Material, das niemand angibt, kann es nicht erfassen. Es greift, wenn dieses Material kommerziell auftaucht.',
-  'stage3.head': 'Der Laborbericht wird zu Ihrem Nachweis',
-  'stage3.body':
-    'Das Labor hängt den von ihm erstellten DNA-Bericht an, von ihm signiert. Ihr Datensatz ist nun mit tatsächlicher Genetik verknüpft statt mit einem Namen, den jeder wiederverwenden könnte – und er enthält eine Erklärung von jemand anderem als Ihnen. Nur dieses Labor kann sie zurückziehen. Niemand, auch wir nicht, kann eine solche fälschen.',
-  'stage3.limit':
-    'Wir erfassen, welche Akkreditierung ein Labor angibt und wer es akkreditiert hat. Wir bürgen nie dafür – das prüfen Sie bei der Akkreditierungsstelle.',
-  'stage4.head': 'Lizenzieren und an dem verdienen, was daraus wächst',
-  'stage4.body':
-    'Legen Sie Bedingungen fest, einschließlich einer Lizenzgebühr auf Nachkommen, und beide Parteien unterzeichnen. Die Bedingungen sind an den Datensatz und an den DNA-Bericht gebunden statt an die Erinnerung an ein Gespräch. Hält sich ein Lizenznehmer nicht an seine Seite der Vereinbarung, widerrufen Sie – das stoppt seinen Anbau nicht, verhindert aber, dass er dem nächsten Käufer, dem nächsten Labor oder einem Programm, das einen Datensatz verlangt, einwandfreie Rechte nachweisen kann.',
-  'stage4.limit': 'Wir erfassen, was geschuldet ist. Wir nehmen nie Zahlungen entgegen und verwahren nie Ihr Geld.',
-
-  // Landing: disclosure
-  'disclose.eyebrow': 'Wer entscheidet, was sichtbar ist',
-  'disclose.title': 'Sie – für jeden Empfänger einzeln.',
-  'disclose.p1':
-    'Ein Käufer sieht vielleicht nur, dass ein Datensatz existiert, dass er einwandfrei ist und dass ein Labor ihn bestätigt hat. Ein Lizenznehmer sieht die Bedingungen. Ein Zollbeamter sieht ein Datum. Fakten, die Sie nicht freigeben, fehlen in dem, was Sie senden – sie sind nicht darin versteckt.',
-  'disclose.p2': 'Die Genetik selbst kann nie offengelegt werden. Es gibt keine Einstellung, die sie preisgibt.',
-
-  // Landing: status
-  'status.eyebrow': 'Wo das Projekt steht',
-  'status.p1':
-    'Das Format ist zusammen mit einer Konformitätstestsuite veröffentlicht, und drei unabhängige Implementierungen in drei Sprachen bestehen dieselben Tests. Datensätze werden gebündelt auf Midnight verankert, derzeit in einem Testnetz. Ein unabhängiges Sicherheitsaudit wurde noch nicht abgeschlossen, und das Format wurde bisher nur von seinen Autoren genutzt und von niemandem sonst.',
-  'status.p2': 'Wir sagen Ihnen das lieber hier, als dass Sie es selbst herausfinden.',
-
-  // Landing: audiences
-  'aud.eyebrow': 'Je nachdem, wer Sie sind',
-  'aud.title': 'Verschiedene Menschen brauchen Verschiedenes davon.',
-  'aud.labs.who': 'Labore',
-  'aud.labs.line':
-    'Behalten Sie Ihr eigenes System und Ihre eigenen Probennummern. Ergänzen Sie Datensätze, die Sie ohnehin anlegen, um ein Commitment, und signieren Sie die Berichte, die Sie ohnehin ausstellen. Die Probeneingänge eines Tages werden in einer einzigen Transaktion verankert.',
-  'aud.labs.label': 'Integrationsleitfaden',
-  'aud.try.who': 'Alle, die es in Aktion sehen möchten',
-  'aud.try.line':
-    'Eine Referenzimplementierung, kostenlos und offen. Erfassen Sie eine Sorte, senden Sie eine Probe und sehen Sie, wie der signierte Bericht eines Labors in Ihrem Datensatz ankommt. Sie soll zeigen, dass das Format funktioniert, und Ihnen etwas geben, woran Sie Ihre eigene Implementierung prüfen können. Sie ist nicht das Produkt. Das Format ist es.',
-  'aud.try.label': 'Ausprobieren',
-  'aud.reg.who': 'Register und Rechteinhaberorganisationen',
-  'aud.reg.line':
-    'Betreiben Sie ein Register unter Ihrer eigenen Domain und definieren Sie ein Profil für Ihre eigene Art von Material. Niemand muss eine Erlaubnis erteilen, und nichts läuft über uns.',
-  'aud.reg.label': 'Spezifikation lesen',
-  'aud.counsel.who': 'Rechtsberatung',
-  'aud.counsel.line':
-    'Wie ein Datensatz authentifiziert wird, welche Rechtsordnungen woran eine Vermutung knüpfen und – ausführlich dargelegt – was er nicht beweist.',
-  'aud.counsel.label': 'Hinweis zur Beweiskraft',
-  'aud.check.who': 'Alle, die einen Datensatz prüfen',
-  'aud.check.line':
-    'Die Prüfung ist kostenlos, erfordert kein Konto und wird es immer bleiben. Sollte es uns nicht mehr geben, lassen sich bereits ausgestellte Datensätze weiterhin mit Open-Source-Software gegen das Ledger prüfen.',
-  'aud.check.label': 'So funktioniert die Prüfung',
-
-  // Landing: team
-  'team.eyebrow': 'Wer es entwickelt',
-  'team.portraitOf': 'Porträt von {name}',
-  'team.mako.role': 'Mitgründer & CEO',
-  'team.mako.bio':
-    'Makoto (Mako) Steiner ist Mitgründer und CEO von VeilCore und verantwortet die kommerzielle Strategie, die Finanzierung sowie die Beziehungen von VeilCore zu Partnern, Institutionen und Investoren weltweit. Er hat Environmental Studies an der Denison University studiert und lebt in Tokio.',
-  'team.mako.extra': 'Sprachen: Englisch, Japanisch',
-  'team.hunter.role': 'Mitgründer & COO',
-  'team.hunter.bio':
-    'Hunter Roberts ist Mitgründer und COO von VeilCore und verantwortet das Produkt und das VeilCore-Protokoll, vom Datensatzformat bis zu den Verträgen auf Midnight. Er kommt aus der praktischen Arbeit mit Pflanzen, darunter Züchtung und Gewebekultur, und baut derzeit eine Anbauanlage in New Jersey auf. Er ist Nightforce Leader (US) der Midnight Foundation.',
+  // Public pages (Mako's 25 September layout)
+  'm.nav.about': 'Über',
+  'm.nav.team': 'Team',
+  'm.nav.updates': 'Neuigkeiten',
+  'm.nav.spec': 'Spezifikation',
+  'm.nav.demo': 'Demo testen',
+  'm.nav.menu': 'Menü',
+  'm.hero.label': 'Nachweis dessen, was Sie besitzen',
+  'm.hero.title1': 'Beweisen Sie, dass Sie es zuerst hatten.',
+  'm.hero.title2': 'Ohne jemandem zu zeigen, was es ist.',
+  'm.hero.lede':
+    'Ein Datensatzformat für genetisches Material. Ihr Datensatz bleibt bei Ihnen. Veröffentlicht wird immer nur ein Fingerabdruck, und jeder kann dessen Datum prüfen.',
+  'm.hero.chooseDemo': 'Demo wählen',
+  'm.hero.how': 'So funktioniert es',
+  'm.hero.cultivar': 'Sorte',
+  'm.hero.bredBy': 'Gezüchtet von',
+  'm.hero.bredByDefault': 'Ihr Name',
+  'm.hero.demoLabel': 'Live-Demo des Fingerabdrucks',
+  'm.hero.note':
+    'Ändern Sie oben, was Sie möchten; es bleibt auf dieser Seite. Die mintgrüne Zeile ist der Fingerabdruck: zweiunddreißig Bytes, die sich nicht umkehren lassen. Er ist der einzige Teil, den jemand anderes je zu sehen bekommt.',
+  'm.choose.label': 'Hier starten',
+  'm.choose.title': 'Wohin möchten Sie?',
+  'm.choose.about.title': 'Über',
+  'm.choose.about.text': 'Was das Format ist, wie es funktioniert und was es nicht leistet.',
+  'm.choose.about.go': 'Lesen →',
+  'm.choose.demo.title': 'Demo',
+  'm.choose.demo.text': 'Einen Datensatz erstellen oder prüfen.',
+  'm.choose.demo.go': 'Demo wählen →',
+  'm.choose.team.title': 'Team',
+  'm.choose.team.text': 'Zwei Gründer, in Tokio und New Jersey.',
+  'm.choose.team.go': 'Kennenlernen →',
+  'm.choose.updates.title': 'Neuigkeiten',
+  'm.choose.updates.text': 'Was sich geändert hat, was veröffentlicht wurde und was wir gelernt haben.',
+  'm.choose.updates.go': 'Aktuelles →',
+  'm.about.label': 'Über',
+  'm.about.title1': 'Ein Datensatzformat für Beweiszwecke',
+  'm.about.title2': 'in der Pflanzengenetik.',
+  'm.about.lede':
+    'Wenn Genetik irgendwo auftaucht, wo sie nicht hingehört, läuft jeder Streit auf eine Frage hinaus: Was hatten Sie, und wann? Notizbücher und Laborberichte werden von demjenigen datiert, der sie besitzt. Die übliche Lösung, ein gemeinsames Register, verlangt von allen, genau das herauszugeben, was sie schützen wollen. VeilCore tut keines von beidem.',
+  'm.step1.n': '01 · Datensatz',
+  'm.step1.title': 'Die Charge beschreiben',
+  'm.step1.text':
+    'Ein Züchter oder ein Labor erstellt einen Datensatz zum Material: was es ist, woher es stammt, Testergebnisse.',
+  'm.step2.n': '02 · Fingerabdruck',
+  'm.step2.title': 'Lokal hashen',
+  'm.step2.text':
+    'Ein 32-Byte-Fingerabdruck wird auf Ihrem eigenen Computer berechnet. Der Datensatz verlässt ihn nie.',
+  'm.step3.n': '03 · Verankern',
+  'm.step3.title': 'Das Datum veröffentlichen',
+  'm.step3.text':
+    'Nur der Fingerabdruck erhält einen Zeitstempel in einem öffentlichen Netzwerk (Midnight). Niemand kann dieses Datum verschieben, auch wir nicht.',
+  'm.step4.n': '04 · Prüfen',
+  'm.step4.title': 'Später vorlegen',
+  'm.step4.text':
+    'Legen Sie den Datensatz einem Käufer, einer Prüfstelle oder einem Gericht vor. Jeder kann kostenlos und ohne Konto prüfen, ob er übereinstimmt.',
+  'm.is.title': 'Was es ist',
+  'm.is.1a': 'Nachweis früheren Besitzes:',
+  'm.is.1b': 'was Sie hatten, und wann.',
+  'm.is.2a': 'Keine Verwahrung:',
+  'm.is.2b': 'Wir erhalten Ihre Daten nie.',
+  'm.is.3a': 'Ein offenes Format:',
+  'm.is.3b': 'kostenlos zu implementieren, kostenlos zu prüfen, mit veröffentlichter Spezifikation.',
+  'm.isnt.title': 'Was es nicht ist',
+  'm.isnt.1a': 'Kein Eigentum.',
+  'm.isnt.1b': 'Es schafft kein Recht, das Sie nicht ohnehin schon haben.',
+  'm.isnt.2a': 'Keine Wahrheitsmaschine.',
+  'm.isnt.2b': 'Es beweist, wann Sie etwas geschrieben haben, nicht, dass es stimmt.',
+  'm.isnt.3a': 'Kein DNA-Test.',
+  'm.isnt.3b': 'Es ergänzt einen, damit ein Ergebnis auch Jahre später noch etwas bedeutet.',
+  'm.demo.label': 'Demo',
+  'm.demo.title1': 'Wählen Sie, wie Sie',
+  'm.demo.title2': 'es sehen möchten.',
+  'm.demo.lede': 'Kein Konto, keine Wallet. Alles, was Ihre Daten berührt, läuft in Ihrem Browser.',
+  'm.demo.create.title': 'Datensatz erstellen',
+  'm.demo.create.text':
+    'Füllen Sie einen Beispieldatensatz aus, erzeugen Sie seinen Fingerabdruck und laden Sie das Zertifikat herunter.',
+  'm.demo.verify.title': 'Datensatz prüfen',
+  'm.demo.verify.text':
+    'Geben Sie die Kennung eines Datensatzes ein und gleichen Sie sie mit seinem veröffentlichten Datum ab.',
+  'm.demo.distinct.title': 'Unterscheidbarkeitsnachweis',
+  'm.demo.distinct.text':
+    'Beweisen Sie, dass sich zwei Sorten in mehreren Markern unterscheiden, ohne einen davon offenzulegen. Mit synthetischen Markern demonstriert; Vorführung auf Anfrage.',
+  'm.chip.interactive': 'Interaktiv',
+  'm.chip.3min': '~3 Min.',
+  'm.chip.1min': '~1 Min.',
+  'm.chip.testnet': 'Testnetz',
+  'm.chip.onRequest': 'Auf Anfrage',
+  'm.chip.zk': 'Zero-Knowledge',
+  'm.team.label': 'Team',
+  'm.team.title1': 'Zwei Gründer.',
+  'm.team.title2': 'Tokio und New Jersey.',
+  'm.team.more': 'Vollständige Profile →',
+  'm.mako.role': 'Mitgründer & CEO · Tokio',
+  'm.mako.short': 'Kommerzielle Leitung: Normungs- und Sortenschutzgremien in Japan und der EU.',
+  'm.hunter.role': 'Mitgründer & COO · New Jersey',
+  'm.hunter.short': 'Entwickelt den Contract, die App und die API. Leitet die institutionelle Arbeit in den USA.',
+  'm.updates.label': 'Neuigkeiten',
+  'm.updates.title1': 'Neues aus',
+  'm.updates.title2': 'der Entwicklung.',
+  'm.updates.read': 'Lesen →',
+  'm.updates.all': 'Alle Änderungen auf GitHub →',
+  'm.updates.follow': 'Folgen',
+  'm.post1.date': '3. Okt. 2026',
+  'm.post1.tag': 'Sicherheit',
+  'm.post1.title': 'Drei Implementierungen, eine Antwort',
+  'm.post1.text':
+    'Ein Differenztest ergab, dass unsere Implementierungen in TypeScript, Python und Rust bei einigen Zahlen voneinander abwichen. Behoben: Sie stimmen jetzt bei jeder einzelnen von 81.000 Eingaben überein, und 55 Konformitätsvektoren legen das fest.',
+  'm.post2.date': '2. Okt. 2026',
+  'm.post2.tag': 'Contract',
+  'm.post2.title': 'Ein vollständiger Durchlauf im Testnetz von Midnight',
+  'm.post2.text':
+    'Der Contract wurde auf Preprod bereitgestellt und hat alle 26 End-to-End-Prüfungen bestanden, einschließlich jedes Angriffs, den er abweisen muss.',
+  'm.post3.date': '8. Sept. 2026',
+  'm.post3.tag': 'Contract',
+  'm.post3.title': 'Warum eine Lizenzübertragung eine Abtretung ist',
+  'm.post3.text':
+    'Wir haben die Übertragung neu gestaltet, nachdem wir festgestellt hatten, dass die alte Version der abgebenden Partei ihre Befugnisse beließ.',
+  'm.status.label': 'Wo wir stehen',
+  'm.status.title1': 'Ehrlich darüber,',
+  'm.status.title2': 'wo wir stehen.',
+  'm.status.lede': 'Wir sagen das lieber jetzt, als dass es später herauskommt.',
+  'm.stat1.b': '55 / 55',
+  'm.stat1.s': 'Konformitätsvektoren, bestanden von Implementierungen in drei Sprachen (vom selben Team geschrieben)',
+  'm.stat2.b': 'Testnetz',
+  'm.stat2.s': 'Läuft im Testnetz von Midnight. Als Nächstes kommt das Live-Netzwerk.',
+  'm.stat3.b': 'Kein Audit',
+  'm.stat3.s': 'Noch kein unabhängiges Sicherheitsaudit. Unsere eigenen Prüfungen sind im Repository veröffentlicht.',
+  'm.stat4.b': 'Keine Nutzer',
+  'm.stat4.s': 'Außer den beiden Gründern hat es noch niemand genutzt. Wir suchen den ersten.',
+  'm.contact.label': 'Kontakt aufnehmen',
+  'm.contact.title1': 'Sagen Sie uns,',
+  'm.contact.title2': 'wo es versagt.',
+  'm.contact.lede':
+    'Wenn Sie ein Zuchtprogramm, ein Labor, eine Saatgutanerkennungsstelle oder ein Sortenschutzgremium leiten, würden wir gern mit Ihnen sprechen. Es gibt nichts zu kaufen.',
+  'm.contact.email': 'E-Mail an die Gründer',
+  'm.contact.spec': 'Spezifikation lesen',
+  'm.foot.about': 'Ein Datensatzformat für Beweiszwecke in der Pflanzengenetik. Verankert im Midnight Network.',
+  'm.foot.explore': 'Entdecken',
+  'm.foot.build': 'Entwicklung',
+  'm.foot.contact': 'Kontakt',
+  'm.foot.verify': 'Datensatz prüfen',
+  'm.foot.fine': 'Nachweis früheren Besitzes, nicht von Eigentum.',
+  'm.verify.label': 'Prüfen',
+  'm.verify.title': 'Einen Datensatz prüfen',
+  'm.verify.lede':
+    'Geben Sie die Datensatzkennung ein, die auf einem Zertifikat aufgedruckt ist oder Ihnen mitgeteilt wurde. Sie sehen, was der Inhaber offenlegen wollte, und ob der Datensatz unverändert ist.',
+  'm.verify.field': 'Datensatzkennung',
+  'm.verify.go': 'Prüfen',
+  'm.founders.label': 'Gründer',
+  'm.founders.lede':
+    'VeilCore ist ein Datensatzformat für Beweiszwecke in der Pflanzengenetik. Es liefert einen Nachweis früheren Besitzes, ohne dass jemand seine genetischen Daten herausgeben muss.',
+  'm.founders.leads': 'Leitet',
+  'm.founders.also': 'Außerdem',
+  'm.founders.languages': 'Sprachen',
+  'm.mako.bio1':
+    'Makoto (Mako) Steiner ist Mitgründer und CEO von VeilCore. Er leitet die kommerzielle Strategie, die Finanzierung sowie die Beziehungen von VeilCore zu Partnern, Institutionen und Investoren weltweit.',
+  'm.mako.bio2': 'Er hat Environmental Studies an der Denison University studiert und lebt in Tokio.',
+  'm.mako.leads': 'Japan|EU|Normungsgremien|Geschäftsentwicklung',
+  'm.mako.also': 'Build Club, Kohorte 1',
+  'm.mako.languages': 'Englisch · Japanisch',
+  'm.hunter.bio1':
+    'Hunter Roberts ist Mitgründer und COO von VeilCore. Er leitet das Produkt und das VeilCore-Protokoll, vom Datensatzformat bis zu den Contracts auf Midnight. Er führt die Arbeit von VeilCore mit US-Institutionen, darunter Saatgutanerkennungs-, Normungs- und Sortenstellen.',
+  'm.hunter.bio2':
+    "Er kommt aus der praktischen Arbeit mit Pflanzen, einschließlich Züchtung und Gewebekultur, und baut Chunk's Trees auf, eine Anbauanlage in New Jersey.",
+  'm.hunter.leads': 'USA|Protokoll & Spezifikation|Engineering',
+  'm.hunter.also': 'Midnight Nightforce Leader (US) · Build Club, Kohorte 1',
+  'm.founders.band1': 'Sprechen Sie mit uns. Wir',
+  'm.founders.band2': 'hören lieber, wo es versagt,',
+  'm.founders.band3': 'als dass man uns sagt, es funktioniert.',
+  'm.founders.bandText':
+    'Wenn Sie ein Zuchtprogramm, ein Labor, eine Saatgutanerkennungsstelle oder ein Sortenschutzgremium leiten, würden wir gern mit Ihnen sprechen. Das Format ist kostenlos zu implementieren und kostenlos zu prüfen.',
+  'm.founders.emailBoth': 'E-Mail an beide Gründer',
+  'm.portraitOf': 'Porträt von {name}',
 };

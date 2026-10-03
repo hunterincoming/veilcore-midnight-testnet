@@ -172,12 +172,21 @@ export class VeilcoreSimulator {
     );
   }
 
-  /** A free leaf index, lowest first (the SDK picks at random). */
+  /**
+   * A free leaf index (the SDK picks at random). Scanning from 0 on every call made a
+   * run of N activations cost N^2 ledger queries, and at N = 1024 the WASM runtime ran
+   * out of memory ("RuntimeError: unreachable") and took the rest of the file with it.
+   * Starting from the last slot handed out keeps it linear; a slot freed by a revoke
+   * below that point is simply not reused, which no test depends on.
+   */
   freeSlot(): bigint {
-    let s = 0n;
+    let s = this.nextSlot;
     while (this.state.licenseAtSlot.member(s)) s++;
+    this.nextSlot = s + 1n;
     return s;
   }
+
+  private nextSlot = 0n;
 
   private setTime(ctx: Ctx): void {
     ctx.currentQueryContext.block = {

@@ -379,6 +379,9 @@ export class ClaimsAPI {
    * provably. Safe to run again after an interruption. Needs the authority's key in the
    * local store unless the authority is already retired.
    */
+  /** How long to wait between reads while confirming the retirement on chain (30 reads at most). */
+  static confirmIntervalMs = 2_000;
+
   static async finishDeploy(providers: ClaimsProviders, address: ContractAddress, logger?: Logger): Promise<ClaimsAPI> {
     let api: ClaimsAPI;
     try {
@@ -394,7 +397,7 @@ export class ClaimsAPI {
       throw e;
     }
     try {
-      await retireMaintenanceAuthorityProvably(providers, address, logger);
+      await retireMaintenanceAuthorityProvably(providers, address, logger, ClaimsAPI.confirmIntervalMs);
     } catch (e) {
       logger?.error(
         `The claims contract at ${address} has every circuit key, but its maintenance authority is NOT retired yet. ` +

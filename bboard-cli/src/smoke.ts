@@ -14,6 +14,13 @@ import { pureCircuits as C } from '../../contract/src/managed/veilcore/contract/
 import { VeilcoreAPI, newPresentationChallenge } from '../../api/src/veilcore-api.js';
 import { randomBytes } from '../../api/src/utils/index.js';
 import type { VeilcoreProviders } from '../../api/src/veilcore-types.js';
+import { ClaimsAPI } from '../../api/src/claims-api.js';
+import type { ClaimsProviders } from '../../api/src/claims-types.js';
+import { type FieldSchema, type TypedSlotValue } from '../../contract/src/field-schema.js';
+import { newAttesterKey, signRecord } from '../../contract/src/attest.js';
+import { numberFrom } from '../../contract/src/fields.js';
+import { verifyClaim } from '../../contract/src/verify-claims.js';
+import { loadFieldSet } from './fields.js';
 
 const same = (a: Uint8Array, b: Uint8Array): boolean => toHex(a) === toHex(b);
 
@@ -55,7 +62,16 @@ export const isContractRefusal = (e: unknown): boolean =>
       t === 'CallTxFailedError',
   );
 
-export const runSmoke = async (providers: VeilcoreProviders, logger: Logger, indexerUri: string): Promise<boolean> => {
+/** Checks in the main contract's phase. The claims phase, when run, adds CLAIMS_CHECKS. */
+export const MAIN_CHECKS = 26;
+export const CLAIMS_CHECKS = 11;
+
+export const runSmoke = async (
+  providers: VeilcoreProviders,
+  logger: Logger,
+  indexerUri: string,
+  claimsProviders?: ClaimsProviders,
+): Promise<boolean> => {
   let step = 0;
   const pass = (what: string): void => logger.info(`PASS ${++step}. ${what}`);
   const must = (ok: boolean, what: string): void => {
@@ -197,6 +213,14 @@ export const runSmoke = async (providers: VeilcoreProviders, logger: Logger, ind
     await vc.discharge(B, royalty);
     must((await vc.checkLineage(G)).clean, 'the recovered breeder releases; the lineage is clean');
 
+    if (claimsProviders !== undefined) {
+      logger.info(`\nMain contract phase passed (${step} checks). Now the claims contract.`);
+      const claimsAddress = await claimsPhase(claimsProviders, indexerUri, logger, { pass, must, refused }, owned.txId);
+      logger.info(
+        `\nSMOKE TEST PASSED: ${step} checks passed. Contract ${vc.deployedContractAddress}, claims contract ${claimsAddress}`,
+      );
+      return true;
+    }
     logger.info(`\nSMOKE TEST PASSED: ${step} checks passed. Contract ${vc.deployedContractAddress}`);
     return true;
   } catch (e) {
@@ -205,4 +229,138 @@ export const runSmoke = async (providers: VeilcoreProviders, logger: Logger, ind
     logger.error('SMOKE TEST FAILED. Do not deploy to mainnet until this passes.');
     return false;
   }
+};
+
+// ── the claims contract ───────────────────────────────────────────────────────
+
+/** A schema for the smoke test only: four marker loci (distinct at 2), germination, yield. */
+const SMOKE_SCHEMA: FieldSchema = {
+  id: 'veilcore/fields/smoke-test/v1',
+  title: 'Smoke test schema: not for real records',
+  slots: [
+    ...[0, 1, 2, 3].map((slot) => ({
+      slot,
+      path: `fields.loci[${slot}]`,
+      type: 'text' as const,
+      format: 'allele-pair' as const,
+      comparable: true,
+    })),
+    { slot: 4, path: 'fields.germinationPercent', type: 'uint', scale: 100, unit: 'percent' },
+    { slot: 5, path: 'fields.yieldKgPerHa', type: 'uint', unit: 'kg/ha' },
+  ],
+  k: 2,
+};
+
+const smokeRecord = (loci: string[], germination: string, yieldKg: string) => {
+  const values: TypedSlotValue[] = Array.from({ length: 16 }, () => null);
+  loci.forEach((l, i) => (values[i] = { text: l }));
+  values[4] = { uint: germination };
+  values[5] = { uint: yieldKg };
+  return loadFieldSet({
+    schema: SMOKE_SCHEMA,
+    values,
+    fieldSecret: toHex(randomBytes(32)),
+    jsonDigest: toHex(randomBytes(32)),
+  });
+};
+
+export type Steps = {
+  pass: (what: string) => void;
+  must: (ok: boolean, what: string) => void;
+  refused: (what: string, attempt: () => Promise<unknown>, expected?: RegExp) => Promise<void>;
+};
+
+/**
+ * Deploy a claims contract, check its authority is provably retired, then make every
+ * kind of claim and read each back by transaction id, as a verifier would. Adds
+ * CLAIMS_CHECKS checks. `notAClaim` is a transaction with no call on the claims contract.
+ */
+export const claimsPhase = async (
+  providers: ClaimsProviders,
+  indexerUri: string,
+  logger: Logger,
+  { pass, must, refused }: Steps,
+  notAClaim: string,
+): Promise<string> => {
+  const cl = await ClaimsAPI.deploy(providers, logger);
+  pass(`claims contract deployed at ${cl.deployedContractAddress}, all seven circuit keys on chain`);
+  const auth = await cl.authority();
+  must(
+    auth.retired && auth.committee.length === 0 && auth.threshold === 1,
+    "the claims contract's maintenance authority is an empty committee: the chain shows nobody can change it",
+  );
+
+  const A = smokeRecord(['180/184', '201/201', '155/159', '233/233'], '9650', '6400');
+  const B = smokeRecord(['180/188', '199/201', '155/159', '233/233'], '9100', '5900');
+  const same = (a: Uint8Array, b: Uint8Array): boolean => toHex(a) === toHex(b);
+  const read = async (txId: string) => (await cl.readClaim(txId, indexerUri)).claim;
+
+  const v = await cl.proveValue(A.record, 5);
+  const vr = await read(v.txId);
+  must(
+    vr.kind === 'value' && same(vr.record, A.sealed.commitment) && vr.slot === 5 && numberFrom(vr.value!) === 6400n,
+    'proveValue: read back by transaction id, the chain shows slot 5 holds 6400',
+  );
+
+  const r = await cl.proveRange(A.record, SMOKE_SCHEMA, 4, 'at least', 9500n);
+  const rr = await read(r.txId);
+  must(
+    rr.kind === 'range' && same(rr.record, A.sealed.commitment) && rr.op === 'at least' && rr.bound === 9500n,
+    'proveRange: the chain shows "at least 95.00 percent" and not the number',
+  );
+  await refused('a bound the sealed number does not meet (at least 97.00 percent)', () =>
+    cl.proveRange(A.record, SMOKE_SCHEMA, 4, 'at least', 9700n),
+  );
+
+  const d = await cl.proveDistinct(A.record, B.record, SMOKE_SCHEMA);
+  const dr = await read(d.txId);
+  must(
+    dr.kind === 'distinct' && same(dr.record, A.sealed.commitment) && same(dr.other!, B.sealed.commitment),
+    'proveDistinct: the chain shows the two records differ in at least k comparable values',
+  );
+
+  const C = loadFieldSet({
+    ...A.file,
+    values: A.file.values.map((x, i) => (i === 5 ? { uint: '6550' } : x)),
+    fieldSecret: toHex(randomBytes(32)),
+    jsonDigest: toHex(randomBytes(32)),
+  });
+  const mask = Array.from({ length: 16 }, (_, i) => i === 5);
+  const u = await cl.proveUnchanged(A.record, C.record, mask);
+  const ur = await read(u.txId);
+  must(
+    ur.kind === 'unchanged' && same(ur.other!, C.sealed.commitment) && ur.mayChange!.every((b, i) => b === mask[i]),
+    'proveUnchanged: the chain shows the correction changed only slot 5',
+  );
+  await refused('an unchanged claim whose mask leaves out the slot that changed', () =>
+    cl.proveUnchanged(
+      A.record,
+      C.record,
+      Array.from({ length: 16 }, () => false),
+    ),
+  );
+
+  const lab = newAttesterKey();
+  const ar = await cl.proveAttestedRange(A.record, SMOKE_SCHEMA, 4, 'at most', 9700n, {
+    key: lab.key,
+    signature: signRecord(lab.secret, A.sealed.commitment),
+  });
+  const reading = await cl.readClaim(ar.txId, indexerUri);
+  must(
+    reading.entryPoint === 'proveAttestedRange' &&
+      reading.claim.attester?.x === lab.key.x &&
+      reading.claim.attester?.y === lab.key.y,
+    "proveAttestedRange: the chain shows the laboratory's key with the bound",
+  );
+  const verdict = verifyClaim({ claim: reading.cells, schema: SMOKE_SCHEMA, trustedAttesters: [lab.key] });
+  must(
+    verdict.passed && verdict.statement.includes('at most 97.00 percent'),
+    'the claims verifier accepts it against the schema document and the trusted key',
+  );
+  await refused(
+    'reading a claim from a transaction that made no claim on this contract',
+    () => cl.readClaim(notAClaim, indexerUri),
+    /^That transaction is not a single claim on this claims contract\.$/,
+  );
+  return cl.deployedContractAddress;
 };

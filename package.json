@@ -13,7 +13,8 @@
       "bboard-cli",
       "bboard-ui",
       "api",
-      "contract"
+      "contract",
+      "sponsor"
     ]
   },
   "dependencies": {

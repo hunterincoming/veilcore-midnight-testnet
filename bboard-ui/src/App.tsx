@@ -1,10 +1,12 @@
-// Veilcore — the enforcement layer for cannabis genetics. Routed app: records
-// dashboard, guided wizard, per-strain detail, licensing, and public verification.
+// VeilCore — records, licences and verification for plant genetics. Routed app: public
+// pages, records dashboard, guided wizard, per-cultivar detail, licensing, and public
+// verification.
 // SPDX-License-Identifier: Apache-2.0
 
 import React from 'react';
 import { Home } from './components/site/Home';
 import { Founders, VerifyLookup } from './components/site/Founders';
+import { Privacy } from './components/site/Privacy';
 import { DocPage } from './components/DocPage';
 import { Implementations } from './components/Implementations';
 import { AppFooter } from './components/AppFooter';
@@ -57,6 +59,7 @@ const App: React.FC = () => (
         somewhere to understand what this is. The dashboard assumes you already do. */}
     <Route path="/" element={<Home />} />
     <Route path="/founders" element={<Founders />} />
+    <Route path="/privacy" element={<Privacy />} />
     <Route path="/verify" element={<VerifyLookup />} />
     <Route path="/records" element={withLayout(<Dashboard />)} />
     {/* Documents read here rather than in a code repository. */}

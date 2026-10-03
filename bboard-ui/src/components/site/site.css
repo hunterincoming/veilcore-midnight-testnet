@@ -995,3 +995,58 @@ html:has(.vcm) {
   height: auto;
   aspect-ratio: 16 / 9;
 }
+
+/* demo privacy note (/privacy) */
+.vcm .privacy-note dl {
+  display: grid;
+  gap: 0;
+  max-width: 760px;
+  border-top: 1px solid var(--line);
+}
+.vcm .privacy-note dl > div {
+  display: grid;
+  grid-template-columns: minmax(0, 220px) minmax(0, 1fr);
+  gap: 24px;
+  padding: 22px 0;
+  border-bottom: 1px solid var(--line);
+}
+.vcm .privacy-note dt {
+  font-family: var(--display);
+  font-weight: 600;
+}
+.vcm .privacy-note dd {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.65;
+}
+.vcm .privacy-contact {
+  margin-top: 28px;
+}
+.vcm .privacy-contact a {
+  color: var(--mint);
+}
+@media (max-width: 720px) {
+  .vcm .privacy-note dl > div {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+}
+
+/* status: who can change the contract */
+.vcm .status-key {
+  margin-top: 18px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 20px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+.vcm .status-key strong {
+  color: var(--text);
+}
+.vcm .status-key a {
+  color: var(--mint);
+  white-space: nowrap;
+}

@@ -8,7 +8,7 @@ export const es: Strings = {
   'nav.licenses': 'Licencias',
   'nav.language': 'Idioma',
   'footer.about':
-    'Un formato de registro abierto para material genético. La verificación es gratuita, no requiere cuenta y no depende de que nosotros sigamos existiendo.',
+    'Un formato de registro abierto para la genética vegetal. Para comprobar un registro que usted tiene solo se necesitan SHA-256 y la especificación abierta: es gratuito y no requiere cuenta. Buscar un registro por su identificador en este sitio usa nuestro servidor.',
   'footer.documents': 'Documentos',
   'footer.spec': 'Especificación',
   'footer.evidence': 'Registros como prueba',
@@ -21,6 +21,7 @@ export const es: Strings = {
   'footer.whatThisIs': 'Qué es esto',
   'footer.yourRecords': 'Sus registros',
   'footer.agreements': 'Acuerdos',
+  'footer.privacy': 'Privacidad de la demo',
   'draft.banner':
     'Traducción preliminar, aún no revisada por un hablante nativo. La página en inglés es la versión de referencia.',
   'draft.showEnglish': 'Ver en inglés',
@@ -35,7 +36,7 @@ export const es: Strings = {
   'm.hero.title1': 'Demuestre que lo tuvo primero.',
   'm.hero.title2': 'Sin mostrarle a nadie qué es.',
   'm.hero.lede':
-    'Un formato de registro para material genético. Sus datos genéticos se quedan con usted. Solo una huella va a la red pública, y cualquiera puede comprobar su fecha.',
+    'Para obtentores, empresas de semillas y laboratorios: un formato de registro abierto para la genética vegetal. Sus datos genéticos se quedan con usted. Solo una huella se registra en una blockchain pública (Midnight) y, una vez anclada, cualquiera puede comprobar su fecha.',
   'm.hero.chooseDemo': 'Elija una demo',
   'm.hero.how': 'Cómo funciona',
   'm.hero.cultivar': 'Cultivar',
@@ -43,7 +44,7 @@ export const es: Strings = {
   'm.hero.bredByDefault': 'Su nombre aquí',
   'm.hero.demoLabel': 'Demo de huella en vivo',
   'm.hero.note':
-    'Cambie lo que quiera arriba; no sale de esta página. La línea en verde menta es la huella: treinta y dos bytes que no se pueden revertir. Es la única parte que cualquier otra persona llega a ver.',
+    'Cambie lo que quiera arriba; no sale de esta página. La línea en verde menta es la huella: treinta y dos bytes que no se pueden revertir, porque se mezcla un valor aleatorio. Es la única parte que esta demo publicaría.',
   'm.choose.label': 'Empiece aquí',
   'm.choose.title': '¿A dónde quiere ir?',
   'm.choose.about.title': 'Acerca de',
@@ -74,7 +75,7 @@ export const es: Strings = {
   'm.step3.n': '03 · Anclaje',
   'm.step3.title': 'Publique la fecha',
   'm.step3.text':
-    'Solo la huella recibe un sello de tiempo en una red pública (Midnight). La fecha la fija la red, no nosotros, y queda en su historial público.',
+    'Solo la huella recibe un sello de tiempo en una red pública (Midnight). La fecha la fija la red, no nosotros, y queda en su historial público. En la demo, nuestro operador ancla los registros por lotes, no al instante.',
   'm.step4.n': '04 · Verificación',
   'm.step4.title': 'Muéstrelo después',
   'm.step4.text':
@@ -91,7 +92,7 @@ export const es: Strings = {
     'otorgan derechos sobre un registro. Un licenciatario puede demostrar que una licencia es válida sin revelar cuál es ni quién la tiene.',
   'm.is.5a': 'Linaje acordado:',
   'm.is.5b':
-    'un vínculo de parentesco solo cuenta cuando ambos titulares lo confirman, y las obligaciones como las regalías siguen al material hasta su descendencia hasta que el beneficiario las libere.',
+    'un vínculo de parentesco solo cuenta cuando ambos titulares lo confirman. Las obligaciones como las regalías solo pasan a los descendientes declarados de esta forma, hasta que el beneficiario las libere. VeilCore registra lo que se debe; no lo cobra.',
   'm.isnt.title': 'Qué no es',
   'm.isnt.1a': 'No es propiedad.',
   'm.isnt.1b': 'No crea ningún derecho legal que usted no tenga ya.',
@@ -105,11 +106,11 @@ export const es: Strings = {
   'm.demo.title1': 'Elija cómo',
   'm.demo.title2': 'quiere verlo.',
   'm.demo.lede':
-    'Sin cuenta, sin billetera. Los datos genéticos y los archivos de laboratorio se quedan en su navegador. La demo guarda el resto de un registro (nombres, fechas, huella) en nuestro servidor de pruebas para que pueda volver a consultarlo.',
+    'Sin cuenta, sin billetera. Los datos genéticos y los archivos de laboratorio se quedan en su navegador. La demo guarda el resto de un registro (nombres, fechas, huella) en nuestro servidor de pruebas para que pueda volver a consultarlo, así que use datos inventados. Las licencias en la demo son simuladas: no se envía nada a la red.',
   'm.demo.create.title': 'Crear un registro',
   'm.demo.create.text': 'Complete un registro de ejemplo, genere su huella y descargue el certificado.',
   'm.demo.verify.title': 'Verificar un registro',
-  'm.demo.verify.text': 'Ingrese el identificador de un registro y compárelo con su fecha publicada.',
+  'm.demo.verify.text': 'Ingrese el identificador de un registro y vea lo que su titular divulgó y si está anclado.',
   'm.demo.video.title': 'Ver el recorrido',
   'm.demo.video.text':
     'Todo el flujo en 75 segundos: sellar un registro, vincular un informe de laboratorio, verificarlo y los términos de licencia.',
@@ -130,7 +131,7 @@ export const es: Strings = {
   'm.updates.title1': 'Lo último',
   'm.updates.title2': 'del desarrollo.',
   'm.updates.read': 'Leer →',
-  'm.updates.all': 'Todos los cambios en GitHub →',
+  'm.updates.all': 'Cambios del formato de registro en GitHub →',
   'm.updates.follow': 'Seguir',
   'm.post1.date': '3 oct 2026',
   'm.post1.tag': 'Formato',
@@ -161,19 +162,25 @@ export const es: Strings = {
     'Todavía no hay una auditoría de seguridad independiente. Nuestras propias revisiones están publicadas en el repositorio.',
   'm.stat4.b': 'Aún sin usuarios',
   'm.stat4.s': 'Nadie lo usa todavía para registros reales. Buscamos al primero.',
+  'm.status.keyTitle': 'Quién puede cambiar el contrato.',
+  'm.status.keyText':
+    'Los fundadores tienen una clave de mantenimiento del contrato de VeilCore en Midnight. Con ella se puede cambiar cómo funciona el contrato de ahí en adelante. No puede reescribir los registros ya anclados en el historial de la red. Una política para su uso está propuesta, no decidida.',
+  'm.status.keyLink': 'Leer la política propuesta →',
   'm.contact.label': 'Contacto',
   'm.contact.title1': 'Díganos',
   'm.contact.title2': 'dónde falla.',
   'm.contact.lede':
-    'Si dirige un programa de mejoramiento, un laboratorio, una agencia de certificación de semillas o un organismo de derechos de obtentor, nos gustaría conversar. No hay nada que comprar.',
+    'Si dirige un programa de mejoramiento, un laboratorio, una agencia de certificación de semillas o un organismo de derechos de obtentor, nos gustaría conversar. Comprobar e implementar es gratuito. Aún no hemos fijado precio a nada.',
   'm.contact.email': 'Escriba a los fundadores',
   'm.contact.spec': 'Lea la especificación',
-  'm.foot.about': 'Un formato de registro probatorio para la genética vegetal. Anclado en Midnight Network.',
+  'm.foot.about':
+    'Un formato de registro probatorio para la genética vegetal. Diseñado para anclarse en Midnight; en pruebas en la red de pruebas de Midnight.',
   'm.foot.explore': 'Explorar',
   'm.foot.build': 'Desarrollo',
   'm.foot.contact': 'Contacto',
   'm.foot.verify': 'Verificar un registro',
   'm.foot.fine': 'Prueba de posesión previa, no de propiedad.',
+  'm.foot.privacy': 'Privacidad de la demo',
   'm.verify.label': 'Verificar',
   'm.verify.title': 'Compruebe un registro',
   'm.verify.lede':
@@ -187,13 +194,13 @@ export const es: Strings = {
   'm.founders.also': 'Además',
   'm.founders.languages': 'Idiomas',
   'm.mako.bio1':
-    'Makoto (Mako) Steiner es cofundador y CEO de VeilCore; dirige la estrategia comercial, la recaudación de fondos y las relaciones de VeilCore con socios, instituciones e inversionistas en todo el mundo.',
+    'Makoto (Mako) Steiner es cofundador y CEO de VeilCore; dirige la estrategia comercial, la recaudación de fondos y el acercamiento a instituciones e inversionistas en todo el mundo.',
   'm.mako.bio2': 'Estudió Estudios Ambientales en Denison University y vive en Tokio.',
   'm.mako.leads': 'Japón|UE|Organismos de normalización|Desarrollo de negocios',
   'm.mako.also': 'Midnight Nightforce Leader (Japón) · Build Club, Cohorte 1',
   'm.mako.languages': 'Inglés · Japonés',
   'm.hunter.bio1':
-    'Hunter Roberts es cofundador y COO de VeilCore; dirige el producto y el protocolo VeilCore, desde el formato de registro hasta los contratos en Midnight. Dirige el acercamiento de VeilCore a instituciones de EE. UU., incluidos organismos de certificación de semillas, de normalización y de variedades vegetales.',
+    'Hunter Roberts es cofundador y COO de VeilCore; dirige el producto y el protocolo VeilCore, desde el formato de registro hasta el contrato en Midnight. Dirige el acercamiento de VeilCore a instituciones de EE. UU., incluidos organismos de certificación de semillas, de normalización y de variedades vegetales.',
   'm.hunter.bio2':
     "Viene del trabajo práctico con plantas, incluidos el mejoramiento y el cultivo de tejidos, y está construyendo Chunk's Trees, una instalación de cultivo en Nueva Jersey.",
   'm.hunter.leads': 'Estados Unidos|Protocolo y especificación|Ingeniería',
@@ -205,4 +212,27 @@ export const es: Strings = {
     'Si dirige un programa de mejoramiento, un laboratorio, una agencia de certificación de semillas o un organismo de derechos de obtentor, nos gustaría conversar. El formato es gratuito de implementar y gratuito de verificar.',
   'm.founders.emailBoth': 'Escriba a ambos fundadores',
   'm.portraitOf': 'Retrato de {name}',
+  'm.privacy.label': 'Privacidad de la demo',
+  'm.privacy.title': 'Qué guarda la demo.',
+  'm.privacy.lede':
+    'Esta nota se refiere a la demo de este sitio. Es una prueba, en la red de pruebas de Midnight. Por favor, use datos inventados.',
+  'm.privacy.stored.title': 'Se guarda en nuestro servidor de pruebas',
+  'm.privacy.stored.text':
+    'Lo que usted escribe y lo que la aplicación calcula a partir de ello: nombres de cultivares y de obtentores, la especie si la indica, fechas, notas, números de referencia, progenitores, huellas de registros, fotos e informes de laboratorio, nombres de archivo de los informes de laboratorio, términos y contrapartes de los acuerdos, el material que envía a un laboratorio (a quién va dirigido y la cantidad) y, en el caso de los laboratorios, la clave pública de firma y las atestaciones que publican. También su clave de titular, que la aplicación envía cada vez que guarda para que el servidor encuentre sus registros. El servidor es el registro de pruebas de VeilCore, alojado en Railway.',
+  'm.privacy.local.title': 'Nunca sale de su navegador',
+  'm.privacy.local.text':
+    'Los datos genéticos, los archivos de informes de laboratorio y de ADN, y las fotos. La aplicación los lee en su navegador para calcular sus huellas. Los archivos en sí nunca se suben.',
+  'm.privacy.test.title': 'Una red de pruebas',
+  'm.privacy.test.text':
+    'La demo usa la red de pruebas de Midnight, no la red en producción. Los datos de la demo pueden borrarse cuando se reinicie la red de pruebas.',
+  'm.privacy.madeup.title': 'Use datos inventados',
+  'm.privacy.madeup.text':
+    'Por favor, no ingrese nombres reales, variedades reales ni nada confidencial. La demo sirve para probar el formato.',
+  'm.privacy.export.title': 'Exportar',
+  'm.privacy.export.text':
+    'Su página de registros tiene un botón «Export» que descarga los registros que tiene este navegador. Una descarga única de todo lo que nuestro servidor guarda de usted está en camino; todavía no está disponible.',
+  'm.privacy.delete.title': 'Eliminación',
+  'm.privacy.delete.text':
+    'Para que eliminemos sus datos de la demo de nuestro servidor, escriba a hunter@veilcore.org con los identificadores de sus registros.',
+  'm.privacy.contact': 'Preguntas: hunter@veilcore.org',
 };

@@ -5,6 +5,8 @@ Keep every limitation and "does not" exactly; the English is careful not to over
 
 Preview: open veilcore.org/?lang=ja once the preview build is deployed.
 
+Changed on 3 October (site accuracy pass), please re-check: `footer.about`, `m.hero.lede`, `m.hero.note`, `m.step3.text`, `m.is.5b`, `m.demo.lede`, `m.demo.verify.text`, `m.updates.all`, `m.contact.lede`, `m.foot.about`, `m.mako.bio1`, `m.hunter.bio1`. New keys are at the end of this file.
+
 ## nav.newCultivar
 
 **EN:** New cultivar
@@ -25,9 +27,9 @@ Preview: open veilcore.org/?lang=ja once the preview build is deployed.
 
 ## footer.about
 
-**EN:** An open record format for genetic material. Verification is free, needs no account, and does not depend on us continuing to exist.
+**EN:** An open record format for plant genetics. Checking a record you hold needs only SHA-256 and the open specification: it is free and needs no account. Looking a record up by its identifier on this site uses our server.
 
-**JA:** 遺伝資源のためのオープンな記録フォーマットです。検証は無料で、アカウントは不要です。また、私たちが存続し続けることを前提としていません。
+**JA:** 植物遺伝資源のためのオープンな記録フォーマットです。お手元の記録の確認に必要なのはSHA-256と公開仕様だけで、無料、アカウントも不要です。このサイトで識別子から記録を検索する場合は、私たちのサーバーを使用します。
 
 ## footer.documents
 
@@ -528,9 +530,9 @@ Some headings are split in two or three parts; the later part is shown in colour
 
 ### m.hero.lede
 
-**EN:** A record format for genetic material. Your genetic data stays with you. Only a fingerprint goes on the public network, and anyone can check its date.
+**EN:** For plant breeders, seed companies and labs: an open record format for plant genetics. Your genetic data stays with you. Only a fingerprint is recorded on a public blockchain (Midnight), and once it is anchored, anyone can check its date.
 
-**JA:** 遺伝資源のための記録フォーマットです。遺伝データはお手元に残ります。公開ネットワークに載るのはフィンガープリントだけで、その日付は誰でも確認できます。
+**JA:** 植物の育種家、種苗会社、検査機関のための、植物遺伝資源のオープンな記録フォーマットです。遺伝データはお手元に残ります。公開ブロックチェーン（Midnight）に記録されるのはフィンガープリントだけで、アンカーされた後は、その日付を誰でも確認できます。
 
 ### m.hero.chooseDemo
 
@@ -570,9 +572,9 @@ Some headings are split in two or three parts; the later part is shown in colour
 
 ### m.hero.note
 
-**EN:** Change anything above; it stays on this page. The line in mint is the fingerprint: thirty-two bytes that can't be reversed. It's the only part anyone else ever sees.
+**EN:** Change anything above; it stays on this page. The line in mint is the fingerprint: thirty-two bytes that can't be reversed, because a random value is mixed in. It's the only part this demo would publish.
 
-**JA:** 上の項目は自由に変更できます。入力内容はこのページから出ません。ミント色の行がフィンガープリントです。元に戻すことのできない32バイトの値で、他の人が目にするのはこの部分だけです。
+**JA:** 上の項目は自由に変更できます。入力内容はこのページから出ません。ミント色の行がフィンガープリントです。ランダムな値を混ぜているため、元に戻すことのできない32バイトの値です。このデモが公開するとしたら、この部分だけです。
 
 ### m.choose.label
 
@@ -732,9 +734,9 @@ Some headings are split in two or three parts; the later part is shown in colour
 
 ### m.step3.text
 
-**EN:** Only the fingerprint is timestamped on a public network (Midnight). The date is set by the network, not by us, and stays in its public history.
+**EN:** Only the fingerprint is timestamped on a public network (Midnight). The date is set by the network, not by us, and stays in its public history. In the demo, our operator anchors records in batches, not instantly.
 
-**JA:** 公開ネットワーク（Midnight）上でタイムスタンプが付くのはフィンガープリントだけです。日付は私たちではなくネットワークが付与し、その公開履歴に残ります。
+**JA:** 公開ネットワーク（Midnight）上でタイムスタンプが付くのはフィンガープリントだけです。日付は私たちではなくネットワークが付与し、その公開履歴に残ります。デモでは、記録は即時ではなく、私たちのオペレーターがまとめてアンカーします。
 
 ### m.step4.n
 
@@ -858,9 +860,9 @@ Some headings are split in two or three parts; the later part is shown in colour
 
 ### m.demo.lede
 
-**EN:** No account, no wallet. Genetic data and lab files stay in your browser. The demo keeps the rest of a record (names, dates, fingerprint) on our test server so you can come back to it.
+**EN:** No account, no wallet. Genetic data and lab files stay in your browser. The demo keeps the rest of a record (names, dates, fingerprint) on our test server so you can come back to it, so please use made-up details. Licensing in the demo is simulated: nothing is sent to the network.
 
-**JA:** アカウントもウォレットも不要です。遺伝データやラボのファイルはブラウザ内に留まります。デモでは、後で戻って確認できるよう、記録の残りの部分（名前、日付、フィンガープリント）を私たちのテストサーバーに保存します。
+**JA:** アカウントもウォレットも不要です。遺伝データやラボのファイルはブラウザ内に留まります。デモでは、後で戻って確認できるよう、記録の残りの部分（名前、日付、フィンガープリント）を私たちのテストサーバーに保存します。そのため、架空の情報をお使いください。デモでのライセンス手続きはシミュレーションで、ネットワークには何も送信されません。
 
 ### m.demo.create.title
 
@@ -882,9 +884,9 @@ Some headings are split in two or three parts; the later part is shown in colour
 
 ### m.demo.verify.text
 
-**EN:** Enter a record's identifier and check it against its published date.
+**EN:** Enter a record's identifier and see what its holder disclosed and whether it is anchored.
 
-**JA:** 記録の識別子を入力し、公開された日付と照合します。
+**JA:** 記録の識別子を入力すると、保有者が開示した内容と、アンカー済みかどうかを確認できます。
 
 
 
@@ -983,9 +985,9 @@ Some headings are split in two or three parts; the later part is shown in colour
 
 ### m.updates.all
 
-**EN:** Every change on GitHub →
+**EN:** Record-format changes on GitHub →
 
-**JA:** すべての変更はGitHubで →
+**JA:** 記録フォーマットの変更はGitHubで →
 
 ### m.updates.follow
 
@@ -1157,9 +1159,9 @@ Some headings are split in two or three parts; the later part is shown in colour
 
 ### m.contact.lede
 
-**EN:** If you run a breeding programme, a lab, a seed certification agency or a plant-rights body, we'd like to talk. Nothing to buy.
+**EN:** If you run a breeding programme, a lab, a seed certification agency or a plant-rights body, we'd like to talk. Checking and implementing are free. Nothing is priced yet.
 
-**JA:** 育種プログラム、ラボ、種子認証機関、育成者権関係機関を運営されている方は、ぜひお話しさせてください。購入いただくものはありません。
+**JA:** 育種プログラム、ラボ、種子認証機関、育成者権関係機関を運営されている方は、ぜひお話しさせてください。確認と実装は無料です。価格はまだ何も決めていません。
 
 ### m.contact.email
 
@@ -1175,9 +1177,9 @@ Some headings are split in two or three parts; the later part is shown in colour
 
 ### m.foot.about
 
-**EN:** An evidentiary record format for plant genetics. Anchored on Midnight Network.
+**EN:** An evidentiary record format for plant genetics. Designed to anchor on Midnight; testing on Midnight's test network.
 
-**JA:** 植物遺伝資源のための証拠記録フォーマット。Midnight Networkにアンカー。
+**JA:** 植物遺伝資源のための証拠記録フォーマット。Midnightへのアンカーを前提に設計し、Midnightのテストネットワークで試験中。
 
 ### m.foot.explore
 
@@ -1271,9 +1273,9 @@ Some headings are split in two or three parts; the later part is shown in colour
 
 ### m.mako.bio1
 
-**EN:** Makoto (Mako) Steiner is VeilCore's co-founder and CEO, leading commercial strategy, fundraising, and VeilCore's relationships with partners, institutions, and investors worldwide.
+**EN:** Makoto (Mako) Steiner is VeilCore's co-founder and CEO, leading commercial strategy, fundraising, and outreach to institutions and investors worldwide.
 
-**JA:** Makoto（Mako）SteinerはVeilCoreの共同創業者兼CEOです。事業戦略、資金調達、そして世界各地のパートナー、機関、投資家とのVeilCoreの関係を統括しています。
+**JA:** Makoto（Mako）SteinerはVeilCoreの共同創業者兼CEOです。事業戦略、資金調達、そして世界各地の機関や投資家へのアウトリーチを統括しています。
 
 ### m.mako.bio2
 
@@ -1301,7 +1303,7 @@ Some headings are split in two or three parts; the later part is shown in colour
 
 ### m.hunter.bio1
 
-**EN:** Hunter Roberts is VeilCore's co-founder and COO, leading product and the VeilCore protocol, from the record format to the contracts on Midnight. He leads VeilCore's outreach to US institutions, including seed certification, standards and plant-variety bodies.
+**EN:** Hunter Roberts is VeilCore's co-founder and COO, leading product and the VeilCore protocol, from the record format to the contract on Midnight. He leads VeilCore's outreach to US institutions, including seed certification, standards and plant-variety bodies.
 
 **JA:** Hunter RobertsはVeilCoreの共同創業者兼COOです。記録フォーマットからMidnight上のコントラクトまで、プロダクトとVeilCoreプロトコルを統括しています。種子認証、標準化、植物品種関係の機関を含む、米国の機関へのVeilCoreのアウトリーチを主導しています。
 
@@ -1397,9 +1399,9 @@ Some headings are split in two or three parts; the later part is shown in colour
 
 ### m.is.5b
 
-**EN:** a parent link counts only when both holders confirm it, and obligations such as royalties follow the material to its offspring until the beneficiary releases them.
+**EN:** a parent link counts only when both holders confirm it. Obligations such as royalties carry only to descendants declared this way, until the beneficiary releases them. VeilCore records what is owed; it does not collect it.
 
-**JA:** 親子のつながりは双方の保有者が確認した場合にのみ有効です。ロイヤルティなどの義務は、受益者が解除するまで素材とともに子孫に引き継がれます。
+**JA:** 親子のつながりは双方の保有者が確認した場合にのみ有効です。ロイヤルティなどの義務が引き継がれるのは、このように申告された子孫だけで、受益者が解除するまで続きます。VeilCoreは支払うべきものを記録しますが、徴収はしません。
 
 ### m.isnt.4a
 
@@ -1412,3 +1414,133 @@ Some headings are split in two or three parts; the later part is shown in colour
 **EN:** A parent link means both holders agreed, not that DNA proves it.
 
 **JA:** 親子のつながりは双方の保有者が合意したことを意味し、DNAで証明されたことを意味するものではありません。
+
+## Site accuracy pass, 3 October
+
+These strings are new. They make the site say only what is true today (test network, simulated licensing, what the demo stores). Keep every "not", "no" and "only" exactly as in the English, and never make a translation stronger than the English.
+
+### footer.privacy
+
+**EN:** Demo privacy
+
+**JA:** デモのプライバシー
+
+### m.status.keyTitle
+
+**EN:** Who can change the contract.
+
+**JA:** コントラクトを変更できるのは誰か。
+
+### m.status.keyText
+
+**EN:** The founders hold a maintenance key for VeilCore's contract on Midnight. It can change how the contract works from then on. It cannot rewrite records already anchored in the network's history. A policy for using it is proposed, not decided.
+
+**JA:** 創業者は、Midnight上のVeilCoreコントラクトのメンテナンス鍵を保有しています。この鍵では、それ以降のコントラクトの動作を変更できます。ネットワークの履歴にすでにアンカーされた記録を書き換えることはできません。鍵の使用に関するポリシーは提案段階で、まだ決定していません。
+
+### m.status.keyLink
+
+**EN:** Read the proposed policy →
+
+**JA:** 提案中のポリシーを読む →
+
+### m.foot.privacy
+
+**EN:** Demo privacy
+
+**JA:** デモのプライバシー
+
+### m.privacy.label
+
+**EN:** Demo privacy
+
+**JA:** デモのプライバシー
+
+### m.privacy.title
+
+**EN:** What the demo keeps.
+
+**JA:** デモが保存するもの。
+
+### m.privacy.lede
+
+**EN:** This note covers the demo on this site. It is a test, on Midnight's test network. Please use made-up data.
+
+**JA:** このページは、本サイトのデモについての説明です。デモはMidnightのテストネットワーク上での試験です。架空のデータをお使いください。
+
+### m.privacy.stored.title
+
+**EN:** Stored on our test server
+
+**JA:** テストサーバーに保存されるもの
+
+### m.privacy.stored.text
+
+**EN:** What you type and what the app computes from it: cultivar and breeder names, species if you enter one, dates, notes, reference numbers, parents, fingerprints of records, photos and lab reports, lab report file names, agreement terms and counterparties, material you send to a lab (who it is addressed to, and the quantity), and, for labs, the public signing key and the attestations they publish. Also your holder key, which the app sends with every save so the server can find your records. The server is VeilCore's test registry, hosted on Railway.
+
+**JA:** 入力した内容と、そこからアプリが計算したもの：品種名と育成者名、入力した場合は種名、日付、メモ、参照番号、親、記録・写真・検査報告書のフィンガープリント、検査報告書のファイル名、契約の条件と相手方、ラボに送る素材（宛先と数量）、そしてラボの場合は公開する署名用の公開鍵と証明。さらに、サーバーが記録を見つけられるよう、保存のたびにアプリが送信する保有者キー。サーバーはRailway上でホストされているVeilCoreのテスト用レジストリです。
+
+### m.privacy.local.title
+
+**EN:** Never leaves your browser
+
+**JA:** ブラウザから出ないもの
+
+### m.privacy.local.text
+
+**EN:** Genetic data, lab and DNA report files, and photos. The app reads them in your browser to compute their fingerprints. The files themselves are never uploaded.
+
+**JA:** 遺伝データ、検査報告書やDNA報告書のファイル、写真。アプリはフィンガープリントを計算するためにブラウザ内でこれらを読み込みます。ファイル自体がアップロードされることはありません。
+
+### m.privacy.test.title
+
+**EN:** A test network
+
+**JA:** テストネットワーク
+
+### m.privacy.test.text
+
+**EN:** The demo uses Midnight's test network, not the live one. Demo data may be deleted when the test network is reset.
+
+**JA:** デモは本番ネットワークではなく、Midnightのテストネットワークを使用しています。テストネットワークがリセットされた際に、デモのデータが削除されることがあります。
+
+### m.privacy.madeup.title
+
+**EN:** Use made-up data
+
+**JA:** 架空のデータをお使いください
+
+### m.privacy.madeup.text
+
+**EN:** Please don't enter real names, real varieties or anything confidential. The demo is for trying the format.
+
+**JA:** 実在の名前、実在の品種、機密情報は入力しないでください。デモは記録フォーマットを試すためのものです。
+
+### m.privacy.export.title
+
+**EN:** Export
+
+**JA:** エクスポート
+
+### m.privacy.export.text
+
+**EN:** Your records page has an Export button that downloads the records this browser holds. A single download of everything our server holds for you is coming; it is not available yet.
+
+**JA:** 記録ページの「Export」ボタンで、このブラウザが保持している記録をダウンロードできます。私たちのサーバーが保存しているすべてのデータを一括でダウンロードする機能は準備中で、まだ利用できません。
+
+### m.privacy.delete.title
+
+**EN:** Deletion
+
+**JA:** 削除
+
+### m.privacy.delete.text
+
+**EN:** To have your demo data deleted from our server, email hunter@veilcore.org with the identifiers of your records.
+
+**JA:** サーバーからデモのデータを削除してほしい場合は、記録の識別子を添えて hunter@veilcore.org までメールでご連絡ください。
+
+### m.privacy.contact
+
+**EN:** Questions: hunter@veilcore.org
+
+**JA:** お問い合わせ：hunter@veilcore.org

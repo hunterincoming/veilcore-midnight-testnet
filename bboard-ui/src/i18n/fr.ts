@@ -7,7 +7,7 @@ export const fr: Strings = {
   'nav.licenses': 'Licences',
   'nav.language': 'Langue',
   'footer.about':
-    "Un format d'enregistrement ouvert pour le matériel génétique. La vérification est gratuite, ne nécessite aucun compte et ne dépend pas de notre existence future.",
+    "Un format d'enregistrement ouvert pour la génétique végétale. Pour vérifier un enregistrement que vous détenez, il suffit de SHA-256 et de la spécification ouverte : c'est gratuit et sans compte. Rechercher un enregistrement par son identifiant sur ce site passe par notre serveur.",
   'footer.documents': 'Documents',
   'footer.spec': 'Spécification',
   'footer.evidence': 'Les enregistrements comme preuve',
@@ -20,6 +20,7 @@ export const fr: Strings = {
   'footer.whatThisIs': "De quoi il s'agit",
   'footer.yourRecords': 'Vos enregistrements',
   'footer.agreements': 'Contrats',
+  'footer.privacy': 'Confidentialité de la démo',
   'draft.banner': 'Traduction provisoire, pas encore relue par un locuteur natif. La page en anglais fait foi.',
   'draft.showEnglish': 'Afficher en anglais',
   // Public pages (Mako's 25 September layout)
@@ -33,7 +34,7 @@ export const fr: Strings = {
   'm.hero.title1': "Prouvez que vous l'aviez en premier.",
   'm.hero.title2': "Sans montrer à personne ce que c'est.",
   'm.hero.lede':
-    "Un format d'enregistrement pour le matériel génétique. Vos données génétiques restent chez vous. Seule une empreinte va sur le réseau public, et n'importe qui peut en vérifier la date.",
+    "Pour les sélectionneurs, les semenciers et les laboratoires : un format d'enregistrement ouvert pour la génétique végétale. Vos données génétiques restent chez vous. Seule une empreinte est inscrite sur une blockchain publique (Midnight) et, une fois ancrée, n'importe qui peut en vérifier la date.",
   'm.hero.chooseDemo': 'Choisir une démo',
   'm.hero.how': 'Comment ça marche',
   'm.hero.cultivar': 'Cultivar',
@@ -41,7 +42,7 @@ export const fr: Strings = {
   'm.hero.bredByDefault': 'Votre nom ici',
   'm.hero.demoLabel': "Démo d'empreinte en direct",
   'm.hero.note':
-    "Modifiez ce que vous voulez ci-dessus ; cela reste sur cette page. La ligne en vert menthe est l'empreinte : trente-deux octets impossibles à inverser. C'est la seule partie que quiconque d'autre verra jamais.",
+    "Modifiez ce que vous voulez ci-dessus ; cela reste sur cette page. La ligne en vert menthe est l'empreinte : trente-deux octets impossibles à inverser, car une valeur aléatoire y est mêlée. C'est la seule partie que cette démo publierait.",
   'm.choose.label': 'Commencer ici',
   'm.choose.title': 'Où souhaitez-vous aller ?',
   'm.choose.about.title': 'À propos',
@@ -72,7 +73,7 @@ export const fr: Strings = {
   'm.step3.n': '03 · Ancrage',
   'm.step3.title': 'Publier la date',
   'm.step3.text':
-    "Seule l'empreinte est horodatée sur un réseau public (Midnight). La date est fixée par le réseau, pas par nous, et reste dans son historique public.",
+    "Seule l'empreinte est horodatée sur un réseau public (Midnight). La date est fixée par le réseau, pas par nous, et reste dans son historique public. Dans la démo, notre opérateur ancre les enregistrements par lots, pas instantanément.",
   'm.step4.n': '04 · Vérification',
   'm.step4.title': 'Le présenter plus tard',
   'm.step4.text':
@@ -89,7 +90,7 @@ export const fr: Strings = {
     "accordent des droits sur un enregistrement. Un licencié peut prouver qu'une licence est valide sans révéler laquelle ni qui la détient.",
   'm.is.5a': 'Lignée convenue :',
   'm.is.5b':
-    "un lien de parenté ne compte que si les deux détenteurs le confirment, et les obligations comme les redevances suivent le matériel jusqu'à sa descendance tant que le bénéficiaire ne les a pas levées.",
+    "un lien de parenté ne compte que si les deux détenteurs le confirment. Les obligations comme les redevances ne passent qu'aux descendants déclarés de cette façon, tant que le bénéficiaire ne les a pas levées. VeilCore enregistre ce qui est dû ; il ne l'encaisse pas.",
   'm.isnt.title': "Ce que ce n'est pas",
   'm.isnt.1a': 'Pas une propriété.',
   'm.isnt.1b': "Il ne crée aucun droit légal que vous n'ayez déjà.",
@@ -103,11 +104,12 @@ export const fr: Strings = {
   'm.demo.title1': 'Choisissez comment',
   'm.demo.title2': 'vous voulez le voir.',
   'm.demo.lede':
-    "Pas de compte, pas de portefeuille. Les données génétiques et les fichiers de laboratoire restent dans votre navigateur. La démo conserve le reste d'un enregistrement (noms, dates, empreinte) sur notre serveur de test pour que vous puissiez y revenir.",
+    "Pas de compte, pas de portefeuille. Les données génétiques et les fichiers de laboratoire restent dans votre navigateur. La démo conserve le reste d'un enregistrement (noms, dates, empreinte) sur notre serveur de test pour que vous puissiez y revenir : utilisez donc des données fictives. Les licences sont simulées dans la démo : rien n'est envoyé au réseau.",
   'm.demo.create.title': 'Créer un enregistrement',
   'm.demo.create.text': "Remplissez un enregistrement d'exemple, générez son empreinte et téléchargez le certificat.",
   'm.demo.verify.title': 'Vérifier un enregistrement',
-  'm.demo.verify.text': "Saisissez l'identifiant d'un enregistrement et comparez-le à sa date publiée.",
+  'm.demo.verify.text':
+    "Saisissez l'identifiant d'un enregistrement et voyez ce que son détenteur a divulgué et s'il est ancré.",
   'm.demo.video.title': 'Voir la présentation',
   'm.demo.video.text':
     'Tout le parcours en 75 secondes : sceller un enregistrement, y associer un rapport de laboratoire, le vérifier, et les conditions de licence.',
@@ -129,7 +131,7 @@ export const fr: Strings = {
   'm.updates.title1': 'Les dernières nouvelles',
   'm.updates.title2': 'du développement.',
   'm.updates.read': 'Lire →',
-  'm.updates.all': 'Toutes les modifications sur GitHub →',
+  'm.updates.all': "Modifications du format d'enregistrement sur GitHub →",
   'm.updates.follow': 'Suivre',
   'm.post1.date': '3 oct. 2026',
   'm.post1.tag': 'Format',
@@ -159,19 +161,25 @@ export const fr: Strings = {
   'm.stat3.s': "Pas encore d'audit de sécurité indépendant. Nos propres revues sont publiées dans le dépôt.",
   'm.stat4.b': "Pas encore d'utilisateurs",
   'm.stat4.s': "Personne ne l'utilise encore pour de vrais enregistrements. Nous cherchons le premier.",
+  'm.status.keyTitle': 'Qui peut modifier le contrat.',
+  'm.status.keyText':
+    "Les fondateurs détiennent une clé de maintenance du contrat de VeilCore sur Midnight. Elle permet de modifier le fonctionnement du contrat à partir de ce moment. Elle ne peut pas réécrire les enregistrements déjà ancrés dans l'historique du réseau. Une politique d'utilisation est proposée, pas décidée.",
+  'm.status.keyLink': 'Lire la politique proposée →',
   'm.contact.label': 'Nous contacter',
   'm.contact.title1': 'Dites-nous',
   'm.contact.title2': 'où ça échoue.',
   'm.contact.lede':
-    'Si vous dirigez un programme de sélection, un laboratoire, un organisme de certification des semences ou un organisme de protection des obtentions végétales, nous aimerions échanger avec vous. Rien à acheter.',
+    "Si vous dirigez un programme de sélection, un laboratoire, un organisme de certification des semences ou un organisme de protection des obtentions végétales, nous aimerions échanger avec vous. Vérifier et implémenter sont gratuits. Aucun prix n'est encore fixé.",
   'm.contact.email': 'Écrire aux fondateurs',
   'm.contact.spec': 'Lire la spécification',
-  'm.foot.about': "Un format d'enregistrement probatoire pour la génétique végétale. Ancré sur Midnight Network.",
+  'm.foot.about':
+    "Un format d'enregistrement probatoire pour la génétique végétale. Conçu pour être ancré sur Midnight ; en test sur le réseau de test de Midnight.",
   'm.foot.explore': 'Explorer',
   'm.foot.build': 'Développement',
   'm.foot.contact': 'Contact',
   'm.foot.verify': 'Vérifier un enregistrement',
   'm.foot.fine': 'Preuve de possession antérieure, pas de propriété.',
+  'm.foot.privacy': 'Confidentialité de la démo',
   'm.verify.label': 'Vérifier',
   'm.verify.title': 'Vérifier un enregistrement',
   'm.verify.lede':
@@ -185,13 +193,13 @@ export const fr: Strings = {
   'm.founders.also': 'Également',
   'm.founders.languages': 'Langues',
   'm.mako.bio1':
-    'Makoto (Mako) Steiner est cofondateur et CEO de VeilCore. Il dirige la stratégie commerciale, la levée de fonds et les relations de VeilCore avec ses partenaires, les institutions et les investisseurs dans le monde entier.',
+    'Makoto (Mako) Steiner est cofondateur et CEO de VeilCore. Il dirige la stratégie commerciale, la levée de fonds et les prises de contact avec les institutions et les investisseurs dans le monde entier.',
   'm.mako.bio2': "Il a étudié les sciences de l'environnement à Denison University et vit à Tokyo.",
   'm.mako.leads': 'Japon|UE|Organismes de normalisation|Développement commercial',
   'm.mako.also': 'Midnight Nightforce Leader (Japon) · Build Club, cohorte 1',
   'm.mako.languages': 'Anglais · Japonais',
   'm.hunter.bio1':
-    "Hunter Roberts est cofondateur et COO de VeilCore. Il dirige le produit et le protocole VeilCore, du format d'enregistrement aux contrats sur Midnight. Il mène les prises de contact de VeilCore avec les institutions américaines, notamment les organismes de certification des semences, de normalisation et des variétés végétales.",
+    "Hunter Roberts est cofondateur et COO de VeilCore. Il dirige le produit et le protocole VeilCore, du format d'enregistrement au contrat sur Midnight. Il mène les prises de contact de VeilCore avec les institutions américaines, notamment les organismes de certification des semences, de normalisation et des variétés végétales.",
   'm.hunter.bio2':
     "Il vient du travail de terrain sur les plantes, notamment la sélection et la culture de tissus, et construit Chunk's Trees, une installation de culture dans le New Jersey.",
   'm.hunter.leads': 'États-Unis|Protocole et spécification|Ingénierie',
@@ -203,4 +211,27 @@ export const fr: Strings = {
     'Si vous dirigez un programme de sélection, un laboratoire, un organisme de certification des semences ou un organisme de protection des obtentions végétales, nous aimerions échanger avec vous. Le format est gratuit à implémenter et gratuit à vérifier.',
   'm.founders.emailBoth': 'Écrire aux deux fondateurs',
   'm.portraitOf': 'Portrait de {name}',
+  'm.privacy.label': 'Confidentialité de la démo',
+  'm.privacy.title': 'Ce que la démo conserve.',
+  'm.privacy.lede':
+    "Cette note concerne la démo de ce site. Il s'agit d'un test, sur le réseau de test de Midnight. Merci d'utiliser des données fictives.",
+  'm.privacy.stored.title': 'Conservé sur notre serveur de test',
+  'm.privacy.stored.text':
+    "Ce que vous saisissez et ce que l'application en calcule : noms de cultivars et d'obtenteurs, l'espèce si vous en indiquez une, dates, notes, numéros de référence, parents, empreintes des enregistrements, des photos et des rapports de laboratoire, noms de fichier des rapports de laboratoire, conditions et contreparties des accords, le matériel que vous envoyez à un laboratoire (à qui il est adressé et la quantité) et, pour les laboratoires, la clé publique de signature et les attestations qu'ils publient. Également votre clé de détenteur, que l'application envoie à chaque enregistrement pour que le serveur retrouve vos enregistrements. Le serveur est le registre de test de VeilCore, hébergé chez Railway.",
+  'm.privacy.local.title': 'Ne quitte jamais votre navigateur',
+  'm.privacy.local.text':
+    "Les données génétiques, les fichiers de rapports de laboratoire et d'ADN, et les photos. L'application les lit dans votre navigateur pour calculer leurs empreintes. Les fichiers eux-mêmes ne sont jamais envoyés.",
+  'm.privacy.test.title': 'Un réseau de test',
+  'm.privacy.test.text':
+    'La démo utilise le réseau de test de Midnight, pas le réseau en production. Les données de la démo peuvent être supprimées lorsque le réseau de test est réinitialisé.',
+  'm.privacy.madeup.title': 'Utilisez des données fictives',
+  'm.privacy.madeup.text':
+    'Merci de ne saisir ni vrais noms, ni vraies variétés, ni rien de confidentiel. La démo sert à essayer le format.',
+  'm.privacy.export.title': 'Export',
+  'm.privacy.export.text':
+    "Votre page d'enregistrements comporte un bouton « Export » qui télécharge les enregistrements détenus par ce navigateur. Un téléchargement unique de tout ce que notre serveur conserve pour vous est en préparation ; il n'est pas encore disponible.",
+  'm.privacy.delete.title': 'Suppression',
+  'm.privacy.delete.text':
+    'Pour faire supprimer vos données de démo de notre serveur, écrivez à hunter@veilcore.org en indiquant les identifiants de vos enregistrements.',
+  'm.privacy.contact': 'Questions : hunter@veilcore.org',
 };

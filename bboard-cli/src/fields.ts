@@ -57,7 +57,10 @@ export const readFieldSetFile = (path: string): LoadedFieldSet => {
   try {
     return loadFieldSet(parsed as FieldSetFile);
   } catch (e) {
-    throw new Error(`That field-set file is refused: ${e instanceof Error ? e.message : String(e)}`);
+    // The SDK's messages can quote the value at fault ("not in allele-pair form: "184/180"").
+    // Values are private and the log is a file on disk, so the quote is cut off.
+    const why = (e instanceof Error ? e.message : String(e)).replace(/:\s*".*$/s, '');
+    throw new Error(`That field-set file is refused: ${why}`);
   }
 };
 

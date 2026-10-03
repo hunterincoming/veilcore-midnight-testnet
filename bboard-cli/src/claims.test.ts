@@ -125,7 +125,9 @@ describe('field-set files', () => {
     const dir = mkdtempSync(path.join(tmpdir(), 'fs-'));
     const p = path.join(dir, 'bad.json');
     writeFileSync(p, JSON.stringify({ ...fileA, values: [{ text: '184/180' }, ...fileA.values.slice(1)] }));
-    expect(() => readFieldSetFile(p)).toThrow(/refused: an allele pair is written smaller first/);
+    expect(() => readFieldSetFile(p)).toThrow(
+      /^That field-set file is refused: an allele pair is written smaller first$/,
+    );
     writeFileSync(p, 'not json SECRET-VALUE');
     expect(() => readFieldSetFile(p)).toThrow(/^That file is not JSON\.$/);
     expect(() => readFieldSetFile(path.join(dir, 'missing.json'))).toThrow(/No file/);
@@ -317,5 +319,88 @@ describe('ClaimsAPI against the compiled contract', () => {
       setNetworkId('mainnet');
       expect(() => assertClaimsDeployAllowed()).toThrow(/Refusing to deploy the claims contract on mainnet/);
     });
+  });
+});
+
+const { handleClaimsChoice } = await import('./claims-menu');
+
+describe('main menu options 34 to 40', () => {
+  const menu = (answers: string[], over: Record<string, unknown> = {}) => {
+    const lines: string[] = [];
+    const logger = {
+      info: (m: string) => void lines.push(m),
+      warn: (m: string) => void lines.push(m),
+      error: (m: string) => void lines.push(m),
+    };
+    const ctx = {
+      rli: { question: async () => answers.shift() ?? '' },
+      logger,
+      providers: {},
+      indexerUri: 'http://indexer',
+      hidden: async () => '',
+      during: <T>(f: () => Promise<T>) => f(),
+      api: undefined,
+      ...over,
+    };
+    return { ctx: ctx as never, lines };
+  };
+
+  it('leaves every other choice to the main menu', async () => {
+    expect(await handleClaimsChoice('33', menu([]).ctx)).toBe(false);
+    expect(await handleClaimsChoice('41', menu([]).ctx)).toBe(false);
+  });
+
+  it('asks for the claims contract before making or reading a claim', async () => {
+    for (const choice of ['37', '38']) {
+      const m = menu([]);
+      expect(await handleClaimsChoice(choice, m.ctx)).toBe(true);
+      expect(m.lines).toContain('Deploy (34) or join (35) the claims contract first.');
+    }
+  });
+
+  it("40 shows a field-set file's public values, never its contents", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'fs-'));
+    const p = path.join(dir, 'a.json');
+    writeFileSync(p, JSON.stringify(fileA));
+    const m = menu([p]);
+    await handleClaimsChoice('40', m.ctx);
+    const a = loadFieldSet(fileA);
+    const out = m.lines.join('\n');
+    expect(out).toContain(Buffer.from(a.sealed.commitment).toString('hex'));
+    expect(out).toContain('53304a427e34f78ebbb162464ca1a2fe67a51ed70b28ac2f1a61bee19c37d754');
+    expect(out).not.toContain(fileA.fieldSecret);
+    expect(out).not.toContain('Harbour Mist');
+  });
+
+  it('34 sends nothing without "yes", and is refused on mainnet', async () => {
+    const no = menu(['no']);
+    await handleClaimsChoice('34', no.ctx);
+    expect(no.lines).toContain('Nothing was sent.');
+    setNetworkId('mainnet');
+    try {
+      await expect(handleClaimsChoice('34', menu(['yes']).ctx)).rejects.toThrow(
+        /Refusing to deploy the claims contract on mainnet/,
+      );
+    } finally {
+      setNetworkId('undeployed');
+    }
+  });
+
+  it('37 makes a bound claim from a field-set file, and shows the verifier statement', async () => {
+    const ch = chain();
+    const api = await join(ch);
+    const dir = mkdtempSync(path.join(tmpdir(), 'fs-'));
+    const p = path.join(dir, 'a.json');
+    writeFileSync(p, JSON.stringify(fileA));
+    const m = menu(['b', p, '', 'fields.germinationPercent', 'l', '95.5', 'yes'], { api });
+    await handleClaimsChoice('37', m.ctx);
+    const out = m.lines.join('\n');
+    expect(out).toContain('Give the verifier this transaction id: tx1');
+    expect(out).toMatch(/is at least 95\.50 percent/);
+    expect(out).not.toContain('96.50'); // the sealed number itself is never shown
+    const stop = menu(['b', p, '', '12', 'l', '90', 'no'], { api });
+    await handleClaimsChoice('37', stop.ctx);
+    expect(stop.lines).toContain('Nothing was sent.');
+    expect(stop.lines.join('\n')).toContain('the number is at least 95.50 percent');
   });
 });

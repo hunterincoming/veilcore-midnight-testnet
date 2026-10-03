@@ -23,7 +23,12 @@ import {
   resolveNetwork,
   REQUIRED_RECORD_REVISION,
   REVISION_VAR,
+  type ClaimsProviders,
+  type ClaimsPrivateStateId,
+  type ClaimsCircuitKeys,
 } from '../../api/src/index';
+import { type ClaimsPrivateState } from '../../contract/src/claims.js';
+import { CLAIMS_MENU, type ClaimsMenuContext, handleClaimsChoice } from './claims-menu';
 import { type WalletFacade } from '@midnight-ntwrk/wallet-sdk-facade';
 import { pureCircuits } from '../../contract/src/managed/veilcore/contract/index.js';
 import { NodeZkConfigProvider } from '@midnight-ntwrk/midnight-js-node-zk-config-provider';
@@ -41,7 +46,7 @@ import { showSecret } from './secret-out';
 import { unshieldedToken } from '@midnight-ntwrk/midnight-js-protocol/ledger';
 import { syncWallet, waitForUnshieldedFunds } from './wallet-utils';
 import { generateDust } from './generate-dust';
-import { runSmoke } from './smoke';
+import { CLAIMS_CHECKS, runSmoke } from './smoke';
 import { assertKeysMatchRecord } from './keys-check';
 import path from 'node:path';
 import { getNetworkId } from '@midnight-ntwrk/midnight-js-network-id';
@@ -260,6 +265,7 @@ export const deployOrJoin = async (
   zkConfigPath: string,
   indexerUri: string,
   hidden: (question: string) => Promise<string> = (q) => askHidden(q),
+  claimsProviders?: ClaimsProviders,
 ): Promise<VeilcoreAPI | null> => {
   while (true) {
     const choice = (await rli.question(DEPLOY_OR_JOIN_QUESTION)).trim();
@@ -288,7 +294,14 @@ export const deployOrJoin = async (
           logger.error('The smoke test does not run on mainnet.');
           continue;
         }
-        const passed = await runSmoke(providers, logger, indexerUri);
+        // The claims phase deploys a second, test-only contract after the main phase passes.
+        const withClaims =
+          claimsProviders !== undefined &&
+          (await rli.question(`Also run the claims contract phase (${CLAIMS_CHECKS} more checks)? (y/N): `))
+            .trim()
+            .toLowerCase()
+            .startsWith('y');
+        const passed = await runSmoke(providers, logger, indexerUri, withClaims ? claimsProviders : undefined);
         logger.info(passed ? 'Smoke test passed.' : 'Smoke test FAILED — see above.');
         return null;
       }
@@ -394,7 +407,9 @@ const MAIN_LOOP_QUESTION = `
                                           31. Show your record and identity
                                           32. Show your record secret
                                           33. Retire the maintenance authority (PERMANENT)
-                                           0. Exit
+${CLAIMS_MENU}
+
+  0. Exit
 Which would you like to do? `;
 
 const mainLoop = async (
@@ -403,9 +418,19 @@ const mainLoop = async (
   logger: Logger,
   zkConfigPath: string,
   indexerUri: string,
+  claimsProviders?: ClaimsProviders,
 ): Promise<void> => {
-  const api = await deployOrJoin(providers, rli, logger, zkConfigPath, indexerUri);
+  const api = await deployOrJoin(providers, rli, logger, zkConfigPath, indexerUri, undefined, claimsProviders);
   if (api === null) return;
+  const claims: ClaimsMenuContext = {
+    rli,
+    logger,
+    providers: claimsProviders,
+    indexerUri,
+    hidden: (q) => askHidden(q),
+    during,
+    api: undefined,
+  };
 
   // Rules 5 and 8: every challenge this verifier issues is recorded, and used once.
   const challengeFile = new ChallengeFile(getNetworkId(), process.env.VEILCORE_PRIVATE_STATE_PASSWORD ?? '');
@@ -784,7 +809,7 @@ const mainLoop = async (
           case '0':
             return;
           default:
-            logger.error(NOT_AN_OPTION);
+            if (!(await handleClaimsChoice(choice, claims))) logger.error(NOT_AN_OPTION);
         }
       } catch (e) {
         logError(logger, e);
@@ -1065,39 +1090,60 @@ export const run = async (config: Config, testEnv: TestEnvironment, logger: Logg
       }
     }
 
+    // This store holds the contract's maintenance authority key, which can insert or
+    // remove verifier keys and so decide what the contract accepts. The literal that used
+    // to sit here came from the example this was forked from and was published in a public
+    // repository, which is no password at all on a network where the contract matters.
+    const privateStoragePasswordProvider = (): string => {
+      const password = process.env.VEILCORE_PRIVATE_STATE_PASSWORD;
+      if (!password) {
+        throw new Error(
+          'VEILCORE_PRIVATE_STATE_PASSWORD is not set. It encrypts private state and the ' +
+            'maintenance authority signing key. Sixteen characters or more, with at least ' +
+            'three of uppercase, lowercase, digits and symbols.',
+        );
+      }
+      return password;
+    };
     const zkConfigProvider = new NodeZkConfigProvider<VeilcoreCircuitKeys>(config.zkConfigPath);
+    const publicDataProvider = indexerPublicDataProvider(envConfiguration.indexer, envConfiguration.indexerWS);
     const providers: VeilcoreProviders = {
       privateStateProvider: oneAtATime(
         levelPrivateStateProvider<VeilcorePrivateStateId, VeilcorePrivateState>({
           privateStateStoreName: config.privateStateStoreName,
           signingKeyStoreName: `${config.privateStateStoreName}-signing-keys`,
-          privateStoragePasswordProvider: () => {
-            // This store holds the contract's maintenance authority key, which can
-            // insert or remove verifier keys and so decide what the contract accepts.
-            // The literal that used to sit here came from the example this was forked
-            // from and was published in a public repository, which is no password at
-            // all on a network where the contract matters.
-            const password = process.env.VEILCORE_PRIVATE_STATE_PASSWORD;
-            if (!password) {
-              throw new Error(
-                'VEILCORE_PRIVATE_STATE_PASSWORD is not set. It encrypts private state and the ' +
-                  'maintenance authority signing key. Sixteen characters or more, with at least ' +
-                  'three of uppercase, lowercase, digits and symbols.',
-              );
-            }
-            return password;
-          },
+          privateStoragePasswordProvider,
           accountId: seed,
         }),
       ),
-      publicDataProvider: indexerPublicDataProvider(envConfiguration.indexer, envConfiguration.indexerWS),
+      publicDataProvider,
       zkConfigProvider: zkConfigProvider,
       proofProvider: httpClientProofProvider(envConfiguration.proofServer, zkConfigProvider),
       walletProvider: walletProvider,
       midnightProvider: walletProvider,
     };
+    // The claims contract: its own compiled keys, and its own private-state store, since a
+    // provider holds one contract address at a time and the main client sets it too.
+    const claimsZkConfigProvider = new NodeZkConfigProvider<ClaimsCircuitKeys>(
+      path.resolve(config.zkConfigPath, '..', 'veilcore-claims'),
+    );
+    const claimsProviders: ClaimsProviders = {
+      privateStateProvider: oneAtATime(
+        levelPrivateStateProvider<ClaimsPrivateStateId, ClaimsPrivateState>({
+          privateStateStoreName: `${config.privateStateStoreName}-claims`,
+          signingKeyStoreName: `${config.privateStateStoreName}-claims-signing-keys`,
+          privateStoragePasswordProvider,
+          accountId: seed,
+        }),
+      ),
+      publicDataProvider,
+      zkConfigProvider: claimsZkConfigProvider,
+      proofProvider: httpClientProofProvider(envConfiguration.proofServer, claimsZkConfigProvider),
+      walletProvider: walletProvider,
+      midnightProvider: walletProvider,
+    };
 
-    await mainLoop(providers, rli, logger, config.zkConfigPath, envConfiguration.indexer);
+    await mainLoop(providers, rli, logger, config.zkConfigPath, envConfiguration.indexer, claimsProviders);
   } catch (e) {
     if (e instanceof SavedProgressNotOpenedError) logger.info(e.message);
     // Stopped at a prompt (Ctrl+C, or the input closed): nothing went wrong.

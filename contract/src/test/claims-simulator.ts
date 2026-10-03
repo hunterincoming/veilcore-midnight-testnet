@@ -39,6 +39,8 @@ export type Private = {
   attester?: JubjubPoint;
   signature?: SchnorrSignature;
   secondSignature?: SchnorrSignature;
+  /** Overrides the challenge split the prover supplies (honest by default). */
+  reduction?: (h: bigint) => [bigint, bigint];
 };
 
 type Ctx = CircuitContext<Record<string, never>>;
@@ -95,7 +97,7 @@ const contract = (p: Private): Contract<Record<string, never>> =>
     ],
     schnorrReduction: ({ privateState }, h: bigint) => [
       privateState,
-      schnorrReduction(h),
+      (p.reduction ?? schnorrReduction)(h),
     ],
   });
 

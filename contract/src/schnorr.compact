@@ -1,0 +1,47 @@
+// Schnorr over Jubjub, verify only. Ported from midnightntwrk/example-zkloan
+// contract/src/schnorr.compact (Apache-2.0), with the identity-key check that the
+// upstream standard library's jubjubSchnorrVerify (Compact >= 0.34) adds.
+// Replace with the stdlib circuit once VeilCore moves to a toolchain that has it.
+module schnorr {
+  import CompactStandardLibrary;
+
+  export struct SchnorrSignature {
+    announcement: JubjubPoint;
+    response: Field;
+  }
+
+  struct SchnorrHashInput<#n> {
+    annX: Field;
+    annY: Field;
+    pkX: Field;
+    pkY: Field;
+    msg: Vector<n, Field>;
+  }
+
+  // (quotient, remainder) of the challenge hash divided by 2^248, computed off-circuit.
+  witness schnorrReduction(challengeHash: Field): [Uint<7>, Uint<248>];
+
+  export circuit schnorrVerify<#n>(msg: Vector<n, Field>, sig: SchnorrSignature, pk: JubjubPoint): [] {
+    // x = 0 only for the identity (0, 1) and the order-2 point (0, -1). The identity
+    // would verify any (R = s*G, s); neither is a usable key.
+    assert(jubjubPointX(pk) != 0, "That point is not a signing key");
+    const cFull = transientHash<SchnorrHashInput<n>>(SchnorrHashInput<n> {
+      annX: jubjubPointX(sig.announcement), annY: jubjubPointY(sig.announcement),
+      pkX: jubjubPointX(pk), pkY: jubjubPointY(pk), msg: msg });
+    const TWO_248: Field = 452312848583266388373324160190187140051835877600158453279131187530910662656 as Field;
+    const [q, c] = schnorrReduction(cFull);
+    // floor((p - 1) / 2^248) = 115 for the BLS12-381 scalar field p: bounds q so the
+    // reduction holds over the integers, not mod p (else any challenge could be chosen).
+    assert(disclose(q) < 116, "Schnorr quotient out of range");
+    assert(disclose(q) * TWO_248 + (disclose(c) as Field) == cFull, "Invalid challenge reduction");
+    const lhs = ecMulGenerator(sig.response);
+    const rhs = ecAdd(sig.announcement, ecMul(pk, disclose(c) as Field));
+    assert(jubjubPointX(lhs) == jubjubPointX(rhs) && jubjubPointY(lhs) == jubjubPointY(rhs),
+           "The laboratory signature does not verify");
+  }
+
+  /** The full challenge hash, for the off-chain signer (which reduces it mod 2^248). */
+  export pure circuit schnorrChallenge<#n>(annX: Field, annY: Field, pkX: Field, pkY: Field, msg: Vector<n, Field>): Field {
+    return transientHash<SchnorrHashInput<n>>(SchnorrHashInput<n> { annX: annX, annY: annY, pkX: pkX, pkY: pkY, msg: msg });
+  }
+}

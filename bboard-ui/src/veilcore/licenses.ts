@@ -1,6 +1,7 @@
-// Veilcore licensing store — a license is a first-class instrument with a lifecycle,
-// bound to a strain record and its DNA fingerprint so the terms travel with the
-// genetics. Persisted to localStorage. Records obligations; never moves money.
+// VeilCore licensing store — a license is a first-class instrument with a lifecycle,
+// attached to a cultivar record and its report fingerprint. Saved to the registry.
+// Records obligations; never moves money. Signing here records a time, not a
+// cryptographic signature, and in the demo settlement is simulated.
 // SPDX-License-Identifier: Apache-2.0
 
 import { useSyncExternalStore } from 'react';
@@ -38,7 +39,7 @@ export type LicenseTerms = {
   noPropagationBeyondPurpose?: boolean;
   onCompletion?: 'return' | 'destroy';
   confidentiality?: boolean;
-  // breeder share (sharing a cut)
+  // breeder share (sharing material with another breeder)
   mayBreed?: boolean;
   mayDistribute?: boolean;
   attributionRequired?: boolean;
@@ -224,22 +225,22 @@ const subscribe = (l: () => void): (() => void) => {
 
 export const useLicenses = (): License[] => useSyncExternalStore(subscribe, () => licenses);
 
-// ---- Veilcore platform fee ----
+// ---- VeilCore platform fee ----
 // Single source of truth — change this one constant to change the fee everywhere.
 export const VEILCORE_FEE_PCT = 3;
 
-/** Whether to surface Veilcore's fee in the UI. Off — the revenue model is a
+/** Whether to surface VeilCore's fee in the UI. Off — the revenue model is a
  flat fee and lives in the investor deck, not the product. */
 export const SHOW_VEILCORE_FEE = false;
 
-/** Veilcore's fee for a given deal value (a calculated obligation, never a charge). */
+/** VeilCore's fee for a given deal value (a calculated obligation, never a charge). */
 export const veilcoreFee = (dealValue: number): number => (dealValue * VEILCORE_FEE_PCT) / 100;
 
 /** The deal value a royalty report represents: reported sales (percent) or units × fee (flat). */
 export const dealValueOf = (l: License, input: number): number =>
   l.terms.royaltyType === 'percent' ? input : input * (Number(l.terms.royaltyAmount) || 0);
 
-export const FEE_NOTE = `Veilcore fee (${VEILCORE_FEE_PCT}% of deal value) — calculated, not collected.`;
+export const FEE_NOTE = `VeilCore fee (${VEILCORE_FEE_PCT}% of deal value) — calculated, not collected.`;
 
 // display helpers
 export const RIGHTS_LABEL: Record<Rights, string> = {
@@ -259,7 +260,7 @@ export const STATE_LABEL: Record<LicenseState, string> = {
 export const agreementType = (l: License): AgreementType => l.type ?? 'license';
 
 /**
- * Whether the Veilcore fee applies. A license is always commercial. A breeder share is
+ * Whether the VeilCore fee applies. A license is always commercial. A breeder share is
  * commercial only when it sets an offspring royalty (> 0) — otherwise it's a free share.
  * A lab transfer is custody, never commerce.
  */
@@ -294,11 +295,11 @@ export const AGREEMENT_ACTION: Record<AgreementType, string> = {
 };
 
 export const AGREEMENT_TAGLINE: Record<AgreementType, string> = {
-  license: 'A commercial licensing deal — rights, territory, royalty, and exclusivity, bound to the genetics.',
+  license: 'A commercial licensing deal — rights, territory, royalty, and exclusivity, attached to the record.',
   'lab-transfer':
-    'Sending your genetics to a lab? Bind the terms to the record and its DNA fingerprint before it leaves your hands.',
+    'Sending your genetics to a lab? Attach the terms to the record and its report fingerprint before it leaves your hands.',
   'breeder-share':
-    "Sharing a cut with another breeder? Handshakes are how cuts get renamed and sold as someone else's work. Put terms on it.",
+    "Sharing material with another breeder? Handshakes are how varieties get renamed and sold as someone else's work. Put terms on it.",
 };
 
 export const LAB_PURPOSE_LABEL: Record<LabPurpose, string> = {
@@ -337,15 +338,15 @@ export const agreementRows = (l: License): { k: string; v: string }[] => {
             : `${money(Number(t.royaltyAmount) || 0)} ${t.unitBasis}`,
       },
       ...(SHOW_VEILCORE_FEE
-        ? [{ k: `Veilcore fee (${VEILCORE_FEE_PCT}% of deal value)`, v: 'calculated, not collected' }]
+        ? [{ k: `VeilCore fee (${VEILCORE_FEE_PCT}% of deal value)`, v: 'calculated, not collected' }]
         : []),
       // Shown explicitly because it is the one term that binds beyond the signatories:
-      // it follows the genetics into every descendant, so a counter-signer has to see it.
+      // it carries to descendants declared from the record, so a counter-signer has to see it.
       {
         k: 'Royalty on offspring',
         v:
           (Number(t.offspringRoyaltyPct) || 0) > 0
-            ? `${t.offspringRoyaltyPct}% — binds anything bred from this cultivar`
+            ? `${t.offspringRoyaltyPct}% — on descendants declared from this cultivar`
             : 'None',
       },
       { k: 'Exclusivity', v: t.exclusive ? 'Exclusive' : 'Non-exclusive' },
@@ -369,7 +370,7 @@ export const agreementRows = (l: License): { k: string; v: string }[] => {
     );
     // An offspring royalty makes it a commercial deal — the fee applies, same as a license.
     if (offspringRoyalty > 0 && SHOW_VEILCORE_FEE) {
-      rows.push({ k: `Veilcore fee (${VEILCORE_FEE_PCT}% of deal value)`, v: 'calculated, not collected' });
+      rows.push({ k: `VeilCore fee (${VEILCORE_FEE_PCT}% of deal value)`, v: 'calculated, not collected' });
     }
     rows.push({ k: 'Term', v: `${t.startDate} → ${t.endDate}` });
   }

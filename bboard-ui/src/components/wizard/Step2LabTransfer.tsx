@@ -1,5 +1,5 @@
 // Wizard step 2 — Send to a lab. A lab-transfer agreement (custody, not commerce): terms
-// bound to the genetics before the material physically leaves the breeder's hands. Fully
+// attached to the record before the material physically leaves the breeder's hands. Fully
 // skippable — a breeder who isn't sending anything anywhere moves on in one click.
 // SPDX-License-Identifier: Apache-2.0
 

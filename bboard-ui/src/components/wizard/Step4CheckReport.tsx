@@ -1,36 +1,39 @@
-// Step 4 — Prove ownership. To prove they hold a strain, the breeder RE-DROPS the DNA
-// report; it is fingerprinted locally and matched against an existing record. Nothing
-// about the genetics is revealed — the honest demonstration of zero-knowledge ownership.
+// Step 4 — Check a report matches a record. The holder picks a lab report file; it is
+// fingerprinted in this browser and compared with the report fingerprints paired to the
+// records this browser holds. Nothing is sent anywhere, so the result is for the holder:
+// nobody else sees it or can verify it from here. It shows possession of a matching
+// file, nothing about ownership, and it is not a proof a third party can check. A third
+// party checks a record on the verify page, and its date once the record is anchored.
 // SPDX-License-Identifier: Apache-2.0
 
 import React, { useState } from 'react';
-import { Alert, Box, Button, Chip, CircularProgress, Stack, Typography } from '@mui/material';
-import HandshakeIcon from '@mui/icons-material/HandshakeOutlined';
+import { Alert, Box, Button, CircularProgress, Stack, Typography } from '@mui/material';
+import FactCheckIcon from '@mui/icons-material/FactCheckOutlined';
 import GppBadIcon from '@mui/icons-material/GppBadOutlined';
 import { fingerprintFile } from '../../veilcore/commitment';
 import { findByDnaFingerprint } from '../../veilcore/records';
 import { Dropzone } from './Dropzone';
 import { FingerprintReveal } from './FingerprintReveal';
 
-export const Step4ProveOwnership: React.FC<{ onBack: () => void; onRestart: () => void; onDone?: () => void }> = ({
+export const Step4CheckReport: React.FC<{ onBack: () => void; onRestart: () => void; onDone?: () => void }> = ({
   onBack,
   onRestart,
   onDone,
 }) => {
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
-  const [proof, setProof] = useState<{ ok: boolean; strain?: string; fingerprint?: string }>();
+  const [result, setResult] = useState<{ ok: boolean; name?: string; id?: string; fingerprint?: string }>();
   const [error, setError] = useState<string>();
 
-  const onProve = async () => {
+  const onCheck = async () => {
     if (!file) return;
     setBusy(true);
     setError(undefined);
-    setProof(undefined);
+    setResult(undefined);
     try {
-      const dnaHex = await fingerprintFile(file);
-      const match = findByDnaFingerprint(dnaHex);
-      setProof({ ok: !!match, strain: match?.strainName, fingerprint: dnaHex });
+      const reportHex = await fingerprintFile(file);
+      const match = findByDnaFingerprint(reportHex);
+      setResult({ ok: !!match, name: match?.strainName, id: match?.id, fingerprint: reportHex });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -42,31 +45,26 @@ export const Step4ProveOwnership: React.FC<{ onBack: () => void; onRestart: () =
     <Stack spacing={2.5}>
       <Box>
         <Typography variant="h5" sx={{ mb: 0.5 }}>
-          Prove prior possession
+          Check a report matches this record
         </Typography>
         <Typography variant="body2" color="text.secondary">
-          Licensing your genetics? Prove you had it first — and reveal nothing.
+          Pick a lab report file to see whether it is the one paired with a record you hold.
         </Typography>
       </Box>
 
-      <Alert icon={<HandshakeIcon />} severity="info" variant="outlined">
-        A contract binds whoever signed it. This is the evidence you bring to it — what you held, and when, established
-        before any dispute.
+      <Alert icon={<FactCheckIcon />} severity="info" variant="outlined">
+        This check runs only in your browser and sends nothing, so it is for you. It shows you have a file matching the
+        report paired with a record. It does not show ownership, and nobody else can verify it from here. Others check a
+        record on its verify page, and its date once the record is anchored.
       </Alert>
 
-      {!proof?.ok && (
-        <>
-          <Typography variant="body2" color="text.secondary">
-            Re-drop the same DNA report to prove you hold this cultivar. It&apos;s fingerprinted locally and matched —
-            nothing about the genetics is revealed or uploaded.
-          </Typography>
-          <Dropzone
-            file={file}
-            onFile={setFile}
-            title="Drag the DNA report here to prove prior possession"
-            hint="The same report file — read locally, never uploaded."
-          />
-        </>
+      {!result?.ok && (
+        <Dropzone
+          file={file}
+          onFile={setFile}
+          title="Drag the lab report here, or click to choose"
+          hint="Read and fingerprinted locally, never uploaded."
+        />
       )}
 
       {error && (
@@ -75,28 +73,26 @@ export const Step4ProveOwnership: React.FC<{ onBack: () => void; onRestart: () =
         </Alert>
       )}
 
-      {proof && !proof.ok && (
+      {result && !result.ok && (
         <Alert icon={<GppBadIcon />} severity="error" variant="outlined">
-          No record matches this report. Log and pair the cultivar first, then come back to prove it.
+          No record you hold has this report paired. Log the cultivar and pair the report first.
         </Alert>
       )}
 
-      {proof?.ok && (
+      {result?.ok && (
         <Stack spacing={2}>
           <FingerprintReveal
-            fingerprint={proof.fingerprint ?? ''}
-            headline="Prior possession proven — and nothing was revealed."
-            sub="You demonstrated you hold this cultivar by matching its fingerprint locally. No genetics, no details — zero bytes left your device."
+            fingerprint={result.fingerprint ?? ''}
+            headline="Match found."
+            sub="This file was fingerprinted in your browser and was not uploaded."
           />
           <Alert severity="success" variant="outlined">
-            <Typography variant="subtitle2">Prior possession proven. Now you can license it.</Typography>
+            <Typography variant="subtitle2">This file matches the report paired with {result.name}.</Typography>
             <Typography variant="body2" sx={{ mt: 0.5, color: 'text.secondary' }}>
-              You hold <b>{proof.strain}</b>. A licensee can verify this proof before they sign.
+              Record {result.id}. A match means the file is byte-for-byte the one you paired; it says nothing about the
+              genetics and nothing about ownership.
             </Typography>
           </Alert>
-          <Box>
-            <Chip color="primary" variant="outlined" label="This is what makes a licensing deal enforceable." />
-          </Box>
         </Stack>
       )}
 
@@ -104,23 +100,23 @@ export const Step4ProveOwnership: React.FC<{ onBack: () => void; onRestart: () =
         <Button variant="text" onClick={onBack}>
           Back
         </Button>
-        {!proof?.ok ? (
+        {!result?.ok ? (
           <Button
             variant="contained"
             size="large"
             disabled={busy || !file}
             startIcon={busy ? <CircularProgress size={18} color="inherit" /> : undefined}
-            onClick={onProve}
+            onClick={onCheck}
           >
-            {busy ? 'Proving locally…' : 'Prove I own it'}
+            {busy ? 'Checking locally…' : 'Check match'}
           </Button>
         ) : onDone ? (
           <Button variant="contained" onClick={onDone}>
-            Continue — license your genetics
+            Continue
           </Button>
         ) : (
           <Button variant="contained" onClick={onRestart}>
-            Log another cultivar
+            Done
           </Button>
         )}
       </Stack>

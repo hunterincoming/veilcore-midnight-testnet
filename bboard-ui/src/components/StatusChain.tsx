@@ -1,4 +1,4 @@
-// StatusChain — a strain's progress at a glance: Logged → DNA paired → Receipt confirmed → Licensed.
+// StatusChain — a cultivar's progress at a glance: Logged → DNA paired → Receipt confirmed → Licensed.
 // SPDX-License-Identifier: Apache-2.0
 
 import React from 'react';

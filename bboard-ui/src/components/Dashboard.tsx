@@ -1,4 +1,4 @@
-// Dashboard — the breeder's home once they have records: every strain with its status
+// Dashboard — the breeder's home once they have records: every cultivar with its status
 // chain and next action, plus demo data portability (export / import / reset).
 // SPDX-License-Identifier: Apache-2.0
 
@@ -96,13 +96,14 @@ export const Dashboard: React.FC = () => {
             </Box>
           </Typography>
           <Typography variant="body1" color="text.secondary" sx={{ maxWidth: 560, mx: 'auto', mb: 2 }}>
-            A tamper-evident record of when you logged a cultivar and what it is, paired with its DNA report
-            fingerprint. DNA reports are fingerprinted on your device and never leave it; the details you type are saved
-            to the VeilCore registry.
+            A tamper-evident record of a cultivar you hold, which can carry its lab report&apos;s fingerprint. Lab and
+            DNA reports are fingerprinted on your device and never leave it; the details you type are saved on
+            VeilCore&apos;s test server.
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 560, mx: 'auto', mb: 4 }}>
-            Built for breeders and the labs that hold their material. Anyone you send a record to can verify it — free,
-            no account, forever. Terms you attach follow the genetics into every descendant.
+            Built for breeders and the labs that hold their material. Anyone you send a record to can check it, free and
+            with no account. Terms you attach apply to descendants declared from the record; undeclared propagation is
+            not detected.
           </Typography>
           <Button component={RouterLink} to="/new" variant="contained" size="large" startIcon={<AddIcon />}>
             Log your first cultivar

@@ -1,4 +1,6 @@
-// HeritableRights — obligations that ride along with descendants.
+// HeritableRights — obligations that carry to declared descendants. Only descendants
+// logged with this cultivar as a parent, with both holders confirming the link, carry
+// the obligation; propagation nobody records is not detected.
 //
 // An obligation is never entered here. It is created by an agreement that carries an
 // offspring royalty, and discharged when that agreement is revoked. Terms live in one
@@ -54,8 +56,9 @@ export const HeritableRights: React.FC<{ record: StrainRecord }> = ({ record }) 
       </Stack>
 
       <Typography variant="body2" color="text.secondary">
-        An agreement with an offspring royalty binds every descendant of this cultivar — including cuttings that do not
-        exist yet. Descendants cannot prove clean descent until it is discharged.
+        An offspring royalty applies to descendants declared from this cultivar: those logged with it as a parent, with
+        both holders confirming the link. Those descendants cannot show clean descent until it is discharged. Undeclared
+        propagation is not detected.
       </Typography>
 
       {heritable.length > 0 ? (

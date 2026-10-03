@@ -72,7 +72,7 @@ export const NextStep: React.FC<{
   } else {
     step = {
       title: 'This record is ready to use',
-      why: 'A second party has taken delivery and confirmed it with their own key \u2014 what that establishes is that somebody received this material, not who they are. You can send material onward or license it with terms that follow the genetics into every descendant.',
+      why: 'A second party has taken delivery and confirmed it with their own key \u2014 what that establishes is that somebody received this material, not who they are. You can send material onward or license it, with terms that apply to descendants declared from this record.',
       action: 'Start an agreement',
       icon: <SendIcon />,
       onClick: onAgreement,

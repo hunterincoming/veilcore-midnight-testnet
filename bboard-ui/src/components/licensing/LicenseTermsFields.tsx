@@ -37,7 +37,7 @@ export const LicenseTermsFields: React.FC<{ terms: LicenseTerms; set: SetTerm }>
       fullWidth
     >
       <MenuItem value="cultivate">Cultivate only</MenuItem>
-      <MenuItem value="cultivate+propagate">Cultivate + propagate (make cuts/seeds)</MenuItem>
+      <MenuItem value="cultivate+propagate">Cultivate + propagate (cuttings or seed)</MenuItem>
       <MenuItem value="full-transfer">Full transfer of rights</MenuItem>
     </TextField>
     <TextField
@@ -60,7 +60,7 @@ export const LicenseTermsFields: React.FC<{ terms: LicenseTerms; set: SetTerm }>
       <TextField
         label="End date"
         type="date"
-        helperText="The license expires automatically after this."
+        helperText="Shown as expired after this date."
         value={t.endDate}
         onChange={(e) => set('endDate', e.target.value)}
         fullWidth
@@ -101,7 +101,7 @@ export const LicenseTermsFields: React.FC<{ terms: LicenseTerms; set: SetTerm }>
     <Stack direction="row" spacing={2} sx={{ flexWrap: 'wrap' }}>
       <TextField
         label="Royalty on offspring (%)"
-        helperText="Follows the genetics, not the sale. Binds anything bred from this cultivar — including cuttings the licensee passes on. Leave blank if none."
+        helperText="Applies to descendants declared from this record (logged with it as a parent, both holders confirming). Undeclared propagation is not detected. Leave blank if none."
         value={t.offspringRoyaltyPct ?? ''}
         onChange={(e) => set('offspringRoyaltyPct', e.target.value)}
         sx={{ minWidth: 260 }}
@@ -167,7 +167,7 @@ export const emptyTermsFor = (type: AgreementType): LicenseTerms => {
   return base;
 };
 
-// ---- Lab transfer: custody, not commerce. No royalty, no Veilcore fee. ----
+// ---- Lab transfer: custody, not commerce. No royalty, no VeilCore fee. ----
 export const LabTransferFields: React.FC<{ terms: LicenseTerms; set: SetTerm }> = ({ terms: t, set }) => (
   <Stack spacing={2.5}>
     <TextField
@@ -249,12 +249,12 @@ export const LabTransferFields: React.FC<{ terms: LicenseTerms; set: SetTerm }> 
   </Stack>
 );
 
-// ---- Breeder share: sharing a cut with another breeder. ----
+// ---- Breeder share: sharing material with another breeder. ----
 export const BreederShareFields: React.FC<{ terms: LicenseTerms; set: SetTerm }> = ({ terms: t, set }) => (
   <Stack spacing={2.5}>
     <TextField
       label="Receiving breeder"
-      helperText="Who you're sharing the cut with."
+      helperText="Who you're sharing this material with."
       value={t.licensee}
       onChange={(e) => set('licensee', e.target.value)}
       fullWidth
@@ -280,7 +280,7 @@ export const BreederShareFields: React.FC<{ terms: LicenseTerms; set: SetTerm }>
     </Stack>
     <TextField
       label="Royalty on offspring (%)"
-      helperText="Your cut of anything they breed from it. Leave blank for none."
+      helperText="Your share of revenue from descendants they declare from it. Undeclared offspring are not detected. Leave blank for none."
       value={t.offspringRoyaltyPct ?? ''}
       onChange={(e) => set('offspringRoyaltyPct', e.target.value)}
       sx={{ maxWidth: 260 }}

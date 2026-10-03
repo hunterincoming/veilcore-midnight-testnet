@@ -21,7 +21,7 @@ export const ProgressPath: React.FC<{ current: number; skipped?: number[] }> = (
 
       return (
         <React.Fragment key={label}>
-          <Stack sx={{ alignItems: 'center', flex: '0 0 auto', width: 72 }}>
+          <Stack sx={{ alignItems: 'center', flex: '0 0 auto', width: { xs: 48, sm: 72 } }}>
             <Box
               sx={{
                 width: 34,
@@ -48,6 +48,7 @@ export const ProgressPath: React.FC<{ current: number; skipped?: number[] }> = (
               variant="caption"
               sx={{
                 mt: 1,
+                fontSize: { xs: 10, sm: 12 },
                 textAlign: 'center',
                 lineHeight: 1.2,
                 color: active ? 'text.primary' : 'text.secondary',

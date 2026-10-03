@@ -1,6 +1,7 @@
-// Step 2 — Pair your DNA report. The breeder uploads the report their testing lab
-// returned; it is fingerprinted locally and paired to the Step 1 record. We do not
-// sequence DNA in-app, and we stay lab-agnostic.
+// Step 2 — Pair a lab report. The breeder picks the report their testing lab returned;
+// the file is fingerprinted locally and never uploaded. Its fingerprint and file name are
+// saved with the record on VeilCore's test server. Pairing is the holder's own statement
+// that this report belongs to this record; it is not a check of the genetics.
 // SPDX-License-Identifier: Apache-2.0
 
 import React, { useState } from 'react';
@@ -53,8 +54,8 @@ export const Step2PairDna: React.FC<{
       <Stack spacing={2}>
         <FingerprintReveal
           fingerprint={paired.dnaFingerprint}
-          headline="Zero bytes left your device."
-          sub="Your lab report was read and fingerprinted right here in your browser. The file itself was never uploaded."
+          headline="The report file stayed on your device."
+          sub="It was read and fingerprinted here in your browser. Its fingerprint and file name were saved with your record."
         />
         {/* the 1-2 punch completing */}
         <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap' }}>
@@ -64,7 +65,7 @@ export const Step2PairDna: React.FC<{
             transition={{ duration: 0.5 }}
             color="primary"
             variant="outlined"
-            label={`WHEN & who · ${shortFingerprint(paired.recordFingerprint)}`}
+            label={`Record · ${shortFingerprint(paired.recordFingerprint)}`}
           />
           <LinkIcon sx={{ color: 'primary.main' }} />
           <MChip
@@ -73,23 +74,23 @@ export const Step2PairDna: React.FC<{
             transition={{ duration: 0.5 }}
             color="primary"
             variant="outlined"
-            label={`WHAT · ${shortFingerprint(paired.dnaFingerprint)}`}
+            label={`Report · ${shortFingerprint(paired.dnaFingerprint)}`}
           />
         </Stack>
         {conflicts.length > 0 && (
           <Alert severity="warning" variant="outlined">
-            Heads up: this genetic fingerprint also matches {conflicts.length} other record
-            {conflicts.length === 1 ? '' : 's'} on this device
+            Heads up: this report fingerprint is also paired with {conflicts.length} other record
+            {conflicts.length === 1 ? '' : 's'} you hold
             {yoursFirst
-              ? ' — but your record here was logged first, so it has priority.'
-              : `. An earlier record — ${priority.strainName}, logged ${new Date(
+              ? '. This record was sealed earliest, by the clocks of the devices that sealed them.'
+              : `. ${priority.strainName} was sealed earlier (${new Date(
                   priority.loggedAt,
-                ).toLocaleDateString()} — has priority.`}
+                ).toLocaleDateString()}, by its device's clock).`}
           </Alert>
         )}
         <Alert severity="success" variant="outlined">
-          Paired. Your record now proves both <b>when</b> you made it and <b>what</b> it genetically is — the complete
-          picture.
+          Paired. The record now carries your lab report&apos;s fingerprint, as your statement that this report belongs
+          to it. It is not a check of the genetics.
         </Alert>
         <Box>
           <Button variant="contained" size="large" onClick={onDone}>
@@ -104,10 +105,11 @@ export const Step2PairDna: React.FC<{
     <Stack spacing={2.5}>
       <Box>
         <Typography variant="h5" sx={{ mb: 0.5 }}>
-          Pair your DNA report
+          Pair your lab report
         </Typography>
         <Typography variant="body2" color="text.secondary">
-          Got your DNA test back from the lab? Pair it to prove what your cultivar genetically is.
+          Got your DNA test back from the lab? Pair the report with this record, so it can later be compared against a
+          fresh test.
         </Typography>
         {record && (
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
@@ -117,8 +119,9 @@ export const Step2PairDna: React.FC<{
       </Box>
 
       <Alert icon={<ScienceIcon />} severity="info" variant="outlined">
-        You get a DNA report from a testing lab. Veilcore doesn&apos;t sequence anything — you just pair the report you
-        already have. It&apos;s read and fingerprinted on your device; the file never leaves.
+        You get a DNA report from a testing lab. VeilCore doesn&apos;t sequence anything — you pair the report you
+        already have. It&apos;s read and fingerprinted on your device; the file is never uploaded. Its fingerprint and
+        file name are saved with your record.
       </Alert>
 
       <Dropzone

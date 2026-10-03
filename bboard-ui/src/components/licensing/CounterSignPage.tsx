@@ -1,6 +1,7 @@
-// CounterSignPage (/license/:id/sign) — the licensee's view. They review the full terms
-// and counter-sign; only then does the license become Active. Also lets a licensee prove
-// they hold valid rights without exposing the terms or genetics (prove-a-license).
+// CounterSignPage (/license/:id/sign) — the licensee's view. They review the terms and
+// counter-sign; in this demo that records the time of signing in the registry and marks
+// the agreement active. It is not a cryptographic signature (licenses.ts sets
+// licenseeSignedAt and nothing else), so the page must not call it one.
 // SPDX-License-Identifier: Apache-2.0
 
 import React from 'react';
@@ -54,7 +55,7 @@ export const CounterSignPage: React.FC = () => {
               <Chip size="small" variant="outlined" label={AGREEMENT_LABEL[agreementType(license)]} />
             </Stack>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2.5 }}>
-              Read the terms below. It only becomes binding when you counter-sign.
+              Read the terms below. It becomes active in this demo when you counter-sign.
             </Typography>
 
             <Stack spacing={1}>
@@ -65,8 +66,8 @@ export const CounterSignPage: React.FC = () => {
 
             {agreementType(license) === 'breeder-share' && license.terms.mayBreed && (
               <Alert severity="info" variant="outlined" sx={{ mt: 2 }}>
-                You may breed with this cut — but any cultivar you log with it as a parent stays traceable through the
-                lineage graph, linking the offspring back to this agreement.
+                You may breed with this material. A cultivar logged with it as a parent links back to this agreement in
+                the lineage graph. Offspring nobody logs are not detected.
               </Alert>
             )}
 
@@ -75,8 +76,8 @@ export const CounterSignPage: React.FC = () => {
             {effectiveState(license) === 'sent' && (
               <Stack spacing={1.5}>
                 <Typography variant="body2" color="text.secondary">
-                  Signing here is a cryptographic signature binding you to this record. (It is not a qualified/eIDAS
-                  electronic signature.)
+                  In this demo, signing records the time you signed in VeilCore&apos;s registry. It is not a
+                  cryptographic signature and not a qualified (eIDAS) electronic signature.
                 </Typography>
                 <Button variant="contained" size="large" onClick={() => countersignLicense(license.id)}>
                   Review complete — sign &amp; accept
@@ -93,8 +94,8 @@ export const CounterSignPage: React.FC = () => {
             {effectiveState(license) === 'active' && (
               <Stack spacing={1.5}>
                 <Alert severity="success" variant="outlined">
-                  Active — both parties have signed. The terms are bound to the record, and what that is worth in a
-                  dispute is for the parties and, if it comes to it, a court.
+                  Active in this demo: both parties have signed (signing is simulated). The terms are attached to the
+                  record. What they are worth in a dispute is for the parties and, if it comes to it, a court.
                 </Alert>
                 {/* This button used to set a boolean and render "license proven". No
                     circuit ran, nothing was checked, and the word next to it was

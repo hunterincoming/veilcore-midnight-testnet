@@ -25,7 +25,6 @@ import {
   schemaIdOf,
   sealFields,
   setRootOf,
-  treeOf as treeOfSet,
 } from "../fields.js";
 import {
   JUBJUB_ORDER,

@@ -10,6 +10,21 @@
       "require": "./dist/veilcore.js",
       "import": "./dist/veilcore.js",
       "default": "./dist/veilcore.js"
+    },
+    "./claims": {
+      "types": "./dist/claims.d.ts",
+      "import": "./dist/claims.js",
+      "default": "./dist/claims.js"
+    },
+    "./field-schema": {
+      "types": "./dist/field-schema.d.ts",
+      "import": "./dist/field-schema.js",
+      "default": "./dist/field-schema.js"
+    },
+    "./verify-claims": {
+      "types": "./dist/verify-claims.d.ts",
+      "import": "./dist/verify-claims.js",
+      "default": "./dist/verify-claims.js"
     }
   },
   "scripts": {

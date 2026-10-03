@@ -180,10 +180,9 @@ const runWithReduction = (
     init.currentContractState,
     {},
   );
-  const fn = c.impureCircuits.proveAttestedRange as unknown as (
-    c: unknown,
-    ...a: unknown[]
-  ) => unknown;
+  const fn = c.impureCircuits.proveAttestedRange.bind(
+    c.impureCircuits,
+  ) as unknown as (c: unknown, ...a: unknown[]) => unknown;
   fn(ctx, ...args);
 };
 

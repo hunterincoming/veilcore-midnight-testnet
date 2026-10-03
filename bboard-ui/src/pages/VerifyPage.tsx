@@ -17,6 +17,8 @@ import { shortFingerprint } from '../veilcore/commitment';
 import { GENETICS_LABEL } from '../veilcore/disclosure';
 import { TEAL } from '../config/theme';
 import { NETWORK, isTestNetwork, networkLabel } from '../config/network';
+import { REAL_CHAIN } from '../veilcore/chain/config';
+import { VerifierChallengePanel } from '../components/chain/VerifierChallengePanel';
 
 const API = import.meta.env.VITE_API_BASE ?? '';
 const fmt = (t: number | string) => new Date(t).toLocaleString();
@@ -348,6 +350,13 @@ export const VerifyPage: React.FC = () => {
               />
             </Box>
           </Paper>
+        )}
+        {/* Real-chain builds: the holder's link may name the record's on-chain identity
+            (?chain=…&anchorTx=…). It is their statement; the panel checks it on chain. */}
+        {REAL_CHAIN && result?.found && params.get('chain') && (
+          <VerifierChallengePanel
+            claim={{ identity: params.get('chain') ?? '', txId: params.get('anchorTx') ?? undefined }}
+          />
         )}
       </Container>
     </Box>

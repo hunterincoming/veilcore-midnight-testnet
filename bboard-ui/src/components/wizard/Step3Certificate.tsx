@@ -19,6 +19,9 @@ import { NETWORK, networkLabel } from '../../config/network';
 import { useLicenses, activeLicenseCount, licensesForRecord } from '../../veilcore/licenses';
 import { shortFingerprint } from '../../veilcore/commitment';
 import { TEAL } from '../../config/theme';
+import { REAL_CHAIN } from '../../veilcore/chain/config';
+import { ProveOwnershipPanel } from '../chain/ProveOwnershipPanel';
+import { useRecordKeys } from '../../veilcore/record-keys';
 
 const fmtStamp = (ms: number) => new Date(ms).toLocaleString();
 
@@ -42,6 +45,7 @@ export const Step3Certificate: React.FC<{ recordId: string; onDone: () => void; 
   const certRef = useRef<HTMLDivElement>(null);
   const [toast, setToast] = useState<string>();
   const record = getRecord(recordId);
+  const anchorHere = useRecordKeys()[recordId]?.anchor;
   const [integrity, setIntegrity] = useState<IntegrityCheck | 'checking'>('checking');
   const [anchor, setAnchor] = useState<ProofState | 'checking'>('checking');
 
@@ -172,6 +176,13 @@ export const Step3Certificate: React.FC<{ recordId: string; onDone: () => void; 
                 {anchorLine}
               </Box>
             </Field>
+            {REAL_CHAIN && anchorHere && (
+              <Field label="On-chain identity (test network)">
+                <Box component="span" sx={{ wordBreak: 'break-all' }}>
+                  {shortFingerprint(anchorHere.identity)} · block {anchorHere.blockHeight}
+                </Box>
+              </Field>
+            )}
             <Field label="DNA report paired">
               {record.dnaFingerprint ? (
                 <Box component="span" sx={{ color: TEAL }}>
@@ -216,6 +227,8 @@ export const Step3Certificate: React.FC<{ recordId: string; onDone: () => void; 
           {shortFingerprint(record.recordFingerprint)}
         </Typography>
       </Box>
+
+      {REAL_CHAIN && <ProveOwnershipPanel recordId={recordId} />}
 
       <Stack direction="row" spacing={1.5} sx={{ flexWrap: 'wrap' }}>
         <Button variant="text" onClick={onBack}>

@@ -21,6 +21,8 @@ import { LineageGraph } from './LineageGraph';
 import { HeritableRights } from './HeritableRights';
 import { NextStep } from './NextStep';
 import { SettlementStatus } from './SettlementStatus';
+import { REAL_CHAIN } from '../veilcore/chain/config';
+import { AnchorOnChainPanel } from './chain/AnchorOnChainPanel';
 import { AttestationPanel } from './AttestationPanel';
 import { RecordHistory } from './RecordHistory';
 import { SendToLab } from './SendToLab';
@@ -156,6 +158,7 @@ export const RecordDetail: React.FC = () => {
 
           <Paper sx={{ p: { xs: 2.5, md: 3 } }}>
             <SettlementStatus record={record} />
+            {REAL_CHAIN && <AnchorOnChainPanel recordId={record.id} />}
           </Paper>
 
           {/* Every other panel answers "what is true now". A dispute asks "what happened,

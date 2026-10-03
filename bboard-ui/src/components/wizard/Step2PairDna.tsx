@@ -13,6 +13,8 @@ import { fingerprintFile, shortFingerprint } from '../../veilcore/commitment';
 import { getRecord, pairDna, conflictsFor, type StrainRecord } from '../../veilcore/records';
 import { FingerprintReveal } from './FingerprintReveal';
 import { Dropzone } from './Dropzone';
+import { REAL_CHAIN } from '../../veilcore/chain/config';
+import { PairDnaOnChainPanel } from '../chain/PairDnaOnChainPanel';
 
 const MChip = motion(Chip);
 
@@ -92,6 +94,7 @@ export const Step2PairDna: React.FC<{
           Paired. The record now carries your lab report&apos;s fingerprint, as your statement that this report belongs
           to it. It is not a check of the genetics.
         </Alert>
+        {REAL_CHAIN && <PairDnaOnChainPanel recordId={paired.id} />}
         <Box>
           <Button variant="contained" size="large" onClick={onDone}>
             Continue — see your certificate

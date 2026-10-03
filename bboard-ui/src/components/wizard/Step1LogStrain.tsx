@@ -29,6 +29,8 @@ import { createRecord, allRecords, type StrainRecord, type ParentRef } from '../
 import { PLANT_VARIETY_PROFILE } from '../../veilcore/envelope';
 import { FingerprintReveal } from './FingerprintReveal';
 import { TEAL } from '../../config/theme';
+import { REAL_CHAIN } from '../../veilcore/chain/config';
+import { AnchorOnChainPanel } from '../chain/AnchorOnChainPanel';
 
 const MBox = motion(Box);
 const today = () => new Date().toISOString().slice(0, 10);
@@ -117,6 +119,7 @@ export const Step1LogStrain: React.FC<{ onDone: (recordId: string) => void }> = 
             date ({record.dateCreated}) is recorded as your own claim.
           </Typography>
         </Alert>
+        {REAL_CHAIN && <AnchorOnChainPanel recordId={record.id} />}
         <Box>
           <Button variant="contained" size="large" onClick={() => onDone(record.id)}>
             Continue — send it to a lab

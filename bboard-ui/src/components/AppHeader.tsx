@@ -12,6 +12,7 @@ import AddIcon from '@mui/icons-material/Add';
 import { WalletBadge } from './veilcore/WalletBadge';
 import { TEAL } from '../config/theme';
 import { NETWORK, DEMO_MODE } from '../config/network';
+import { CHAIN_READY } from '../veilcore/chain/config';
 import { useI18n } from '../i18n';
 import { LanguagePicker } from '../i18n/LanguagePicker';
 
@@ -60,7 +61,7 @@ export const AppHeader: React.FC = () => {
       </Stack>
       <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center' }}>
         <LanguagePicker />
-        <WalletBadge network={NETWORK} demo={DEMO_MODE} />
+        <WalletBadge network={NETWORK} demo={DEMO_MODE && !CHAIN_READY} />
       </Stack>
     </Stack>
   );

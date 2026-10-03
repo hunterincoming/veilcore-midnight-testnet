@@ -19,11 +19,11 @@ change or recover a key · licences (issue, countersign, transfer, revoke, prove
 | 4 | Operator tool: deploy the claims contract, make claims, read them back; smoke test covers it | Nothing ships that has not run end to end on preprod | Built on `claims-contract`: menu options 34-40, claims verifier, smoke test 37 checks with the claims phase. Tested locally without proofs; **needs a preprod smoke run (Hunter)** |
 | 5 | Deploy the claims contract with **no** maintenance authority, provably (an empty committee, not a discarded key) | Otherwise every claim depends on trusting us | Built and tested against the real ledger code locally; the claims deploy does it by default. **Decision to confirm: Hunter + Mako** (recommended) |
 | 6 | Website demo uses the real test-network contracts, VeilCore pays the network fees | Today licensing and settlement in the demo are simulated | Planned |
-| 7 | Second, independent timestamp on Bitcoin (OpenTimestamps) for every batch | Courts in China and France leaned on it; dates no longer depend on Midnight alone | Planned |
-| 8 | One-click evidence package (record, proofs, timestamps, plain recompute guide, affidavit template) | What a lawyer or examiner actually receives | Planned |
-| 9 | Full data export, so nothing is lost if VeilCore stops | Everledger and TradeLens took their users' data with them | Planned |
+| 7 | Second, independent timestamp on Bitcoin (OpenTimestamps) for every batch | Dates no longer depend on Midnight alone; Chinese courts check consistency across chains | Built: the registry stamps every sealed batch and serves `root.bin` and `root.bin.ots`; files checked against the OpenTimestamps project's own parser. veilcore-api branch `ots`. Needs one real stamp from Railway after merge |
+| 8 | One-click evidence package (record, proofs, timestamps, plain recompute guide, affidavit template) | What a lawyer or examiner actually receives | Built in the SDK (`buildEvidencePackage`), with `verify.py` that runs on plain Python; tested against tampering. Website button comes with the SDK release |
+| 9 | Full data export, so nothing is lost if VeilCore stops | Everledger and TradeLens took their users' data with them | Built in the registry (`GET /api/export`), branch `ots`. Website button comes with the SDK release |
 | 10 | Verify timestamp tokens properly (signature, imprint) | Today the SDK only checks one is present (now says so plainly) | Planned |
-| 11 | Release checklist: test the offline maintenance key against the current Midnight SDK; check the indexer reads old state after a fork | Midnight issues #1409 and #1605 | Planned |
+| 11 | Release checklist: test the offline maintenance key against the current Midnight SDK; check the indexer reads old state after a fork | Midnight issues #1409 and #1605 | Done (`docs/release-checklist.md`) |
 | 12 | Full public review of site, docs and repos from every reader's angle | Every claim checked against the code | After 4-9 |
 
 ## Done today from the reviews
@@ -33,6 +33,16 @@ change or recover a key · licences (issue, countersign, transfer, revoke, prove
   "no users yet", preprod post, dates, lineage and licences described.
 - Three pre-existing input-handling gaps closed in all three implementations (null
   fields, missing required fields, unknown algorithm names).
+
+## Open design question
+
+**Claims are read from event cells, per transaction, through the indexer.** That keeps
+state from growing with use, but it means a claim is checked through Midnight's indexer
+and transaction decoding, which broke for old state after the 28 September fork
+(indexer #1605). The alternative, keeping every claim in contract state, grows state with
+every claim. Recommendation: keep event cells, and put each claim's raw transaction in the
+evidence package so it can be checked from the transaction itself; revisit with Midnight
+once #1605 is resolved.
 
 ## Honest limits that stay
 

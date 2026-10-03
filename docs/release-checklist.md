@@ -15,7 +15,12 @@ to skip.
 ## 2. Build and test
 
 - [ ] Contract compiled with the pinned compiler. The version is named in the commit.
-- [ ] Every circuit under the 700 ZKIR instruction budget.
+- [ ] Every circuit of the main contract under the 700 ZKIR instruction budget. The claims
+      contract's two-tree circuits (proveDistinct, proveUnchanged, k=19) are the
+      exception, and are proved once on the release proof server and once in a browser,
+      with times recorded in the deployment record.
+- [ ] Mutation testing on any changed contract (remove each assert, flip each comparison):
+      every surviving mutant is either a comment or explained in `docs/`.
 - [ ] `cd contract && npm test` passes, with the expected-fail attack tests still failing.
 - [ ] `SLOW_TESTS=1` and the long fuzz run (`FUZZ_RUNS`) pass for any contract change.
 - [ ] `cd bboard-cli && npx vitest run` and `cd api && npm run ci` pass.
@@ -35,6 +40,18 @@ to skip.
       current count).
 - [ ] Preprod smoke test (`npm run preprod-remote`, option 3) on the same build.
 - [ ] Fingerprints regenerated, committed, and matched by an independent build.
+- [ ] **The offline maintenance key still works with the SDK being released with.** Load
+      the paper copy into the current midnight-js and sign a no-op on preprod. (midnight-js
+      #1409: 4.x to 5.x stopped accepting stored signing keys, with no migration. A key
+      that the current SDK cannot load is a contract nobody can maintain.)
+- [ ] **Old state still reads.** After any Midnight network upgrade, query a pre-upgrade
+      anchor, a pre-upgrade claim and the licence tree through the indexer and decode
+      them with the release's client. (midnight-indexer #1605: after the 28 September
+      2026 hard fork, pre-fork contract state came back in an encoding new clients could
+      not decode.) Batch roots and record commitments are SHA-256 and do not depend on
+      this; claims, presentations and the licence tree do.
+- [ ] OpenTimestamps: the registry's last sealed batch has a `.ots` file, and an older
+      one upgrades and verifies with the official client (`ots upgrade`, `ots verify`).
 
 ## 5. Announce
 

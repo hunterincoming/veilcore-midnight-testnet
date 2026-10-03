@@ -12,6 +12,15 @@ declare global {
     readonly VITE_API_BASE: string;
     /** Midnight network the UI talks to. */
     readonly VITE_NETWORK_ID: string;
+    /** "1" turns on real transactions from the demo (veilcore/chain/config.ts). Off otherwise. */
+    readonly VITE_REAL_CHAIN?: string;
+    /** The demo contract on the test network, 64 hex characters. */
+    readonly VITE_REAL_CHAIN_CONTRACT_ADDRESS?: string;
+    /** The sponsor service that pays the network fee. */
+    readonly VITE_SPONSOR_URL?: string;
+    /** Optional indexer override; the network's public indexer otherwise. */
+    readonly VITE_INDEXER_URL?: string;
+    readonly VITE_INDEXER_WS_URL?: string;
   }
 
   interface ImportMeta {

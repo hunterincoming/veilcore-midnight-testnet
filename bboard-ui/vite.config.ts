@@ -71,6 +71,13 @@ export default defineConfig({
       },
     },
   ],
+  // The proving worker (src/veilcore/chain/prover.worker.ts) loads Midnight's
+  // WebAssembly prover, so it needs the same WebAssembly handling as the page. ES module
+  // workers; the page's Content-Security-Policy already allows worker-src 'self'.
+  worker: {
+    format: 'es',
+    plugins: () => [wasm(), topLevelAwait({ promiseExportName: '__tla', promiseImportName: (i) => `__tla_${i}` })],
+  },
   optimizeDeps: {
     rolldownOptions: {
       target: 'esnext',
@@ -86,6 +93,8 @@ export default defineConfig({
     include: ['@midnight-ntwrk/compact-runtime'],
     // Exclude WASM files and modules with top-level await from optimization
     exclude: [
+      '@midnight-ntwrk/zkir-v2',
+      '@midnight-ntwrk/ledger-v8',
       '@midnight-ntwrk/onchain-runtime-v3',
       '@midnight-ntwrk/onchain-runtime-v3/midnight_onchain_runtime_wasm_bg.wasm',
       '@midnight-ntwrk/onchain-runtime-v3/midnight_onchain_runtime_wasm.js',

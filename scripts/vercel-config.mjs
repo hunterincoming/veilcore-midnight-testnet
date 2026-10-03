@@ -10,6 +10,22 @@ const API_ORIGIN = new URL(
   process.env.VEILCORE_API_ORIGIN || process.env.VITE_API_BASE || 'https://veilcore-api-production.up.railway.app',
 ).origin;
 
+// Real-chain builds (VITE_REAL_CHAIN=1, see bboard-ui/src/veilcore/chain/config.ts) also
+// talk to Midnight's indexer (https and wss) and to VeilCore's sponsor service. Proofs
+// are made in a worker from this site's own /keys, /zkir and /params, so nothing else
+// is needed. A build without the flag gets exactly the policy below and nothing more.
+const REAL_CHAIN = process.env.VITE_REAL_CHAIN === '1';
+const chainOrigins = [];
+if (REAL_CHAIN) {
+  const sponsor = process.env.VITE_SPONSOR_URL;
+  if (!sponsor) throw new Error('VITE_REAL_CHAIN=1 needs VITE_SPONSOR_URL (the sponsor service), or the site cannot reach it.');
+  const network = (process.env.VITE_NETWORK_ID || 'preprod').toLowerCase();
+  if (network === 'mainnet') throw new Error('VITE_REAL_CHAIN=1 is for a test network only.');
+  const indexer = new URL(process.env.VITE_INDEXER_URL || `https://indexer.${network}.midnight.network/api/v4/graphql`);
+  const indexerWs = new URL(process.env.VITE_INDEXER_WS_URL || `wss://indexer.${network}.midnight.network/api/v4/graphql/ws`);
+  chainOrigins.push(new URL(sponsor).origin, indexer.origin, `${indexerWs.protocol}//${indexerWs.host}`);
+}
+
 // The content security policy. Checked against the built site in headless Chromium
 // (every page, zero violations) before it was tightened from the old
 // frame/plugin/base-only policy:
@@ -30,7 +46,7 @@ const csp = [
   "style-src 'self' 'unsafe-inline'",
   "font-src 'self' data:",
   "img-src 'self' data: blob:",
-  `connect-src 'self' ${API_ORIGIN} https://raw.githubusercontent.com`,
+  `connect-src 'self' ${API_ORIGIN} https://raw.githubusercontent.com${chainOrigins.length ? ` ${chainOrigins.join(' ')}` : ''}`,
   "worker-src 'self' blob:",
   "frame-ancestors 'none'",
   "base-uri 'self'",

@@ -94,7 +94,7 @@ export const CorrectRecord: React.FC<{ record: StrainRecord }> = ({ record }) =>
           <Stack spacing={2} sx={{ pt: 1 }}>
             <Typography variant="body2" color="text.secondary">
               This record stays exactly as it is. A correction creates a new record that supersedes it, and both remain
-              on file. Nothing is overwritten and nothing is deleted — that is what keeps the original usable as
+              on file. A correction overwrites nothing and deletes nothing — that is what keeps the original usable as
               evidence.
             </Typography>
 

@@ -1,6 +1,6 @@
-// RecordDetail (/record/:id) — a single strain's full picture and its available next
-// actions. Reuses the wizard step components so a returning breeder can pair DNA, pull
-// the evidence package, or prove ownership on an existing record.
+// RecordDetail (/record/:id) — a single cultivar's full picture and its available next
+// actions. Reuses the wizard step components so a returning breeder can pair a report,
+// pull the evidence summary, or check a report file against an existing record.
 // SPDX-License-Identifier: Apache-2.0
 
 import React, { useState } from 'react';
@@ -30,9 +30,9 @@ import { AgreementTypeChip } from './licensing/AgreementTypeChip';
 import { AppHeader } from './AppHeader';
 import { Step2PairDna } from './wizard/Step2PairDna';
 import { Step3Certificate } from './wizard/Step3Certificate';
-import { Step4ProveOwnership } from './wizard/Step4ProveOwnership';
+import { Step4CheckReport } from './wizard/Step4CheckReport';
 
-type Mode = 'overview' | 'pair' | 'cert' | 'prove';
+type Mode = 'overview' | 'pair' | 'cert' | 'check';
 const fmt = (ms: number) => new Date(ms).toLocaleString();
 
 const Field: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
@@ -95,8 +95,8 @@ export const RecordDetail: React.FC = () => {
               know a correction exists, and a correcting record needs to point back. */}
           {record.supersededBy && (
             <Alert severity="info" variant="outlined">
-              This record was corrected. It remains on file unchanged — nothing is ever deleted — but a later record
-              supersedes it.{' '}
+              This record was corrected. A correction never edits or deletes it: it remains on file unchanged, and a
+              later record supersedes it.{' '}
               <Link component={RouterLink} to={`/record/${record.supersededBy}`}>
                 See the correction
               </Link>
@@ -122,12 +122,13 @@ export const RecordDetail: React.FC = () => {
           <Paper sx={{ p: { xs: 2.5, md: 3 } }}>
             <Stack spacing={2}>
               <Field label="Bred by">{record.bredBy}</Field>
+              {record.taxon && <Field label="Species">{record.taxon}</Field>}
               {record.breedingMethod && <Field label="Breeding method">{record.breedingMethod}</Field>}
               {record.parents && record.parents.length > 0 && (
                 <Field label="Parents">{record.parents.map((p) => p.name).join('  ×  ')}</Field>
               )}
               <Field label="Stated creation date (breeder's claim)">{record.dateCreated}</Field>
-              <Field label="Sealed with Veilcore">{fmt(record.loggedAt)}</Field>
+              <Field label="Sealed (this device's clock)">{fmt(record.loggedAt)}</Field>
               {record.refId && <Field label="Reference / lot ID">{record.refId}</Field>}
               {record.photoFingerprints && record.photoFingerprints.length > 0 && (
                 <Field label="Photos">
@@ -225,8 +226,8 @@ export const RecordDetail: React.FC = () => {
             <Button variant="outlined" startIcon={<DescriptionIcon />} onClick={() => setMode('cert')}>
               Evidence package
             </Button>
-            <Button variant="outlined" startIcon={<VerifiedIcon />} onClick={() => setMode('prove')}>
-              Prove prior possession
+            <Button variant="outlined" startIcon={<VerifiedIcon />} onClick={() => setMode('check')}>
+              Check a report matches
             </Button>
             <SendToLab record={record} />
             {/* A holder who mistypes something needs a path that is not deletion. */}
@@ -240,7 +241,7 @@ export const RecordDetail: React.FC = () => {
 
           <Box>
             <Typography variant="overline" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-              Start an agreement — terms bound to the genetics
+              Start an agreement — terms attached to this record
             </Typography>
             <Stack direction="row" spacing={1.5} sx={{ flexWrap: 'wrap' }}>
               <Button
@@ -273,7 +274,7 @@ export const RecordDetail: React.FC = () => {
         <Paper sx={{ p: { xs: 2.5, md: 4 } }}>
           {mode === 'pair' && <Step2PairDna recordId={record.id} onBack={back} onDone={back} />}
           {mode === 'cert' && <Step3Certificate recordId={record.id} onBack={back} onDone={back} />}
-          {mode === 'prove' && <Step4ProveOwnership onBack={back} onRestart={back} />}
+          {mode === 'check' && <Step4CheckReport onBack={back} onRestart={back} />}
         </Paper>
       )}
     </Box>

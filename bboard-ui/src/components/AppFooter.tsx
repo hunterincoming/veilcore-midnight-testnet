@@ -63,9 +63,6 @@ export const AppFooter: React.FC = () => {
               <Item to="https://github.com/hunterincoming/veilcore-rs" external>
                 {t('footer.rustImplementation')}
               </Item>
-              <Item to="https://www.npmjs.com/package/veilcore-records" external>
-                veilcore-records
-              </Item>
             </Stack>
 
             <Stack spacing={1}>
@@ -75,6 +72,7 @@ export const AppFooter: React.FC = () => {
               <Item to="/">{t('footer.whatThisIs')}</Item>
               <Item to="/records">{t('footer.yourRecords')}</Item>
               <Item to="/licenses">{t('footer.agreements')}</Item>
+              <Item to="/privacy">{t('footer.privacy')}</Item>
             </Stack>
           </Stack>
         </Stack>

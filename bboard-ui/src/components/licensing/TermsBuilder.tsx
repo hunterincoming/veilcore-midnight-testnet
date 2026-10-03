@@ -1,5 +1,5 @@
 // TermsBuilder (/record/:id/license) — standalone terms builder. On save, the agreement
-// is hashed locally and bound to the cultivar record + its DNA fingerprint, then created
+// is hashed locally and attached to the cultivar record + its report fingerprint, then created
 // as a Draft the breeder can issue.
 // SPDX-License-Identifier: Apache-2.0
 
@@ -104,8 +104,8 @@ export const TermsBuilder: React.FC = () => {
         {AGREEMENT_TAGLINE[type]}
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-        Set the terms in plain language. When you save, the agreement is sealed and bound to {record.strainName} and its
-        DNA fingerprint.
+        Set the terms in plain language. When you save, the agreement is sealed and attached to {record.strainName} and
+        its report fingerprint.
       </Typography>
 
       <AgreementTermsFields type={type} terms={t} set={set} />

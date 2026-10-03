@@ -1,4 +1,4 @@
-// AppHeader — shared top bar: wordmark (home), quick "New strain", and the demo/network badge.
+// AppHeader — shared top bar: wordmark (home), quick "New cultivar", and the demo/network badge.
 // SPDX-License-Identifier: Apache-2.0
 
 import React from 'react';
@@ -11,18 +11,19 @@ import { Link as RouterLink, useLocation } from 'react-router-dom';
 import AddIcon from '@mui/icons-material/Add';
 import { WalletBadge } from './veilcore/WalletBadge';
 import { TEAL } from '../config/theme';
+import { NETWORK, DEMO_MODE } from '../config/network';
 import { useI18n } from '../i18n';
 import { LanguagePicker } from '../i18n/LanguagePicker';
-
-const network = import.meta.env.VITE_NETWORK_ID ?? 'preview';
-const demoMode = !(import.meta.env.VITE_VEILCORE_CONTRACT_ADDRESS as string);
 
 export const AppHeader: React.FC = () => {
   const loc = useLocation();
   const { t } = useI18n();
   return (
-    <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between', mb: { xs: 4, md: 5 } }}>
-      <Stack direction="row" spacing={3} sx={{ alignItems: 'center' }}>
+    <Stack
+      direction="row"
+      sx={{ alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1.5, mb: { xs: 4, md: 5 } }}
+    >
+      <Stack direction="row" sx={{ alignItems: 'center', flexWrap: 'wrap', columnGap: 3, rowGap: 1 }}>
         <Stack
           component={RouterLink}
           to="/records"
@@ -59,7 +60,7 @@ export const AppHeader: React.FC = () => {
       </Stack>
       <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center' }}>
         <LanguagePicker />
-        <WalletBadge network={network} demo={demoMode} />
+        <WalletBadge network={NETWORK} demo={DEMO_MODE} />
       </Stack>
     </Stack>
   );

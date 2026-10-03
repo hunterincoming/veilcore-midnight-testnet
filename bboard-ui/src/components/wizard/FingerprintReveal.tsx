@@ -1,6 +1,6 @@
-// FingerprintReveal — the privacy hero moment. A record/report "collapses" into a
-// single glowing fingerprint, with the loud reassurance that nothing was transmitted.
-// Reused in steps 1, 2 and 4.
+// FingerprintReveal — a record or report "collapses" into a single fingerprint. Each
+// caller says exactly what stayed on the device and what was saved; there is no
+// default claim, because the right one differs per step. Reused in steps 1, 2 and 4.
 // SPDX-License-Identifier: Apache-2.0
 
 import React from 'react';
@@ -16,7 +16,7 @@ export const FingerprintReveal: React.FC<{
   fingerprint: string;
   headline?: string;
   sub?: string;
-}> = ({ fingerprint, headline = 'Zero bytes left your device.', sub }) => (
+}> = ({ fingerprint, headline = 'Fingerprinted in your browser.', sub }) => (
   <MBox
     initial={{ opacity: 0, scale: 0.96 }}
     animate={{ opacity: 1, scale: 1 }}

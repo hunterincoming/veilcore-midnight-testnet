@@ -1,7 +1,8 @@
-// HolderKeyPanel — the holder key is the only thing that can retrieve this
-// breeder's records. Nobody else holds a copy, including us. That is the point,
-// and it means losing it is unrecoverable — so it has to be easy to save and
-// easy to restore on another device.
+// HolderKeyPanel — the holder key is how this browser finds the breeder's records.
+// It is sent to VeilCore's registry with every save and stored there to find the
+// records, so the panel must not say VeilCore has no copy. What is true: anyone with
+// the key can read and change the records, and VeilCore cannot recover it for the
+// holder. So it has to be easy to save and easy to restore on another device.
 // SPDX-License-Identifier: Apache-2.0
 
 import React, { useState } from 'react';
@@ -40,9 +41,10 @@ export const HolderKeyPanel: React.FC = () => {
       [
         'VeilCore holder key\n\n',
         `${key}\n\n`,
-        'This key is the only way to retrieve your records. Nobody else has a copy,\n',
-        'including VeilCore. Store it somewhere safe. Anyone with this key can read\n',
-        'your records; without it, they cannot be recovered.\n',
+        "This key is how you get back to your records. VeilCore's server receives it\n",
+        'with every save and stores it to find your records. Anyone with this key can\n',
+        'read and change your records. We cannot recover it for you, so store it\n',
+        'somewhere safe.\n',
       ],
       { type: 'text/plain' },
     );
@@ -72,8 +74,8 @@ export const HolderKeyPanel: React.FC = () => {
         <DialogContent>
           <Stack spacing={2.5} sx={{ pt: 1 }}>
             <Alert severity="warning" variant="outlined">
-              This key is the only way to retrieve your records. We do not have a copy and cannot reset it. Save it
-              before you clear this browser.
+              VeilCore&apos;s server receives this key with every save and stores it to find your records. Anyone with
+              it can read and change them. We cannot recover it for you: save it before you clear this browser.
             </Alert>
 
             <Box>

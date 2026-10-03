@@ -30,7 +30,7 @@ const DOCS: Record<string, { file: string; title: string; blurb: string }> = {
     file: 'EVIDENCE.md',
     title: 'Records in evidence',
     blurb:
-      'For counsel. What a party can establish, how it is authenticated in five jurisdictions, and — at length — what it does not prove.',
+      'For counsel. What a party can establish, how it is authenticated under US law in detail, a sketch of four other jurisdictions, and — at length — what it does not prove.',
   },
   integrate: {
     file: 'INTEGRATING.md',

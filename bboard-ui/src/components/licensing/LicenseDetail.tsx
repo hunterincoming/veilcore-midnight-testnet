@@ -1,6 +1,6 @@
 // LicenseDetail (/license/:id) — the breeder's view of a license instrument: terms,
 // lifecycle actions (issue → shareable counter-sign link → active, revoke, renew), and
-// the royalty obligation log (records only — Veilcore never moves money).
+// the royalty obligation log (records only — VeilCore never moves money).
 // SPDX-License-Identifier: Apache-2.0
 
 import React, { useState } from 'react';
@@ -80,7 +80,7 @@ export const LicenseDetail: React.FC = () => {
   const type = agreementType(license);
   const record = getRecord(license.recordId);
   const signLink = `${window.location.origin}/license/${license.id}/sign`;
-  // Breeder-share enforcement: if the counterparty may breed with the cut, any cultivar
+  // Breeder-share lineage: if the counterparty may breed with the material, any cultivar
   // they later log with this one as a parent is exposed through the lineage graph.
   const showLineageNote = type === 'breeder-share' && license.terms.mayBreed;
   const knownDerivatives = showLineageNote ? childrenOf(license.recordId).length : 0;
@@ -151,14 +151,13 @@ export const LicenseDetail: React.FC = () => {
           <TermsSummary l={license} />
           <Divider sx={{ my: 2 }} />
           <Alert severity="info" variant="outlined">
-            These terms are bound to the sealed record and its paired DNA fingerprint
+            These terms are attached to the sealed record and its paired report fingerprint
             {license.dnaFingerprint ? ` (${shortFingerprint(license.dnaFingerprint)})` : ''}.
           </Alert>
           {showLineageNote && (
             <Alert severity="info" variant="outlined" sx={{ mt: 1.5 }}>
-              Derivative rights are enforced through lineage: any cultivar later logged with{' '}
-              {record?.strainName ?? 'this cultivar'} as a parent is traceable through the lineage graph — so offspring
-              bred from this shared cut stay linked to this agreement.
+              If a cultivar is later logged with {record?.strainName ?? 'this cultivar'} as a parent, and both holders
+              confirm it, the link to this agreement shows on its record. Offspring nobody logs are not detected.
               {knownDerivatives > 0
                 ? ` ${knownDerivatives} cultivar${knownDerivatives === 1 ? '' : 's'} already logged descend${knownDerivatives === 1 ? 's' : ''} from it.`
                 : ''}
@@ -272,7 +271,7 @@ export const LicenseDetail: React.FC = () => {
               Royalty obligations
             </Typography>
             <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
-              Veilcore records and proves obligations. It does not process payments — no money moves here.
+              VeilCore records obligations. It does not process payments — no money moves here.
             </Typography>
             {state === 'active' && (
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ mb: 2 }}>
@@ -327,7 +326,7 @@ export const LicenseDetail: React.FC = () => {
                 {SHOW_VEILCORE_FEE && (
                   <Stack direction="row" sx={{ justifyContent: 'space-between' }}>
                     <Typography variant="body2" color="text.secondary">
-                      Veilcore fee ({VEILCORE_FEE_PCT}%)
+                      VeilCore fee ({VEILCORE_FEE_PCT}%)
                     </Typography>
                     <Typography variant="body2">{money(totalFee)}</Typography>
                   </Stack>

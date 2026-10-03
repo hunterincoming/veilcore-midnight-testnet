@@ -1,4 +1,4 @@
-// Veilcore brand theme: bioluminescent teal on near-black.
+// VeilCore brand theme: bioluminescent teal on near-black.
 // SPDX-License-Identifier: Apache-2.0
 
 import { createTheme, alpha } from '@mui/material';

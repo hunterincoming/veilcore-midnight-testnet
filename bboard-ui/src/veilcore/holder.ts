@@ -1,7 +1,7 @@
-// The holder key identifies whose records these are. It is generated in the browser,
-// never leaves it except as an opaque identifier, and is the only thing that can
-// retrieve this holder's record set. Losing it means losing access — the same
-// trade-off every non-custodial system makes.
+// The holder key identifies whose records these are. It is generated in the browser and
+// sent to VeilCore's registry with every request (x-holder-key), where it is stored to
+// find this holder's records. Anyone who has it can read and change those records.
+// VeilCore cannot recover it for a holder who loses it.
 // SPDX-License-Identifier: Apache-2.0
 
 const KEY = 'veilcore.holder.v1';

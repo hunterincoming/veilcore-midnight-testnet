@@ -5,6 +5,8 @@ Keep every limitation and "does not" exactly; the English is careful not to over
 
 Preview: open veilcore.org/?lang=fr once the preview build is deployed.
 
+Changed on 3 October (site accuracy pass), please re-check: `footer.about`, `m.hero.lede`, `m.hero.note`, `m.step3.text`, `m.is.5b`, `m.demo.lede`, `m.demo.verify.text`, `m.updates.all`, `m.contact.lede`, `m.foot.about`, `m.mako.bio1`, `m.hunter.bio1`. New keys are at the end of this file.
+
 ## nav.newCultivar
 
 **EN:** New cultivar
@@ -25,9 +27,9 @@ Preview: open veilcore.org/?lang=fr once the preview build is deployed.
 
 ## footer.about
 
-**EN:** An open record format for genetic material. Verification is free, needs no account, and does not depend on us continuing to exist.
+**EN:** An open record format for plant genetics. Checking a record you hold needs only SHA-256 and the open specification: it is free and needs no account. Looking a record up by its identifier on this site uses our server.
 
-**FR:** Un format d'enregistrement ouvert pour le matériel génétique. La vérification est gratuite, ne nécessite aucun compte et ne dépend pas de notre existence future.
+**FR:** Un format d'enregistrement ouvert pour la génétique végétale. Pour vérifier un enregistrement que vous détenez, il suffit de SHA-256 et de la spécification ouverte : c'est gratuit et sans compte. Rechercher un enregistrement par son identifiant sur ce site passe par notre serveur.
 
 ## footer.documents
 
@@ -528,9 +530,9 @@ Some headings are split in two or three parts; the later part is shown in colour
 
 ### m.hero.lede
 
-**EN:** A record format for genetic material. Your genetic data stays with you. Only a fingerprint goes on the public network, and anyone can check its date.
+**EN:** For plant breeders, seed companies and labs: an open record format for plant genetics. Your genetic data stays with you. Only a fingerprint is recorded on a public blockchain (Midnight), and once it is anchored, anyone can check its date.
 
-**FR:** Un format d'enregistrement pour le matériel génétique. Vos données génétiques restent chez vous. Seule une empreinte va sur le réseau public, et n'importe qui peut en vérifier la date.
+**FR:** Pour les sélectionneurs, les semenciers et les laboratoires : un format d'enregistrement ouvert pour la génétique végétale. Vos données génétiques restent chez vous. Seule une empreinte est inscrite sur une blockchain publique (Midnight) et, une fois ancrée, n'importe qui peut en vérifier la date.
 
 ### m.hero.chooseDemo
 
@@ -570,9 +572,9 @@ Some headings are split in two or three parts; the later part is shown in colour
 
 ### m.hero.note
 
-**EN:** Change anything above; it stays on this page. The line in mint is the fingerprint: thirty-two bytes that can't be reversed. It's the only part anyone else ever sees.
+**EN:** Change anything above; it stays on this page. The line in mint is the fingerprint: thirty-two bytes that can't be reversed, because a random value is mixed in. It's the only part this demo would publish.
 
-**FR:** Modifiez ce que vous voulez ci-dessus ; cela reste sur cette page. La ligne en vert menthe est l'empreinte : trente-deux octets impossibles à inverser. C'est la seule partie que quiconque d'autre verra jamais.
+**FR:** Modifiez ce que vous voulez ci-dessus ; cela reste sur cette page. La ligne en vert menthe est l'empreinte : trente-deux octets impossibles à inverser, car une valeur aléatoire y est mêlée. C'est la seule partie que cette démo publierait.
 
 ### m.choose.label
 
@@ -732,9 +734,9 @@ Some headings are split in two or three parts; the later part is shown in colour
 
 ### m.step3.text
 
-**EN:** Only the fingerprint is timestamped on a public network (Midnight). The date is set by the network, not by us, and stays in its public history.
+**EN:** Only the fingerprint is timestamped on a public network (Midnight). The date is set by the network, not by us, and stays in its public history. In the demo, our operator anchors records in batches, not instantly.
 
-**FR:** Seule l'empreinte est horodatée sur un réseau public (Midnight). La date est fixée par le réseau, pas par nous, et reste dans son historique public.
+**FR:** Seule l'empreinte est horodatée sur un réseau public (Midnight). La date est fixée par le réseau, pas par nous, et reste dans son historique public. Dans la démo, notre opérateur ancre les enregistrements par lots, pas instantanément.
 
 ### m.step4.n
 
@@ -858,9 +860,9 @@ Some headings are split in two or three parts; the later part is shown in colour
 
 ### m.demo.lede
 
-**EN:** No account, no wallet. Genetic data and lab files stay in your browser. The demo keeps the rest of a record (names, dates, fingerprint) on our test server so you can come back to it.
+**EN:** No account, no wallet. Genetic data and lab files stay in your browser. The demo keeps the rest of a record (names, dates, fingerprint) on our test server so you can come back to it, so please use made-up details. Licensing in the demo is simulated: nothing is sent to the network.
 
-**FR:** Pas de compte, pas de portefeuille. Les données génétiques et les fichiers de laboratoire restent dans votre navigateur. La démo conserve le reste d'un enregistrement (noms, dates, empreinte) sur notre serveur de test pour que vous puissiez y revenir.
+**FR:** Pas de compte, pas de portefeuille. Les données génétiques et les fichiers de laboratoire restent dans votre navigateur. La démo conserve le reste d'un enregistrement (noms, dates, empreinte) sur notre serveur de test pour que vous puissiez y revenir : utilisez donc des données fictives. Les licences sont simulées dans la démo : rien n'est envoyé au réseau.
 
 ### m.demo.create.title
 
@@ -882,9 +884,9 @@ Some headings are split in two or three parts; the later part is shown in colour
 
 ### m.demo.verify.text
 
-**EN:** Enter a record's identifier and check it against its published date.
+**EN:** Enter a record's identifier and see what its holder disclosed and whether it is anchored.
 
-**FR:** Saisissez l'identifiant d'un enregistrement et comparez-le à sa date publiée.
+**FR:** Saisissez l'identifiant d'un enregistrement et voyez ce que son détenteur a divulgué et s'il est ancré.
 
 
 
@@ -983,9 +985,9 @@ Some headings are split in two or three parts; the later part is shown in colour
 
 ### m.updates.all
 
-**EN:** Every change on GitHub →
+**EN:** Record-format changes on GitHub →
 
-**FR:** Toutes les modifications sur GitHub →
+**FR:** Modifications du format d'enregistrement sur GitHub →
 
 ### m.updates.follow
 
@@ -1157,9 +1159,9 @@ Some headings are split in two or three parts; the later part is shown in colour
 
 ### m.contact.lede
 
-**EN:** If you run a breeding programme, a lab, a seed certification agency or a plant-rights body, we'd like to talk. Nothing to buy.
+**EN:** If you run a breeding programme, a lab, a seed certification agency or a plant-rights body, we'd like to talk. Checking and implementing are free. Nothing is priced yet.
 
-**FR:** Si vous dirigez un programme de sélection, un laboratoire, un organisme de certification des semences ou un organisme de protection des obtentions végétales, nous aimerions échanger avec vous. Rien à acheter.
+**FR:** Si vous dirigez un programme de sélection, un laboratoire, un organisme de certification des semences ou un organisme de protection des obtentions végétales, nous aimerions échanger avec vous. Vérifier et implémenter sont gratuits. Aucun prix n'est encore fixé.
 
 ### m.contact.email
 
@@ -1175,9 +1177,9 @@ Some headings are split in two or three parts; the later part is shown in colour
 
 ### m.foot.about
 
-**EN:** An evidentiary record format for plant genetics. Anchored on Midnight Network.
+**EN:** An evidentiary record format for plant genetics. Designed to anchor on Midnight; testing on Midnight's test network.
 
-**FR:** Un format d'enregistrement probatoire pour la génétique végétale. Ancré sur Midnight Network.
+**FR:** Un format d'enregistrement probatoire pour la génétique végétale. Conçu pour être ancré sur Midnight ; en test sur le réseau de test de Midnight.
 
 ### m.foot.explore
 
@@ -1271,9 +1273,9 @@ Some headings are split in two or three parts; the later part is shown in colour
 
 ### m.mako.bio1
 
-**EN:** Makoto (Mako) Steiner is VeilCore's co-founder and CEO, leading commercial strategy, fundraising, and VeilCore's relationships with partners, institutions, and investors worldwide.
+**EN:** Makoto (Mako) Steiner is VeilCore's co-founder and CEO, leading commercial strategy, fundraising, and outreach to institutions and investors worldwide.
 
-**FR:** Makoto (Mako) Steiner est cofondateur et CEO de VeilCore. Il dirige la stratégie commerciale, la levée de fonds et les relations de VeilCore avec ses partenaires, les institutions et les investisseurs dans le monde entier.
+**FR:** Makoto (Mako) Steiner est cofondateur et CEO de VeilCore. Il dirige la stratégie commerciale, la levée de fonds et les prises de contact avec les institutions et les investisseurs dans le monde entier.
 
 ### m.mako.bio2
 
@@ -1301,9 +1303,9 @@ Some headings are split in two or three parts; the later part is shown in colour
 
 ### m.hunter.bio1
 
-**EN:** Hunter Roberts is VeilCore's co-founder and COO, leading product and the VeilCore protocol, from the record format to the contracts on Midnight. He leads VeilCore's outreach to US institutions, including seed certification, standards and plant-variety bodies.
+**EN:** Hunter Roberts is VeilCore's co-founder and COO, leading product and the VeilCore protocol, from the record format to the contract on Midnight. He leads VeilCore's outreach to US institutions, including seed certification, standards and plant-variety bodies.
 
-**FR:** Hunter Roberts est cofondateur et COO de VeilCore. Il dirige le produit et le protocole VeilCore, du format d'enregistrement aux contrats sur Midnight. Il mène les prises de contact de VeilCore avec les institutions américaines, notamment les organismes de certification des semences, de normalisation et des variétés végétales.
+**FR:** Hunter Roberts est cofondateur et COO de VeilCore. Il dirige le produit et le protocole VeilCore, du format d'enregistrement au contrat sur Midnight. Il mène les prises de contact de VeilCore avec les institutions américaines, notamment les organismes de certification des semences, de normalisation et des variétés végétales.
 
 ### m.hunter.bio2
 
@@ -1397,9 +1399,9 @@ Some headings are split in two or three parts; the later part is shown in colour
 
 ### m.is.5b
 
-**EN:** a parent link counts only when both holders confirm it, and obligations such as royalties follow the material to its offspring until the beneficiary releases them.
+**EN:** a parent link counts only when both holders confirm it. Obligations such as royalties carry only to descendants declared this way, until the beneficiary releases them. VeilCore records what is owed; it does not collect it.
 
-**FR:** un lien de parenté ne compte que si les deux détenteurs le confirment, et les obligations comme les redevances suivent le matériel jusqu'à sa descendance tant que le bénéficiaire ne les a pas levées.
+**FR:** un lien de parenté ne compte que si les deux détenteurs le confirment. Les obligations comme les redevances ne passent qu'aux descendants déclarés de cette façon, tant que le bénéficiaire ne les a pas levées. VeilCore enregistre ce qui est dû ; il ne l'encaisse pas.
 
 ### m.isnt.4a
 
@@ -1412,3 +1414,133 @@ Some headings are split in two or three parts; the later part is shown in colour
 **EN:** A parent link means both holders agreed, not that DNA proves it.
 
 **FR:** Un lien de parenté signifie que les deux détenteurs l'ont accepté, pas que l'ADN le prouve.
+
+## Site accuracy pass, 3 October
+
+These strings are new. They make the site say only what is true today (test network, simulated licensing, what the demo stores). Keep every "not", "no" and "only" exactly as in the English, and never make a translation stronger than the English.
+
+### footer.privacy
+
+**EN:** Demo privacy
+
+**FR:** Confidentialité de la démo
+
+### m.status.keyTitle
+
+**EN:** Who can change the contract.
+
+**FR:** Qui peut modifier le contrat.
+
+### m.status.keyText
+
+**EN:** The founders hold a maintenance key for VeilCore's contract on Midnight. It can change how the contract works from then on. It cannot rewrite records already anchored in the network's history. A policy for using it is proposed, not decided.
+
+**FR:** Les fondateurs détiennent une clé de maintenance du contrat de VeilCore sur Midnight. Elle permet de modifier le fonctionnement du contrat à partir de ce moment. Elle ne peut pas réécrire les enregistrements déjà ancrés dans l'historique du réseau. Une politique d'utilisation est proposée, pas décidée.
+
+### m.status.keyLink
+
+**EN:** Read the proposed policy →
+
+**FR:** Lire la politique proposée →
+
+### m.foot.privacy
+
+**EN:** Demo privacy
+
+**FR:** Confidentialité de la démo
+
+### m.privacy.label
+
+**EN:** Demo privacy
+
+**FR:** Confidentialité de la démo
+
+### m.privacy.title
+
+**EN:** What the demo keeps.
+
+**FR:** Ce que la démo conserve.
+
+### m.privacy.lede
+
+**EN:** This note covers the demo on this site. It is a test, on Midnight's test network. Please use made-up data.
+
+**FR:** Cette note concerne la démo de ce site. Il s'agit d'un test, sur le réseau de test de Midnight. Merci d'utiliser des données fictives.
+
+### m.privacy.stored.title
+
+**EN:** Stored on our test server
+
+**FR:** Conservé sur notre serveur de test
+
+### m.privacy.stored.text
+
+**EN:** What you type and what the app computes from it: cultivar and breeder names, species if you enter one, dates, notes, reference numbers, parents, fingerprints of records, photos and lab reports, lab report file names, agreement terms and counterparties, material you send to a lab (who it is addressed to, and the quantity), and, for labs, the public signing key and the attestations they publish. Also your holder key, which the app sends with every save so the server can find your records. The server is VeilCore's test registry, hosted on Railway.
+
+**FR:** Ce que vous saisissez et ce que l'application en calcule : noms de cultivars et d'obtenteurs, l'espèce si vous en indiquez une, dates, notes, numéros de référence, parents, empreintes des enregistrements, des photos et des rapports de laboratoire, noms de fichier des rapports de laboratoire, conditions et contreparties des accords, le matériel que vous envoyez à un laboratoire (à qui il est adressé et la quantité) et, pour les laboratoires, la clé publique de signature et les attestations qu'ils publient. Également votre clé de détenteur, que l'application envoie à chaque enregistrement pour que le serveur retrouve vos enregistrements. Le serveur est le registre de test de VeilCore, hébergé chez Railway.
+
+### m.privacy.local.title
+
+**EN:** Never leaves your browser
+
+**FR:** Ne quitte jamais votre navigateur
+
+### m.privacy.local.text
+
+**EN:** Genetic data, lab and DNA report files, and photos. The app reads them in your browser to compute their fingerprints. The files themselves are never uploaded.
+
+**FR:** Les données génétiques, les fichiers de rapports de laboratoire et d'ADN, et les photos. L'application les lit dans votre navigateur pour calculer leurs empreintes. Les fichiers eux-mêmes ne sont jamais envoyés.
+
+### m.privacy.test.title
+
+**EN:** A test network
+
+**FR:** Un réseau de test
+
+### m.privacy.test.text
+
+**EN:** The demo uses Midnight's test network, not the live one. Demo data may be deleted when the test network is reset.
+
+**FR:** La démo utilise le réseau de test de Midnight, pas le réseau en production. Les données de la démo peuvent être supprimées lorsque le réseau de test est réinitialisé.
+
+### m.privacy.madeup.title
+
+**EN:** Use made-up data
+
+**FR:** Utilisez des données fictives
+
+### m.privacy.madeup.text
+
+**EN:** Please don't enter real names, real varieties or anything confidential. The demo is for trying the format.
+
+**FR:** Merci de ne saisir ni vrais noms, ni vraies variétés, ni rien de confidentiel. La démo sert à essayer le format.
+
+### m.privacy.export.title
+
+**EN:** Export
+
+**FR:** Export
+
+### m.privacy.export.text
+
+**EN:** Your records page has an Export button that downloads the records this browser holds. A single download of everything our server holds for you is coming; it is not available yet.
+
+**FR:** Votre page d'enregistrements comporte un bouton « Export » qui télécharge les enregistrements détenus par ce navigateur. Un téléchargement unique de tout ce que notre serveur conserve pour vous est en préparation ; il n'est pas encore disponible.
+
+### m.privacy.delete.title
+
+**EN:** Deletion
+
+**FR:** Suppression
+
+### m.privacy.delete.text
+
+**EN:** To have your demo data deleted from our server, email hunter@veilcore.org with the identifiers of your records.
+
+**FR:** Pour faire supprimer vos données de démo de notre serveur, écrivez à hunter@veilcore.org en indiquant les identifiants de vos enregistrements.
+
+### m.privacy.contact
+
+**EN:** Questions: hunter@veilcore.org
+
+**FR:** Questions : hunter@veilcore.org

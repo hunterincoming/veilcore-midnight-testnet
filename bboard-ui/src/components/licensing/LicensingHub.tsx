@@ -1,4 +1,4 @@
-// LicensingHub (/licenses) — every license across all strains, as a managed portfolio.
+// LicensingHub (/licenses) — every license across all cultivars, as a managed portfolio.
 // SPDX-License-Identifier: Apache-2.0
 
 import React from 'react';

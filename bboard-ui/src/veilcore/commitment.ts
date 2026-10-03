@@ -1,4 +1,4 @@
-// Veilcore fingerprinting core — the real, in-browser cryptography behind the wizard.
+// VeilCore fingerprinting core — the real, in-browser cryptography behind the wizard.
 //
 // Everything is hashed locally: text or a file is SHA-256'd, then run through the
 // compiled `commit` circuit (wasm) to produce a fingerprint that is byte-identical to
@@ -16,7 +16,7 @@ const sha256 = async (bytes: Uint8Array): Promise<Uint8Array> =>
 /** Turn a 32-byte secret into its on-chain fingerprint (runs the `commit` circuit). */
 const fingerprintOf = (secret: Uint8Array): string => toHex(pureCircuits.commit(secret));
 
-/** Fingerprint arbitrary text (used for the strain record). */
+/** Fingerprint arbitrary text. */
 export const fingerprintText = async (text: string): Promise<string> =>
   fingerprintOf(await sha256(new TextEncoder().encode(text)));
 
@@ -53,6 +53,8 @@ export const fingerprintRecord = async (r: {
   breedingMethod?: string;
   photoFingerprints?: string[];
   refId?: string;
+  profile?: string;
+  taxon?: string;
   nonce: string;
 }): Promise<string> => {
   const { canonicalise: canon } = await import('veilcore-records');
@@ -67,6 +69,10 @@ export const fingerprintRecord = async (r: {
     photoFingerprints: r.photoFingerprints ?? [],
     refId: r.refId ?? '',
     strainName: r.strainName,
+    // Committed only when present, so records sealed before these fields existed
+    // recompute to the fingerprint they were sealed with.
+    ...(r.profile ? { profile: r.profile } : {}),
+    ...(r.taxon ? { taxon: r.taxon } : {}),
   };
   return toHex(await sha256(new TextEncoder().encode(canon(committed))));
 };

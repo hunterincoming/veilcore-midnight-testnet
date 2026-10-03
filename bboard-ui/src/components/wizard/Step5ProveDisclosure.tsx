@@ -191,7 +191,7 @@ export const Step5ProveDisclosure: React.FC<{ recordId: string; onDone: () => vo
       <Chip
         size="small"
         variant="outlined"
-        label="Real commit circuit runs locally · settlement simulated — no on-chain proof submitted right now"
+        label="Checked on your device. Nothing was sent to the network (the demo simulates that step)."
         sx={{ alignSelf: 'flex-start', height: 'auto', '& .MuiChip-label': { whiteSpace: 'normal', py: 0.5 } }}
       />
 

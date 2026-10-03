@@ -8,7 +8,7 @@ export const en = {
   'nav.licenses': 'Licenses',
   'nav.language': 'Language',
   'footer.about':
-    'An open record format for genetic material. Verification is free, needs no account, and does not depend on us continuing to exist.',
+    'An open record format for plant genetics. Checking a record you hold needs only SHA-256 and the open specification: it is free and needs no account. Looking a record up by its identifier on this site uses our server.',
   'footer.documents': 'Documents',
   'footer.spec': 'Specification',
   'footer.evidence': 'Records in evidence',
@@ -21,6 +21,7 @@ export const en = {
   'footer.whatThisIs': 'What this is',
   'footer.yourRecords': 'Your records',
   'footer.agreements': 'Agreements',
+  'footer.privacy': 'Demo privacy',
   'draft.banner':
     'Draft translation, not yet checked by a fluent speaker. The English page is the authoritative version.',
   'draft.showEnglish': 'Show English',
@@ -37,7 +38,7 @@ export const en = {
   'm.hero.title1': 'Prove you had it first.',
   'm.hero.title2': 'Without showing anyone what it is.',
   'm.hero.lede':
-    'A record format for genetic material. Your genetic data stays with you. Only a fingerprint goes on the public network, and anyone can check its date.',
+    'For plant breeders, seed companies and labs: an open record format for plant genetics. Your genetic data stays with you. Only a fingerprint is recorded on a public blockchain (Midnight), and once it is anchored, anyone can check its date.',
   'm.hero.chooseDemo': 'Choose a demo',
   'm.hero.how': 'How it works',
   'm.hero.cultivar': 'Cultivar',
@@ -45,7 +46,7 @@ export const en = {
   'm.hero.bredByDefault': 'Your name here',
   'm.hero.demoLabel': 'Live fingerprint demo',
   'm.hero.note':
-    "Change anything above; it stays on this page. The line in mint is the fingerprint: thirty-two bytes that can't be reversed. It's the only part anyone else ever sees.",
+    "Change anything above; it stays on this page. The line in mint is the fingerprint: thirty-two bytes that can't be reversed, because a random value is mixed in. It's the only part this demo would publish.",
 
   'm.choose.label': 'Start here',
   'm.choose.title': 'Where do you want to go?',
@@ -76,7 +77,7 @@ export const en = {
   'm.step3.n': '03 · Anchor',
   'm.step3.title': 'Publish the date',
   'm.step3.text':
-    'Only the fingerprint is timestamped on a public network (Midnight). The date is set by the network, not by us, and stays in its public history.',
+    'Only the fingerprint is timestamped on a public network (Midnight). The date is set by the network, not by us, and stays in its public history. In the demo, our operator anchors records in batches, not instantly.',
   'm.step4.n': '04 · Verify',
   'm.step4.title': 'Show it later',
   'm.step4.text':
@@ -93,7 +94,7 @@ export const en = {
     'grant rights to a record. A licensee can prove a licence is valid without revealing which licence it is or who holds it.',
   'm.is.5a': 'Agreed lineage:',
   'm.is.5b':
-    'a parent link counts only when both holders confirm it, and obligations such as royalties follow the material to its offspring until the beneficiary releases them.',
+    'a parent link counts only when both holders confirm it. Obligations such as royalties carry only to descendants declared this way, until the beneficiary releases them. VeilCore records what is owed; it does not collect it.',
   'm.isnt.title': "What it isn't",
   'm.isnt.1a': 'Not ownership.',
   'm.isnt.1b': "It creates no legal right you don't already have.",
@@ -108,11 +109,11 @@ export const en = {
   'm.demo.title1': 'Pick how you',
   'm.demo.title2': 'want to see it.',
   'm.demo.lede':
-    'No account, no wallet. Genetic data and lab files stay in your browser. The demo keeps the rest of a record (names, dates, fingerprint) on our test server so you can come back to it.',
+    'No account, no wallet. Genetic data and lab files stay in your browser. The demo keeps the rest of a record (names, dates, fingerprint) on our test server so you can come back to it, so please use made-up details. Licensing in the demo is simulated: nothing is sent to the network.',
   'm.demo.create.title': 'Create a record',
   'm.demo.create.text': 'Fill in a sample record, generate its fingerprint and download the certificate.',
   'm.demo.verify.title': 'Verify a record',
-  'm.demo.verify.text': "Enter a record's identifier and check it against its published date.",
+  'm.demo.verify.text': "Enter a record's identifier and see what its holder disclosed and whether it is anchored.",
   'm.demo.video.title': 'Watch the walkthrough',
   'm.demo.video.text':
     'The whole flow in 75 seconds: sealing a record, pairing a lab report, checking it, and licence terms.',
@@ -135,7 +136,7 @@ export const en = {
   'm.updates.title1': 'Latest from',
   'm.updates.title2': 'the build.',
   'm.updates.read': 'Read →',
-  'm.updates.all': 'Every change on GitHub →',
+  'm.updates.all': 'Record-format changes on GitHub →',
   'm.updates.follow': 'Follow',
   'm.post1.date': '3 Oct 2026',
   'm.post1.tag': 'Format',
@@ -164,21 +165,27 @@ export const en = {
   'm.stat3.s': 'No independent security audit yet. Our own reviews are published in the repository.',
   'm.stat4.b': 'No users yet',
   'm.stat4.s': "Nobody is using it for real records yet. We're looking for the first.",
+  'm.status.keyTitle': 'Who can change the contract.',
+  'm.status.keyText':
+    "The founders hold a maintenance key for VeilCore's contract on Midnight. It can change how the contract works from then on. It cannot rewrite records already anchored in the network's history. A policy for using it is proposed, not decided.",
+  'm.status.keyLink': 'Read the proposed policy →',
 
   'm.contact.label': 'Get in touch',
   'm.contact.title1': 'Tell us',
   'm.contact.title2': 'where it fails.',
   'm.contact.lede':
-    "If you run a breeding programme, a lab, a seed certification agency or a plant-rights body, we'd like to talk. Nothing to buy.",
+    "If you run a breeding programme, a lab, a seed certification agency or a plant-rights body, we'd like to talk. Checking and implementing are free. Nothing is priced yet.",
   'm.contact.email': 'Email the founders',
   'm.contact.spec': 'Read the spec',
 
-  'm.foot.about': 'An evidentiary record format for plant genetics. Anchored on Midnight Network.',
+  'm.foot.about':
+    "An evidentiary record format for plant genetics. Designed to anchor on Midnight; testing on Midnight's test network.",
   'm.foot.explore': 'Explore',
   'm.foot.build': 'Build',
   'm.foot.contact': 'Contact',
   'm.foot.verify': 'Verify a record',
   'm.foot.fine': 'Proof of prior possession, not ownership.',
+  'm.foot.privacy': 'Demo privacy',
 
   'm.verify.label': 'Verify',
   'm.verify.title': 'Check a record',
@@ -194,13 +201,13 @@ export const en = {
   'm.founders.also': 'Also',
   'm.founders.languages': 'Languages',
   'm.mako.bio1':
-    "Makoto (Mako) Steiner is VeilCore's co-founder and CEO, leading commercial strategy, fundraising, and VeilCore's relationships with partners, institutions, and investors worldwide.",
+    "Makoto (Mako) Steiner is VeilCore's co-founder and CEO, leading commercial strategy, fundraising, and outreach to institutions and investors worldwide.",
   'm.mako.bio2': 'He studied Environmental Studies at Denison University and is based in Tokyo.',
   'm.mako.leads': 'Japan|EU|Standards bodies|Business development',
   'm.mako.also': 'Midnight Nightforce Leader (Japan) · Build Club, Cohort 1',
   'm.mako.languages': 'English · Japanese',
   'm.hunter.bio1':
-    "Hunter Roberts is VeilCore's co-founder and COO, leading product and the VeilCore protocol, from the record format to the contracts on Midnight. He leads VeilCore's outreach to US institutions, including seed certification, standards and plant-variety bodies.",
+    "Hunter Roberts is VeilCore's co-founder and COO, leading product and the VeilCore protocol, from the record format to the contract on Midnight. He leads VeilCore's outreach to US institutions, including seed certification, standards and plant-variety bodies.",
   'm.hunter.bio2':
     "He comes from hands-on plant work, including breeding and tissue culture, and is building Chunk's Trees, a cultivation facility in New Jersey.",
   'm.hunter.leads': 'United States|Protocol & spec|Engineering',
@@ -212,6 +219,31 @@ export const en = {
     "If you run a breeding programme, a lab, a seed certification agency or a plant-rights body, we'd like to talk. The format is free to implement and free to verify.",
   'm.founders.emailBoth': 'Email both founders',
   'm.portraitOf': 'Portrait of {name}',
+
+  // Demo privacy note (/privacy). Only facts that are true of the demo today.
+  'm.privacy.label': 'Demo privacy',
+  'm.privacy.title': 'What the demo keeps.',
+  'm.privacy.lede':
+    "This note covers the demo on this site. It is a test, on Midnight's test network. Please use made-up data.",
+  'm.privacy.stored.title': 'Stored on our test server',
+  'm.privacy.stored.text':
+    "What you type and what the app computes from it: cultivar and breeder names, species if you enter one, dates, notes, reference numbers, parents, fingerprints of records, photos and lab reports, lab report file names, agreement terms and counterparties, material you send to a lab (who it is addressed to, and the quantity), and, for labs, the public signing key and the attestations they publish. Also your holder key, which the app sends with every save so the server can find your records. The server is VeilCore's test registry, hosted on Railway.",
+  'm.privacy.local.title': 'Never leaves your browser',
+  'm.privacy.local.text':
+    'Genetic data, lab and DNA report files, and photos. The app reads them in your browser to compute their fingerprints. The files themselves are never uploaded.',
+  'm.privacy.test.title': 'A test network',
+  'm.privacy.test.text':
+    "The demo uses Midnight's test network, not the live one. Demo data may be deleted when the test network is reset.",
+  'm.privacy.madeup.title': 'Use made-up data',
+  'm.privacy.madeup.text':
+    "Please don't enter real names, real varieties or anything confidential. The demo is for trying the format.",
+  'm.privacy.export.title': 'Export',
+  'm.privacy.export.text':
+    'Your records page has an Export button that downloads the records this browser holds. A single download of everything our server holds for you is coming; it is not available yet.',
+  'm.privacy.delete.title': 'Deletion',
+  'm.privacy.delete.text':
+    'To have your demo data deleted from our server, email hunter@veilcore.org with the identifiers of your records.',
+  'm.privacy.contact': 'Questions: hunter@veilcore.org',
 } as const;
 
 export type StringKey = keyof typeof en;

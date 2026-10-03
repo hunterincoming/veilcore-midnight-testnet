@@ -5,7 +5,8 @@
 // stand-in hash: what a visitor sees change is what the format publishes.
 //
 // Content rules (Mako's): "prior possession", never "ownership"; no customer, pilot or
-// partner claims; the status tiles stay honest and current.
+// partner claims; the status tiles stay honest and current, and the status block says
+// plainly who holds the maintenance key (docs/maintenance-policy.md, PROPOSED).
 //
 // SPDX-License-Identifier: Apache-2.0
 
@@ -31,7 +32,7 @@ const Fingerprint: React.FC = () => {
       formatVersion: '0.1',
       recordId: 'demo',
       subjectType: 'plant-genetic-material',
-      profile: 'veilcore/profile/cannabis/v0.1',
+      profile: 'veilcore/profile/plant-variety/v1',
       commitment: '',
       commitmentAlgorithm: 'sha256/canonical-json/v1',
       anchor: { chain: 'midnight', network: 'undeployed' },
@@ -39,7 +40,9 @@ const Fingerprint: React.FC = () => {
       holder: { id: 'demo' },
       parents: [],
       attestations: [],
-      profileData: { cultivarName: cultivar, breederName: bredBy, nonce },
+      // Name and breeder are envelope fields under the plant-variety profile, as in the app.
+      subject: { name: cultivar, originator: bredBy || undefined },
+      profileData: { nonce },
     } as never).then((h) => {
       if (!live) return;
       setHash((old) => {
@@ -383,8 +386,11 @@ export const Home: React.FC = () => {
               text={t('m.post2.text')}
               go={t('m.updates.read')}
             />
+            {/* Links to our own design note, not to the published Midnight deployment
+                record: that record still describes the older 13-circuit contract until
+                revision 4 is filed. */}
             <Post
-              href="https://github.com/midnightntwrk/midnight-improvement-proposals/blob/main/deployments/veilcore.md#revision--2425-august-2026"
+              href={`${TESTNET_REPO}/blob/main/docs/design.md#licences`}
               iso="2026-08-25"
               date={t('m.post3.date')}
               tag={t('m.post3.tag')}
@@ -433,6 +439,12 @@ export const Home: React.FC = () => {
               <span>{t('m.stat4.s')}</span>
             </div>
           </div>
+          <p className="status-key">
+            <strong>{t('m.status.keyTitle')}</strong> {t('m.status.keyText')}{' '}
+            <a href={`${TESTNET_REPO}/blob/main/docs/maintenance-policy.md`} rel="noopener noreferrer" target="_blank">
+              {t('m.status.keyLink')}
+            </a>
+          </p>
         </div>
       </section>
 

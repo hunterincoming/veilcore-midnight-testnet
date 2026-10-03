@@ -1,9 +1,10 @@
 // What exists, and how to add to it.
 //
-// "Three independent implementations" is a claim that means nothing until someone can
-// see the three, see what they agree on, and see how they were checked. This page is
-// that, and it is also the page a body evaluating the format will look for: not what we
-// say about it, but who else has built it and whether it held.
+// Three implementations, all written by the same author. That shows the rules hold across
+// languages; it does not show that someone else could implement the format from the
+// document alone, and this page says so. It is also the page a body evaluating the
+// format will look for: what exists, how it is checked, and how to add an implementation.
+// The vector count is SDK main's conformance/vectors.json (55 on 3 October 2026).
 //
 // SPDX-License-Identifier: Apache-2.0
 
@@ -59,12 +60,13 @@ export const Implementations: React.FC = () => (
         variant="h1"
         sx={{ fontSize: { xs: 34, md: 50 }, lineHeight: 1.05, mb: 3, maxWidth: 780, letterSpacing: '-0.02em' }}
       >
-        Three programs, written separately, that agree exactly.
+        Three implementations, one author, that now agree.
       </Typography>
       <Typography variant="h6" sx={{ color: 'text.secondary', maxWidth: 620, fontWeight: 400, lineHeight: 1.6 }}>
-        A format one team implements is documentation. A format three independent programs agree on is a specification.
-        Each of these was written from the published document rather than translated from the others, and each passes
-        the same thirteen test vectors.
+        TypeScript, Python and Rust, all written by the same author. They agree on the 55 published conformance vectors
+        and on 81,000 random inputs. That shows the rules hold across three languages. It does not yet show that someone
+        else could implement the format from the document alone: an implementation by someone else is still the missing
+        test.
       </Typography>
     </Box>
 
@@ -74,25 +76,25 @@ export const Implementations: React.FC = () => (
         lang="TypeScript"
         who="the authors of the specification"
         deps="none"
-        note="The reference implementation, published on npm. Commitments, canonical serialisation, batch inclusion proofs, attester signatures, corrections, challenges and registry resolution. Runs in a browser and in Node with separate entry points, so a frontend build pulls in nothing it cannot use."
-        href="https://www.npmjs.com/package/veilcore-records"
-        hrefLabel="View on npm"
+        note="The reference implementation. Commitments, canonical serialisation, batch inclusion proofs, attester signatures, corrections, challenges and registry resolution. Runs in a browser and in Node with separate entry points, so a frontend build pulls in nothing it cannot use. The version on npm (0.13.0) predates the 3 October number rules; use the repository until a newer version is published."
+        href="https://github.com/hunterincoming/veilcore-sdk"
+        hrefLabel="View the repository"
       />
       <Impl
         name="conformance/impl.py"
         lang="Python"
-        who="the authors, from the specification rather than from the TypeScript"
+        who="the same author, from the specification"
         deps="standard library only"
-        note="A second implementation whose purpose is disagreement. If the specification were ambiguous, this is where it would show: two programs written from the same document, producing different bytes. It passed on the first run, which is the evidence that the serialisation rules are complete."
+        note="A second implementation whose purpose is disagreement. If the specification were ambiguous, this is where it would show: two programs written from the same document, producing different bytes. It passed the early vectors. Then, on 3 October 2026, a differential test on 27,000 inputs found the three implementations disagreeing on some numbers and on unpaired surrogates: the rules were not complete. The specification was tightened (section 4.4, rules 1 and 8) and all three were fixed."
         href="https://github.com/hunterincoming/veilcore-sdk/blob/main/conformance/impl.py"
         hrefLabel="Read the source"
       />
       <Impl
         name="veilcore-rs"
         lang="Rust"
-        who="the authors, from the specification"
+        who="the same author, from the specification"
         deps="SHA-256, a JSON parser, Unicode normalisation"
-        note="A third implementation in a language with different string handling, different number formatting, and different map ordering — the three places where a serialisation specification usually breaks. It also passed on the first run."
+        note="A third implementation in a language with different string handling, different number formatting, and different map ordering — the three places where a serialisation specification usually breaks. The 3 October differential test found it disagreeing too, including on the last digit of some numbers; fixed in veilcore-rs 0.2.0."
         href="https://github.com/hunterincoming/veilcore-rs"
         hrefLabel="View the repository"
       />
@@ -106,7 +108,7 @@ export const Implementations: React.FC = () => (
         variant="h3"
         sx={{ fontSize: { xs: 26, md: 34 }, mb: 3, maxWidth: 720, lineHeight: 1.2, letterSpacing: '-0.02em' }}
       >
-        Thirteen vectors, and one program written to fail them.
+        Fifty-five vectors, and one program written to fail them.
       </Typography>
 
       <Stack spacing={2.5} sx={{ maxWidth: 680 }}>
@@ -114,7 +116,8 @@ export const Implementations: React.FC = () => (
           The vectors cover the places serialisation goes wrong quietly: key ordering, an omitted field against an
           explicit null, array order, Unicode normalisation, nested sorting, and number formatting. Then commitment
           computation across a range of record shapes, including the requirement that changing where a record is
-          anchored must not change the record.
+          anchored must not change the record. Since 3 October they also pin the number and surrogate rules the
+          differential test exposed.
         </Typography>
         <Typography variant="body1" color="text.secondary" sx={{ lineHeight: 1.8, fontSize: 16 }}>
           A suite that only ever passes proves nothing, so the repository also contains a deliberately incorrect
@@ -162,9 +165,9 @@ export const Implementations: React.FC = () => (
       </Box>
 
       <Typography variant="body1" color="text.secondary" sx={{ maxWidth: 680, mb: 4, lineHeight: 1.8, fontSize: 16 }}>
-        If it passes, it is conformant, and you owe us nothing for saying so. We offer certification as a service for
-        anyone who wants a third party to attest to it — but the vectors are public, so anyone can check anyone,
-        including checking us.
+        If it passes, it is conformant, and you owe us nothing for saying so. Nobody offers certification today; it
+        could be offered later, by us or anyone. The vectors are public, so anyone can check anyone, including checking
+        us.
       </Typography>
 
       <Stack direction="row" spacing={2} sx={{ flexWrap: 'wrap', gap: 2 }}>

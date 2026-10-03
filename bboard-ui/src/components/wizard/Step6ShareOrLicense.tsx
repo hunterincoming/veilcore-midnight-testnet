@@ -1,5 +1,5 @@
 // Wizard step 6 — Share or license. The breeder picks who's receiving the genetics: a
-// company (a commercial license, 3% Veilcore fee) or another breeder (a breeder share, no
+// company (a commercial license, 3% VeilCore fee) or another breeder (a breeder share, no
 // fee but offspring-royalty + attribution + the lineage-traceability guarantee). Then the
 // matching terms builder, issue, counter-sign, and the active agreement — reusing the same
 // instrument as everywhere else.
@@ -117,17 +117,18 @@ export const Step6ShareOrLicense: React.FC<{
         >
           <PaidIcon sx={{ fontSize: 52, color: TEAL, filter: `drop-shadow(0 0 18px ${TEAL})`, mb: 1 }} />
           <Typography variant="h4" sx={{ color: TEAL }}>
-            {type === 'license' ? 'This is how breeders get paid.' : 'Shared — on your terms.'}
+            {type === 'license' ? 'Agreement recorded.' : 'Shared — on your terms.'}
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 480, mx: 'auto', mt: 1 }}>
-            Both parties signed. The agreement is active — and its terms are bound to {record.strainName}&apos;s sealed
-            record and its DNA fingerprint.
+            Both parties signed (in this demo, signatures are simulated). Its terms are attached to {record.strainName}
+            &apos;s sealed record and its report fingerprint. VeilCore records what is owed; payment happens between
+            you.
           </Typography>
         </MBox>
 
         <Paper sx={{ p: { xs: 2.5, md: 3 }, border: `1px solid ${TEAL}55` }}>
           <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
-            <Typography variant="overline">Active · {AGREEMENT_LABEL[type]}</Typography>
+            <Typography variant="overline">Recorded in this demo · {AGREEMENT_LABEL[type]}</Typography>
             <LicenseStateChip license={license} />
           </Stack>
           <Stack spacing={1}>
@@ -139,8 +140,8 @@ export const Step6ShareOrLicense: React.FC<{
 
         {showLineageNote && (
           <Alert severity="info" variant="outlined">
-            They may breed with it — but any cultivar later logged with {record.strainName} as a parent is traceable
-            through the lineage graph, keeping offspring linked to this agreement.
+            They may breed with it. A cultivar later logged with {record.strainName} as a parent, with both holders
+            confirming, links back to this agreement. Offspring nobody logs are not detected.
             {derivatives > 0 ? ` ${derivatives} already descend${derivatives === 1 ? 's' : ''} from it.` : ''}
           </Alert>
         )}
@@ -186,7 +187,8 @@ export const Step6ShareOrLicense: React.FC<{
           <Chip size="small" variant="outlined" label="Demo — settlement simulated" />
         </Stack>
         <Typography variant="caption" color="text.secondary">
-          In the live product, the recipient opens the link, reviews the terms, and signs — only then does it activate.
+          Outside this demo, the recipient would open the link, review the terms and sign; only then would it activate.
+          Here the counter-signature is simulated.
         </Typography>
       </Stack>
     );
@@ -199,7 +201,7 @@ export const Step6ShareOrLicense: React.FC<{
         <Box>
           <Typography variant="h5">{AGREEMENT_LABEL[type]}</Typography>
           <Typography variant="body2" color="text.secondary">
-            Terms bound to {record.strainName}&apos;s genetics — not just a signature page.
+            Terms attached to {record.strainName}&apos;s sealed record — not just a signature page.
           </Typography>
         </Box>
 
@@ -235,8 +237,8 @@ export const Step6ShareOrLicense: React.FC<{
           Share or license
         </Typography>
         <Typography variant="body2" color="text.secondary">
-          Who&apos;s receiving {record.strainName}? Pick the relationship and we&apos;ll build the right terms — bound
-          to the genetics either way.
+          Who&apos;s receiving {record.strainName}? Pick the relationship and we&apos;ll build the right terms, attached
+          to the record either way.
         </Typography>
       </Box>
 
@@ -250,7 +252,7 @@ export const Step6ShareOrLicense: React.FC<{
             <Typography variant="h6">A company</Typography>
             <Typography variant="body2" color="text.secondary">
               License agreement — rights, territory, royalty, exclusivity.
-              {SHOW_VEILCORE_FEE ? ' Carries the Veilcore 3% fee.' : ''}
+              {SHOW_VEILCORE_FEE ? ' Carries the VeilCore 3% fee.' : ''}
             </Typography>
           </Stack>
         </Paper>
@@ -262,8 +264,8 @@ export const Step6ShareOrLicense: React.FC<{
             <ShareIcon sx={{ color: TEAL }} />
             <Typography variant="h6">Another breeder</Typography>
             <Typography variant="body2" color="text.secondary">
-              Breeder share — breeding/distribution rights, attribution, offspring royalty. No fee; lineage keeps
-              derivatives traceable.
+              Breeder share — breeding/distribution rights, attribution, offspring royalty. No fee; declared descendants
+              stay linked through lineage.
             </Typography>
           </Stack>
         </Paper>

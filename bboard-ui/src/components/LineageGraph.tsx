@@ -1,4 +1,4 @@
-// LineageGraph — a simple family tree for a strain: its parents above, children below.
+// LineageGraph — a simple family tree for a cultivar: its parents above, children below.
 // Linked (logged) relatives are clickable. This is what makes renaming detectable.
 // SPDX-License-Identifier: Apache-2.0
 

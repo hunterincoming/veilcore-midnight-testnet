@@ -72,21 +72,23 @@ export const WizardShell: React.FC = () => {
             <Typography variant="h4" sx={{ mt: 1 }}>
               {license
                 ? type === 'license'
-                  ? 'You’re set — and this is how you get paid.'
-                  : 'You’re set — shared on your terms.'
-                : 'Your cultivar is protected.'}
+                  ? 'Agreement recorded.'
+                  : 'Shared on your terms.'
+                : 'Your cultivar is logged and sealed.'}
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 520, mx: 'auto', mt: 1 }}>
-              {record ? <b>{record.strainName}</b> : 'Your cultivar'} is logged and sealed. Everything you proved stays
-              provable — and the genetics never left your device
-              {license ? ', with an active agreement whose terms are bound to them.' : '.'}
+              {record ? <b>{record.strainName}</b> : 'Your cultivar'} is logged and sealed. Lab and DNA files stayed on
+              your device
+              {license
+                ? '. The agreement is recorded against this record (in this demo, signing is simulated). VeilCore records what is owed; payment happens between you.'
+                : '.'}
             </Typography>
           </Box>
 
           {license && type ? (
             <Paper sx={{ p: { xs: 2.5, md: 3 }, textAlign: 'left', border: `1px solid ${TEAL}55` }}>
               <Typography variant="overline" sx={{ display: 'block', mb: 1.5 }}>
-                Active · {AGREEMENT_LABEL[type]}
+                Recorded in this demo · {AGREEMENT_LABEL[type]}
               </Typography>
               <Stack spacing={1}>
                 {agreementRows(license).map((r) => (
@@ -98,7 +100,7 @@ export const WizardShell: React.FC = () => {
             recordId && (
               <Alert severity="info" variant="outlined" sx={{ textAlign: 'left' }}>
                 You didn’t share or license it yet. When you’re ready, open the cultivar and choose License, Send to a
-                lab, or Share with a breeder — the terms are bound to the record and its DNA fingerprint.
+                lab, or Share with a breeder. The terms are attached to the record and its report fingerprint.
               </Alert>
             )
           )}
@@ -196,8 +198,8 @@ export const WizardShell: React.FC = () => {
           </Box>
         </Typography>
         <Typography variant="body1" color="text.secondary" sx={{ maxWidth: 640, mx: 'auto' }}>
-          Log it, send it to a lab, pair the report, prove exactly what you choose, then share or license it — terms
-          bound to the sealed record and its DNA fingerprint.
+          Log it, send it to a lab, pair the report, prove exactly what you choose, then share or license it, with terms
+          attached to the sealed record and its report fingerprint.
         </Typography>
       </Box>
 

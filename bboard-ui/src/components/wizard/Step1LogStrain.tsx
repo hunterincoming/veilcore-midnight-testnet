@@ -1,6 +1,10 @@
-// Step 1 — Log your strain. Proof you made it first: an un-forgeable, timestamped
-// record sealed the moment you log it. All fields (incl. photos) are hashed locally;
-// nothing leaves the device.
+// Step 1 — Log a cultivar. The record is sealed in the browser: its fingerprint is
+// computed here, photos and DNA files are hashed here and never uploaded. The details
+// typed in (name, breeder, dates, notes, parents) are saved to VeilCore's test server so
+// the holder can come back to them. The time comes from this device's clock until the
+// record's batch is anchored. Nothing here checks whether anyone logged it before.
+// New records are sealed under the plant-variety profile; the taxon is what the holder
+// enters, or nothing.
 // SPDX-License-Identifier: Apache-2.0
 
 import React, { useRef, useState } from 'react';
@@ -22,6 +26,7 @@ import PhotoIcon from '@mui/icons-material/AddPhotoAlternateOutlined';
 import { motion } from 'framer-motion';
 import { fingerprintRecord, fingerprintFile, newNonce } from '../../veilcore/commitment';
 import { createRecord, allRecords, type StrainRecord, type ParentRef } from '../../veilcore/records';
+import { PLANT_VARIETY_PROFILE } from '../../veilcore/envelope';
 import { FingerprintReveal } from './FingerprintReveal';
 import { TEAL } from '../../config/theme';
 
@@ -32,11 +37,11 @@ const fmtStamp = (ms: number) => new Date(ms).toLocaleString();
 const BREEDING_METHODS = [
   'Seed — F1',
   'Seed — F2',
-  'Seed — S1 (selfed)',
+  'Seed — selfed (S1)',
   'Seed — backcross',
   'Clone / cutting',
   'Tissue culture',
-  'Pheno selection',
+  'Selection',
   'Landrace / heirloom',
   'Other',
 ];
@@ -50,6 +55,7 @@ export const Step1LogStrain: React.FC<{ onDone: (recordId: string) => void }> = 
   const [breedingMethod, setBreedingMethod] = useState('');
   const [photos, setPhotos] = useState<File[]>([]);
   const [refId, setRefId] = useState('');
+  const [taxon, setTaxon] = useState('');
   const [busy, setBusy] = useState(false);
   const [record, setRecord] = useState<StrainRecord>();
   const [error, setError] = useState<string>();
@@ -80,6 +86,8 @@ export const Step1LogStrain: React.FC<{ onDone: (recordId: string) => void }> = 
         breedingMethod,
         photoFingerprints,
         refId: refId.trim(),
+        profile: PLANT_VARIETY_PROFILE,
+        taxon: taxon.trim() || undefined,
       };
       const recordFingerprint = await fingerprintRecord(fields);
       setRecord(createRecord({ ...fields, recordFingerprint }));
@@ -95,17 +103,18 @@ export const Step1LogStrain: React.FC<{ onDone: (recordId: string) => void }> = 
       <Stack spacing={2}>
         <FingerprintReveal
           fingerprint={record.recordFingerprint}
-          headline="Zero bytes left your device."
-          sub="Your record — every field and photo — was sealed and timestamped right here in your browser. Only this tamper-evident fingerprint was saved."
+          headline="Sealed in your browser."
+          sub="Photos and lab or DNA files stay on this device; only their fingerprints are kept. The details you typed are saved on VeilCore's test server so you can come back to them."
         />
         <Alert icon={<ShieldIcon />} severity="success" variant="outlined">
-          <Typography variant="subtitle2">Proof created — you were first to log it.</Typography>
+          <Typography variant="subtitle2">Record sealed.</Typography>
           <Typography variant="body2" sx={{ mt: 0.5, color: 'text.secondary' }}>
             <b>{record.strainName}</b> · bred by {record.bredBy}
           </Typography>
           <Typography variant="body2" sx={{ mt: 0.5, color: 'text.secondary' }}>
-            Sealed {fmtStamp(record.loggedAt)}. This is a timestamped record from the moment you logged it — first to
-            log it, first in line. Your stated creation date ({record.dateCreated}) is recorded as your own claim.
+            Sealed {fmtStamp(record.loggedAt)}, by this device&apos;s clock. The record gets a date anyone can check
+            when its batch is anchored. Nothing here checks whether anyone else logged it first. Your stated creation
+            date ({record.dateCreated}) is recorded as your own claim.
           </Typography>
         </Alert>
         <Box>
@@ -124,14 +133,14 @@ export const Step1LogStrain: React.FC<{ onDone: (recordId: string) => void }> = 
           Log your cultivar — a sealed record of what you hold, and when
         </Typography>
         <Typography variant="body2" color="text.secondary">
-          A tamper-evident, timestamped record of this cultivar in your hands — sealed before anyone else can claim it.
+          A tamper-evident record of what you hold. Once its batch is anchored, anyone can check its date.
         </Typography>
       </Box>
 
       <TextField
         label="Cultivar name"
-        placeholder="e.g. Blue Lotus #4"
-        helperText="The name you know it by — what most people call the strain."
+        placeholder="e.g. Harbour Mist"
+        helperText="The name you know it by: the variety or cultivar name."
         value={strainName}
         onChange={(e) => setStrainName(e.target.value)}
         fullWidth
@@ -142,6 +151,15 @@ export const Step1LogStrain: React.FC<{ onDone: (recordId: string) => void }> = 
         helperText="Who the proof credits — you or your operation."
         value={bredBy}
         onChange={(e) => setBredBy(e.target.value)}
+        fullWidth
+      />
+
+      <TextField
+        label="Species (optional)"
+        placeholder="e.g. Solanum lycopersicum"
+        helperText="The species or other taxon, if you want it on the record. Leave blank to omit it."
+        value={taxon}
+        onChange={(e) => setTaxon(e.target.value)}
         fullWidth
       />
 
@@ -216,8 +234,8 @@ export const Step1LogStrain: React.FC<{ onDone: (recordId: string) => void }> = 
 
       <TextField
         label="Notes (optional)"
-        placeholder="The cross, the pheno, the story…"
-        helperText="Anything you want on the record. Stays private to you."
+        placeholder="The cross, the selection, the story…"
+        helperText="Saved on VeilCore's test server with the rest of the record. Shown only to whoever holds your holder key."
         value={notes}
         onChange={(e) => setNotes(e.target.value)}
         multiline
@@ -233,7 +251,7 @@ export const Step1LogStrain: React.FC<{ onDone: (recordId: string) => void }> = 
       >
         <ShieldIcon fontSize="small" />
         <Typography variant="body2" sx={{ color: TEAL }}>
-          DNA files stay on your device. The details you type here are saved to the VeilCore registry.
+          Photos and DNA files stay on your device. The details you type here are saved on VeilCore&apos;s test server.
         </Typography>
       </MBox>
 

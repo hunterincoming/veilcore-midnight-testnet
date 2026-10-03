@@ -81,6 +81,15 @@ trusting us. Without one, a verifier needs to trust only the published source an
 fingerprints. (A maintenance update also cannot add ledger fields, so every field the
 contract will need is in it from the start.)
 
+**How, provably** (`api/src/maintenance.ts`, `retireMaintenanceAuthorityProvably`). After
+the seven circuit keys are on chain, the deploy replaces the authority with an **empty
+committee and a threshold of 1**: an authority no signature can ever satisfy, which anyone
+can read from the contract's state (`committee: []`, `threshold: 1`). That is checkable,
+unlike "we threw the key away". midnight-js cannot build it, so the signed maintenance
+update is built directly with ledger-v8; `api/test-maintenance.mjs` applies it to a real
+ledger state and checks that the old key, any other key and an unsigned update are all
+refused afterwards. The smoke test's claims phase checks the same on preprod.
+
 ## What a verifier checks
 
 The nine checks are in SPEC section 4.5 ("What a verifier of a claim shall check"). The

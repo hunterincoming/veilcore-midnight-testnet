@@ -1,6 +1,6 @@
 # Operator runbook
 
-**For running the VeilCore CLI on a Mac · last updated 1 October 2026**
+**For running the VeilCore CLI on a Mac · last updated 3 October 2026**
 
 Three jobs, in this order: a rehearsal on a local chain, the smoke test on preprod, then
 the mainnet deploy. Every step, prompt and menu number below comes from the code in
@@ -30,6 +30,9 @@ confirmed from the code.
 7. When a run is done, close the Terminal window (Cmd+W) so secrets shown on screen do not
    sit in its scrollback.
 8. **Contract addresses and transaction ids are not secrets.** Those are fine to share.
+9. **Field-set files are private.** They hold a record's hidden values and its field
+   secret. Treat them like a secret: never paste one into a chat or an email. The CLI
+   reads them from disk and never prints what is inside.
 
 ## Before any run
 
@@ -38,8 +41,9 @@ confirmed from the code.
 2. Node 24 is installed (`node --version` shows v24).
 3. In Terminal, from the repository folder, packages are installed:
    `npm install --legacy-peer-deps`
-4. The contract is compiled: the folder `contract/src/managed/veilcore` exists. If not:
-   `cd contract && npm run compact` (needs the Compact toolchain; see README.md).
+4. The contracts are compiled: the folders `contract/src/managed/veilcore` and
+   `contract/src/managed/veilcore-claims` exist. If not:
+   `cd contract && npm run compact` (compiles both; needs the Compact toolchain; see README.md).
    `docs/fingerprints.md` was regenerated for the state-bounds build (`e89a387`). Do not
    regenerate it. The CLI checks the local build against it when you pick 1, 2 or 4 on
    mainnet, and refuses if they differ. Do not rebuild with a different compiler (use
@@ -63,11 +67,14 @@ Costs nothing. The chain is new every run and thrown away at the end.
 5. Wait while the local chain starts. There is no wallet question: the local chain has a
    built-in funded wallet.
 6. The deploy menu appears. Type `3` and press Enter (Run the full smoke test).
-7. Wait. It prints `PASS 1.` up to `PASS 26.`
-8. **Passed:** the last lines say `SMOKE TEST PASSED: 26 checks passed.` and `Smoke test passed.`
+7. It asks `Also run the claims contract phase (11 more checks)? (y/N)`. Type `y` and press
+   Enter. (Enter on its own runs the main contract only, as before: 26 checks.)
+8. Wait. It prints `PASS 1.` up to `PASS 26.`, then `Main contract phase passed (26 checks).
+   Now the claims contract.`, then `PASS 27.` up to `PASS 37.`
+9. **Passed:** the last lines say `SMOKE TEST PASSED: 37 checks passed.` and `Smoke test passed.`
    The program then stops the local chain and exits.
-9. **Failed:** it says `SMOKE TEST FAILED. Do not deploy to mainnet until this passes.`
-   Copy the lines just above it (they hold no secrets) and send them to Claude.
+10. **Failed:** it says `SMOKE TEST FAILED. Do not deploy to mainnet until this passes.`
+    Copy the lines just above it (they hold no secrets) and send them to Claude.
 
 ## B. Smoke test on preprod
 
@@ -92,10 +99,17 @@ Preprod is Midnight's test network. Use the **test wallet only**.
    **CHECK WITH CLAUDE** how to use the faucet if you have not before.
 6. On preprod only, the CLI registers test NIGHT that is not yet registered for DUST.
    That is expected here. (It never does this on mainnet.)
-7. The deploy menu appears. Type `3`, Enter.
-8. Wait, about 30 to 45 minutes. It prints `PASS 1.` up to `PASS 26.`
-9. **Passed:** `SMOKE TEST PASSED: 26 checks passed. Contract <address>`. Copy that line and
-   send it to Claude. This is the result mainnet waits on.
+7. The deploy menu appears. Type `3`, Enter. At `Also run the claims contract phase (11
+   more checks)? (y/N)`, type `y`, Enter.
+8. Wait, about 30 to 45 minutes for the main contract. It prints `PASS 1.` up to `PASS 26.`
+   The claims phase then deploys a second, test-only contract and prints `PASS 27.` up to
+   `PASS 37.` It takes longer per step than the main phase: two of its proofs (distinct and
+   unchanged) are about eight times bigger than anything in the main contract.
+   **CHECK WITH CLAUDE** if the proof server stops or runs out of memory during those two.
+9. **Passed:** `SMOKE TEST PASSED: 37 checks passed. Contract <address>, claims contract
+   <address>`. Copy that line and send it to Claude. This is the result mainnet waits on.
+   PASS 28 is the one to look for: it says the chain shows the claims contract's maintenance
+   authority as an empty committee, so nobody can change it.
 10. **Failed:** copy the lines above `SMOKE TEST FAILED` and send them to Claude. Do not go on
     to mainnet.
 11. **`custom error 171` (OutOfDustValidityWindow):** the network refused the deploy because
@@ -227,3 +241,64 @@ Only on the date published in the deployment record. Run `npm run mainnet` (step
 13; step 6 is not needed), choose `2` (Join), paste the contract address, then main
 menu option **33** (not 32). Type `RETIRE`, then type the key from your paper (nothing
 shows). This cannot be undone.
+
+---
+
+## D. The claims contract (test networks)
+
+The claims contract is a second contract. A holder uses it to prove one fact about a
+record they sealed (a value, that a number is at least or at most a bound, that two
+records differ, that a correction changed only some values) without showing the rest.
+Its options are 34 to 40 on the main menu, after you have deployed or joined the main
+contract. **It is not deployed on mainnet yet**: option 34 refuses there, because it is
+not in a filed deployment record and its keys have no committed fingerprints.
+
+### Deploy it
+
+1. At the main menu, type `34`. It explains what happens; type `yes`.
+2. It deploys, adds its seven circuit keys, then replaces its maintenance authority with
+   an **empty committee**. You do not write any key down: there is none to keep. Anyone
+   reading the contract can see that nobody can change it.
+3. Done when you see `Claims contract ready at …: all 7 circuit keys on chain, maintenance
+   authority an empty committee`. Copy the address.
+4. If it stops partway, do not choose `34` again. Run again with the same password and
+   wallet, choose `36` (Finish a claims deploy), and paste the address.
+
+To use a claims contract someone else deployed, choose `35` and paste its address. If it
+says `WARNING: it still has a maintenance authority`, do not rely on its claims.
+
+### Make a claim
+
+You need the record's **field-set file** (JSON): the published schema document, the 16
+values, the field secret and the digest of the record's committed JSON. The SDK writes it
+when the record is sealed.
+
+1. Type `37`. Choose the kind: `v` (value), `b` (bound on a number), `d` (distinct) or `u`
+   (unchanged correction).
+2. Give the path to the field-set file. For `d`, also the reference record's file; for
+   `u`, the original first, then the correction's.
+3. For `v`, `b` and `d`: the path to a **laboratory attestation file** if a laboratory
+   signed the record, or press Enter for none.
+4. Answer the questions (which slot, at least or at most, the bound in the schema's
+   unit). Before a value or a bound it shows what this run has already published about
+   that slot. **A value claim publishes the value, permanently. Every bound is public too;
+   several bounds narrow the hidden number.**
+5. Type `yes` to send it. Anything else sends nothing.
+6. It shows `Give the verifier this transaction id: …` and the claim in plain words. Send
+   the verifier that transaction id.
+
+### Check a claim (as a verifier)
+
+Type `38`, paste the transaction id, and give the schema document's file (from whoever
+published the schema, not from the prover) or press Enter to skip. It shows the claim in
+plain words, each check made (`ok` or `FAILED`), and a list of `to check:` lines this tool
+cannot check for you, such as whether the record is anchored and whether a laboratory key
+is one you trust.
+
+### Other options
+
+- `39` signs records as a laboratory and writes an attestation file. Press Enter at the
+  secret to make a **test** key (shown once on screen). On mainnet a laboratory uses its
+  own key.
+- `40` shows a field-set file's schema id, `fieldSetRoot` and record commitment. Those are
+  public.

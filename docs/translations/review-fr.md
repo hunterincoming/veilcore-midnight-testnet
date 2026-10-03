@@ -1376,3 +1376,39 @@ Some headings are split in two or three parts; the later part is shown in colour
 **EN:** Video
 
 **FR:** Vidéo
+
+### m.is.4a
+
+**EN:** Licences:
+
+**FR:** Licences :
+
+### m.is.4b
+
+**EN:** grant rights to a record. A licensee can prove a licence is valid without revealing which licence it is or who holds it.
+
+**FR:** accordent des droits sur un enregistrement. Un licencié peut prouver qu'une licence est valide sans révéler laquelle ni qui la détient.
+
+### m.is.5a
+
+**EN:** Agreed lineage:
+
+**FR:** Lignée convenue :
+
+### m.is.5b
+
+**EN:** a parent link counts only when both holders confirm it, and obligations such as royalties follow the material to its offspring until the beneficiary releases them.
+
+**FR:** un lien de parenté ne compte que si les deux détenteurs le confirment, et les obligations comme les redevances suivent le matériel jusqu'à sa descendance tant que le bénéficiaire ne les a pas levées.
+
+### m.isnt.4a
+
+**EN:** Not a pedigree test.
+
+**FR:** Pas un test de pedigree.
+
+### m.isnt.4b
+
+**EN:** A parent link means both holders agreed, not that DNA proves it.
+
+**FR:** Un lien de parenté signifie que les deux détenteurs l'ont accepté, pas que l'ADN le prouve.

@@ -84,6 +84,12 @@ export const fr: Strings = {
   'm.is.2b': 'les données génétiques et les fichiers de laboratoire ne nous parviennent jamais.',
   'm.is.3a': 'Un format ouvert :',
   'm.is.3b': 'gratuit à implémenter, gratuit à vérifier, avec une spécification publiée.',
+  'm.is.4a': 'Licences :',
+  'm.is.4b':
+    "accordent des droits sur un enregistrement. Un licencié peut prouver qu'une licence est valide sans révéler laquelle ni qui la détient.",
+  'm.is.5a': 'Lignée convenue :',
+  'm.is.5b':
+    "un lien de parenté ne compte que si les deux détenteurs le confirment, et les obligations comme les redevances suivent le matériel jusqu'à sa descendance tant que le bénéficiaire ne les a pas levées.",
   'm.isnt.title': "Ce que ce n'est pas",
   'm.isnt.1a': 'Pas une propriété.',
   'm.isnt.1b': "Il ne crée aucun droit légal que vous n'ayez déjà.",
@@ -91,6 +97,8 @@ export const fr: Strings = {
   'm.isnt.2b': "Il prouve quand vous avez écrit quelque chose, pas que c'est vrai.",
   'm.isnt.3a': 'Pas un test ADN.',
   'm.isnt.3b': "Il en complète un, pour qu'un résultat ait encore un sens des années plus tard.",
+  'm.isnt.4a': 'Pas un test de pedigree.',
+  'm.isnt.4b': "Un lien de parenté signifie que les deux détenteurs l'ont accepté, pas que l'ADN le prouve.",
   'm.demo.label': 'Démo',
   'm.demo.title1': 'Choisissez comment',
   'm.demo.title2': 'vous voulez le voir.',

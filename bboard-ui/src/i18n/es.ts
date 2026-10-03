@@ -86,6 +86,12 @@ export const es: Strings = {
   'm.is.2b': 'los datos genéticos y los archivos de laboratorio nunca nos llegan.',
   'm.is.3a': 'Un formato abierto:',
   'm.is.3b': 'gratuito de implementar, gratuito de verificar, con una especificación publicada.',
+  'm.is.4a': 'Licencias:',
+  'm.is.4b':
+    'otorgan derechos sobre un registro. Un licenciatario puede demostrar que una licencia es válida sin revelar cuál es ni quién la tiene.',
+  'm.is.5a': 'Linaje acordado:',
+  'm.is.5b':
+    'un vínculo de parentesco solo cuenta cuando ambos titulares lo confirman, y las obligaciones como las regalías siguen al material hasta su descendencia hasta que el beneficiario las libere.',
   'm.isnt.title': 'Qué no es',
   'm.isnt.1a': 'No es propiedad.',
   'm.isnt.1b': 'No crea ningún derecho legal que usted no tenga ya.',
@@ -93,6 +99,8 @@ export const es: Strings = {
   'm.isnt.2b': 'Prueba cuándo escribió algo, no que sea cierto.',
   'm.isnt.3a': 'No es una prueba de ADN.',
   'm.isnt.3b': 'La complementa, para que un resultado siga significando algo años después.',
+  'm.isnt.4a': 'No es una prueba de pedigrí.',
+  'm.isnt.4b': 'Un vínculo de parentesco significa que ambos titulares lo acordaron, no que el ADN lo demuestre.',
   'm.demo.label': 'Demo',
   'm.demo.title1': 'Elija cómo',
   'm.demo.title2': 'quiere verlo.',

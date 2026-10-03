@@ -232,7 +232,7 @@ export const Home: React.FC = () => {
             <div className="y">
               <h4>{t('m.is.title')}</h4>
               <ul>
-                {(['1', '2', '3'] as const).map((n) => (
+                {(['1', '2', '3', '4', '5'] as const).map((n) => (
                   <li key={n}>
                     <strong>{t(`m.is.${n}a`)}</strong> {t(`m.is.${n}b`)}
                   </li>
@@ -242,7 +242,7 @@ export const Home: React.FC = () => {
             <div className="no">
               <h4>{t('m.isnt.title')}</h4>
               <ul>
-                {(['1', '2', '3'] as const).map((n) => (
+                {(['1', '2', '3', '4'] as const).map((n) => (
                   <li key={n}>
                     <strong>{t(`m.isnt.${n}a`)}</strong> {t(`m.isnt.${n}b`)}
                   </li>

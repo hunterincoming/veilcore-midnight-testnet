@@ -88,6 +88,12 @@ export const en = {
   'm.is.2b': 'genetic data and lab files never reach us.',
   'm.is.3a': 'An open format:',
   'm.is.3b': 'free to implement, free to verify, with a published spec.',
+  'm.is.4a': 'Licences:',
+  'm.is.4b':
+    'grant rights to a record. A licensee can prove a licence is valid without revealing which licence it is or who holds it.',
+  'm.is.5a': 'Agreed lineage:',
+  'm.is.5b':
+    'a parent link counts only when both holders confirm it, and obligations such as royalties follow the material to its offspring until the beneficiary releases them.',
   'm.isnt.title': "What it isn't",
   'm.isnt.1a': 'Not ownership.',
   'm.isnt.1b': "It creates no legal right you don't already have.",
@@ -95,6 +101,8 @@ export const en = {
   'm.isnt.2b': "It proves when you wrote something, not that it's true.",
   'm.isnt.3a': 'Not a DNA test.',
   'm.isnt.3b': 'It complements one, so a result still means something years later.',
+  'm.isnt.4a': 'Not a pedigree test.',
+  'm.isnt.4b': 'A parent link means both holders agreed, not that DNA proves it.',
 
   'm.demo.label': 'Demo',
   'm.demo.title1': 'Pick how you',

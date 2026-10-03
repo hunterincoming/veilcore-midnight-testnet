@@ -1376,3 +1376,39 @@ Some headings are split in two or three parts; the later part is shown in colour
 **EN:** Video
 
 **DE:** Video
+
+### m.is.4a
+
+**EN:** Licences:
+
+**DE:** Lizenzen:
+
+### m.is.4b
+
+**EN:** grant rights to a record. A licensee can prove a licence is valid without revealing which licence it is or who holds it.
+
+**DE:** gewähren Rechte an einem Datensatz. Ein Lizenznehmer kann nachweisen, dass eine Lizenz gültig ist, ohne offenzulegen, welche Lizenz es ist oder wer sie hält.
+
+### m.is.5a
+
+**EN:** Agreed lineage:
+
+**DE:** Vereinbarte Abstammung:
+
+### m.is.5b
+
+**EN:** a parent link counts only when both holders confirm it, and obligations such as royalties follow the material to its offspring until the beneficiary releases them.
+
+**DE:** Eine Elternverbindung zählt nur, wenn beide Inhaber sie bestätigen, und Verpflichtungen wie Lizenzgebühren gehen mit dem Material auf die Nachkommen über, bis der Begünstigte sie freigibt.
+
+### m.isnt.4a
+
+**EN:** Not a pedigree test.
+
+**DE:** Kein Abstammungstest.
+
+### m.isnt.4b
+
+**EN:** A parent link means both holders agreed, not that DNA proves it.
+
+**DE:** Eine Elternverbindung bedeutet, dass beide Inhaber zugestimmt haben, nicht dass die DNA es beweist.

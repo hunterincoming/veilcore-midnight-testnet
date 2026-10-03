@@ -1376,3 +1376,39 @@ Some headings are split in two or three parts; the later part is shown in colour
 **EN:** Video
 
 **JA:** 動画
+
+### m.is.4a
+
+**EN:** Licences:
+
+**JA:** ライセンス：
+
+### m.is.4b
+
+**EN:** grant rights to a record. A licensee can prove a licence is valid without revealing which licence it is or who holds it.
+
+**JA:** 記録に対する権利を付与します。ライセンシーは、どのライセンスか、誰が保有しているかを明かさずに、ライセンスが有効であることを証明できます。
+
+### m.is.5a
+
+**EN:** Agreed lineage:
+
+**JA:** 合意された系譜：
+
+### m.is.5b
+
+**EN:** a parent link counts only when both holders confirm it, and obligations such as royalties follow the material to its offspring until the beneficiary releases them.
+
+**JA:** 親子のつながりは双方の保有者が確認した場合にのみ有効です。ロイヤルティなどの義務は、受益者が解除するまで素材とともに子孫に引き継がれます。
+
+### m.isnt.4a
+
+**EN:** Not a pedigree test.
+
+**JA:** 血統検査ではありません。
+
+### m.isnt.4b
+
+**EN:** A parent link means both holders agreed, not that DNA proves it.
+
+**JA:** 親子のつながりは双方の保有者が合意したことを意味し、DNAで証明されたことを意味するものではありません。

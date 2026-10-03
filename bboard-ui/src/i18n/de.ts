@@ -85,6 +85,12 @@ export const de: Strings = {
   'm.is.2b': 'Genetische Daten und Labordateien erreichen uns nie.',
   'm.is.3a': 'Ein offenes Format:',
   'm.is.3b': 'kostenlos zu implementieren, kostenlos zu prüfen, mit veröffentlichter Spezifikation.',
+  'm.is.4a': 'Lizenzen:',
+  'm.is.4b':
+    'gewähren Rechte an einem Datensatz. Ein Lizenznehmer kann nachweisen, dass eine Lizenz gültig ist, ohne offenzulegen, welche Lizenz es ist oder wer sie hält.',
+  'm.is.5a': 'Vereinbarte Abstammung:',
+  'm.is.5b':
+    'Eine Elternverbindung zählt nur, wenn beide Inhaber sie bestätigen, und Verpflichtungen wie Lizenzgebühren gehen mit dem Material auf die Nachkommen über, bis der Begünstigte sie freigibt.',
   'm.isnt.title': 'Was es nicht ist',
   'm.isnt.1a': 'Kein Eigentum.',
   'm.isnt.1b': 'Es schafft kein Recht, das Sie nicht ohnehin schon haben.',
@@ -92,6 +98,8 @@ export const de: Strings = {
   'm.isnt.2b': 'Es beweist, wann Sie etwas geschrieben haben, nicht, dass es stimmt.',
   'm.isnt.3a': 'Kein DNA-Test.',
   'm.isnt.3b': 'Es ergänzt einen, damit ein Ergebnis auch Jahre später noch etwas bedeutet.',
+  'm.isnt.4a': 'Kein Abstammungstest.',
+  'm.isnt.4b': 'Eine Elternverbindung bedeutet, dass beide Inhaber zugestimmt haben, nicht dass die DNA es beweist.',
   'm.demo.label': 'Demo',
   'm.demo.title1': 'Wählen Sie, wie Sie',
   'm.demo.title2': 'es sehen möchten.',

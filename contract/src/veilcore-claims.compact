@@ -11,7 +11,7 @@
 //   proveUnchanged  a correction changed only the slots in a mask
 //
 // proveAttestedValue, proveAttestedRange and proveAttestedDistinct do the same and also
-// check a laboratory's signature (Schnorr over Jubjub) on the field set, so the claim is
+// check a laboratory's signature (Schnorr over Jubjub) on the record, so the claim is
 // about values a laboratory sealed, not values the holder typed. The signing key is
 // published; whether it belongs to a laboratory the verifier trusts is the verifier's
 // decision (SPEC section 7), not this contract's.
@@ -51,11 +51,13 @@ export struct SlotOpening {
   jsonDigest: Bytes<32>,
 }
 
-/** What a schema fixes for distinctness, and the digest of the schema document. */
+/** What a schema fixes for claims (comparable slots, k, numeric slots), and its document digest. */
 export struct SchemaTerms {
   documentDigest: Bytes<32>,
   comparable: Vector<16, Boolean>,
   k: Uint<8>,
+  /** Slots declared `uint`: only these can carry a range claim. */
+  numeric: Vector<16, Boolean>,
 }
 
 // ─────────────────────────────────────────────────────────────── state
@@ -115,8 +117,8 @@ export circuit fieldRecord(setRoot: Bytes<32>, jsonDigest: Bytes<32>): Bytes<32>
   return persistentHash<Vector<3, Bytes<32>>>([pad(32, "veilcore:v1:frecord"), setRoot, jsonDigest]);
 }
 
-export circuit schemaId(documentDigest: Bytes<32>, comparableMask: Bytes<32>, k: Bytes<32>): Bytes<32> {
-  return persistentHash<Vector<4, Bytes<32>>>([pad(32, "veilcore:v1:fschema"), documentDigest, comparableMask, k]);
+export circuit schemaId(documentDigest: Bytes<32>, comparableMask: Bytes<32>, k: Bytes<32>, numericMask: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<5, Bytes<32>>>([pad(32, "veilcore:v1:fschema"), documentDigest, comparableMask, k, numericMask]);
 }
 
 /**
@@ -138,6 +140,17 @@ export circuit maskBytes(mask: Vector<16, Boolean>): Bytes<32> {
   const weights: Vector<16, Field> = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768];
   const n = fold((acc: Field, b: Boolean, w: Field) => acc + (b ? w : 0 as Field), 0 as Field, mask, weights);
   return n as Bytes<32>;
+}
+
+/** The schema id from its terms. */
+circuit schemaOf(t: SchemaTerms): Bytes<32> {
+  return schemaId(t.documentDigest, maskBytes(t.comparable), countBytes(t.k as Uint<64>), maskBytes(t.numeric));
+}
+
+/** Whether `slot` is set in a 16-slot mask. */
+circuit maskHas(mask: Vector<16, Boolean>, slot: Uint<8>): Boolean {
+  const indexes: Vector<16, Uint<8>> = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+  return fold((acc: Boolean, b: Boolean, i: Uint<8>) => acc || (b && i == slot), false, mask, indexes);
 }
 
 circuit tree16(leaves: Vector<16, Bytes<32>>): Bytes<32> {
@@ -180,18 +193,25 @@ circuit setRootFromSlot(schema: Bytes<32>, slot: Uint<8>, o: SlotOpening): Bytes
 
 // ─────────────────────────────────────────────────────────────── laboratory signatures
 
-/** What a laboratory signs: a domain tag and the field set's root. */
-export pure circuit attestationMessage(setRoot: Bytes<32>): Vector<2, Field> {
-  return [degradeToTransient(pad(32, "veilcore:v1:fattest")), degradeToTransient(setRoot)];
+/**
+ * What a laboratory signs: a domain tag and the RECORD commitment, so a signature cannot
+ * be moved to another record built around the same field set (attack round A1/B-H1).
+ * A Field holds 31 of the commitment's 32 bytes, so a tagged hash of it is signed too,
+ * which covers the byte the first element drops (A2).
+ */
+export pure circuit attestationMessage(record: Bytes<32>): Vector<3, Field> {
+  return [degradeToTransient(pad(32, "veilcore:v1:fattest")),
+          degradeToTransient(record),
+          degradeToTransient(persistentHash<Vector<2, Bytes<32>>>([pad(32, "veilcore:v1:fattest2"), record]))];
 }
 
 /** The full Schnorr challenge for an attestation, for the off-chain signer. */
-export pure circuit attestationChallenge(annX: Field, annY: Field, pkX: Field, pkY: Field, setRoot: Bytes<32>): Field {
-  return Schnorr_schnorrChallenge<2>(annX, annY, pkX, pkY, attestationMessage(setRoot));
+export pure circuit attestationChallenge(annX: Field, annY: Field, pkX: Field, pkY: Field, record: Bytes<32>): Field {
+  return Schnorr_schnorrChallenge<3>(annX, annY, pkX, pkY, attestationMessage(record));
 }
 
-circuit assertAttested(setRoot: Bytes<32>, key: JubjubPoint, sig: Schnorr_SchnorrSignature): [] {
-  Schnorr_schnorrVerify<2>(attestationMessage(setRoot), sig, key);
+circuit assertAttested(record: Bytes<32>, key: JubjubPoint, sig: Schnorr_SchnorrSignature): [] {
+  Schnorr_schnorrVerify<3>(attestationMessage(record), sig, key);
 }
 
 circuit publishAttester(key: JubjubPoint): [] {
@@ -232,6 +252,9 @@ circuit checkValue(r: Bytes<32>, s: Bytes<32>, i: Uint<8>, v: Bytes<32>): Bytes<
 /** Check a range claim; returns the field-set root it rests on. */
 circuit checkRange(r: Bytes<32>, s: Bytes<32>, i: Uint<8>, p: RangeOp, t: Uint<64>): Bytes<32> {
   assertSlot(i);
+  const terms = schemaTerms();
+  assert(schemaOf(terms) == s, "Those are not the terms of that schema");
+  assert(maskHas(terms.numeric, i), "That slot is not a number slot in its schema");
   const o = slotOpening();
   const n = slotNumber();
   assert(o.value == numberBytes(n), "The opened slot does not hold that number");
@@ -246,7 +269,7 @@ circuit checkDistinct(a: Bytes<32>, b: Bytes<32>): [Bytes<32>, Bytes<32>, Bytes<
   assert(a != b, "A record is not distinct from itself");
   const terms = schemaTerms();
   assert(terms.k >= 1, "A schema's distinctness threshold must be at least 1");
-  const s = disclose(schemaId(terms.documentDigest, maskBytes(terms.comparable), countBytes(terms.k as Uint<64>)));
+  const s = disclose(schemaOf(terms));
   const fa = firstFieldSet();
   const fb = secondFieldSet();
   const ra = setRootOf(s, fa);
@@ -331,9 +354,9 @@ export circuit proveAttestedValue(record: Bytes<32>, schema: Bytes<32>, slot: Ui
   const s = disclose(schema);
   const i = disclose(slot);
   const v = disclose(value);
-  const root = checkValue(r, s, i, v);
+  checkValue(r, s, i, v);
   const key = attesterKey();
-  assertAttested(root, key, attesterSignature());
+  assertAttested(r, key, attesterSignature());
   publish(ClaimKind.VALUE, r, default<Bytes<32>>, s, i, v, RangeOp.AT_LEAST);
   publishAttester(key);
 }
@@ -345,9 +368,9 @@ export circuit proveAttestedRange(record: Bytes<32>, schema: Bytes<32>, slot: Ui
   const i = disclose(slot);
   const p = disclose(op);
   const t = disclose(bound);
-  const root = checkRange(r, s, i, p, t);
+  checkRange(r, s, i, p, t);
   const key = attesterKey();
-  assertAttested(root, key, attesterSignature());
+  assertAttested(r, key, attesterSignature());
   publish(ClaimKind.RANGE, r, default<Bytes<32>>, s, i, numberBytes(t), p);
   publishAttester(key);
 }
@@ -361,8 +384,8 @@ export circuit proveAttestedDistinct(first: Bytes<32>, second: Bytes<32>): [] {
   const b = disclose(second);
   const [s, ra, rb] = checkDistinct(a, b);
   const key = attesterKey();
-  assertAttested(ra, key, attesterSignature());
-  assertAttested(rb, key, secondAttesterSignature());
+  assertAttested(a, key, attesterSignature());
+  assertAttested(b, key, secondAttesterSignature());
   publish(ClaimKind.DISTINCT, a, b, s, 0, default<Bytes<32>>, RangeOp.AT_LEAST);
   publishAttester(key);
 }

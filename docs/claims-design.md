@@ -13,15 +13,17 @@ record's sealed values, and none of them revealing anything beyond the claim:
 | **value** | slot *i* of record *c* holds exactly value *v* | *c*, schema, *i*, *v* | an examiner who was shown a value and must establish later that it is the sealed one |
 | **range** | the number in slot *i* of *c* is at least (or at most) *t* | *c*, schema, *i*, at-least/at-most, *t*; never the number | a certifying agency (AOSCA ACR: a trait cleared a specified threshold) |
 | **distinct** | records *a* and *b* differ in at least *k* of the schema's comparable slots | *a*, *b*, schema; never which slots or how many | a plant-variety examiner (USDA PVPO: distinctness without exposing proprietary markers) |
-| **unchanged** | a correction *new* of *old* changed only the slots in a published mask | *old*, *new*, schema, mask | a verifier of a corrected record (SPEC section 6) |
+| **unchanged** | two records under one schema have equal values outside a published mask (nothing else: not which is the correction) | *old*, *new*, schema, mask | a verifier of a corrected record, together with the `supersedes` link (SPEC section 6) |
 
 A claim the sealed values do not support cannot be constructed: the proof fails on the
 prover's machine and nothing reaches the chain.
 
 **Laboratory-signed versions.** `proveAttestedValue`, `proveAttestedRange` and
 `proveAttestedDistinct` also check a laboratory's signature (Schnorr over Jubjub,
-`contract/src/schnorr.compact`, from Midnight's `example-zkloan`) on the field-set root,
-and publish the laboratory's key. Without it, "germination is at least 95%" proves only
+`contract/src/schnorr.compact`, from Midnight's `example-zkloan`, with a subgroup check on
+the key and an exact challenge split added) on the **record commitment**, and publish the
+laboratory's key. Signing the record rather than the field-set root means the signature
+cannot be moved to another record built around the same values (attack round, 3 Oct). Without it, "germination is at least 95%" proves only
 that the holder sealed that number; with it, that a laboratory sealed it. Which keys
 belong to which laboratories is the verifier's decision (SPEC section 7); the contract
 keeps no registry. For distinctness, one laboratory must have signed both field sets.
@@ -31,11 +33,13 @@ keeps no registry. For distinctness, one laboratory must have signed both field 
 A new commitment algorithm, `sha256/fields/v1`, alongside the existing
 `sha256/canonical-json/v1` (which is unchanged).
 
-- A **schema** is a published JSON document naming 16 slots: for each, a path, a type
-  (`uint` with a scale and unit, or `digest`), and whether it is **comparable** (counts
-  towards distinctness). It also fixes **k**, the distinctness threshold. Its id is
-  `schemaId = H("veilcore:v1:fschema", SHA-256(canonical schema JSON), mask, k)`, so the
-  comparable slots and k are fixed by the schema and cannot be chosen per claim.
+- A **schema** is a published JSON document naming up to 16 slots: for each, a path, a
+  type (`uint` with a scale and unit, or `text`), whether it is **comparable** (counts
+  towards distinctness), and for comparable text a **format** (`allele-pair`, `allele`
+  or `code`) whose canonical form is the only one accepted. It also fixes **k**, the
+  distinctness threshold. Its id is `schemaId = H("veilcore:v1:fschema", SHA-256(canonical
+  schema JSON), comparable mask, count(k), numeric mask)`, so the comparable slots, k and
+  which slots are numbers are fixed by the schema and cannot be chosen per claim.
 - Each slot holds 32 bytes: a `uint` as an unsigned 64-bit integer, little-endian in
   bytes 0-7, with byte 8 set to 1 to mark it present; a `text` value as SHA-256 of its
   UTF-8 after NFC normalisation; an absent value as 32 zero bytes. The present-marker
@@ -48,8 +52,8 @@ A new commitment algorithm, `sha256/fields/v1`, alongside the existing
 - `tree` = binary Merkle tree over the 16 leaves, `node = H("veilcore:v1:fnode", left, right)`.
 - `setRoot = H("veilcore:v1:fset", schemaId, tree)`.
 - **Record commitment** = `H("veilcore:v1:frecord", setRoot, jsonDigest)`, where
-  `jsonDigest` is SHA-256 of the canonical JSON of every other committed field (SPEC 4.2,
-  plus `fieldSchema`), exactly as today. So the existing record, its nonce, its batch
+  `jsonDigest` is SHA-256 of the canonical JSON of the committed fields (SPEC 4.2, which
+  now includes `fieldSchema` and `fieldSetRoot`), exactly as today. So the existing record, its nonce, its batch
   anchor and its inclusion proof all work unchanged; the commitment simply also binds
   the field set.
 
@@ -79,24 +83,19 @@ contract will need is in it from the start.)
 
 ## What a verifier checks
 
-1. The claim's transaction is in the chain and the cells it wrote say what is claimed.
-2. Each record commitment it names is anchored (batch inclusion proof, SPEC 5.4), which
-   gives the date the values were sealed.
-3. The schema id is the published schema's id, and the slot means what the verifier
-   needs (e.g. slot 3 is germination, as a percentage ×100).
-4. For `distinct`: both records use the same schema, and the second record is the
-   reference it claims to be (anchored, and identified by its holder or registry).
-5. For a laboratory-signed claim: the published key belongs to a laboratory the verifier
-   trusts, and was valid when the record was anchored (SPEC 7.3).
-6. Neither record has been superseded by a correction (SPEC section 6), unless the claim
-   is about the original as it was.
-7. The contract address is the published claims contract, and its verifier keys match
-   the published fingerprints.
+The nine checks are in SPEC section 4.5 ("What a verifier of a claim shall check"). The
+ones people forget: obtain the schema document and recompute its id; treat a claim as
+being about the record as sealed unless you can establish it is current; check a
+laboratory key was valid at the claim transaction, not just at the anchor; have someone
+other than the prover identify a distinctness reference; and read claims per contract
+call, since a transaction can carry several and only the last is in the cells.
 
 Nothing needs VeilCore's servers or VeilCore's cooperation.
 
 ## What it does not do (say this plainly, everywhere)
 
+- **`distinct` is a count, not a verdict.** It says the records differ in at least k
+  comparable values; whether that makes a variety distinct is the examining body's call.
 - **`distinct` needs one party who holds both value sets.** A breeder comparing a new
   variety with its own parents or earlier varieties, or a testing laboratory that
   genotyped both. It does **not** let two parties who will not show each other their

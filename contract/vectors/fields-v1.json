@@ -6,108 +6,119 @@
       "input": {
         "schema": {
           "id": "veilcore/fields/plant-variety-dus-example/v1",
-          "title": "EXAMPLE field schema: 12 marker loci and four traits for a plant variety",
-          "status": "example — not adopted by any body; a real schema names the crop, the panel and k from the examining body's guidance",
+          "title": "EXAMPLE field schema: 12 SSR loci and four traits for a plant variety",
+          "status": "example only, not adopted by any body; a real schema names the crop and marker panel, and takes k from the examining body's guidance",
+          "note": "Paths name the holder's private `fields` object. A value in a field set shall not also appear in the record's committed JSON, or disclosing the JSON would disclose it.",
           "slots": [
             {
               "slot": 0,
-              "path": "identification.data.loci[0]",
+              "path": "fields.loci[0]",
               "type": "text",
+              "format": "allele-pair",
               "comparable": true
             },
             {
               "slot": 1,
-              "path": "identification.data.loci[1]",
+              "path": "fields.loci[1]",
               "type": "text",
+              "format": "allele-pair",
               "comparable": true
             },
             {
               "slot": 2,
-              "path": "identification.data.loci[2]",
+              "path": "fields.loci[2]",
               "type": "text",
+              "format": "allele-pair",
               "comparable": true
             },
             {
               "slot": 3,
-              "path": "identification.data.loci[3]",
+              "path": "fields.loci[3]",
               "type": "text",
+              "format": "allele-pair",
               "comparable": true
             },
             {
               "slot": 4,
-              "path": "identification.data.loci[4]",
+              "path": "fields.loci[4]",
               "type": "text",
+              "format": "allele-pair",
               "comparable": true
             },
             {
               "slot": 5,
-              "path": "identification.data.loci[5]",
+              "path": "fields.loci[5]",
               "type": "text",
+              "format": "allele-pair",
               "comparable": true
             },
             {
               "slot": 6,
-              "path": "identification.data.loci[6]",
+              "path": "fields.loci[6]",
               "type": "text",
+              "format": "allele-pair",
               "comparable": true
             },
             {
               "slot": 7,
-              "path": "identification.data.loci[7]",
+              "path": "fields.loci[7]",
               "type": "text",
+              "format": "allele-pair",
               "comparable": true
             },
             {
               "slot": 8,
-              "path": "identification.data.loci[8]",
+              "path": "fields.loci[8]",
               "type": "text",
+              "format": "allele-pair",
               "comparable": true
             },
             {
               "slot": 9,
-              "path": "identification.data.loci[9]",
+              "path": "fields.loci[9]",
               "type": "text",
+              "format": "allele-pair",
               "comparable": true
             },
             {
               "slot": 10,
-              "path": "identification.data.loci[10]",
+              "path": "fields.loci[10]",
               "type": "text",
+              "format": "allele-pair",
               "comparable": true
             },
             {
               "slot": 11,
-              "path": "identification.data.loci[11]",
+              "path": "fields.loci[11]",
               "type": "text",
+              "format": "allele-pair",
               "comparable": true
             },
             {
               "slot": 12,
-              "path": "profileData.germinationPercent",
+              "path": "fields.germinationPercent",
               "type": "uint",
               "scale": 100,
               "unit": "percent"
             },
             {
               "slot": 13,
-              "path": "profileData.purityPercent",
+              "path": "fields.purityPercent",
               "type": "uint",
               "scale": 100,
               "unit": "percent"
             },
             {
               "slot": 14,
-              "path": "profileData.yieldKgPerHa",
-              "type": "uint",
-              "scale": 1,
-              "unit": "kg/ha"
+              "path": "fields.varietyName",
+              "type": "text"
             },
             {
               "slot": 15,
-              "path": "profileData.moisturePercent",
+              "path": "fields.yieldKgPerHa",
               "type": "uint",
-              "scale": 100,
-              "unit": "percent"
+              "scale": 1,
+              "unit": "kg/ha"
             }
           ],
           "k": 3
@@ -156,9 +167,11 @@
             "uint": "9980"
           },
           {
-            "uint": "6400"
+            "text": "Harbour Mist"
           },
-          null
+          {
+            "uint": "6400"
+          }
         ],
         "fieldSecret": "1111111111111111111111111111111111111111111111111111111111111111",
         "open": [
@@ -168,8 +181,8 @@
         ]
       },
       "expected": {
-        "schemaDocumentDigest": "579a4560eab2755276ee7b35e585c229eb0b07c42af4d01486225be12c64bff7",
-        "schemaId": "9dd68c656b770881cad6e2be6dfc04a9b495fb90d83b78a8b295a425a7690861",
+        "schemaDocumentDigest": "385c5055fc315e4dd20566abda6a79709d22dcfe2a0e96e240cdcb15fd10b223",
+        "schemaId": "53304a427e34f78ebbb162464ca1a2fe67a51ed70b28ac2f1a61bee19c37d754",
         "slotValues": [
           "a70dfed1d20bc248a82f687043bf842ff3e8450e4face9a1b4a73354b87ad4b6",
           "10579c4c91c494b285b2417e68ed12c873b9d0389dc01d8d38315f683500de50",
@@ -185,8 +198,8 @@
           "fc6144d28fc3a540ad6cd21c00e87303a9aff664c497f7e32931583851596247",
           "b225000000000000010000000000000000000000000000000000000000000000",
           "fc26000000000000010000000000000000000000000000000000000000000000",
-          "0019000000000000010000000000000000000000000000000000000000000000",
-          "0000000000000000000000000000000000000000000000000000000000000000"
+          "7774ad14e6e1de7ddea14d6c0e443173f408ed12fd04e91c259d9c8b9a131ff2",
+          "0019000000000000010000000000000000000000000000000000000000000000"
         ],
         "salts": [
           "05177a4d698cefc094277881301d6052b45ef07252d013796a109e9ce94758b2",
@@ -206,7 +219,7 @@
           "916e7627a6a806ff90bbb54dcb4f3d7740812d8634257ac5fc045d28b4876ff9",
           "a0ffed7125631f1421c916a84ad727f183f202ae43c29dfd6f38ee0f672ae2f2"
         ],
-        "setRoot": "bcc7a07c54b73978c378b1056f52c7fb34fa7a92f85470d7f8c33f15f8758dec",
+        "setRoot": "c2d318520d0c3273ac0dae976dbeeece5b81adf841bf09b894cb42feec141b17",
         "openings": [
           {
             "slot": 3,
@@ -214,7 +227,7 @@
               "a9bf65ca4d6f527e7df4a2cc25ea9abe62a22b21f00a87711be4ec276f3f8b29",
               "2ca62b36834ff43c88c1de28b543ea863f297ba025af2bf79a70b84e526f9c27",
               "f72bc244a43ce77e9f3f64a7ae0f8737d93da6d3dcc2d05959e22e52da406680",
-              "df761378c8d618ce1f8e1cd012f79279cd372fef2fe0c5195f186e41010c23da"
+              "20b874440b0b914a480ad8b2f04c13c053d48f7593856036e0fa3680599b99b4"
             ],
             "bits": [
               true,
@@ -227,7 +240,7 @@
             "slot": 12,
             "siblings": [
               "7f330dd8c8bb3c5ebbec9fcd2d1fbb7ef264729a8eaed2f5ab987d047d13884f",
-              "3b7ccd70eb0446844e9ae20f6e431b938cdd8a19056958e29d5069a6f0082177",
+              "032847391f830b60c55eae87f0e4369a3df01d44036d5eeef6da41417e1176e8",
               "3e207ea25bd86009c31b229cacb858238a5a052de6e3121482ec668c5109e031",
               "3c8310cff5db406aa52178b7b5c952e6977a6036ffcf187a2295cd2e483e348f"
             ],
@@ -241,7 +254,7 @@
           {
             "slot": 15,
             "siblings": [
-              "77a5f49b927b7821f1fc24765cea9e8e3cec0f77eb7fe2b7572f4d8a451c2e7b",
+              "2541a025d1732b434bf59fc9f88ecae96c159da6aa0d13585872fe2c9019c37d",
               "f800efde4dbbb4901dbdd87e8655b60c6d083b7fbb42b4a4a65c13af87d65288",
               "3e207ea25bd86009c31b229cacb858238a5a052de6e3121482ec668c5109e031",
               "3c8310cff5db406aa52178b7b5c952e6977a6036ffcf187a2295cd2e483e348f"
@@ -261,108 +274,119 @@
       "input": {
         "schema": {
           "id": "veilcore/fields/plant-variety-dus-example/v1",
-          "title": "EXAMPLE field schema: 12 marker loci and four traits for a plant variety",
-          "status": "example — not adopted by any body; a real schema names the crop, the panel and k from the examining body's guidance",
+          "title": "EXAMPLE field schema: 12 SSR loci and four traits for a plant variety",
+          "status": "example only, not adopted by any body; a real schema names the crop and marker panel, and takes k from the examining body's guidance",
+          "note": "Paths name the holder's private `fields` object. A value in a field set shall not also appear in the record's committed JSON, or disclosing the JSON would disclose it.",
           "slots": [
             {
               "slot": 0,
-              "path": "identification.data.loci[0]",
+              "path": "fields.loci[0]",
               "type": "text",
+              "format": "allele-pair",
               "comparable": true
             },
             {
               "slot": 1,
-              "path": "identification.data.loci[1]",
+              "path": "fields.loci[1]",
               "type": "text",
+              "format": "allele-pair",
               "comparable": true
             },
             {
               "slot": 2,
-              "path": "identification.data.loci[2]",
+              "path": "fields.loci[2]",
               "type": "text",
+              "format": "allele-pair",
               "comparable": true
             },
             {
               "slot": 3,
-              "path": "identification.data.loci[3]",
+              "path": "fields.loci[3]",
               "type": "text",
+              "format": "allele-pair",
               "comparable": true
             },
             {
               "slot": 4,
-              "path": "identification.data.loci[4]",
+              "path": "fields.loci[4]",
               "type": "text",
+              "format": "allele-pair",
               "comparable": true
             },
             {
               "slot": 5,
-              "path": "identification.data.loci[5]",
+              "path": "fields.loci[5]",
               "type": "text",
+              "format": "allele-pair",
               "comparable": true
             },
             {
               "slot": 6,
-              "path": "identification.data.loci[6]",
+              "path": "fields.loci[6]",
               "type": "text",
+              "format": "allele-pair",
               "comparable": true
             },
             {
               "slot": 7,
-              "path": "identification.data.loci[7]",
+              "path": "fields.loci[7]",
               "type": "text",
+              "format": "allele-pair",
               "comparable": true
             },
             {
               "slot": 8,
-              "path": "identification.data.loci[8]",
+              "path": "fields.loci[8]",
               "type": "text",
+              "format": "allele-pair",
               "comparable": true
             },
             {
               "slot": 9,
-              "path": "identification.data.loci[9]",
+              "path": "fields.loci[9]",
               "type": "text",
+              "format": "allele-pair",
               "comparable": true
             },
             {
               "slot": 10,
-              "path": "identification.data.loci[10]",
+              "path": "fields.loci[10]",
               "type": "text",
+              "format": "allele-pair",
               "comparable": true
             },
             {
               "slot": 11,
-              "path": "identification.data.loci[11]",
+              "path": "fields.loci[11]",
               "type": "text",
+              "format": "allele-pair",
               "comparable": true
             },
             {
               "slot": 12,
-              "path": "profileData.germinationPercent",
+              "path": "fields.germinationPercent",
               "type": "uint",
               "scale": 100,
               "unit": "percent"
             },
             {
               "slot": 13,
-              "path": "profileData.purityPercent",
+              "path": "fields.purityPercent",
               "type": "uint",
               "scale": 100,
               "unit": "percent"
             },
             {
               "slot": 14,
-              "path": "profileData.yieldKgPerHa",
-              "type": "uint",
-              "scale": 1,
-              "unit": "kg/ha"
+              "path": "fields.varietyName",
+              "type": "text"
             },
             {
               "slot": 15,
-              "path": "profileData.moisturePercent",
+              "path": "fields.yieldKgPerHa",
               "type": "uint",
-              "scale": 100,
-              "unit": "percent"
+              "scale": 1,
+              "unit": "kg/ha"
             }
           ],
           "k": 3
@@ -408,10 +432,10 @@
             "uint": "0"
           },
           null,
+          null,
           {
             "uint": "18446744073709551615"
-          },
-          null
+          }
         ],
         "fieldSecret": "2222222222222222222222222222222222222222222222222222222222222222",
         "open": [
@@ -420,8 +444,8 @@
         ]
       },
       "expected": {
-        "schemaDocumentDigest": "579a4560eab2755276ee7b35e585c229eb0b07c42af4d01486225be12c64bff7",
-        "schemaId": "9dd68c656b770881cad6e2be6dfc04a9b495fb90d83b78a8b295a425a7690861",
+        "schemaDocumentDigest": "385c5055fc315e4dd20566abda6a79709d22dcfe2a0e96e240cdcb15fd10b223",
+        "schemaId": "53304a427e34f78ebbb162464ca1a2fe67a51ed70b28ac2f1a61bee19c37d754",
         "slotValues": [
           "a70dfed1d20bc248a82f687043bf842ff3e8450e4face9a1b4a73354b87ad4b6",
           "10579c4c91c494b285b2417e68ed12c873b9d0389dc01d8d38315f683500de50",
@@ -437,8 +461,8 @@
           "fc6144d28fc3a540ad6cd21c00e87303a9aff664c497f7e32931583851596247",
           "0000000000000000010000000000000000000000000000000000000000000000",
           "0000000000000000000000000000000000000000000000000000000000000000",
-          "ffffffffffffffff010000000000000000000000000000000000000000000000",
-          "0000000000000000000000000000000000000000000000000000000000000000"
+          "0000000000000000000000000000000000000000000000000000000000000000",
+          "ffffffffffffffff010000000000000000000000000000000000000000000000"
         ],
         "salts": [
           "0944b39078676a0acee873d16cb7afef566e4d0d9be8291e9e08b8b5b56346fa",
@@ -458,13 +482,13 @@
           "945f869f9017023dfd1241376ffd6c6f0da020ea2604dc58ea5193be8e6f8ca2",
           "9693e93d46ef574ef6ffb61e7359e2996025bd122f2a656fbcfd99324f9f05af"
         ],
-        "setRoot": "37f2784c0461d9e080319494916e641ba095c7fe0011f52b00b4ba4e411cdac0",
+        "setRoot": "920d671487ea5a7a69f772f04d4a6422bb8c995cf0edbf90610c836d28bd34e3",
         "openings": [
           {
             "slot": 12,
             "siblings": [
               "0c2e050c74d4f3462dea83e47699acc59b3653bb1ebeab43a5390e78d16918e2",
-              "a8b66e62522d2097bf2cd74d3d9023b2a99e0cb01d3058ae542a6e75493aa719",
+              "3305d348ee183d19f7efdbab8fc457c1f80669d7ddf34542dbdbab2c1c57eb8f",
               "21e33ac03c95d0de365f300cacced9e2a80c86dda8e101ae85214e68c3138c7a",
               "4e08092c0141339bb393287ab8af4223541865eeaee6e6291f678e6adc2078fa"
             ],
@@ -479,7 +503,7 @@
             "slot": 13,
             "siblings": [
               "c90e82a3e504db35b481a92e000c138454660b3db528c93950fb3ed21799f65b",
-              "a8b66e62522d2097bf2cd74d3d9023b2a99e0cb01d3058ae542a6e75493aa719",
+              "3305d348ee183d19f7efdbab8fc457c1f80669d7ddf34542dbdbab2c1c57eb8f",
               "21e33ac03c95d0de365f300cacced9e2a80c86dda8e101ae85214e68c3138c7a",
               "4e08092c0141339bb393287ab8af4223541865eeaee6e6291f678e6adc2078fa"
             ],
@@ -498,156 +522,167 @@
       "input": {
         "schema": {
           "id": "veilcore/fields/plant-variety-dus-example/v1",
-          "title": "EXAMPLE field schema: 12 marker loci and four traits for a plant variety",
-          "status": "example — not adopted by any body; a real schema names the crop, the panel and k from the examining body's guidance",
+          "title": "EXAMPLE field schema: 12 SSR loci and four traits for a plant variety",
+          "status": "example only, not adopted by any body; a real schema names the crop and marker panel, and takes k from the examining body's guidance",
+          "note": "Paths name the holder's private `fields` object. A value in a field set shall not also appear in the record's committed JSON, or disclosing the JSON would disclose it.",
           "slots": [
             {
               "slot": 0,
-              "path": "identification.data.loci[0]",
+              "path": "fields.loci[0]",
               "type": "text",
+              "format": "allele-pair",
               "comparable": true
             },
             {
               "slot": 1,
-              "path": "identification.data.loci[1]",
+              "path": "fields.loci[1]",
               "type": "text",
+              "format": "allele-pair",
               "comparable": true
             },
             {
               "slot": 2,
-              "path": "identification.data.loci[2]",
+              "path": "fields.loci[2]",
               "type": "text",
+              "format": "allele-pair",
               "comparable": true
             },
             {
               "slot": 3,
-              "path": "identification.data.loci[3]",
+              "path": "fields.loci[3]",
               "type": "text",
+              "format": "allele-pair",
               "comparable": true
             },
             {
               "slot": 4,
-              "path": "identification.data.loci[4]",
+              "path": "fields.loci[4]",
               "type": "text",
+              "format": "allele-pair",
               "comparable": true
             },
             {
               "slot": 5,
-              "path": "identification.data.loci[5]",
+              "path": "fields.loci[5]",
               "type": "text",
+              "format": "allele-pair",
               "comparable": true
             },
             {
               "slot": 6,
-              "path": "identification.data.loci[6]",
+              "path": "fields.loci[6]",
               "type": "text",
+              "format": "allele-pair",
               "comparable": true
             },
             {
               "slot": 7,
-              "path": "identification.data.loci[7]",
+              "path": "fields.loci[7]",
               "type": "text",
+              "format": "allele-pair",
               "comparable": true
             },
             {
               "slot": 8,
-              "path": "identification.data.loci[8]",
+              "path": "fields.loci[8]",
               "type": "text",
+              "format": "allele-pair",
               "comparable": true
             },
             {
               "slot": 9,
-              "path": "identification.data.loci[9]",
+              "path": "fields.loci[9]",
               "type": "text",
+              "format": "allele-pair",
               "comparable": true
             },
             {
               "slot": 10,
-              "path": "identification.data.loci[10]",
+              "path": "fields.loci[10]",
               "type": "text",
+              "format": "allele-pair",
               "comparable": true
             },
             {
               "slot": 11,
-              "path": "identification.data.loci[11]",
+              "path": "fields.loci[11]",
               "type": "text",
+              "format": "allele-pair",
               "comparable": true
             },
             {
               "slot": 12,
-              "path": "profileData.germinationPercent",
+              "path": "fields.germinationPercent",
               "type": "uint",
               "scale": 100,
               "unit": "percent"
             },
             {
               "slot": 13,
-              "path": "profileData.purityPercent",
+              "path": "fields.purityPercent",
               "type": "uint",
               "scale": 100,
               "unit": "percent"
             },
             {
               "slot": 14,
-              "path": "profileData.yieldKgPerHa",
-              "type": "uint",
-              "scale": 1,
-              "unit": "kg/ha"
+              "path": "fields.varietyName",
+              "type": "text"
             },
             {
               "slot": 15,
-              "path": "profileData.moisturePercent",
+              "path": "fields.yieldKgPerHa",
               "type": "uint",
-              "scale": 100,
-              "unit": "percent"
+              "scale": 1,
+              "unit": "kg/ha"
             }
           ],
           "k": 3
         },
         "values": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
           {
             "text": "Café"
           },
-          null,
-          null,
-          null,
-          null,
-          null,
-          null,
-          null,
-          null,
-          null,
-          null,
-          null,
-          null,
-          null,
-          null,
           null
         ],
         "fieldSecret": "3333333333333333333333333333333333333333333333333333333333333333",
         "open": [
-          0
+          14
         ]
       },
       "expected": {
-        "schemaDocumentDigest": "579a4560eab2755276ee7b35e585c229eb0b07c42af4d01486225be12c64bff7",
-        "schemaId": "9dd68c656b770881cad6e2be6dfc04a9b495fb90d83b78a8b295a425a7690861",
+        "schemaDocumentDigest": "385c5055fc315e4dd20566abda6a79709d22dcfe2a0e96e240cdcb15fd10b223",
+        "schemaId": "53304a427e34f78ebbb162464ca1a2fe67a51ed70b28ac2f1a61bee19c37d754",
         "slotValues": [
+          "0000000000000000000000000000000000000000000000000000000000000000",
+          "0000000000000000000000000000000000000000000000000000000000000000",
+          "0000000000000000000000000000000000000000000000000000000000000000",
+          "0000000000000000000000000000000000000000000000000000000000000000",
+          "0000000000000000000000000000000000000000000000000000000000000000",
+          "0000000000000000000000000000000000000000000000000000000000000000",
+          "0000000000000000000000000000000000000000000000000000000000000000",
+          "0000000000000000000000000000000000000000000000000000000000000000",
+          "0000000000000000000000000000000000000000000000000000000000000000",
+          "0000000000000000000000000000000000000000000000000000000000000000",
+          "0000000000000000000000000000000000000000000000000000000000000000",
+          "0000000000000000000000000000000000000000000000000000000000000000",
+          "0000000000000000000000000000000000000000000000000000000000000000",
+          "0000000000000000000000000000000000000000000000000000000000000000",
           "73473dcc12b763085904a5279d048c4d5b3b008c46f1f32443b99de04aa83a14",
-          "0000000000000000000000000000000000000000000000000000000000000000",
-          "0000000000000000000000000000000000000000000000000000000000000000",
-          "0000000000000000000000000000000000000000000000000000000000000000",
-          "0000000000000000000000000000000000000000000000000000000000000000",
-          "0000000000000000000000000000000000000000000000000000000000000000",
-          "0000000000000000000000000000000000000000000000000000000000000000",
-          "0000000000000000000000000000000000000000000000000000000000000000",
-          "0000000000000000000000000000000000000000000000000000000000000000",
-          "0000000000000000000000000000000000000000000000000000000000000000",
-          "0000000000000000000000000000000000000000000000000000000000000000",
-          "0000000000000000000000000000000000000000000000000000000000000000",
-          "0000000000000000000000000000000000000000000000000000000000000000",
-          "0000000000000000000000000000000000000000000000000000000000000000",
-          "0000000000000000000000000000000000000000000000000000000000000000",
           "0000000000000000000000000000000000000000000000000000000000000000"
         ],
         "salts": [
@@ -668,21 +703,21 @@
           "0e112819717bc47e09397d8ca60abfde256ea180e056b65def8b19998eee907e",
           "53fe386e0c232b7511b7bde4843224ee53865cbbc389e52444bfa7d7cdb92489"
         ],
-        "setRoot": "54938c18a1b8cfd8def2784d5793421241ad5d019d09dd722bafd9b609a5f901",
+        "setRoot": "4228e231843b37ededbbb74ee3e2b49c843351bf28304b35abc6e87187559f4f",
         "openings": [
           {
-            "slot": 0,
+            "slot": 14,
             "siblings": [
-              "7a3ec0a55701d1271407e4e76b4986547a43529e6ce9c708a22f702ea9dcbe9b",
-              "e9faf9ffef871abdf5e5cebd1c1df0c19e7908a0603ae7e90935166079c849f1",
-              "ee8f2b3264b450f1634d52f2eb35969fba7ba974220aa3936da5c1dc1ccd432a",
-              "1cc8c196d292629b1eb1b448b07596df8cbd65a2cd22c4058591ac22c98af2de"
+              "1014d055bb73eb14f86e8808e608964b4229a54f83c7deda1d3e0e71b21ffcc0",
+              "6e387e6b3bea706a646e7a5a5190b638515deb7455127e90f2706f350873f063",
+              "39252b3dd5b85942f1c5624f2cd59dffd93ff031f17db1cb9c50f71ae8ca7de5",
+              "a8727c02ecee8320b429a49431d991944d2109daadc574fef14532bb5c5a227c"
             ],
             "bits": [
               false,
-              false,
-              false,
-              false
+              true,
+              true,
+              true
             ]
           }
         ]
@@ -693,108 +728,119 @@
       "input": {
         "schema": {
           "id": "veilcore/fields/plant-variety-dus-example/v1",
-          "title": "EXAMPLE field schema: 12 marker loci and four traits for a plant variety",
-          "status": "example — not adopted by any body; a real schema names the crop, the panel and k from the examining body's guidance",
+          "title": "EXAMPLE field schema: 12 SSR loci and four traits for a plant variety",
+          "status": "example only, not adopted by any body; a real schema names the crop and marker panel, and takes k from the examining body's guidance",
+          "note": "Paths name the holder's private `fields` object. A value in a field set shall not also appear in the record's committed JSON, or disclosing the JSON would disclose it.",
           "slots": [
             {
               "slot": 0,
-              "path": "identification.data.loci[0]",
+              "path": "fields.loci[0]",
               "type": "text",
+              "format": "allele-pair",
               "comparable": true
             },
             {
               "slot": 1,
-              "path": "identification.data.loci[1]",
+              "path": "fields.loci[1]",
               "type": "text",
+              "format": "allele-pair",
               "comparable": true
             },
             {
               "slot": 2,
-              "path": "identification.data.loci[2]",
+              "path": "fields.loci[2]",
               "type": "text",
+              "format": "allele-pair",
               "comparable": true
             },
             {
               "slot": 3,
-              "path": "identification.data.loci[3]",
+              "path": "fields.loci[3]",
               "type": "text",
+              "format": "allele-pair",
               "comparable": true
             },
             {
               "slot": 4,
-              "path": "identification.data.loci[4]",
+              "path": "fields.loci[4]",
               "type": "text",
+              "format": "allele-pair",
               "comparable": true
             },
             {
               "slot": 5,
-              "path": "identification.data.loci[5]",
+              "path": "fields.loci[5]",
               "type": "text",
+              "format": "allele-pair",
               "comparable": true
             },
             {
               "slot": 6,
-              "path": "identification.data.loci[6]",
+              "path": "fields.loci[6]",
               "type": "text",
+              "format": "allele-pair",
               "comparable": true
             },
             {
               "slot": 7,
-              "path": "identification.data.loci[7]",
+              "path": "fields.loci[7]",
               "type": "text",
+              "format": "allele-pair",
               "comparable": true
             },
             {
               "slot": 8,
-              "path": "identification.data.loci[8]",
+              "path": "fields.loci[8]",
               "type": "text",
+              "format": "allele-pair",
               "comparable": true
             },
             {
               "slot": 9,
-              "path": "identification.data.loci[9]",
+              "path": "fields.loci[9]",
               "type": "text",
+              "format": "allele-pair",
               "comparable": true
             },
             {
               "slot": 10,
-              "path": "identification.data.loci[10]",
+              "path": "fields.loci[10]",
               "type": "text",
+              "format": "allele-pair",
               "comparable": true
             },
             {
               "slot": 11,
-              "path": "identification.data.loci[11]",
+              "path": "fields.loci[11]",
               "type": "text",
+              "format": "allele-pair",
               "comparable": true
             },
             {
               "slot": 12,
-              "path": "profileData.germinationPercent",
+              "path": "fields.germinationPercent",
               "type": "uint",
               "scale": 100,
               "unit": "percent"
             },
             {
               "slot": 13,
-              "path": "profileData.purityPercent",
+              "path": "fields.purityPercent",
               "type": "uint",
               "scale": 100,
               "unit": "percent"
             },
             {
               "slot": 14,
-              "path": "profileData.yieldKgPerHa",
-              "type": "uint",
-              "scale": 1,
-              "unit": "kg/ha"
+              "path": "fields.varietyName",
+              "type": "text"
             },
             {
               "slot": 15,
-              "path": "profileData.moisturePercent",
+              "path": "fields.yieldKgPerHa",
               "type": "uint",
-              "scale": 100,
-              "unit": "percent"
+              "scale": 1,
+              "unit": "kg/ha"
             }
           ],
           "k": 3
@@ -821,8 +867,8 @@
         "open": []
       },
       "expected": {
-        "schemaDocumentDigest": "579a4560eab2755276ee7b35e585c229eb0b07c42af4d01486225be12c64bff7",
-        "schemaId": "9dd68c656b770881cad6e2be6dfc04a9b495fb90d83b78a8b295a425a7690861",
+        "schemaDocumentDigest": "385c5055fc315e4dd20566abda6a79709d22dcfe2a0e96e240cdcb15fd10b223",
+        "schemaId": "53304a427e34f78ebbb162464ca1a2fe67a51ed70b28ac2f1a61bee19c37d754",
         "slotValues": [
           "0000000000000000000000000000000000000000000000000000000000000000",
           "0000000000000000000000000000000000000000000000000000000000000000",
@@ -859,7 +905,7 @@
           "9346e8378d8cfeb4959b917dbc3cd54f7f1613ac4e7ca266bd702c4ec4dab5f9",
           "b84d7fdd1b72b397394ce377f0d81ca32197537411f13dced959acfc6e421308"
         ],
-        "setRoot": "1ee2be2773cc614b51104973305795ca96c11076ad5c38ba98215df3efd1ecb2",
+        "setRoot": "a15bd71900f01e49fb1644e2ae49497a13fa2f81da7f7d83f43b302dbf5a4836",
         "openings": []
       }
     }

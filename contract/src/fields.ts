@@ -73,6 +73,8 @@ export type SchemaTerms = {
   readonly documentDigest: Uint8Array;
   readonly comparable: boolean[];
   readonly k: bigint;
+  /** Slots declared `uint`: the only ones a range claim may open. */
+  readonly numeric: boolean[];
 };
 
 export const schemaIdOf = (t: SchemaTerms): Uint8Array =>
@@ -81,6 +83,7 @@ export const schemaIdOf = (t: SchemaTerms): Uint8Array =>
     t.documentDigest,
     maskValue(t.comparable),
     countValue(t.k),
+    maskValue(t.numeric),
   );
 
 export const saltOf = (fieldSecret: Uint8Array, slot: number): Uint8Array =>

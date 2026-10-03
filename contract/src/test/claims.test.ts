@@ -31,20 +31,26 @@ import {
   JUBJUB_ORDER,
   attesterKeyOf,
   newAttesterKey,
-  signFieldSet,
+  signRecord,
 } from "../attest.js";
 
 const sha = (s: string): Uint8Array =>
   new Uint8Array(createHash("sha256").update(s).digest());
 const hex = (b: Uint8Array): string => Buffer.from(b).toString("hex");
 
-// A marker schema: slots 0-11 are SSR loci (comparable), 12 germination % x100,
-// 13 yield kg/ha, 14 a variety name digest, 15 unused. Distinct at 3 or more loci.
+// A marker schema: slots 0-11 are SSR loci (comparable), 12 germination % x100 and
+// 13 yield kg/ha (numeric), 14 a variety name, 15 a numeric slot left empty.
+// Distinct at 3 or more loci.
 const comparable = Array.from({ length: SLOTS }, (_, i) => i < 12);
+const numeric = Array.from(
+  { length: SLOTS },
+  (_, i) => i === 12 || i === 13 || i === 15,
+);
 const TERMS = {
   documentDigest: sha("plant-variety-markers/v1 schema document"),
   comparable,
   k: 3n,
+  numeric,
 };
 const SCHEMA = schemaIdOf(TERMS);
 
@@ -120,6 +126,7 @@ describe("off-chain field sets agree with the circuits", () => {
           TERMS.documentDigest,
           maskValue(comparable),
           countValue(3n),
+          maskValue(numeric),
         ),
       ),
     ).toBe(hex(SCHEMA));
@@ -133,7 +140,7 @@ describe("off-chain field sets agree with the circuits", () => {
 
 describe("proveValue", () => {
   it("proves a slot holds a value and publishes exactly that", () => {
-    const sim = new ClaimsSimulator();
+    const sim = new ClaimsSimulator({ terms: TERMS });
     sim.call(
       { opening: openSlot(A.fs, 3) },
       "proveValue",
@@ -152,7 +159,7 @@ describe("proveValue", () => {
   });
 
   it("refuses a value the slot does not hold", () => {
-    const sim = new ClaimsSimulator();
+    const sim = new ClaimsSimulator({ terms: TERMS });
     expect(() =>
       sim.call(
         { opening: openSlot(A.fs, 3) },
@@ -166,7 +173,7 @@ describe("proveValue", () => {
   });
 
   it("refuses an opening of a different slot, even with the right value", () => {
-    const sim = new ClaimsSimulator();
+    const sim = new ClaimsSimulator({ terms: TERMS });
     // slot 5 holds 140/140; open slot 5 but claim it is slot 4
     expect(() =>
       sim.call(
@@ -181,7 +188,7 @@ describe("proveValue", () => {
   });
 
   it("refuses an opening from another record", () => {
-    const sim = new ClaimsSimulator();
+    const sim = new ClaimsSimulator({ terms: TERMS });
     expect(() =>
       sim.call(
         { opening: openSlot(B.fs, 3) },
@@ -195,7 +202,7 @@ describe("proveValue", () => {
   });
 
   it("refuses the right record under another schema", () => {
-    const sim = new ClaimsSimulator();
+    const sim = new ClaimsSimulator({ terms: TERMS });
     const other = schemaIdOf({ ...TERMS, k: 4n });
     expect(() =>
       sim.call(
@@ -210,7 +217,7 @@ describe("proveValue", () => {
   });
 
   it("refuses slot 16 and above", () => {
-    const sim = new ClaimsSimulator();
+    const sim = new ClaimsSimulator({ terms: TERMS });
     const o = { ...openSlot(A.fs, 0) };
     expect(() =>
       sim.call({ opening: o }, "proveValue", A.c, SCHEMA, 16n, o.value),
@@ -218,7 +225,7 @@ describe("proveValue", () => {
   });
 
   it("refuses a forged path that reorders siblings", () => {
-    const sim = new ClaimsSimulator();
+    const sim = new ClaimsSimulator({ terms: TERMS });
     const o = openSlot(A.fs, 6);
     const forged = {
       ...o,
@@ -232,7 +239,7 @@ describe("proveValue", () => {
 
 describe("proveRange", () => {
   it("proves at least and at most, including the boundary, without publishing the number", () => {
-    const sim = new ClaimsSimulator();
+    const sim = new ClaimsSimulator({ terms: TERMS });
     const o = openSlot(A.fs, 12);
     sim.call(
       { opening: o, number: 9650n },
@@ -285,7 +292,7 @@ describe("proveRange", () => {
   });
 
   it("refuses a bound the number does not meet", () => {
-    const sim = new ClaimsSimulator();
+    const sim = new ClaimsSimulator({ terms: TERMS });
     const o = openSlot(B.fs, 12);
     expect(() =>
       sim.call(
@@ -312,7 +319,7 @@ describe("proveRange", () => {
   });
 
   it("refuses a number other than the sealed one", () => {
-    const sim = new ClaimsSimulator();
+    const sim = new ClaimsSimulator({ terms: TERMS });
     const o = openSlot(B.fs, 12);
     expect(() =>
       sim.call(
@@ -328,7 +335,7 @@ describe("proveRange", () => {
   });
 
   it("an absent slot never passes as the number 0 (a missing test result proves nothing)", () => {
-    const sim = new ClaimsSimulator();
+    const sim = new ClaimsSimulator({ terms: TERMS });
     const o = openSlot(A.fs, 15); // slot 15 is absent
     for (const n of [0n, 1n])
       expect(() =>
@@ -357,7 +364,7 @@ describe("proveRange", () => {
   });
 
   it("refuses a range claim on a text slot", () => {
-    const sim = new ClaimsSimulator();
+    const sim = new ClaimsSimulator({ terms: TERMS });
     const o = openSlot(A.fs, 0);
     for (const n of [0n, 233n, 233233n])
       expect(() =>
@@ -370,7 +377,7 @@ describe("proveRange", () => {
           RangeOp.AT_LEAST,
           0n,
         ),
-      ).toThrow(/does not hold that number/);
+      ).toThrow(/not a number slot/);
   });
 });
 
@@ -378,7 +385,7 @@ describe("proveDistinct", () => {
   const terms = TERMS;
 
   it("proves two records differ in at least k comparable slots, and publishes neither which nor how many", () => {
-    const sim = new ClaimsSimulator();
+    const sim = new ClaimsSimulator({ terms: TERMS });
     sim.call({ first: A.fs, second: B.fs, terms }, "proveDistinct", A.c, B.c);
     const s = sim.state;
     expect(s.lastClaimKind).toBe(ClaimKind.DISTINCT);
@@ -390,7 +397,7 @@ describe("proveDistinct", () => {
   });
 
   it("refuses records that differ in fewer than k", () => {
-    const sim = new ClaimsSimulator();
+    const sim = new ClaimsSimulator({ terms: TERMS });
     expect(() =>
       sim.call(
         { first: A.fs, second: C2.fs, terms },
@@ -404,7 +411,7 @@ describe("proveDistinct", () => {
   it("does not count differences in non-comparable slots", () => {
     // D equals A at every locus but differs in germination, yield-unrelated name and more
     const D = record(BASE, 1n, "D");
-    const sim = new ClaimsSimulator();
+    const sim = new ClaimsSimulator({ terms: TERMS });
     expect(() =>
       sim.call({ first: A.fs, second: D.fs, terms }, "proveDistinct", A.c, D.c),
     ).toThrow(/enough comparable/);
@@ -417,7 +424,7 @@ describe("proveDistinct", () => {
       9650n,
       "E",
     );
-    const sim = new ClaimsSimulator();
+    const sim = new ClaimsSimulator({ terms: TERMS });
     expect(() =>
       sim.call({ first: A.fs, second: E.fs, terms }, "proveDistinct", A.c, E.c),
     ).toThrow(/enough comparable/);
@@ -427,7 +434,7 @@ describe("proveDistinct", () => {
   });
 
   it("refuses a lower k or a wider comparable set than the records were sealed under", () => {
-    const sim = new ClaimsSimulator();
+    const sim = new ClaimsSimulator({ terms: TERMS });
     expect(() =>
       sim.call(
         { first: A.fs, second: C2.fs, terms: { ...terms, k: 2n } },
@@ -457,7 +464,7 @@ describe("proveDistinct", () => {
     const z = schemaIdOf(zeroTerms);
     const fa = A.fs;
     const fz = C2.fs;
-    const sim = new ClaimsSimulator();
+    const sim = new ClaimsSimulator({ terms: TERMS });
     expect(() =>
       sim.call(
         { first: fa, second: fz, terms: zeroTerms },
@@ -469,7 +476,7 @@ describe("proveDistinct", () => {
   });
 
   it("refuses a record compared with itself, and swapped field sets", () => {
-    const sim = new ClaimsSimulator();
+    const sim = new ClaimsSimulator({ terms: TERMS });
     expect(() =>
       sim.call({ first: A.fs, second: A.fs, terms }, "proveDistinct", A.c, A.c),
     ).toThrow(/itself/);
@@ -479,7 +486,7 @@ describe("proveDistinct", () => {
   });
 
   it("refuses a field set whose salts were changed to fit another record", () => {
-    const sim = new ClaimsSimulator();
+    const sim = new ClaimsSimulator({ terms: TERMS });
     const forged = { ...B.fs, salts: A.fs.salts };
     expect(() =>
       sim.call(
@@ -510,7 +517,7 @@ describe("proveUnchanged", () => {
 
   it("proves a correction changed nothing committed (fresh salts, new JSON)", () => {
     const R = corrected(A.fs, {}, "A-r1");
-    const sim = new ClaimsSimulator();
+    const sim = new ClaimsSimulator({ terms: TERMS });
     sim.call(
       { first: A.fs, second: R.fs },
       "proveUnchanged",
@@ -525,7 +532,7 @@ describe("proveUnchanged", () => {
 
   it("proves a correction changed only the slots in the mask", () => {
     const R = corrected(A.fs, { 13: numberValue(6100n) }, "A-r2");
-    const sim = new ClaimsSimulator();
+    const sim = new ClaimsSimulator({ terms: TERMS });
     const mask = none.map((_, i) => i === 13);
     sim.call(
       { first: A.fs, second: R.fs },
@@ -544,7 +551,7 @@ describe("proveUnchanged", () => {
       { 13: numberValue(6100n), 2: digestValue("203/203") },
       "A-r3",
     );
-    const sim = new ClaimsSimulator();
+    const sim = new ClaimsSimulator({ terms: TERMS });
     const mask = none.map((_, i) => i === 13);
     expect(() =>
       sim.call(
@@ -559,7 +566,7 @@ describe("proveUnchanged", () => {
   });
 
   it("refuses the same record twice and mismatched field sets", () => {
-    const sim = new ClaimsSimulator();
+    const sim = new ClaimsSimulator({ terms: TERMS });
     expect(() =>
       sim.call(
         { first: A.fs, second: A.fs },
@@ -586,7 +593,7 @@ describe("proveUnchanged", () => {
 
 describe("contract behaviour", () => {
   it("no state grows with the number of claims", () => {
-    const sim = new ClaimsSimulator();
+    const sim = new ClaimsSimulator({ terms: TERMS });
     sim.call(
       { opening: openSlot(A.fs, 3) },
       "proveValue",
@@ -627,7 +634,7 @@ describe("contract behaviour", () => {
   });
 
   it("a claim proved against one state lands after other claims", () => {
-    const sim = new ClaimsSimulator();
+    const sim = new ClaimsSimulator({ terms: TERMS });
     const p = sim.prove(
       { first: A.fs, second: B.fs, terms: TERMS },
       "proveDistinct",
@@ -651,11 +658,11 @@ describe("contract behaviour", () => {
 describe("laboratory-signed claims", () => {
   const lab = newAttesterKey();
   const other = newAttesterKey();
-  const rootOf = (fs: FieldSet): Uint8Array => setRootOf(SCHEMA, treeOfSet(fs));
+  const commitOf = (fs: FieldSet): Uint8Array => commitmentOf(SCHEMA, fs);
 
   it("a range claim on a field set the laboratory signed publishes the laboratory's key", () => {
-    const sim = new ClaimsSimulator();
-    const sig = signFieldSet(lab.secret, rootOf(A.fs));
+    const sim = new ClaimsSimulator({ terms: TERMS });
+    const sig = signRecord(lab.secret, commitOf(A.fs));
     sim.call(
       {
         opening: openSlot(A.fs, 12),
@@ -687,16 +694,13 @@ describe("laboratory-signed claims", () => {
   });
 
   it("refuses a signature on another field set, by another key, or tampered", () => {
-    const sim = new ClaimsSimulator();
+    const sim = new ClaimsSimulator({ terms: TERMS });
     const base = {
       opening: openSlot(A.fs, 12),
       number: 9650n,
       attester: lab.key,
     };
-    const go = (
-      signature: ReturnType<typeof signFieldSet>,
-      attester = lab.key,
-    ) =>
+    const go = (signature: ReturnType<typeof signRecord>, attester = lab.key) =>
       sim.call(
         { ...base, attester, signature },
         "proveAttestedRange",
@@ -706,13 +710,13 @@ describe("laboratory-signed claims", () => {
         RangeOp.AT_LEAST,
         9500n,
       );
-    expect(() => go(signFieldSet(lab.secret, rootOf(B.fs)))).toThrow(
+    expect(() => go(signRecord(lab.secret, commitOf(B.fs)))).toThrow(
       /signature does not verify/,
     );
-    expect(() => go(signFieldSet(other.secret, rootOf(A.fs)))).toThrow(
+    expect(() => go(signRecord(other.secret, commitOf(A.fs)))).toThrow(
       /signature does not verify/,
     );
-    const good = signFieldSet(lab.secret, rootOf(A.fs));
+    const good = signRecord(lab.secret, commitOf(A.fs));
     expect(() =>
       go({ ...good, response: (good.response + 1n) % JUBJUB_ORDER }),
     ).toThrow(/signature does not verify/);
@@ -722,12 +726,12 @@ describe("laboratory-signed claims", () => {
   });
 
   it("a value claim and a distinctness claim with one laboratory signing both field sets", () => {
-    const sim = new ClaimsSimulator();
+    const sim = new ClaimsSimulator({ terms: TERMS });
     sim.call(
       {
         opening: openSlot(A.fs, 3),
         attester: lab.key,
-        signature: signFieldSet(lab.secret, rootOf(A.fs)),
+        signature: signRecord(lab.secret, commitOf(A.fs)),
       },
       "proveAttestedValue",
       A.c,
@@ -741,10 +745,10 @@ describe("laboratory-signed claims", () => {
       second: B.fs,
       terms: TERMS,
       attester: lab.key,
-      signature: signFieldSet(lab.secret, rootOf(A.fs)),
+      signature: signRecord(lab.secret, commitOf(A.fs)),
     };
     sim.call(
-      { ...p, secondSignature: signFieldSet(lab.secret, rootOf(B.fs)) },
+      { ...p, secondSignature: signRecord(lab.secret, commitOf(B.fs)) },
       "proveAttestedDistinct",
       A.c,
       B.c,
@@ -754,7 +758,7 @@ describe("laboratory-signed claims", () => {
     // The second field set signed by a different laboratory does not pass as one lab's work.
     expect(() =>
       sim.call(
-        { ...p, secondSignature: signFieldSet(other.secret, rootOf(B.fs)) },
+        { ...p, secondSignature: signRecord(other.secret, commitOf(B.fs)) },
         "proveAttestedDistinct",
         A.c,
         B.c,
@@ -763,7 +767,7 @@ describe("laboratory-signed claims", () => {
     // A signature over the wrong set in the second slot fails too.
     expect(() =>
       sim.call(
-        { ...p, secondSignature: signFieldSet(lab.secret, rootOf(A.fs)) },
+        { ...p, secondSignature: signRecord(lab.secret, commitOf(A.fs)) },
         "proveAttestedDistinct",
         A.c,
         B.c,

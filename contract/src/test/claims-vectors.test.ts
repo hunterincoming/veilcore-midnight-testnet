@@ -19,7 +19,10 @@ type Summary = {
 type Vector = {
   name: string;
   input: {
-    schema: { slots: { slot: number; comparable?: boolean }[]; k: number };
+    schema: {
+      slots: { slot: number; type: string; comparable?: boolean }[];
+      k: number;
+    };
     values: ({ uint: string } | { text: string } | null)[];
     fieldSecret: string;
   };
@@ -44,6 +47,9 @@ describe("SDK field-set vectors, recomputed by the claims contract", () => {
   for (const v of vectors) {
     it(v.name, () => {
       const e = v.expected;
+      const numeric = Array.from({ length: 16 }, (_, i) =>
+        v.input.schema.slots.some((s) => s.slot === i && s.type === "uint"),
+      );
       const mask = Array.from({ length: 16 }, (_, i) =>
         v.input.schema.slots.some((s) => s.slot === i && s.comparable === true),
       );
@@ -53,6 +59,7 @@ describe("SDK field-set vectors, recomputed by the claims contract", () => {
             b(e.schemaDocumentDigest),
             CC.maskBytes(mask),
             CC.countBytes(BigInt(v.input.schema.k)),
+            CC.maskBytes(numeric),
           ),
         ),
       ).toBe(e.schemaId);

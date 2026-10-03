@@ -102,7 +102,8 @@ const contract = (p: Private): Contract<Record<string, never>> =>
 export class ClaimsSimulator {
   private ctx: Ctx;
 
-  constructor() {
+  /** Values the prover holds for every call unless a call overrides them. */
+  constructor(private readonly defaults: Private = {}) {
     const initial = contract({}).initialState(
       createConstructorContext({}, COIN),
     );
@@ -127,7 +128,7 @@ export class ClaimsSimulator {
   }
 
   call<N extends ClaimCircuit>(p: Private, circuit: N, ...args: Args<N>): void {
-    const fn = contract(p).impureCircuits[circuit] as (
+    const fn = contract({ ...this.defaults, ...p }).impureCircuits[circuit] as (
       c: Ctx,
       ...a: unknown[]
     ) => { context: Ctx };
@@ -139,7 +140,7 @@ export class ClaimsSimulator {
     circuit: N,
     ...args: Args<N>
   ): { transcript: unknown; effects: unknown } {
-    const fn = contract(p).impureCircuits[circuit] as (
+    const fn = contract({ ...this.defaults, ...p }).impureCircuits[circuit] as (
       c: Ctx,
       ...a: unknown[]
     ) => { context: Ctx; proofData: { publicTranscript: unknown } };

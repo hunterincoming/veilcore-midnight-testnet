@@ -25,6 +25,12 @@ module schnorr {
     // x = 0 only for the identity (0, 1) and the order-2 point (0, -1). The identity
     // would verify any (R = s*G, s); neither is a usable key.
     assert(jubjubPointX(pk) != 0, "That point is not a signing key");
+    // Only keys in the prime-order subgroup: r * pk must be the identity (0, 1). The x != 0
+    // test alone lets small-order points through (attack round A6, 3 Oct). A scalar must be
+    // below r, so this computes (r - 1) * pk + pk.
+    const R_MINUS_1: Field = 6554484396890773809930967563523245729705921265872317281365359162392183254198 as Field;
+    const rpk = ecAdd(ecMul(pk, R_MINUS_1), pk);
+    assert(jubjubPointX(rpk) == 0 && jubjubPointY(rpk) == 1, "That point is not a signing key");
     const cFull = transientHash<SchnorrHashInput<n>>(SchnorrHashInput<n> {
       annX: jubjubPointX(sig.announcement), annY: jubjubPointY(sig.announcement),
       pkX: jubjubPointX(pk), pkY: jubjubPointY(pk), msg: msg });
@@ -32,6 +38,11 @@ module schnorr {
     const [q, c] = schnorrReduction(cFull);
     // floor((p - 1) / 2^248) = 115 for the BLS12-381 scalar field p: bounds q so the
     // reduction holds over the integers, not mod p (else any challenge could be chosen).
+    // The split must be the one integer division gives: q * 2^248 + c < p. With q = 115
+    // only remainders below p - 115 * 2^248 qualify (attack round A5: a second split
+    // existed for about 1 challenge in 1600).
+    assert(disclose(q) < 115 || disclose(c) < 419897588050555816515462086314444731729426576509415695503572133883854979073,
+           "Schnorr quotient out of range");
     assert(disclose(q) < 116, "Schnorr quotient out of range");
     assert(disclose(q) * TWO_248 + (disclose(c) as Field) == cFull, "Invalid challenge reduction");
     const lhs = ecMulGenerator(sig.response);

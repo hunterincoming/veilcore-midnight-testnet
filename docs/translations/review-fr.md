@@ -528,9 +528,9 @@ Some headings are split in two or three parts; the later part is shown in colour
 
 ### m.hero.lede
 
-**EN:** A record format for genetic material. Your record stays with you. Only a fingerprint is ever published, and anyone can check its date.
+**EN:** A record format for genetic material. Your genetic data stays with you. Only a fingerprint goes on the public network, and anyone can check its date.
 
-**FR:** Un format d'enregistrement pour le matériel génétique. Votre enregistrement reste chez vous. Seule une empreinte est publiée, et n'importe qui peut en vérifier la date.
+**FR:** Un format d'enregistrement pour le matériel génétique. Vos données génétiques restent chez vous. Seule une empreinte va sur le réseau public, et n'importe qui peut en vérifier la date.
 
 ### m.hero.chooseDemo
 
@@ -714,9 +714,9 @@ Some headings are split in two or three parts; the later part is shown in colour
 
 ### m.step2.text
 
-**EN:** A 32-byte fingerprint is computed on your own computer. The record never leaves.
+**EN:** A 32-byte fingerprint is computed on your own computer. Genetic data and lab files never leave it.
 
-**FR:** Une empreinte de 32 octets est calculée sur votre propre ordinateur. L'enregistrement n'en sort jamais.
+**FR:** Une empreinte de 32 octets est calculée sur votre propre ordinateur. Les données génétiques et les fichiers de laboratoire n'en sortent jamais.
 
 ### m.step3.n
 
@@ -732,9 +732,9 @@ Some headings are split in two or three parts; the later part is shown in colour
 
 ### m.step3.text
 
-**EN:** Only the fingerprint is timestamped on a public network (Midnight). Nobody can move that date, including us.
+**EN:** Only the fingerprint is timestamped on a public network (Midnight). The date is set by the network, not by us, and stays in its public history.
 
-**FR:** Seule l'empreinte est horodatée sur un réseau public (Midnight). Personne ne peut modifier cette date, pas même nous.
+**FR:** Seule l'empreinte est horodatée sur un réseau public (Midnight). La date est fixée par le réseau, pas par nous, et reste dans son historique public.
 
 ### m.step4.n
 
@@ -774,15 +774,15 @@ Some headings are split in two or three parts; the later part is shown in colour
 
 ### m.is.2a
 
-**EN:** Zero custody:
+**EN:** No custody of genetics:
 
-**FR:** Zéro garde :
+**FR:** Aucune garde de la génétique :
 
 ### m.is.2b
 
-**EN:** we never receive your data.
+**EN:** genetic data and lab files never reach us.
 
-**FR:** nous ne recevons jamais vos données.
+**FR:** les données génétiques et les fichiers de laboratoire ne nous parviennent jamais.
 
 ### m.is.3a
 
@@ -858,9 +858,9 @@ Some headings are split in two or three parts; the later part is shown in colour
 
 ### m.demo.lede
 
-**EN:** No account, no wallet. Everything that touches your data runs in your browser.
+**EN:** No account, no wallet. Genetic data and lab files stay in your browser. The demo keeps the rest of a record (names, dates, fingerprint) on our test server so you can come back to it.
 
-**FR:** Pas de compte, pas de portefeuille. Tout ce qui touche à vos données s'exécute dans votre navigateur.
+**FR:** Pas de compte, pas de portefeuille. Les données génétiques et les fichiers de laboratoire restent dans votre navigateur. La démo conserve le reste d'un enregistrement (noms, dates, empreinte) sur notre serveur de test pour que vous puissiez y revenir.
 
 ### m.demo.create.title
 
@@ -886,17 +886,7 @@ Some headings are split in two or three parts; the later part is shown in colour
 
 **FR:** Saisissez l'identifiant d'un enregistrement et comparez-le à sa date publiée.
 
-### m.demo.distinct.title
 
-**EN:** Distinctness proof
-
-**FR:** Preuve de distinction
-
-### m.demo.distinct.text
-
-**EN:** Prove two varieties differ at several markers without revealing any of them. Demonstrated on synthetic markers; walkthrough on request.
-
-**FR:** Prouvez que deux variétés diffèrent sur plusieurs marqueurs sans en révéler aucun. Démontré sur des marqueurs synthétiques ; présentation sur demande.
 
 ### m.chip.interactive
 
@@ -916,23 +906,8 @@ Some headings are split in two or three parts; the later part is shown in colour
 
 **FR:** ~1 min
 
-### m.chip.testnet
 
-**EN:** Test network
 
-**FR:** Réseau de test
-
-### m.chip.onRequest
-
-**EN:** On request
-
-**FR:** Sur demande
-
-### m.chip.zk
-
-**EN:** Zero-knowledge
-
-**FR:** Zero-knowledge
 
 ### m.team.label
 
@@ -978,9 +953,9 @@ Some headings are split in two or three parts; the later part is shown in colour
 
 ### m.hunter.short
 
-**EN:** Builds the contract, app and API. Leads US institutional work.
+**EN:** Builds the contract, app and API. Leads US outreach.
 
-**FR:** Développe le contrat, l'application et l'API. Dirige le travail institutionnel aux États-Unis.
+**FR:** Développe le contrat, l'application et l'API. Mène les prises de contact aux États-Unis.
 
 ### m.updates.label
 
@@ -1026,9 +1001,9 @@ Some headings are split in two or three parts; the later part is shown in colour
 
 ### m.post1.tag
 
-**EN:** Security
+**EN:** Format
 
-**FR:** Sécurité
+**FR:** Format
 
 ### m.post1.title
 
@@ -1062,15 +1037,15 @@ Some headings are split in two or three parts; the later part is shown in colour
 
 ### m.post2.text
 
-**EN:** The contract deployed to preprod and passed all 26 end-to-end checks, including every attack it must refuse.
+**EN:** The contract deployed to Midnight's test network and passed all 26 end-to-end checks, using 16 of its 24 operations with real proofs.
 
-**FR:** Le contrat a été déployé en préproduction et a passé les 26 vérifications de bout en bout, y compris chaque attaque qu'il doit refuser.
+**FR:** Le contrat a été déployé sur le réseau de test de Midnight et a passé les 26 vérifications de bout en bout, en utilisant 16 de ses 24 opérations avec de vraies preuves.
 
 ### m.post3.date
 
-**EN:** 8 Sep 2026
+**EN:** 25 Aug 2026
 
-**FR:** 8 sept. 2026
+**FR:** 25 août 2026
 
 ### m.post3.tag
 
@@ -1134,9 +1109,9 @@ Some headings are split in two or three parts; the later part is shown in colour
 
 ### m.stat2.s
 
-**EN:** Running on Midnight's test network. The live network is next.
+**EN:** Tested on Midnight's test network. Not on the live network yet.
 
-**FR:** Fonctionne sur le réseau de test de Midnight. Le réseau principal est la prochaine étape.
+**FR:** Testé sur le réseau de test de Midnight. Pas encore sur le réseau principal.
 
 ### m.stat3.b
 
@@ -1152,15 +1127,15 @@ Some headings are split in two or three parts; the later part is shown in colour
 
 ### m.stat4.b
 
-**EN:** No users
+**EN:** No users yet
 
-**FR:** Aucun utilisateur
+**FR:** Pas encore d'utilisateurs
 
 ### m.stat4.s
 
-**EN:** Nobody outside the two founders has used it yet. We're looking for the first.
+**EN:** Nobody is using it for real records yet. We're looking for the first.
 
-**FR:** Personne en dehors des deux fondateurs ne l'a encore utilisé. Nous cherchons le premier.
+**FR:** Personne ne l'utilise encore pour de vrais enregistrements. Nous cherchons le premier.
 
 ### m.contact.label
 
@@ -1326,9 +1301,9 @@ Some headings are split in two or three parts; the later part is shown in colour
 
 ### m.hunter.bio1
 
-**EN:** Hunter Roberts is VeilCore's co-founder and COO, leading product and the VeilCore protocol, from the record format to the contracts on Midnight. He leads VeilCore's work with US institutions, including seed certification, standards and plant-variety bodies.
+**EN:** Hunter Roberts is VeilCore's co-founder and COO, leading product and the VeilCore protocol, from the record format to the contracts on Midnight. He leads VeilCore's outreach to US institutions, including seed certification, standards and plant-variety bodies.
 
-**FR:** Hunter Roberts est cofondateur et COO de VeilCore. Il dirige le produit et le protocole VeilCore, du format d'enregistrement aux contrats sur Midnight. Il pilote le travail de VeilCore avec les institutions américaines, notamment les organismes de certification des semences, de normalisation et des variétés végétales.
+**FR:** Hunter Roberts est cofondateur et COO de VeilCore. Il dirige le produit et le protocole VeilCore, du format d'enregistrement aux contrats sur Midnight. Il mène les prises de contact de VeilCore avec les institutions américaines, notamment les organismes de certification des semences, de normalisation et des variétés végétales.
 
 ### m.hunter.bio2
 

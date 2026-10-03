@@ -34,7 +34,7 @@ export const de: Strings = {
   'm.hero.title1': 'Beweisen Sie, dass Sie es zuerst hatten.',
   'm.hero.title2': 'Ohne jemandem zu zeigen, was es ist.',
   'm.hero.lede':
-    'Ein Datensatzformat für genetisches Material. Ihr Datensatz bleibt bei Ihnen. Veröffentlicht wird immer nur ein Fingerabdruck, und jeder kann dessen Datum prüfen.',
+    'Ein Datensatzformat für genetisches Material. Ihre genetischen Daten bleiben bei Ihnen. Nur ein Fingerabdruck kommt ins öffentliche Netzwerk, und jeder kann dessen Datum prüfen.',
   'm.hero.chooseDemo': 'Demo wählen',
   'm.hero.how': 'So funktioniert es',
   'm.hero.cultivar': 'Sorte',
@@ -69,11 +69,11 @@ export const de: Strings = {
   'm.step2.n': '02 · Fingerabdruck',
   'm.step2.title': 'Lokal hashen',
   'm.step2.text':
-    'Ein 32-Byte-Fingerabdruck wird auf Ihrem eigenen Computer berechnet. Der Datensatz verlässt ihn nie.',
+    'Ein 32-Byte-Fingerabdruck wird auf Ihrem eigenen Computer berechnet. Genetische Daten und Labordateien verlassen ihn nie.',
   'm.step3.n': '03 · Verankern',
   'm.step3.title': 'Das Datum veröffentlichen',
   'm.step3.text':
-    'Nur der Fingerabdruck erhält einen Zeitstempel in einem öffentlichen Netzwerk (Midnight). Niemand kann dieses Datum verschieben, auch wir nicht.',
+    'Nur der Fingerabdruck erhält einen Zeitstempel in einem öffentlichen Netzwerk (Midnight). Das Datum legt das Netzwerk fest, nicht wir, und es bleibt in dessen öffentlicher Historie.',
   'm.step4.n': '04 · Prüfen',
   'm.step4.title': 'Später vorlegen',
   'm.step4.text':
@@ -81,8 +81,8 @@ export const de: Strings = {
   'm.is.title': 'Was es ist',
   'm.is.1a': 'Nachweis früheren Besitzes:',
   'm.is.1b': 'was Sie hatten, und wann.',
-  'm.is.2a': 'Keine Verwahrung:',
-  'm.is.2b': 'Wir erhalten Ihre Daten nie.',
+  'm.is.2a': 'Keine Verwahrung von Genetik:',
+  'm.is.2b': 'Genetische Daten und Labordateien erreichen uns nie.',
   'm.is.3a': 'Ein offenes Format:',
   'm.is.3b': 'kostenlos zu implementieren, kostenlos zu prüfen, mit veröffentlichter Spezifikation.',
   'm.isnt.title': 'Was es nicht ist',
@@ -95,16 +95,14 @@ export const de: Strings = {
   'm.demo.label': 'Demo',
   'm.demo.title1': 'Wählen Sie, wie Sie',
   'm.demo.title2': 'es sehen möchten.',
-  'm.demo.lede': 'Kein Konto, keine Wallet. Alles, was Ihre Daten berührt, läuft in Ihrem Browser.',
+  'm.demo.lede':
+    'Kein Konto, keine Wallet. Genetische Daten und Labordateien bleiben in Ihrem Browser. Die Demo speichert den Rest eines Datensatzes (Namen, Datumsangaben, Fingerabdruck) auf unserem Testserver, damit Sie später darauf zurückkommen können.',
   'm.demo.create.title': 'Datensatz erstellen',
   'm.demo.create.text':
     'Füllen Sie einen Beispieldatensatz aus, erzeugen Sie seinen Fingerabdruck und laden Sie das Zertifikat herunter.',
   'm.demo.verify.title': 'Datensatz prüfen',
   'm.demo.verify.text':
     'Geben Sie die Kennung eines Datensatzes ein und gleichen Sie sie mit seinem veröffentlichten Datum ab.',
-  'm.demo.distinct.title': 'Unterscheidbarkeitsnachweis',
-  'm.demo.distinct.text':
-    'Beweisen Sie, dass sich zwei Sorten in mehreren Markern unterscheiden, ohne einen davon offenzulegen. Mit synthetischen Markern demonstriert; Vorführung auf Anfrage.',
   'm.demo.video.title': 'Rundgang ansehen',
   'm.demo.video.text':
     'Der ganze Ablauf in 75 Sekunden: einen Datensatz versiegeln, einen Laborbericht zuordnen, ihn prüfen und die Lizenzbedingungen.',
@@ -113,9 +111,6 @@ export const de: Strings = {
   'm.chip.interactive': 'Interaktiv',
   'm.chip.3min': '~3 Min.',
   'm.chip.1min': '~1 Min.',
-  'm.chip.testnet': 'Testnetz',
-  'm.chip.onRequest': 'Auf Anfrage',
-  'm.chip.zk': 'Zero-Knowledge',
   'm.team.label': 'Team',
   'm.team.title1': 'Zwei Gründer.',
   'm.team.title2': 'Tokio und New Jersey.',
@@ -123,7 +118,7 @@ export const de: Strings = {
   'm.mako.role': 'Mitgründer & CEO · Tokio',
   'm.mako.short': 'Kommerzielle Leitung: Normungs- und Sortenschutzgremien in Japan und der EU.',
   'm.hunter.role': 'Mitgründer & COO · New Jersey',
-  'm.hunter.short': 'Entwickelt den Contract, die App und die API. Leitet die institutionelle Arbeit in den USA.',
+  'm.hunter.short': 'Entwickelt den Contract, die App und die API. Leitet die Kontaktarbeit in den USA.',
   'm.updates.label': 'Neuigkeiten',
   'm.updates.title1': 'Neues aus',
   'm.updates.title2': 'der Entwicklung.',
@@ -131,7 +126,7 @@ export const de: Strings = {
   'm.updates.all': 'Alle Änderungen auf GitHub →',
   'm.updates.follow': 'Folgen',
   'm.post1.date': '3. Okt. 2026',
-  'm.post1.tag': 'Sicherheit',
+  'm.post1.tag': 'Format',
   'm.post1.title': 'Drei Implementierungen, eine Antwort',
   'm.post1.text':
     'Ein Differenztest ergab, dass unsere Implementierungen in TypeScript, Python und Rust bei einigen Zahlen voneinander abwichen. Behoben: Sie stimmen jetzt bei jeder einzelnen von 81.000 Eingaben überein, und 55 Konformitätsvektoren legen das fest.',
@@ -139,8 +134,8 @@ export const de: Strings = {
   'm.post2.tag': 'Contract',
   'm.post2.title': 'Ein vollständiger Durchlauf im Testnetz von Midnight',
   'm.post2.text':
-    'Der Contract wurde auf Preprod bereitgestellt und hat alle 26 End-to-End-Prüfungen bestanden, einschließlich jedes Angriffs, den er abweisen muss.',
-  'm.post3.date': '8. Sept. 2026',
+    'Der Contract wurde im Testnetz von Midnight bereitgestellt und hat alle 26 End-to-End-Prüfungen bestanden, wobei 16 seiner 24 Operationen mit echten Beweisen genutzt wurden.',
+  'm.post3.date': '25. Aug. 2026',
   'm.post3.tag': 'Contract',
   'm.post3.title': 'Warum eine Lizenzübertragung eine Abtretung ist',
   'm.post3.text':
@@ -152,11 +147,11 @@ export const de: Strings = {
   'm.stat1.b': '55 / 55',
   'm.stat1.s': 'Konformitätsvektoren, bestanden von Implementierungen in drei Sprachen (vom selben Team geschrieben)',
   'm.stat2.b': 'Testnetz',
-  'm.stat2.s': 'Läuft im Testnetz von Midnight. Als Nächstes kommt das Live-Netzwerk.',
+  'm.stat2.s': 'Im Testnetz von Midnight getestet. Noch nicht im Live-Netzwerk.',
   'm.stat3.b': 'Kein Audit',
   'm.stat3.s': 'Noch kein unabhängiges Sicherheitsaudit. Unsere eigenen Prüfungen sind im Repository veröffentlicht.',
-  'm.stat4.b': 'Keine Nutzer',
-  'm.stat4.s': 'Außer den beiden Gründern hat es noch niemand genutzt. Wir suchen den ersten.',
+  'm.stat4.b': 'Noch keine Nutzer',
+  'm.stat4.s': 'Noch niemand nutzt es für echte Datensätze. Wir suchen den ersten.',
   'm.contact.label': 'Kontakt aufnehmen',
   'm.contact.title1': 'Sagen Sie uns,',
   'm.contact.title2': 'wo es versagt.',
@@ -189,7 +184,7 @@ export const de: Strings = {
   'm.mako.also': 'Midnight Nightforce Leader (Japan) · Build Club, Kohorte 1',
   'm.mako.languages': 'Englisch · Japanisch',
   'm.hunter.bio1':
-    'Hunter Roberts ist Mitgründer und COO von VeilCore. Er leitet das Produkt und das VeilCore-Protokoll, vom Datensatzformat bis zu den Contracts auf Midnight. Er führt die Arbeit von VeilCore mit US-Institutionen, darunter Saatgutanerkennungs-, Normungs- und Sortenstellen.',
+    'Hunter Roberts ist Mitgründer und COO von VeilCore. Er leitet das Produkt und das VeilCore-Protokoll, vom Datensatzformat bis zu den Contracts auf Midnight. Er leitet die Kontaktarbeit von VeilCore mit US-Institutionen, darunter Saatgutanerkennungs-, Normungs- und Sortenstellen.',
   'm.hunter.bio2':
     "Er kommt aus der praktischen Arbeit mit Pflanzen, einschließlich Züchtung und Gewebekultur, und baut Chunk's Trees auf, eine Anbauanlage in New Jersey.",
   'm.hunter.leads': 'USA|Protokoll & Spezifikation|Engineering',

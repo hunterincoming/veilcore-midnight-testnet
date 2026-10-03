@@ -528,9 +528,9 @@ Some headings are split in two or three parts; the later part is shown in colour
 
 ### m.hero.lede
 
-**EN:** A record format for genetic material. Your record stays with you. Only a fingerprint is ever published, and anyone can check its date.
+**EN:** A record format for genetic material. Your genetic data stays with you. Only a fingerprint goes on the public network, and anyone can check its date.
 
-**JA:** 遺伝資源のための記録フォーマットです。記録はお手元に残ります。公開されるのはフィンガープリントだけで、その日付は誰でも確認できます。
+**JA:** 遺伝資源のための記録フォーマットです。遺伝データはお手元に残ります。公開ネットワークに載るのはフィンガープリントだけで、その日付は誰でも確認できます。
 
 ### m.hero.chooseDemo
 
@@ -714,9 +714,9 @@ Some headings are split in two or three parts; the later part is shown in colour
 
 ### m.step2.text
 
-**EN:** A 32-byte fingerprint is computed on your own computer. The record never leaves.
+**EN:** A 32-byte fingerprint is computed on your own computer. Genetic data and lab files never leave it.
 
-**JA:** 32バイトのフィンガープリントがご自身のコンピューター上で計算されます。記録が外に出ることはありません。
+**JA:** 32バイトのフィンガープリントがご自身のコンピューター上で計算されます。遺伝データやラボのファイルが外に出ることはありません。
 
 ### m.step3.n
 
@@ -732,9 +732,9 @@ Some headings are split in two or three parts; the later part is shown in colour
 
 ### m.step3.text
 
-**EN:** Only the fingerprint is timestamped on a public network (Midnight). Nobody can move that date, including us.
+**EN:** Only the fingerprint is timestamped on a public network (Midnight). The date is set by the network, not by us, and stays in its public history.
 
-**JA:** 公開ネットワーク（Midnight）上でタイムスタンプが付くのはフィンガープリントだけです。その日付は誰にも、私たちにも動かせません。
+**JA:** 公開ネットワーク（Midnight）上でタイムスタンプが付くのはフィンガープリントだけです。日付は私たちではなくネットワークが付与し、その公開履歴に残ります。
 
 ### m.step4.n
 
@@ -774,15 +774,15 @@ Some headings are split in two or three parts; the later part is shown in colour
 
 ### m.is.2a
 
-**EN:** Zero custody:
+**EN:** No custody of genetics:
 
-**JA:** 預かりゼロ：
+**JA:** 遺伝資源の預かりなし：
 
 ### m.is.2b
 
-**EN:** we never receive your data.
+**EN:** genetic data and lab files never reach us.
 
-**JA:** 私たちがお客様のデータを受け取ることはありません。
+**JA:** 遺伝データやラボのファイルが私たちに届くことはありません。
 
 ### m.is.3a
 
@@ -858,9 +858,9 @@ Some headings are split in two or three parts; the later part is shown in colour
 
 ### m.demo.lede
 
-**EN:** No account, no wallet. Everything that touches your data runs in your browser.
+**EN:** No account, no wallet. Genetic data and lab files stay in your browser. The demo keeps the rest of a record (names, dates, fingerprint) on our test server so you can come back to it.
 
-**JA:** アカウントもウォレットも不要です。お客様のデータに触れる処理はすべてブラウザ内で実行されます。
+**JA:** アカウントもウォレットも不要です。遺伝データやラボのファイルはブラウザ内に留まります。デモでは、後で戻って確認できるよう、記録の残りの部分（名前、日付、フィンガープリント）を私たちのテストサーバーに保存します。
 
 ### m.demo.create.title
 
@@ -886,17 +886,7 @@ Some headings are split in two or three parts; the later part is shown in colour
 
 **JA:** 記録の識別子を入力し、公開された日付と照合します。
 
-### m.demo.distinct.title
 
-**EN:** Distinctness proof
-
-**JA:** 区別性の証明
-
-### m.demo.distinct.text
-
-**EN:** Prove two varieties differ at several markers without revealing any of them. Demonstrated on synthetic markers; walkthrough on request.
-
-**JA:** どのマーカーも明かさずに、2つの品種が複数のマーカーで異なることを証明します。合成マーカーで実証済みです。ご説明はご依頼に応じて行います。
 
 ### m.chip.interactive
 
@@ -916,23 +906,8 @@ Some headings are split in two or three parts; the later part is shown in colour
 
 **JA:** 約1分
 
-### m.chip.testnet
 
-**EN:** Test network
 
-**JA:** テストネット
-
-### m.chip.onRequest
-
-**EN:** On request
-
-**JA:** ご依頼に応じて
-
-### m.chip.zk
-
-**EN:** Zero-knowledge
-
-**JA:** ゼロ知識
 
 ### m.team.label
 
@@ -978,9 +953,9 @@ Some headings are split in two or three parts; the later part is shown in colour
 
 ### m.hunter.short
 
-**EN:** Builds the contract, app and API. Leads US institutional work.
+**EN:** Builds the contract, app and API. Leads US outreach.
 
-**JA:** コントラクト、アプリ、APIを開発。米国での機関との取り組みを主導。
+**JA:** コントラクト、アプリ、APIを開発。米国でのアウトリーチを主導。
 
 ### m.updates.label
 
@@ -1026,9 +1001,9 @@ Some headings are split in two or three parts; the later part is shown in colour
 
 ### m.post1.tag
 
-**EN:** Security
+**EN:** Format
 
-**JA:** セキュリティ
+**JA:** フォーマット
 
 ### m.post1.title
 
@@ -1062,15 +1037,15 @@ Some headings are split in two or three parts; the later part is shown in colour
 
 ### m.post2.text
 
-**EN:** The contract deployed to preprod and passed all 26 end-to-end checks, including every attack it must refuse.
+**EN:** The contract deployed to Midnight's test network and passed all 26 end-to-end checks, using 16 of its 24 operations with real proofs.
 
-**JA:** コントラクトをpreprodにデプロイし、拒否すべきすべての攻撃を含む26項目のエンドツーエンドチェックをすべて通過しました。
+**JA:** コントラクトをMidnightのテストネットにデプロイし、26項目のエンドツーエンドチェックをすべて通過しました。24の操作のうち16を実際の証明で使用しています。
 
 ### m.post3.date
 
-**EN:** 8 Sep 2026
+**EN:** 25 Aug 2026
 
-**JA:** 2026年9月8日
+**JA:** 2026年8月25日
 
 ### m.post3.tag
 
@@ -1134,9 +1109,9 @@ Some headings are split in two or three parts; the later part is shown in colour
 
 ### m.stat2.s
 
-**EN:** Running on Midnight's test network. The live network is next.
+**EN:** Tested on Midnight's test network. Not on the live network yet.
 
-**JA:** Midnightのテストネットで稼働中です。次は本番ネットワークです。
+**JA:** Midnightのテストネットでテスト済みです。本番ネットワークではまだ稼働していません。
 
 ### m.stat3.b
 
@@ -1152,15 +1127,15 @@ Some headings are split in two or three parts; the later part is shown in colour
 
 ### m.stat4.b
 
-**EN:** No users
+**EN:** No users yet
 
-**JA:** ユーザーなし
+**JA:** ユーザーはまだいません
 
 ### m.stat4.s
 
-**EN:** Nobody outside the two founders has used it yet. We're looking for the first.
+**EN:** Nobody is using it for real records yet. We're looking for the first.
 
-**JA:** 創業者2人以外で使用した人はまだいません。最初のユーザーを探しています。
+**JA:** 実際の記録に使用している人はまだいません。最初のユーザーを探しています。
 
 ### m.contact.label
 
@@ -1326,9 +1301,9 @@ Some headings are split in two or three parts; the later part is shown in colour
 
 ### m.hunter.bio1
 
-**EN:** Hunter Roberts is VeilCore's co-founder and COO, leading product and the VeilCore protocol, from the record format to the contracts on Midnight. He leads VeilCore's work with US institutions, including seed certification, standards and plant-variety bodies.
+**EN:** Hunter Roberts is VeilCore's co-founder and COO, leading product and the VeilCore protocol, from the record format to the contracts on Midnight. He leads VeilCore's outreach to US institutions, including seed certification, standards and plant-variety bodies.
 
-**JA:** Hunter RobertsはVeilCoreの共同創業者兼COOです。記録フォーマットからMidnight上のコントラクトまで、プロダクトとVeilCoreプロトコルを統括しています。種子認証、標準化、植物品種関係の機関を含む、米国の機関とのVeilCoreの取り組みを主導しています。
+**JA:** Hunter RobertsはVeilCoreの共同創業者兼COOです。記録フォーマットからMidnight上のコントラクトまで、プロダクトとVeilCoreプロトコルを統括しています。種子認証、標準化、植物品種関係の機関を含む、米国の機関へのVeilCoreのアウトリーチを主導しています。
 
 ### m.hunter.bio2
 

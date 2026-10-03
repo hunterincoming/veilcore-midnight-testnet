@@ -528,9 +528,9 @@ Some headings are split in two or three parts; the later part is shown in colour
 
 ### m.hero.lede
 
-**EN:** A record format for genetic material. Your record stays with you. Only a fingerprint is ever published, and anyone can check its date.
+**EN:** A record format for genetic material. Your genetic data stays with you. Only a fingerprint goes on the public network, and anyone can check its date.
 
-**DE:** Ein Datensatzformat für genetisches Material. Ihr Datensatz bleibt bei Ihnen. Veröffentlicht wird immer nur ein Fingerabdruck, und jeder kann dessen Datum prüfen.
+**DE:** Ein Datensatzformat für genetisches Material. Ihre genetischen Daten bleiben bei Ihnen. Nur ein Fingerabdruck kommt ins öffentliche Netzwerk, und jeder kann dessen Datum prüfen.
 
 ### m.hero.chooseDemo
 
@@ -714,9 +714,9 @@ Some headings are split in two or three parts; the later part is shown in colour
 
 ### m.step2.text
 
-**EN:** A 32-byte fingerprint is computed on your own computer. The record never leaves.
+**EN:** A 32-byte fingerprint is computed on your own computer. Genetic data and lab files never leave it.
 
-**DE:** Ein 32-Byte-Fingerabdruck wird auf Ihrem eigenen Computer berechnet. Der Datensatz verlässt ihn nie.
+**DE:** Ein 32-Byte-Fingerabdruck wird auf Ihrem eigenen Computer berechnet. Genetische Daten und Labordateien verlassen ihn nie.
 
 ### m.step3.n
 
@@ -732,9 +732,9 @@ Some headings are split in two or three parts; the later part is shown in colour
 
 ### m.step3.text
 
-**EN:** Only the fingerprint is timestamped on a public network (Midnight). Nobody can move that date, including us.
+**EN:** Only the fingerprint is timestamped on a public network (Midnight). The date is set by the network, not by us, and stays in its public history.
 
-**DE:** Nur der Fingerabdruck erhält einen Zeitstempel in einem öffentlichen Netzwerk (Midnight). Niemand kann dieses Datum verschieben, auch wir nicht.
+**DE:** Nur der Fingerabdruck erhält einen Zeitstempel in einem öffentlichen Netzwerk (Midnight). Das Datum legt das Netzwerk fest, nicht wir, und es bleibt in dessen öffentlicher Historie.
 
 ### m.step4.n
 
@@ -774,15 +774,15 @@ Some headings are split in two or three parts; the later part is shown in colour
 
 ### m.is.2a
 
-**EN:** Zero custody:
+**EN:** No custody of genetics:
 
-**DE:** Keine Verwahrung:
+**DE:** Keine Verwahrung von Genetik:
 
 ### m.is.2b
 
-**EN:** we never receive your data.
+**EN:** genetic data and lab files never reach us.
 
-**DE:** Wir erhalten Ihre Daten nie.
+**DE:** Genetische Daten und Labordateien erreichen uns nie.
 
 ### m.is.3a
 
@@ -858,9 +858,9 @@ Some headings are split in two or three parts; the later part is shown in colour
 
 ### m.demo.lede
 
-**EN:** No account, no wallet. Everything that touches your data runs in your browser.
+**EN:** No account, no wallet. Genetic data and lab files stay in your browser. The demo keeps the rest of a record (names, dates, fingerprint) on our test server so you can come back to it.
 
-**DE:** Kein Konto, keine Wallet. Alles, was Ihre Daten berührt, läuft in Ihrem Browser.
+**DE:** Kein Konto, keine Wallet. Genetische Daten und Labordateien bleiben in Ihrem Browser. Die Demo speichert den Rest eines Datensatzes (Namen, Datumsangaben, Fingerabdruck) auf unserem Testserver, damit Sie später darauf zurückkommen können.
 
 ### m.demo.create.title
 
@@ -886,17 +886,7 @@ Some headings are split in two or three parts; the later part is shown in colour
 
 **DE:** Geben Sie die Kennung eines Datensatzes ein und gleichen Sie sie mit seinem veröffentlichten Datum ab.
 
-### m.demo.distinct.title
 
-**EN:** Distinctness proof
-
-**DE:** Unterscheidbarkeitsnachweis
-
-### m.demo.distinct.text
-
-**EN:** Prove two varieties differ at several markers without revealing any of them. Demonstrated on synthetic markers; walkthrough on request.
-
-**DE:** Beweisen Sie, dass sich zwei Sorten in mehreren Markern unterscheiden, ohne einen davon offenzulegen. Mit synthetischen Markern demonstriert; Vorführung auf Anfrage.
 
 ### m.chip.interactive
 
@@ -916,23 +906,8 @@ Some headings are split in two or three parts; the later part is shown in colour
 
 **DE:** ~1 Min.
 
-### m.chip.testnet
 
-**EN:** Test network
 
-**DE:** Testnetz
-
-### m.chip.onRequest
-
-**EN:** On request
-
-**DE:** Auf Anfrage
-
-### m.chip.zk
-
-**EN:** Zero-knowledge
-
-**DE:** Zero-Knowledge
 
 ### m.team.label
 
@@ -978,9 +953,9 @@ Some headings are split in two or three parts; the later part is shown in colour
 
 ### m.hunter.short
 
-**EN:** Builds the contract, app and API. Leads US institutional work.
+**EN:** Builds the contract, app and API. Leads US outreach.
 
-**DE:** Entwickelt den Contract, die App und die API. Leitet die institutionelle Arbeit in den USA.
+**DE:** Entwickelt den Contract, die App und die API. Leitet die Kontaktarbeit in den USA.
 
 ### m.updates.label
 
@@ -1026,9 +1001,9 @@ Some headings are split in two or three parts; the later part is shown in colour
 
 ### m.post1.tag
 
-**EN:** Security
+**EN:** Format
 
-**DE:** Sicherheit
+**DE:** Format
 
 ### m.post1.title
 
@@ -1062,15 +1037,15 @@ Some headings are split in two or three parts; the later part is shown in colour
 
 ### m.post2.text
 
-**EN:** The contract deployed to preprod and passed all 26 end-to-end checks, including every attack it must refuse.
+**EN:** The contract deployed to Midnight's test network and passed all 26 end-to-end checks, using 16 of its 24 operations with real proofs.
 
-**DE:** Der Contract wurde auf Preprod bereitgestellt und hat alle 26 End-to-End-Prüfungen bestanden, einschließlich jedes Angriffs, den er abweisen muss.
+**DE:** Der Contract wurde im Testnetz von Midnight bereitgestellt und hat alle 26 End-to-End-Prüfungen bestanden, wobei 16 seiner 24 Operationen mit echten Beweisen genutzt wurden.
 
 ### m.post3.date
 
-**EN:** 8 Sep 2026
+**EN:** 25 Aug 2026
 
-**DE:** 8. Sept. 2026
+**DE:** 25. Aug. 2026
 
 ### m.post3.tag
 
@@ -1134,9 +1109,9 @@ Some headings are split in two or three parts; the later part is shown in colour
 
 ### m.stat2.s
 
-**EN:** Running on Midnight's test network. The live network is next.
+**EN:** Tested on Midnight's test network. Not on the live network yet.
 
-**DE:** Läuft im Testnetz von Midnight. Als Nächstes kommt das Live-Netzwerk.
+**DE:** Im Testnetz von Midnight getestet. Noch nicht im Live-Netzwerk.
 
 ### m.stat3.b
 
@@ -1152,15 +1127,15 @@ Some headings are split in two or three parts; the later part is shown in colour
 
 ### m.stat4.b
 
-**EN:** No users
+**EN:** No users yet
 
-**DE:** Keine Nutzer
+**DE:** Noch keine Nutzer
 
 ### m.stat4.s
 
-**EN:** Nobody outside the two founders has used it yet. We're looking for the first.
+**EN:** Nobody is using it for real records yet. We're looking for the first.
 
-**DE:** Außer den beiden Gründern hat es noch niemand genutzt. Wir suchen den ersten.
+**DE:** Noch niemand nutzt es für echte Datensätze. Wir suchen den ersten.
 
 ### m.contact.label
 
@@ -1326,9 +1301,9 @@ Some headings are split in two or three parts; the later part is shown in colour
 
 ### m.hunter.bio1
 
-**EN:** Hunter Roberts is VeilCore's co-founder and COO, leading product and the VeilCore protocol, from the record format to the contracts on Midnight. He leads VeilCore's work with US institutions, including seed certification, standards and plant-variety bodies.
+**EN:** Hunter Roberts is VeilCore's co-founder and COO, leading product and the VeilCore protocol, from the record format to the contracts on Midnight. He leads VeilCore's outreach to US institutions, including seed certification, standards and plant-variety bodies.
 
-**DE:** Hunter Roberts ist Mitgründer und COO von VeilCore. Er leitet das Produkt und das VeilCore-Protokoll, vom Datensatzformat bis zu den Contracts auf Midnight. Er führt die Arbeit von VeilCore mit US-Institutionen, darunter Saatgutanerkennungs-, Normungs- und Sortenstellen.
+**DE:** Hunter Roberts ist Mitgründer und COO von VeilCore. Er leitet das Produkt und das VeilCore-Protokoll, vom Datensatzformat bis zu den Contracts auf Midnight. Er leitet die Kontaktarbeit von VeilCore mit US-Institutionen, darunter Saatgutanerkennungs-, Normungs- und Sortenstellen.
 
 ### m.hunter.bio2
 

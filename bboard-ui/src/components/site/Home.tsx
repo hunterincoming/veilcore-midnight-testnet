@@ -273,7 +273,6 @@ export const Home: React.FC = () => {
               <div className="meta-row">
                 <span className="chip live">{t('m.chip.interactive')}</span>
                 <span className="chip">{t('m.chip.3min')}</span>
-                <span className="chip">{t('m.chip.testnet')}</span>
               </div>
             </RouterLink>
             <RouterLink className="demo" to="/verify">
@@ -310,20 +309,6 @@ export const Home: React.FC = () => {
                 <span className="chip">{t('m.chip.75s')}</span>
               </div>
             </button>
-            <a className="demo" href="mailto:mako@veilcore.org?cc=hunter@veilcore.org&subject=Distinctness%20demo">
-              <span className="ic">
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <circle cx="8" cy="12" r="4.5" />
-                  <circle cx="16" cy="12" r="4.5" />
-                </svg>
-              </span>
-              <h3>{t('m.demo.distinct.title')}</h3>
-              <p>{t('m.demo.distinct.text')}</p>
-              <div className="meta-row">
-                <span className="chip">{t('m.chip.onRequest')}</span>
-                <span className="chip">{t('m.chip.zk')}</span>
-              </div>
-            </a>
           </div>
           {showVideo && (
             <div className="walkthrough" id="walkthrough">
@@ -390,7 +375,7 @@ export const Home: React.FC = () => {
               go={t('m.updates.read')}
             />
             <Post
-              href={`${TESTNET_REPO}/blob/main/docs/deployment-record-revision-4.md`}
+              href={`${TESTNET_REPO}/blob/main/docs/preprod-run-2oct.md`}
               iso="2026-10-02"
               date={t('m.post2.date')}
               tag={t('m.post2.tag')}
@@ -399,8 +384,8 @@ export const Home: React.FC = () => {
               go={t('m.updates.read')}
             />
             <Post
-              href="https://github.com/midnightntwrk/midnight-improvement-proposals/blob/main/deployments/veilcore.md"
-              iso="2026-09-08"
+              href="https://github.com/midnightntwrk/midnight-improvement-proposals/blob/main/deployments/veilcore.md#revision--2425-august-2026"
+              iso="2026-08-25"
               date={t('m.post3.date')}
               tag={t('m.post3.tag')}
               title={t('m.post3.title')}

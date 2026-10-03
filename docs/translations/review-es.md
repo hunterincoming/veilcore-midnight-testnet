@@ -528,9 +528,9 @@ Some headings are split in two or three parts; the later part is shown in colour
 
 ### m.hero.lede
 
-**EN:** A record format for genetic material. Your record stays with you. Only a fingerprint is ever published, and anyone can check its date.
+**EN:** A record format for genetic material. Your genetic data stays with you. Only a fingerprint goes on the public network, and anyone can check its date.
 
-**ES:** Un formato de registro para material genético. Su registro se queda con usted. Solo se publica una huella, y cualquiera puede comprobar su fecha.
+**ES:** Un formato de registro para material genético. Sus datos genéticos se quedan con usted. Solo una huella va a la red pública, y cualquiera puede comprobar su fecha.
 
 ### m.hero.chooseDemo
 
@@ -714,9 +714,9 @@ Some headings are split in two or three parts; the later part is shown in colour
 
 ### m.step2.text
 
-**EN:** A 32-byte fingerprint is computed on your own computer. The record never leaves.
+**EN:** A 32-byte fingerprint is computed on your own computer. Genetic data and lab files never leave it.
 
-**ES:** Se calcula una huella de 32 bytes en su propia computadora. El registro nunca sale de ella.
+**ES:** Se calcula una huella de 32 bytes en su propia computadora. Los datos genéticos y los archivos de laboratorio nunca salen de ella.
 
 ### m.step3.n
 
@@ -732,9 +732,9 @@ Some headings are split in two or three parts; the later part is shown in colour
 
 ### m.step3.text
 
-**EN:** Only the fingerprint is timestamped on a public network (Midnight). Nobody can move that date, including us.
+**EN:** Only the fingerprint is timestamped on a public network (Midnight). The date is set by the network, not by us, and stays in its public history.
 
-**ES:** Solo la huella recibe un sello de tiempo en una red pública (Midnight). Nadie puede cambiar esa fecha, ni siquiera nosotros.
+**ES:** Solo la huella recibe un sello de tiempo en una red pública (Midnight). La fecha la fija la red, no nosotros, y queda en su historial público.
 
 ### m.step4.n
 
@@ -774,15 +774,15 @@ Some headings are split in two or three parts; the later part is shown in colour
 
 ### m.is.2a
 
-**EN:** Zero custody:
+**EN:** No custody of genetics:
 
-**ES:** Cero custodia:
+**ES:** Sin custodia de la genética:
 
 ### m.is.2b
 
-**EN:** we never receive your data.
+**EN:** genetic data and lab files never reach us.
 
-**ES:** nunca recibimos sus datos.
+**ES:** los datos genéticos y los archivos de laboratorio nunca nos llegan.
 
 ### m.is.3a
 
@@ -858,9 +858,9 @@ Some headings are split in two or three parts; the later part is shown in colour
 
 ### m.demo.lede
 
-**EN:** No account, no wallet. Everything that touches your data runs in your browser.
+**EN:** No account, no wallet. Genetic data and lab files stay in your browser. The demo keeps the rest of a record (names, dates, fingerprint) on our test server so you can come back to it.
 
-**ES:** Sin cuenta, sin billetera. Todo lo que toca sus datos se ejecuta en su navegador.
+**ES:** Sin cuenta, sin billetera. Los datos genéticos y los archivos de laboratorio se quedan en su navegador. La demo guarda el resto de un registro (nombres, fechas, huella) en nuestro servidor de pruebas para que pueda volver a consultarlo.
 
 ### m.demo.create.title
 
@@ -886,17 +886,7 @@ Some headings are split in two or three parts; the later part is shown in colour
 
 **ES:** Ingrese el identificador de un registro y compárelo con su fecha publicada.
 
-### m.demo.distinct.title
 
-**EN:** Distinctness proof
-
-**ES:** Prueba de distinción
-
-### m.demo.distinct.text
-
-**EN:** Prove two varieties differ at several markers without revealing any of them. Demonstrated on synthetic markers; walkthrough on request.
-
-**ES:** Demuestre que dos variedades difieren en varios marcadores sin revelar ninguno. Demostrado con marcadores sintéticos; recorrido guiado a pedido.
 
 ### m.chip.interactive
 
@@ -916,23 +906,8 @@ Some headings are split in two or three parts; the later part is shown in colour
 
 **ES:** ~1 min
 
-### m.chip.testnet
 
-**EN:** Test network
 
-**ES:** Red de pruebas
-
-### m.chip.onRequest
-
-**EN:** On request
-
-**ES:** A pedido
-
-### m.chip.zk
-
-**EN:** Zero-knowledge
-
-**ES:** Conocimiento cero
 
 ### m.team.label
 
@@ -978,9 +953,9 @@ Some headings are split in two or three parts; the later part is shown in colour
 
 ### m.hunter.short
 
-**EN:** Builds the contract, app and API. Leads US institutional work.
+**EN:** Builds the contract, app and API. Leads US outreach.
 
-**ES:** Construye el contrato, la app y la API. Dirige el trabajo institucional en EE. UU.
+**ES:** Construye el contrato, la app y la API. Dirige el acercamiento en EE. UU.
 
 ### m.updates.label
 
@@ -1026,9 +1001,9 @@ Some headings are split in two or three parts; the later part is shown in colour
 
 ### m.post1.tag
 
-**EN:** Security
+**EN:** Format
 
-**ES:** Seguridad
+**ES:** Formato
 
 ### m.post1.title
 
@@ -1062,15 +1037,15 @@ Some headings are split in two or three parts; the later part is shown in colour
 
 ### m.post2.text
 
-**EN:** The contract deployed to preprod and passed all 26 end-to-end checks, including every attack it must refuse.
+**EN:** The contract deployed to Midnight's test network and passed all 26 end-to-end checks, using 16 of its 24 operations with real proofs.
 
-**ES:** El contrato se desplegó en preprod y pasó las 26 comprobaciones de extremo a extremo, incluidos todos los ataques que debe rechazar.
+**ES:** El contrato se desplegó en la red de pruebas de Midnight y pasó las 26 comprobaciones de extremo a extremo, usando 16 de sus 24 operaciones con pruebas reales.
 
 ### m.post3.date
 
-**EN:** 8 Sep 2026
+**EN:** 25 Aug 2026
 
-**ES:** 8 sept 2026
+**ES:** 25 ago 2026
 
 ### m.post3.tag
 
@@ -1134,9 +1109,9 @@ Some headings are split in two or three parts; the later part is shown in colour
 
 ### m.stat2.s
 
-**EN:** Running on Midnight's test network. The live network is next.
+**EN:** Tested on Midnight's test network. Not on the live network yet.
 
-**ES:** Funciona en la red de pruebas de Midnight. La red en producción es lo siguiente.
+**ES:** Probado en la red de pruebas de Midnight. Aún no está en la red en producción.
 
 ### m.stat3.b
 
@@ -1152,15 +1127,15 @@ Some headings are split in two or three parts; the later part is shown in colour
 
 ### m.stat4.b
 
-**EN:** No users
+**EN:** No users yet
 
-**ES:** Sin usuarios
+**ES:** Aún sin usuarios
 
 ### m.stat4.s
 
-**EN:** Nobody outside the two founders has used it yet. We're looking for the first.
+**EN:** Nobody is using it for real records yet. We're looking for the first.
 
-**ES:** Nadie aparte de los dos fundadores lo ha usado todavía. Buscamos al primero.
+**ES:** Nadie lo usa todavía para registros reales. Buscamos al primero.
 
 ### m.contact.label
 
@@ -1326,9 +1301,9 @@ Some headings are split in two or three parts; the later part is shown in colour
 
 ### m.hunter.bio1
 
-**EN:** Hunter Roberts is VeilCore's co-founder and COO, leading product and the VeilCore protocol, from the record format to the contracts on Midnight. He leads VeilCore's work with US institutions, including seed certification, standards and plant-variety bodies.
+**EN:** Hunter Roberts is VeilCore's co-founder and COO, leading product and the VeilCore protocol, from the record format to the contracts on Midnight. He leads VeilCore's outreach to US institutions, including seed certification, standards and plant-variety bodies.
 
-**ES:** Hunter Roberts es cofundador y COO de VeilCore; dirige el producto y el protocolo VeilCore, desde el formato de registro hasta los contratos en Midnight. Encabeza el trabajo de VeilCore con instituciones de EE. UU., incluidos organismos de certificación de semillas, de normalización y de variedades vegetales.
+**ES:** Hunter Roberts es cofundador y COO de VeilCore; dirige el producto y el protocolo VeilCore, desde el formato de registro hasta los contratos en Midnight. Dirige el acercamiento de VeilCore a instituciones de EE. UU., incluidos organismos de certificación de semillas, de normalización y de variedades vegetales.
 
 ### m.hunter.bio2
 

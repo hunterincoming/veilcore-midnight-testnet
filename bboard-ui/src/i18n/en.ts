@@ -37,7 +37,7 @@ export const en = {
   'm.hero.title1': 'Prove you had it first.',
   'm.hero.title2': 'Without showing anyone what it is.',
   'm.hero.lede':
-    'A record format for genetic material. Your record stays with you. Only a fingerprint is ever published, and anyone can check its date.',
+    'A record format for genetic material. Your genetic data stays with you. Only a fingerprint goes on the public network, and anyone can check its date.',
   'm.hero.chooseDemo': 'Choose a demo',
   'm.hero.how': 'How it works',
   'm.hero.cultivar': 'Cultivar',
@@ -72,11 +72,11 @@ export const en = {
   'm.step1.text': 'A breeder or lab writes a record of the material: what it is, where it came from, test results.',
   'm.step2.n': '02 · Fingerprint',
   'm.step2.title': 'Hash it locally',
-  'm.step2.text': 'A 32-byte fingerprint is computed on your own computer. The record never leaves.',
+  'm.step2.text': 'A 32-byte fingerprint is computed on your own computer. Genetic data and lab files never leave it.',
   'm.step3.n': '03 · Anchor',
   'm.step3.title': 'Publish the date',
   'm.step3.text':
-    'Only the fingerprint is timestamped on a public network (Midnight). Nobody can move that date, including us.',
+    'Only the fingerprint is timestamped on a public network (Midnight). The date is set by the network, not by us, and stays in its public history.',
   'm.step4.n': '04 · Verify',
   'm.step4.title': 'Show it later',
   'm.step4.text':
@@ -84,8 +84,8 @@ export const en = {
   'm.is.title': 'What it is',
   'm.is.1a': 'Proof of prior possession:',
   'm.is.1b': 'what you held, and when.',
-  'm.is.2a': 'Zero custody:',
-  'm.is.2b': 'we never receive your data.',
+  'm.is.2a': 'No custody of genetics:',
+  'm.is.2b': 'genetic data and lab files never reach us.',
   'm.is.3a': 'An open format:',
   'm.is.3b': 'free to implement, free to verify, with a published spec.',
   'm.isnt.title': "What it isn't",
@@ -99,14 +99,12 @@ export const en = {
   'm.demo.label': 'Demo',
   'm.demo.title1': 'Pick how you',
   'm.demo.title2': 'want to see it.',
-  'm.demo.lede': 'No account, no wallet. Everything that touches your data runs in your browser.',
+  'm.demo.lede':
+    'No account, no wallet. Genetic data and lab files stay in your browser. The demo keeps the rest of a record (names, dates, fingerprint) on our test server so you can come back to it.',
   'm.demo.create.title': 'Create a record',
   'm.demo.create.text': 'Fill in a sample record, generate its fingerprint and download the certificate.',
   'm.demo.verify.title': 'Verify a record',
   'm.demo.verify.text': "Enter a record's identifier and check it against its published date.",
-  'm.demo.distinct.title': 'Distinctness proof',
-  'm.demo.distinct.text':
-    'Prove two varieties differ at several markers without revealing any of them. Demonstrated on synthetic markers; walkthrough on request.',
   'm.demo.video.title': 'Watch the walkthrough',
   'm.demo.video.text':
     'The whole flow in 75 seconds: sealing a record, pairing a lab report, checking it, and licence terms.',
@@ -115,9 +113,6 @@ export const en = {
   'm.chip.interactive': 'Interactive',
   'm.chip.3min': '~3 min',
   'm.chip.1min': '~1 min',
-  'm.chip.testnet': 'Test network',
-  'm.chip.onRequest': 'On request',
-  'm.chip.zk': 'Zero-knowledge',
 
   'm.team.label': 'Team',
   'm.team.title1': 'Two founders.',
@@ -126,7 +121,7 @@ export const en = {
   'm.mako.role': 'Co-Founder & CEO · Tokyo',
   'm.mako.short': 'Commercial lead: standards and plant-rights bodies in Japan and the EU.',
   'm.hunter.role': 'Co-Founder & COO · New Jersey',
-  'm.hunter.short': 'Builds the contract, app and API. Leads US institutional work.',
+  'm.hunter.short': 'Builds the contract, app and API. Leads US outreach.',
 
   'm.updates.label': 'Updates',
   'm.updates.title1': 'Latest from',
@@ -135,7 +130,7 @@ export const en = {
   'm.updates.all': 'Every change on GitHub →',
   'm.updates.follow': 'Follow',
   'm.post1.date': '3 Oct 2026',
-  'm.post1.tag': 'Security',
+  'm.post1.tag': 'Format',
   'm.post1.title': 'Three implementations, one answer',
   'm.post1.text':
     'A differential test found our TypeScript, Python and Rust implementations disagreeing on some numbers. Fixed: they now agree on every one of 81,000 inputs, and 55 conformance vectors pin it.',
@@ -143,8 +138,8 @@ export const en = {
   'm.post2.tag': 'Contract',
   'm.post2.title': "A full run on Midnight's test network",
   'm.post2.text':
-    'The contract deployed to preprod and passed all 26 end-to-end checks, including every attack it must refuse.',
-  'm.post3.date': '8 Sep 2026',
+    "The contract deployed to Midnight's test network and passed all 26 end-to-end checks, using 16 of its 24 operations with real proofs.",
+  'm.post3.date': '25 Aug 2026',
   'm.post3.tag': 'Contract',
   'm.post3.title': 'Why a licence transfer is an assignment',
   'm.post3.text': 'We redesigned transfer after finding that the old version let the outgoing party keep its powers.',
@@ -156,11 +151,11 @@ export const en = {
   'm.stat1.b': '55 / 55',
   'm.stat1.s': 'conformance vectors passed by implementations in three languages (written by the same team)',
   'm.stat2.b': 'Test net',
-  'm.stat2.s': "Running on Midnight's test network. The live network is next.",
+  'm.stat2.s': "Tested on Midnight's test network. Not on the live network yet.",
   'm.stat3.b': 'No audit',
   'm.stat3.s': 'No independent security audit yet. Our own reviews are published in the repository.',
-  'm.stat4.b': 'No users',
-  'm.stat4.s': "Nobody outside the two founders has used it yet. We're looking for the first.",
+  'm.stat4.b': 'No users yet',
+  'm.stat4.s': "Nobody is using it for real records yet. We're looking for the first.",
 
   'm.contact.label': 'Get in touch',
   'm.contact.title1': 'Tell us',
@@ -197,7 +192,7 @@ export const en = {
   'm.mako.also': 'Midnight Nightforce Leader (Japan) · Build Club, Cohort 1',
   'm.mako.languages': 'English · Japanese',
   'm.hunter.bio1':
-    "Hunter Roberts is VeilCore's co-founder and COO, leading product and the VeilCore protocol, from the record format to the contracts on Midnight. He leads VeilCore's work with US institutions, including seed certification, standards and plant-variety bodies.",
+    "Hunter Roberts is VeilCore's co-founder and COO, leading product and the VeilCore protocol, from the record format to the contracts on Midnight. He leads VeilCore's outreach to US institutions, including seed certification, standards and plant-variety bodies.",
   'm.hunter.bio2':
     "He comes from hands-on plant work, including breeding and tissue culture, and is building Chunk's Trees, a cultivation facility in New Jersey.",
   'm.hunter.leads': 'United States|Protocol & spec|Engineering',

@@ -165,7 +165,12 @@ one block, the root is one hash of 9 blocks, and the schema terms are one elemen
 
 `contract/scripts/circuit-sizes.sh` prints these and fails if any circuit passes k=17.
 `proveDistinct` is about 3,000 rows under the k=17 limit: a compiler change could push it
-over, which that script would catch. Memory at k=17 is to be measured on the same laptop.
+over, which that script would catch.
+
+Measured on the same laptop on 4 October, local chain, all claims back to back: the proof
+server peaked at **3.7 GB** (from 2.5 GB idle, which holds the main contract's
+parameters), against 8.2 GB and an out-of-memory crash before. `proveDistinct` took
+8.6 s (was about 55 s), `proveUnchanged` 6.7 s, `proveAttested` 0.7 s.
 
 ## Mutation testing
 

@@ -14,7 +14,7 @@ change or recover a key · licences (issue, countersign, transfer, revoke, prove
 | # | What | Why it matters | Status |
 |---|---|---|---|
 | 1 | **Claims contract**: prove one value, a bound, distinctness, or an unchanged correction without showing the rest; a laboratory's signature on a record as its own claim | The examiner and certifier problems (USDA PVPO, AOSCA ACR) | Built, two attack rounds fixed, mutation tested. Layout revised 4 Oct so every circuit fits a laptop (item 3). Branch `claims-contract` |
-| 2 | **Field sets in the record format** (SPEC 4.5) in TypeScript, Python, Rust | So any registry can seal records the claims contract can prove | Done: 99 shared test vectors, all three agree, and the compiled contract recomputes them. Branches `fields-v1` |
+| 2 | **Field sets in the record format** (SPEC 4.5) in TypeScript, Python, Rust | So any registry can seal records the claims contract can prove | Done: 100 shared test vectors, all three agree, and the compiled contract recomputes them. Merged to main 4 Oct |
 | 3 | Prove the two heavy claims (distinct, unchanged) on an ordinary computer | A holder who cannot prove on their own machine has to hand their values to someone else | **Done 4 Oct.** At k=19 (old layout) the unchanged claim crashed the proof server on Hunter's 16 GB Mac. Leaner layout: every claim k=17 or less. Re-run on the same Mac: all claims back to back, proof server peak 3.7 GB, distinct 8.6 s, unchanged 6.7 s |
 | 4 | Operator tool: deploy the claims contract, make claims, read them back; smoke test covers it | Nothing ships that has not run end to end on preprod | **Done 4 Oct.** Menu options 34-40, claims verifier, smoke test 37 checks. Local chain with real proofs 37/37, then **preprod 37/37** (main contract f239e680…, claims contract 175f2357…, maintenance authority provably retired on chain). See docs/preprod-run-4oct.md |
 | 5 | Deploy the claims contract with **no** maintenance authority, provably (an empty committee, not a discarded key) | Otherwise every claim depends on trusting us | Built and tested against the real ledger code locally; the claims deploy does it by default. **Decision to confirm: Hunter + Mako** (recommended) |
@@ -25,7 +25,7 @@ change or recover a key · licences (issue, countersign, transfer, revoke, prove
 | 10 | Verify timestamp tokens properly (signature, imprint) | Today the SDK only checks one is present (now says so plainly) | Done in the SDK (`fields-v1`): imprint, signed digest, signature (RSA, ECDSA), time-stamping key usage; tested on real OpenSSL tokens and 2,000 corruptions. Chain of trust and EU trusted-list status are reported as not checked |
 | 11 | Release checklist: test the offline maintenance key against the current Midnight SDK; check the indexer reads old state after a fork | Midnight issues #1409 and #1605 | Done (`docs/release-checklist.md`) |
 | 12 | Full public review of site, docs and repos from every reader's angle | Every claim checked against the code | Done 3 Oct: 23 serious findings fixed (site on `main`, SDK docs live). Founders' items listed separately |
-| 13 | A record can commit to its on-chain identity (SPEC 3.6) | Without it, which record an identity's licences and lineage belong to was the holder's word | Done in all three implementations, 99 vectors |
+| 13 | A record can commit to its on-chain identity (SPEC 3.6) | Without it, which record an identity's licences and lineage belong to was the holder's word | Done in all three implementations, 100 vectors; the contract repo's own copy fixed in round C |
 
 ## Done today from the reviews
 
@@ -34,6 +34,37 @@ change or recover a key · licences (issue, countersign, transfer, revoke, prove
   "no users yet", preprod post, dates, lineage and licences described.
 - Three pre-existing input-handling gaps closed in all three implementations (null
   fields, missing required fields, unknown algorithm names).
+
+## Attack round C, 4 October (after the preprod pass)
+
+Four independent attackers, on the claims contract, the record format across all four
+implementations (52,000 generated cases), the verifier and operator tool, and the
+registry's Bitcoin-timestamp branch.
+
+- **Claims contract circuits: no way found to get a false claim accepted on chain.**
+- **Fixed (vc `bdad91a`):** the verifier called any key "a laboratory"; it now says so only
+  for keys the verifier lists as trusted, and names every key. The contract repo's copy of
+  the record format left out `ledgerIdentity` (so a record's identity could be swapped
+  unnoticed). Bounds with scales that are not powers of ten were printed wrong. The
+  operator tool now checks a laboratory signature before sending anything, says when a
+  slot is empty, and never echoes a wrong file's contents.
+- **Fixed on the registry branch (`ots`, not yet live):** the data export could be used to
+  overload the service; one bad timestamp server could corrupt a batch's Bitcoin proof; a
+  pending Bitcoin proof was presented as final. Needs Hunter's go, and two Railway
+  settings, before it goes live.
+- **Format gaps, all in the shared specification, to fix in all implementations together
+  (not blockers for mainnet: none lets a record be forged):**
+  1. Text normalisation depends on each runtime's Unicode version (Python 3.11 is Unicode
+     14; Node and Rust 17), so text using characters added since 2021 can commit
+     differently. Fix: pin a Unicode version and refuse unassigned characters.
+  2. No maximum nesting depth (Rust stops at 128 levels, Python at about 400). Fix: a
+     limit in the spec, enforced everywhere.
+  3. Duplicate JSON keys are accepted (last one wins) everywhere. Fix: refuse them.
+  4. The required nonce is not enforced by any implementation. Fix: enforce it, or say
+     plainly that it is the sealer's job.
+  5. Comparable-value formats are enforced when sealing typed values, not on raw sealing;
+     without a laboratory's signature a dishonest holder can inflate a distinctness count.
+     Already true in spirit (lab-signed claims are the strong form); to be stated in SPEC 4.5.
 
 ## Open design question
 

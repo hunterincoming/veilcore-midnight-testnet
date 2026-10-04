@@ -4079,6 +4079,38 @@
         "fieldSetRoot": "784e7567d56ae3b96c69156a8bf35138d878c8efd1ac6976ee748da8cb22d823"
       },
       "expectedCommitment": "6950c9c7a82c26c4c546fb6e627935092c7919f43d5eb841a930d43181e11a90"
+    },
+    {
+      "name": "a sha256/fields/v1 record naming its ledger identity commits to it",
+      "record": {
+        "formatVersion": "0.1",
+        "recordId": "vc_rec_conformance_fields_ledger_identity",
+        "subjectType": "plant-genetic-material",
+        "profile": "veilcore/profile/cannabis/v0.1",
+        "commitment": "",
+        "commitmentAlgorithm": "sha256/fields/v1",
+        "anchor": {
+          "chain": "midnight",
+          "network": "undeployed"
+        },
+        "sealedAt": "2026-01-01T00:00:00Z",
+        "holder": {
+          "id": "vc_hld_conformance"
+        },
+        "parents": [],
+        "attestations": [],
+        "profileData": {
+          "cultivarName": "Reference Cultivar",
+          "nonce": "0000000000000000000000000000000000000000000000000000000000000000"
+        },
+        "fieldSchema": "875d8a6c21137ec1aae6d2c8ad6b929c4ef53b09a247a834f39b126dc910f5f9",
+        "fieldSetRoot": "784e7567d56ae3b96c69156a8bf35138d878c8efd1ac6976ee748da8cb22d823",
+        "ledgerIdentity": {
+          "chain": "midnight",
+          "identity": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"
+        }
+      },
+      "expectedCommitment": "9b2bcca506bbfa1af2ce4506a7d9da107e1401d2a95daed81716b3584d47edc6"
     }
   ],
   "commitmentRejections": [

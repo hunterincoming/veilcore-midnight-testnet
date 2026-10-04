@@ -120,6 +120,7 @@ const main = async (): Promise<void> => {
             landingGraceMs: 10 * MINUTE,
             waitForLandingMs: 5 * MINUTE,
             pollMs: 10_000,
+            maxFeeSpecks: cfg.maxFeeSpecks,
           },
           new HttpRegistry(cfg.anchorer.registryUrl, cfg.anchorer.operatorToken),
           chain,
@@ -129,6 +130,7 @@ const main = async (): Promise<void> => {
               if (!wallet.isSynced() && !(await wallet.waitSynced(60_000))) throw new Error('wallet not synced');
               return job();
             }, { bypassLimit: true }),
+          budget, // the same daily budget the public endpoint pays from
           now,
           (ms) => new Promise((r) => setTimeout(r, ms)),
           log,
@@ -145,11 +147,19 @@ const main = async (): Promise<void> => {
       sponsor,
       pow,
       limits,
-      extraStatus: () => ({
+      // Public: no error text (anchorerNote can hold one) and no batch or transaction in flight.
+      extraStatus: (detail) => ({
         network: cfg.network,
         contractAddress: cfg.contractAddress,
-        anchorer: anchorer ? anchorer.status() : { enabled: false, note: anchorerNote },
+        anchorer: anchorer
+          ? detail
+            ? { enabled: true, ...anchorer.status() }
+            : anchorer.publicStatus()
+          : detail
+            ? { enabled: false, note: anchorerNote }
+            : { enabled: false },
       }),
+      statusToken: cfg.statusToken || undefined,
       allowedOrigins: cfg.allowedOrigins,
       trustProxyHops: cfg.trustProxyHops,
       maxBodyBytes: Math.ceil((cfg.maxTxBytes * 4) / 3) + 4096,

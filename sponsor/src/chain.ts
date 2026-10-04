@@ -155,10 +155,20 @@ export class MidnightAnchorChain implements AnchorChain {
     const proven = await this.prover.proveTx(unproven);
     const ttl = new Date(Date.now() + 30 * 60_000);
     const finalized = await this.wallet.balanceUnbound(proven, ttl);
+    // What it will cost, so the anchoring job can count it against the daily budget
+    // (and refuse it) before sending. On any failure here the coins are released.
+    let fee: bigint;
+    try {
+      fee = await this.wallet.feeOf(finalized);
+    } catch (e) {
+      await this.wallet.revert(finalized).catch(() => undefined);
+      throw e;
+    }
     const [txId] = finalized.identifiers();
     return {
       txId,
       ttl,
+      fee,
       submit: async () => {
         await this.wallet.submit(finalized);
       },

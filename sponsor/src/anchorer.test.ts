@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Anchorer, type AnchorChain, type Attempt, type Batch, type Landing, type RegistryClient, type AnchorRecord } from './anchorer.js';
 import { NotSentError } from './sponsor.js';
+import { DailyBudget } from './limits.js';
 
 const ROOT = 'ab'.repeat(32);
 
@@ -39,6 +40,8 @@ class Chain implements AnchorChain {
   abandoned = 0;
   landings = new Map<string, Landing>();
   submitFails: 'no' | 'not-sent' | 'maybe' = 'no';
+  /** What each anchorBatch costs, in SPECKs. */
+  fee = 1_000n;
   /** What the chain will show after our tx lands. */
   afterRoot: string = ROOT;
   batchSeq() {
@@ -50,6 +53,7 @@ class Chain implements AnchorChain {
     return Promise.resolve({
       txId,
       ttl: new Date(Date.now() + 30 * 60_000),
+      fee: this.fee,
       submit: () => {
         if (this.submitFails === 'not-sent') return Promise.reject(new NotSentError('stale', true));
         if (this.submitFails === 'maybe') return Promise.reject(new Error('timeout'));
@@ -80,12 +84,13 @@ const memoryStore = () => {
   return { load: () => a, save: (x: Attempt) => void (a = x), clear: () => void (a = undefined), peek: () => a };
 };
 
-const setup = () => {
+const setup = (over: { budget?: bigint } = {}) => {
   let t = Date.now();
   const registry = new Registry();
   const chain = new Chain();
   const store = memoryStore();
   const logs: string[] = [];
+  const budget = new DailyBudget(over.budget ?? 1_000_000n, () => t);
   const anchorer = new Anchorer(
     {
       network: 'preprod',
@@ -95,16 +100,18 @@ const setup = () => {
       landingGraceMs: 10 * 60_000,
       waitForLandingMs: 0,
       pollMs: 1,
+      maxFeeSpecks: 5_000n,
     },
     registry,
     chain,
     store,
     (job) => job(),
+    budget,
     () => t,
     () => Promise.resolve(),
     (_l, m) => logs.push(m),
   );
-  return { anchorer, registry, chain, store, logs, advance: (ms: number) => (t += ms) };
+  return { anchorer, registry, chain, store, logs, budget, advance: (ms: number) => (t += ms) };
 };
 
 describe('anchoring job (mocked registry and chain)', () => {

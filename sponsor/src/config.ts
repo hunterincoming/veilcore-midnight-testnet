@@ -51,6 +51,8 @@ export type Config = {
   readonly queueDepth: number;
   readonly limits: LimitConfig;
   readonly trustProxyHops: number;
+  /** Shows the detailed /sponsor/status (exact budget, counters, error text). Empty: public view only. */
+  readonly statusToken: string;
   readonly anchorer:
     | { readonly enabled: false; readonly why: string }
     | {
@@ -161,6 +163,11 @@ export const loadConfig = (env: Record<string, string | undefined>): Config => {
   const anchorerOff = env.ANCHORER_ENABLED === '0';
   if (!anchorerOff && registryUrl && !/^https?:\/\//.test(registryUrl)) problems.push('REGISTRY_URL must start with http:// or https://.');
 
+  const statusToken = (env.SPONSOR_STATUS_TOKEN ?? '').trim();
+  if (statusToken && !/^[\x21-\x7e]{32,256}$/.test(statusToken)) {
+    problems.push('SPONSOR_STATUS_TOKEN must be at least 32 characters with no spaces (for example 64 random hex characters).');
+  }
+
   const ep = ENDPOINTS[network];
   const cfg: Config = {
     network,
@@ -189,6 +196,7 @@ export const loadConfig = (env: Record<string, string | undefined>): Config => {
       perTicketDay: DEFAULT_LIMITS.perTicketDay,
     },
     trustProxyHops: int(env.TRUST_PROXY_HOPS, 1, 0, 5, 'TRUST_PROXY_HOPS', problems),
+    statusToken,
     anchorer: anchorerOff
       ? { enabled: false, why: 'ANCHORER_ENABLED=0' }
       : !registryUrl || !operatorToken

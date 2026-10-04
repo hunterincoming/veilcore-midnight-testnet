@@ -9,10 +9,20 @@
 //   - The registry is told about an anchor only after the chain shows lastBatchRoot equal
 //     to the batch root, in the state right after that transaction, and batchSeq advanced.
 //   - Three failures in a row raise an alert (status endpoint and the log).
+//   - Its fees come out of the same daily budget as the public endpoint's: one wallet
+//     pays both, so one ceiling caps both. A fee above the per-call ceiling, or above
+//     what is left today, is not paid.
+//   - What the registry says is checked before it costs anything: a root must be 32
+//     bytes of hex and not zero, may not repeat another batch's root, and a batch (or a
+//     root) this process already recorded is never anchored again, even if a lagging
+//     registry still lists it as unanchored.
+//   - The public status shows a short outcome code, never raw error text.
 //
 // Everything outside is behind an interface, so the steps are tested with mocks.
 //
 // SPDX-License-Identifier: Apache-2.0
+
+import type { FeeBudget } from './limits.js';
 
 export type Batch = { readonly batchId: string; readonly root: string; readonly sealedAt: number; readonly anchored: boolean };
 
@@ -40,6 +50,8 @@ export interface RegistryClient {
 export interface PreparedAnchor {
   readonly txId: string;
   readonly ttl: Date;
+  /** The fee this transaction pays, in SPECKs. */
+  readonly fee: bigint;
   /** Send it. Throws NotSentError when nothing reached the network. */
   submit(): Promise<void>;
   /** Do not send it; release anything the wallet set aside for it. */
@@ -103,11 +115,37 @@ export type AnchorerConfig = {
   /** How long one run waits for a sent transaction to show up before leaving it to the next run. */
   readonly waitForLandingMs: number;
   readonly pollMs: number;
+  /** The most one anchorBatch may cost, in SPECKs. */
+  readonly maxFeeSpecks: bigint;
+};
+
+/** The outcome of a run, as the public status shows it. The words stay in the log. */
+export type AnchorOutcomeCode =
+  | 'anchored'
+  | 'idle'
+  | 'waiting'
+  | 'not-sent'
+  | 'maybe-sent'
+  | 'failed-on-chain'
+  | 'expired'
+  | 'verify-failed'
+  | 'budget'
+  | 'bad-batch'
+  | 'error';
+
+/** What anyone may see: no error text, no transaction or batch in flight. */
+export type PublicAnchorerStatus = {
+  readonly enabled: true;
+  readonly lastRunAt?: string;
+  readonly lastOutcome?: AnchorOutcomeCode;
+  readonly lastAnchoredBatch?: string;
+  readonly alert: boolean;
 };
 
 export type AnchorerStatus = {
   readonly lastRunAt?: string;
   readonly lastOutcome?: string;
+  readonly lastOutcomeCode?: AnchorOutcomeCode;
   readonly lastAnchoredBatch?: string;
   readonly consecutiveFailures: number;
   readonly alert: boolean;
@@ -115,11 +153,15 @@ export type AnchorerStatus = {
 };
 
 const norm = (h: string): string => h.toLowerCase().replace(/^0x/, '');
+const usableRoot = (h: string): boolean => /^[0-9a-f]{64}$/.test(norm(h)) && !/^0+$/.test(norm(h));
 
 export class Anchorer {
   private lastSealAt: number;
   private failures = 0;
-  private status_: { lastRunAt?: string; lastOutcome?: string; lastAnchoredBatch?: string } = {};
+  private status_: { lastRunAt?: string; lastOutcome?: string; lastOutcomeCode?: AnchorOutcomeCode; lastAnchoredBatch?: string } = {};
+  /** Batches this process recorded, and their roots: never anchored again. */
+  private readonly recordedBatches = new Set<string>();
+  private readonly recordedRoots = new Set<string>();
 
   constructor(
     private readonly config: AnchorerConfig,
@@ -128,6 +170,8 @@ export class Anchorer {
     private readonly store: AttemptStore,
     /** Runs a job while holding the wallet (one fee payment at a time). */
     private readonly exclusive: <T>(job: () => Promise<T>) => Promise<T>,
+    /** The daily budget the public endpoint also pays from. */
+    private readonly budget: FeeBudget,
     private readonly now: () => number,
     private readonly sleep: (ms: number) => Promise<void>,
     private readonly log: (level: 'info' | 'warn' | 'error', msg: string, extra?: Record<string, unknown>) => void,
@@ -145,9 +189,21 @@ export class Anchorer {
     };
   }
 
-  private done(outcome: string, ok: boolean): string {
+  /** The public view: an outcome code and the alert, nothing that came from an error. */
+  publicStatus(): PublicAnchorerStatus {
+    return {
+      enabled: true,
+      lastRunAt: this.status_.lastRunAt,
+      lastOutcome: this.status_.lastOutcomeCode,
+      lastAnchoredBatch: this.status_.lastAnchoredBatch,
+      alert: this.failures >= 3,
+    };
+  }
+
+  private done(code: AnchorOutcomeCode, outcome: string, ok: boolean): string {
     this.status_.lastRunAt = new Date(this.now()).toISOString();
     this.status_.lastOutcome = outcome;
+    this.status_.lastOutcomeCode = code;
     if (ok) this.failures = 0;
     else {
       this.failures++;
@@ -166,34 +222,68 @@ export class Anchorer {
       if (saved) return await this.resume(saved);
 
       const target = await this.pickBatch();
-      if (!target) return this.done('nothing to anchor', true);
+      if (!target) return this.done('idle', 'nothing to anchor', true);
+      if ('refused' in target) return this.done('bad-batch', target.refused, false);
       return await this.anchor(target);
     } catch (e) {
-      return this.done(`error: ${e instanceof Error ? e.message : String(e)}`, false);
+      return this.done('error', `error: ${e instanceof Error ? e.message : String(e)}`, false);
     }
   }
 
   /** The oldest sealed batch with no anchor, or a newly sealed one when it is time. */
-  private async pickBatch(): Promise<{ batchId: string; root: string } | undefined> {
-    const waiting = (await this.registry.batches()).filter((b) => !b.anchored).sort((a, b) => a.sealedAt - b.sealedAt);
-    if (waiting.length > 0) return waiting[0];
+  private async pickBatch(): Promise<{ batchId: string; root: string } | { refused: string } | undefined> {
+    const all = await this.registry.batches();
+    const waiting = all
+      .filter((b) => !b.anchored && !this.recordedBatches.has(b.batchId))
+      .sort((a, b) => a.sealedAt - b.sealedAt);
+    // A root that another batch also has, or that this process already anchored, is not a
+    // new batch root: a broken or hostile registry would be making us pay to write it again.
+    const vet = (next: { batchId: string; root: string }): { batchId: string; root: string } | { refused: string } => {
+      const twin = all.find((b) => b.batchId !== next.batchId && usableRoot(b.root) && norm(b.root) === norm(next.root));
+      if (twin) return { refused: `batch ${next.batchId} has the same root as batch ${twin.batchId}; not anchored` };
+      if (this.recordedRoots.has(norm(next.root))) {
+        return { refused: `batch ${next.batchId} has a root this service already anchored; not anchored` };
+      }
+      return next;
+    };
+    if (waiting.length > 0) return vet(waiting[0]);
     const pending = await this.registry.pendingCount();
     if (pending === 0) return undefined;
     const due = pending >= this.config.sealAtPending || this.now() - this.lastSealAt >= this.config.sealEveryMs;
     if (!due) return undefined;
     const sealed = await this.registry.seal();
     this.lastSealAt = this.now();
-    if (sealed) this.log('info', 'anchoring: sealed a batch', { batchId: sealed.batchId, records: pending });
-    return sealed;
+    if (!sealed) return undefined;
+    this.log('info', 'anchoring: sealed a batch', { batchId: sealed.batchId, records: pending });
+    return vet(sealed);
   }
 
   private async anchor(target: { batchId: string; root: string }): Promise<string> {
-    if (!/^[0-9a-f]{64}$/.test(norm(target.root)) || /^0+$/.test(norm(target.root))) {
-      return this.done(`batch ${target.batchId} has an unusable root; not anchored`, false);
+    if (!usableRoot(target.root)) {
+      return this.done('bad-batch', `batch ${target.batchId} has an unusable root; not anchored`, false);
     }
     const sent = await this.exclusive(async (): Promise<{ attempt: Attempt } | { outcome: string }> => {
-      const seqBefore = await this.chain.batchSeq();
-      const prepared = await this.chain.prepare(norm(target.root));
+      // Hold the most this may cost (or what is left today) before building anything.
+      const hold = this.budget.reserveUpTo(this.config.maxFeeSpecks);
+      if (hold === undefined) {
+        return { outcome: this.done('budget', 'the daily fee budget is used up; anchoring waits for tomorrow', false) };
+      }
+      let prepared: PreparedAnchor;
+      let seqBefore: bigint;
+      try {
+        seqBefore = await this.chain.batchSeq();
+        prepared = await this.chain.prepare(norm(target.root));
+      } catch (e) {
+        this.budget.release(hold.id);
+        throw e;
+      }
+      if (typeof prepared.fee !== 'bigint' || prepared.fee < 0n || prepared.fee > hold.amount) {
+        this.budget.release(hold.id);
+        await prepared.abandon().catch(() => undefined);
+        const why = prepared.fee > this.config.maxFeeSpecks ? 'costs more than the per-call ceiling' : 'does not fit what is left of today’s budget';
+        return { outcome: this.done('budget', `anchorBatch for ${target.batchId} ${why}; not sent`, false) };
+      }
+      this.budget.shrink(hold.id, prepared.fee);
       const attempt: Attempt = {
         batchId: target.batchId,
         root: norm(target.root),
@@ -206,6 +296,7 @@ export class Anchorer {
         this.store.save(attempt);
       } catch (e) {
         // Without a saved attempt a restart could send it twice. Do not send.
+        this.budget.release(hold.id);
         await prepared.abandon().catch(() => undefined);
         throw e;
       }
@@ -213,14 +304,17 @@ export class Anchorer {
         await prepared.submit();
       } catch (e) {
         if (e instanceof Error && e.name === 'NotSentError') {
+          this.budget.release(hold.id);
           this.store.clear();
           await prepared.abandon().catch(() => undefined);
-          return { outcome: this.done(`not sent (${e.message}); will try again`, false) };
+          return { outcome: this.done('not-sent', `not sent (${e.message}); will try again`, false) };
         }
-        // It may have reached the network: keep the attempt, look it up next time.
+        // It may have reached the network: count the fee, keep the attempt, look it up next time.
+        this.budget.settle(hold.id, prepared.fee);
         this.store.save({ ...attempt, stage: 'sent' });
-        return { outcome: this.done(`sending ${prepared.txId} may have failed; will look it up`, false) };
+        return { outcome: this.done('maybe-sent', `sending ${prepared.txId} may have failed; will look it up`, false) };
       }
+      this.budget.settle(hold.id, prepared.fee);
       return { attempt };
     });
     if ('outcome' in sent) return sent.outcome;
@@ -243,15 +337,15 @@ export class Anchorer {
 
     if (landing.state === 'failed') {
       this.store.clear();
-      return this.done(`anchorBatch ${a.txId} failed on chain; will build a new one`, false);
+      return this.done('failed-on-chain', `anchorBatch ${a.txId} failed on chain; will build a new one`, false);
     }
     if (landing.state === 'unknown') {
       const expired = this.now() > Date.parse(a.ttl) + this.config.landingGraceMs;
       if (expired) {
         this.store.clear();
-        return this.done(`anchorBatch ${a.txId} never landed and has expired; will build a new one`, false);
+        return this.done('expired', `anchorBatch ${a.txId} never landed and has expired; will build a new one`, false);
       }
-      return this.done(`waiting for ${a.txId} to land`, true);
+      return this.done('waiting', `waiting for ${a.txId} to land`, true);
     }
 
     // Landed. Check the chain says what we meant before telling the registry anything.
@@ -261,6 +355,7 @@ export class Anchorer {
       const tries = (a.verifyTries ?? 0) + 1;
       this.store.save({ ...a, verifyTries: tries });
       return this.done(
+        'verify-failed',
         `anchorBatch ${a.txId} landed but the chain does not show root ${a.root.slice(0, 12)}… after it ` +
           `(root ${rootOk ? 'ok' : 'differs'}, batchSeq ${seqOk ? 'ok' : 'did not advance'}); NOT recorded (check ${tries})`,
         false,
@@ -288,6 +383,8 @@ export class Anchorer {
       anchoredAt: a.anchoredAt ?? new Date(this.now()).toISOString(),
     });
     this.store.clear();
+    this.recordedBatches.add(a.batchId);
+    this.recordedRoots.add(norm(a.root));
     this.status_.lastAnchoredBatch = a.batchId;
     this.log('info', 'anchoring: recorded', {
       batchId: a.batchId,
@@ -295,6 +392,6 @@ export class Anchorer {
       blockHeight: a.blockHeight,
       paidFeesSpecks: a.paidFees,
     });
-    return this.done(`anchored ${a.batchId} in ${a.txHash}`, true);
+    return this.done('anchored', `anchored ${a.batchId} in ${a.txHash}`, true);
   }
 }

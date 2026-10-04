@@ -6,7 +6,13 @@
 //   dist/                      the built service
 //   artifacts/veilcore/        the compiled contract, and the anchorBatch keys only
 //   package.json               the service's dependencies (same pinned versions)
+//   package-lock.json          made FROM the committed root lockfile, so the deploy's
+//                              `npm ci` installs exactly the reviewed versions
 // then `railway up <folder> --path-as-root` deploys exactly that.
+//
+// Any failure stops it and removes the folder, so a half-staged folder is never deployed.
+// It fails if any package version in the staged lockfile is not in the reviewed root
+// lockfile (scripts/lockfile.mjs).
 //
 // Usage: npm run stage -w sponsor [-- <target folder>]
 // SPDX-License-Identifier: Apache-2.0
@@ -15,7 +21,7 @@ import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } fr
 import { createHash } from 'node:crypto';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { execFileSync } from 'node:child_process';
+import { stageLockfile } from './lockfile.mjs';
 
 const sponsorDir = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const repo = resolve(sponsorDir, '..');
@@ -45,54 +51,64 @@ if (missing.length > 0) {
 }
 
 rmSync(target, { recursive: true, force: true });
-mkdirSync(target, { recursive: true });
-cpSync(join(sponsorDir, 'dist'), join(target, 'dist'), { recursive: true });
-
-const art = join(target, 'artifacts', 'veilcore');
-mkdirSync(join(art, 'contract'), { recursive: true });
-mkdirSync(join(art, 'keys'), { recursive: true });
-mkdirSync(join(art, 'zkir'), { recursive: true });
-cpSync(join(managed, 'contract', 'index.js'), join(art, 'contract', 'index.js'));
-for (const f of ['anchorBatch.prover', 'anchorBatch.verifier']) cpSync(join(managed, 'keys', f), join(art, 'keys', f));
-cpSync(join(managed, 'zkir', 'anchorBatch.zkir'), join(art, 'zkir', 'anchorBatch.zkir'));
-if (existsSync(join(managed, 'zkir', 'anchorBatch.bzkir'))) {
-  cpSync(join(managed, 'zkir', 'anchorBatch.bzkir'), join(art, 'zkir', 'anchorBatch.bzkir'));
-} else {
-  const { jsonIrToBinary } = await import('@midnight-ntwrk/zkir-v2');
-  writeFileSync(join(art, 'zkir', 'anchorBatch.bzkir'), jsonIrToBinary(readFileSync(join(managed, 'zkir', 'anchorBatch.zkir'), 'utf8')));
-}
-// The compiled contract is an ES module; say so for its folder.
-writeFileSync(join(art, 'package.json'), JSON.stringify({ type: 'module' }, null, 2));
-
-const own = JSON.parse(readFileSync(join(sponsorDir, 'package.json'), 'utf8'));
-const root = JSON.parse(readFileSync(join(repo, 'package.json'), 'utf8'));
-writeFileSync(
-  join(target, 'package.json'),
-  JSON.stringify(
-    {
-      name: own.name,
-      version: own.version,
-      private: true,
-      type: 'module',
-      license: own.license,
-      engines: { node: '>=22' },
-      scripts: { start: 'node dist/main.js' },
-      dependencies: own.dependencies,
-      overrides: root.overrides ?? {},
-    },
-    null,
-    2,
-  ),
-);
-
 try {
-  execFileSync('npm', ['install', '--package-lock-only', '--ignore-scripts', '--no-audit', '--no-fund'], { cwd: target, stdio: 'inherit' });
-} catch {
-  console.warn('Could not write a lockfile (no network?). The deploy will still install, with the pinned versions.');
+  await stage();
+} catch (e) {
+  rmSync(target, { recursive: true, force: true });
+  console.error(`\nStaging FAILED; nothing was left to deploy.\n${e instanceof Error ? e.message : String(e)}`);
+  process.exit(1);
 }
 
-const sha = (f) => createHash('sha256').update(readFileSync(f)).digest('hex');
-console.log(`\nStaged ${target}`);
-console.log(`  contract/index.js         sha256 ${sha(join(art, 'contract', 'index.js'))}`);
-console.log(`  keys/anchorBatch.verifier sha256 ${sha(join(art, 'keys', 'anchorBatch.verifier'))}`);
-console.log('\nNext: railway up "' + target + '" --path-as-root --service veilcore-sponsor');
+async function stage() {
+  if (!existsSync(join(sponsorDir, 'dist', 'main.js'))) throw new Error('sponsor/dist is missing: run `npm run build -w sponsor` (npm run stage does).');
+  mkdirSync(target, { recursive: true });
+  cpSync(join(sponsorDir, 'dist'), join(target, 'dist'), { recursive: true });
+
+  const art = join(target, 'artifacts', 'veilcore');
+  mkdirSync(join(art, 'contract'), { recursive: true });
+  mkdirSync(join(art, 'keys'), { recursive: true });
+  mkdirSync(join(art, 'zkir'), { recursive: true });
+  cpSync(join(managed, 'contract', 'index.js'), join(art, 'contract', 'index.js'));
+  for (const f of ['anchorBatch.prover', 'anchorBatch.verifier']) cpSync(join(managed, 'keys', f), join(art, 'keys', f));
+  cpSync(join(managed, 'zkir', 'anchorBatch.zkir'), join(art, 'zkir', 'anchorBatch.zkir'));
+  if (existsSync(join(managed, 'zkir', 'anchorBatch.bzkir'))) {
+    cpSync(join(managed, 'zkir', 'anchorBatch.bzkir'), join(art, 'zkir', 'anchorBatch.bzkir'));
+  } else {
+    const { jsonIrToBinary } = await import('@midnight-ntwrk/zkir-v2');
+    writeFileSync(join(art, 'zkir', 'anchorBatch.bzkir'), jsonIrToBinary(readFileSync(join(managed, 'zkir', 'anchorBatch.zkir'), 'utf8')));
+  }
+  // The compiled contract is an ES module; say so for its folder.
+  writeFileSync(join(art, 'package.json'), JSON.stringify({ type: 'module' }, null, 2));
+
+  const own = JSON.parse(readFileSync(join(sponsorDir, 'package.json'), 'utf8'));
+  const root = JSON.parse(readFileSync(join(repo, 'package.json'), 'utf8'));
+  writeFileSync(
+    join(target, 'package.json'),
+    JSON.stringify(
+      {
+        name: own.name,
+        version: own.version,
+        private: true,
+        type: 'module',
+        license: own.license,
+        engines: { node: '24.x' },
+        scripts: { start: 'node dist/main.js' },
+        dependencies: own.dependencies,
+        overrides: root.overrides ?? {},
+      },
+      null,
+      2,
+    ),
+  );
+
+  // From the committed root lockfile, checked for drift. Throws (and so stops) on any problem;
+  // there is no "carry on without a lockfile".
+  stageLockfile(target, join(repo, 'package-lock.json'));
+
+  const sha = (f) => createHash('sha256').update(readFileSync(f)).digest('hex');
+  console.log(`\nStaged ${target}`);
+  console.log(`  contract/index.js         sha256 ${sha(join(art, 'contract', 'index.js'))}`);
+  console.log(`  keys/anchorBatch.verifier sha256 ${sha(join(art, 'keys', 'anchorBatch.verifier'))}`);
+  console.log('  package-lock.json         from the repo lockfile, no drift');
+  console.log('\nNext: railway up "' + target + '" --path-as-root --service veilcore-sponsor');
+}

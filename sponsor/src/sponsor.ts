@@ -62,12 +62,15 @@ export type SponsorConfig = {
   readonly rememberMs: number;
   /** How long to wait for the wallet to sync before answering "busy". */
   readonly syncWaitMs: number;
+  /** How long a fee estimate may take before the request is refused (default 30 s). */
+  readonly estimateTimeoutMs?: number;
 };
 
 type Counters = Record<string, number>;
 
 export class Sponsor {
-  private readonly seen = new Map<string, number>(); // identifier -> forget after (ms)
+  /** Identifier -> when to forget it, and which request put it there. */
+  private readonly seen = new Map<string, { until: number; owner: symbol }>();
   readonly counters: Counters = {};
 
   constructor(
@@ -90,7 +93,7 @@ export class Sponsor {
   }
 
   private forgetOld(t: number): void {
-    for (const [id, until] of this.seen) if (until <= t) this.seen.delete(id);
+    for (const [id, e] of this.seen) if (e.until <= t) this.seen.delete(id);
   }
 
   async handle(req: SponsorRequest): Promise<SponsorResponse> {
@@ -118,60 +121,79 @@ export class Sponsor {
     const { verdict, tx } = inspect(bytes, this.config.policy, new Date(t));
     if (!verdict.ok || tx === undefined) return this.refuse(400, verdict.ok ? 'unreadable' : verdict.code, verdict.ok ? '' : verdict.reason);
 
+    // Admission. Everything from the duplicate check to the claim below runs in ONE
+    // synchronous step, with no await in between: the quota, the replay slot and the
+    // budget are claimed before any slow work, so a burst of concurrent requests cannot
+    // all pass the checks before any of them is counted (round D, CWE-362).
     this.forgetOld(t);
     if (verdict.identifiers.some((id) => this.seen.has(id))) {
       return this.refuse(409, 'duplicate', 'That transaction was already sent.');
     }
-
     const quota = this.limits.canSponsor(bucket, ticket, verdict.circuit);
     if (!quota.ok) return this.refuse(429, 'quota', quota.reason, quota.retryAfterSeconds);
-
     if (!this.wallet.isSynced()) {
       return this.refuse(503, 'syncing', 'The sponsor is catching up with the network. Try again in a minute.', 60);
     }
+    const ceiling = this.config.maxFeeSpecks[verdict.circuit] ?? this.config.maxFeeSpecks.default;
+    // Hold the most this call may cost (or what is left of today's budget, if less);
+    // it is lowered to the real fee once that is known.
+    const hold = this.budget.reserveUpTo(ceiling);
+    if (hold === undefined) return this.budgetRefusal(1n);
+    const claim = this.limits.commit(bucket, ticket, verdict.circuit);
+    const owner = Symbol('sponsor-request');
+    const forgetAt = t + this.config.rememberMs;
+    for (const id of verdict.identifiers) this.seen.set(id, { until: forgetAt, owner });
+    // A refusal gives back only what THIS request claimed, never another request's slot.
+    const releaseSeen = () => {
+      for (const id of verdict.identifiers) if (this.seen.get(id)?.owner === owner) this.seen.delete(id);
+    };
+    const giveBackAll = () => {
+      this.budget.release(hold.id);
+      this.limits.uncommit(claim);
+      releaseSeen();
+    };
 
     let fee: bigint;
     try {
-      fee = await this.wallet.estimateFee(tx);
+      // Bounded: the claim above is held while this runs, so a hang must not pin it.
+      fee = await withTimeout(this.wallet.estimateFee(tx), this.config.estimateTimeoutMs ?? 30_000);
     } catch {
+      giveBackAll();
       return this.refuse(400, 'fee-unknown', 'The fee for this transaction could not be worked out.');
     }
-    const ceiling = this.config.maxFeeSpecks[verdict.circuit] ?? this.config.maxFeeSpecks.default;
-    if (fee > ceiling) return this.refuse(400, 'fee-too-high', 'This transaction costs more than the sponsor pays for one call.');
-
-    const hold = this.budget.reserve(fee);
-    if (hold === undefined) {
-      return this.refuse(503, 'budget', 'Today’s free transactions are used up. Try again tomorrow.', 3600);
+    if (fee < 0n || fee > ceiling) {
+      giveBackAll();
+      return this.refuse(400, 'fee-too-high', 'This transaction costs more than the sponsor pays for one call.');
     }
+    if (fee > hold.amount) {
+      // Less than this call costs was free when it was admitted.
+      giveBackAll();
+      return this.budgetRefusal(fee);
+    }
+    this.budget.shrink(hold.id, fee);
 
-    // Committed from here: quotas are spent and the identifiers are remembered, so a
-    // flood cannot queue the same transaction, or more than its quota, while it waits.
-    this.limits.commit(bucket, ticket, verdict.circuit);
-    const forgetAt = t + this.config.rememberMs;
-    for (const id of verdict.identifiers) this.seen.set(id, forgetAt);
-
+    // Committed from here: the quota stays spent even if nothing is sent, so a flood
+    // cannot retry its way past it; the budget and the replay slot are given back then.
     const ttl = new Date(Math.min(verdict.ttl.getTime(), this.now() + this.config.sponsorTtlMs));
+    let txId: string;
     try {
-      const txId = await this.queue.run(async () => {
+      txId = await this.queue.run(async () => {
         if (!this.wallet.isSynced() && !(await this.wallet.waitSynced(this.config.syncWaitMs))) {
           throw new NotSentError('The sponsor is catching up with the network. Try again in a minute.', true);
         }
         return this.wallet.payAndSubmit(tx, ttl);
       });
-      this.budget.settle(hold, fee);
-      this.count(`sponsored:${verdict.circuit}`);
-      return { status: 200, body: { ok: true, txId, identifiers: verdict.identifiers, circuit: verdict.circuit } };
     } catch (e) {
       if (e instanceof QueueFullError || e instanceof NotSentError) {
         // Nothing went out: give the budget back and allow the same transaction again.
-        this.budget.release(hold);
-        for (const id of verdict.identifiers) this.seen.delete(id);
+        this.budget.release(hold.id);
+        releaseSeen();
         return e instanceof QueueFullError
           ? this.refuse(503, 'busy', e.message, 120)
           : this.refuse(e.retryable ? 503 : 400, e.retryable ? 'busy' : 'refused-by-network', e.message, e.retryable ? 60 : undefined);
       }
       // It may have reached the network. Count the fee and never pay for it again.
-      this.budget.settle(hold, fee);
+      this.budget.settle(hold.id, fee);
       this.count('maybe-sent');
       return this.refuse(
         502,
@@ -179,17 +201,63 @@ export class Sponsor {
         'The transaction may or may not have been sent. Check the network before trying again; sending it again is refused.',
       );
     }
+    // Sent. Outside the try above, so nothing here can turn a sent transaction into "maybe".
+    this.budget.settle(hold.id, fee);
+    this.count(`sponsored:${verdict.circuit}`);
+    return { status: 200, body: { ok: true, txId, identifiers: verdict.identifiers, circuit: verdict.circuit } };
   }
 
-  status(): Record<string, unknown> {
+  /**
+   * No room in the budget for a call costing `need`. If what is actually spent today leaves
+   * room for it, only other requests' holds are in the way (each is the ceiling until its
+   * fee is known, then shrinks within seconds): answer busy, not "come back tomorrow".
+   */
+  private budgetRefusal(need: bigint): SponsorResponse {
+    if (this.budget.unspent() >= need) {
+      return this.refuse(503, 'busy', 'Many people are using the demo right now. Try again in a minute.', 60);
+    }
+    return this.refuse(503, 'budget', 'Today’s free transactions are used up. Try again tomorrow.', 3600);
+  }
+
+  /**
+   * What the status route shows. The public view is what the site needs and nothing more:
+   * no budget figures (they would tell an attacker exactly how close a drain is) and no
+   * counters. `detail` (operator token only) adds the exact figures.
+   */
+  status(detail = false): Record<string, unknown> {
     const synced = this.wallet.isSynced();
-    const remaining = this.budget.remaining();
+    // Accepting = the day's budget is not spent. Holds in flight only mean "busy for a moment".
+    const pub = { synced, queueDepth: this.queue.waiting, accepting: synced && this.budget.unspent() > 0n };
+    if (!detail) return pub;
+    let dust: string | undefined;
+    try {
+      dust = this.wallet.dustBalance()?.toString();
+    } catch {
+      dust = undefined;
+    }
     return {
-      synced,
-      queueDepth: this.queue.waiting,
-      budgetRemainingSpecks: remaining.toString(),
+      ...pub,
+      budgetRemainingSpecks: this.budget.remaining().toString(),
       budgetDailySpecks: this.budget.limit.toString(),
-      accepting: synced && remaining > 0n,
+      budgetSpentTodaySpecks: this.budget.spentToday.toString(),
+      dustBalanceSpecks: dust,
+      counters: { ...this.counters },
     };
   }
 }
+
+/** Reject if `p` has not settled within `ms`. */
+const withTimeout = <T>(p: Promise<T>, ms: number): Promise<T> =>
+  new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('timed out')), ms);
+    p.then(
+      (v) => {
+        clearTimeout(timer);
+        resolve(v);
+      },
+      (e: unknown) => {
+        clearTimeout(timer);
+        reject(e instanceof Error ? e : new Error(String(e)));
+      },
+    );
+  });

@@ -62,6 +62,7 @@ describe.skipIf(!have)('anchorBatch, built offline from the compiled contract', 
       },
       submit: () => Promise.resolve('id'),
       revert: () => Promise.resolve(),
+      feeOf: () => Promise.resolve(1_234n),
     } as unknown as FacadeWallet;
     const chain = new MidnightAnchorChain(
       veilcore,
@@ -78,6 +79,7 @@ describe.skipIf(!have)('anchorBatch, built offline from the compiled contract', 
     const root = 'ab'.repeat(32);
     const prepared = await chain.prepare(root);
     expect(prepared.txId).toMatch(/^[0-9a-f]+$/);
+    expect(prepared.fee).toBe(1_234n); // what the anchoring job counts against the daily budget
     expect(checked).toEqual(['anchorBatch']);
     // Read it the way the sponsor reads a visitor's transaction: one call, anchorBatch.
     const bytes = (balanced as { serialize: () => Uint8Array }).serialize();

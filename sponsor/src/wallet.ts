@@ -20,21 +20,47 @@ import { WalletFacade, type FacadeState } from '@midnight-ntwrk/wallet-sdk-facad
 import {
   DustAddress,
   DustWallet,
+  HDWallet,
   InMemoryTransactionHistoryStorage,
   PublicKey,
+  Roles,
   ShieldedWallet,
   UnshieldedWallet,
   WalletEntrySchema,
   createKeystore,
   mergeWalletEntries,
 } from '@midnight-ntwrk/wallet-sdk';
-import { WalletSeeds } from '@midnight-ntwrk/testkit-js';
 import type { UnboundTransaction } from '@midnight-ntwrk/midnight-js-types';
 import type { SealedTx } from './policy.js';
 import { NotSentError, type PayingWallet } from './sponsor.js';
 import { log } from './log.js';
 
 type Keystore = ReturnType<typeof createKeystore>;
+
+export type RoleSeeds = { readonly shielded: Uint8Array; readonly unshielded: Uint8Array; readonly dust: Uint8Array };
+
+/**
+ * The three role keys of a Midnight HD wallet from its master seed: account 0, index 0,
+ * roles Zswap (shielded), NightExternal (unshielded) and Dust. This is what testkit-js's
+ * WalletSeeds.fromMasterSeed does, done here so the process holding the seed does not
+ * load test infrastructure; wallet-seeds.test.ts checks the two give identical bytes,
+ * keys and addresses.
+ */
+export const deriveRoleSeeds = (seedHex: string): RoleSeeds => {
+  if (!/^(?:[0-9a-fA-F]{2})+$/.test(seedHex)) throw new Error('The master seed must be hex.');
+  const hd = HDWallet.fromSeed(Buffer.from(seedHex, 'hex'));
+  if (hd.type !== 'seedOk') throw new Error('Invalid seed: failed to create HD wallet');
+  try {
+    const at = (role: (typeof Roles)[keyof typeof Roles]): Uint8Array => {
+      const r = hd.hdWallet.selectAccount(0).selectRole(role).deriveKeyAt(0);
+      if (r.type !== 'keyDerived') throw new Error(`Key derivation out of bounds for role ${role}`);
+      return Uint8Array.from(r.key); // a copy, so clearing the HD wallet cannot touch it
+    };
+    return { shielded: at(Roles.Zswap), unshielded: at(Roles.NightExternal), dust: at(Roles.Dust) };
+  } finally {
+    hd.hdWallet.clear();
+  }
+};
 
 /** The node's "1010: Invalid Transaction": never admitted, so it cannot land. */
 export const nodeRefusal = (e: unknown): string | undefined => {
@@ -137,7 +163,7 @@ export class FacadeWallet implements PayingWallet {
 
   /** Derive keys and addresses from the seed. Nothing connects to the network yet. */
   static async build(seedHex: string, ep: WalletEndpoints): Promise<FacadeWallet> {
-    const seeds = WalletSeeds.fromMasterSeed(seedHex);
+    const seeds = deriveRoleSeeds(seedHex);
     const config = {
       indexerClientConnection: { indexerHttpUrl: ep.indexer, indexerWsUrl: ep.indexerWS },
       provingServerUrl: new URL(ep.proofServer),
@@ -310,6 +336,11 @@ export class FacadeWallet implements PayingWallet {
       await this.facade.revert(recipe).catch(() => undefined);
       throw e;
     }
+  }
+
+  /** The fee a balanced, finished transaction pays, in SPECKs (the anchoring job's own calls). */
+  async feeOf(tx: FinalizedTransaction): Promise<bigint> {
+    return this.facade.calculateTransactionFee(tx);
   }
 
   async revert(tx: FinalizedTransaction): Promise<void> {

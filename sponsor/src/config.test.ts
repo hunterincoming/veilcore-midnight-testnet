@@ -19,6 +19,13 @@ const problems = (env: Record<string, string>): string[] => {
 };
 
 describe('configuration', () => {
+  it('the operator status token is optional, and refused when short or spaced', () => {
+    expect(loadConfig(base).statusToken).toBe('');
+    expect(loadConfig({ ...base, SPONSOR_STATUS_TOKEN: 'f'.repeat(64) }).statusToken).toBe('f'.repeat(64));
+    expect(problems({ ...base, SPONSOR_STATUS_TOKEN: 'short' })).toEqual([expect.stringMatching(/SPONSOR_STATUS_TOKEN/)]);
+    expect(problems({ ...base, SPONSOR_STATUS_TOKEN: `${'a'.repeat(20)} ${'b'.repeat(20)}` })).toHaveLength(1);
+  });
+
   it('loads with the minimum, with preprod defaults', () => {
     const c = loadConfig(base);
     expect(c.network).toBe('preprod');

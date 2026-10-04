@@ -19,8 +19,13 @@ refuses to start on mainnet.
   `sealRevocations` from the public endpoint (only this service's own job calls those),
   never a deploy, a maintenance update, or anything that moves tokens.
 - Limits: a little proof of work per request, a cap per network address (3 an hour, 10 a
-  day), a cap per browser per call type (anchor 3, pairDna 5, proveOwnership 20 a day), a
-  daily DUST budget, and a queue of at most 20. When any of them is hit, the site says so.
+  day), a daily DUST budget, and a queue of at most 20. When any of them is hit, the site
+  says so. The quota, the duplicate check and the budget are claimed together, before any
+  slow work, so a burst of requests sent at once gets no more than requests sent one by one.
+- There is also a per-browser cap per call type (anchor 3, pairDna 5, proveOwnership 20 a
+  day), but the browser makes its own ticket, so a script can make a new one per request.
+  It only gives an honest visitor a friendly message; the network cap and the budget are
+  what actually limit abuse.
 - Logs hold counters and outcomes only. Never request bodies, tickets or secrets.
 
 ## The anchoring job
@@ -38,11 +43,18 @@ It saves each attempt before sending, so after a restart it looks the transactio
 instead of sending a second one (which would pay twice and write two roots). Three
 failures in a row raise an alert on `/sponsor/status` and in the log.
 
+Its fees come out of the same `DAILY_BUDGET_DUST` as the public endpoint (one wallet pays
+both), each one capped at `MAX_FEE_DUST`. If the day's budget is used up, anchoring waits
+for the next day. It refuses a registry answer it did not expect: a batch id with odd
+characters, a root that is not 32 bytes of hex or is all zero, a root another batch already
+has, and a batch (or root) it has already anchored, even if the registry still lists it as
+waiting.
+
 ## Routes
 
 | Route | What |
 |---|---|
-| `GET /sponsor/status` | Synced or not, queue depth, budget left today, anchoring job state |
+| `GET /sponsor/status` | Synced or not, accepting or not, queue depth, the anchoring job's last outcome as a short code. No budget figures and no error text. With the header `x-operator-token: <SPONSOR_STATUS_TOKEN>`: also the exact budget, counters and the anchoring job's own messages |
 | `GET /sponsor/challenge` | A proof-of-work challenge |
 | `POST /sponsor` | `{ tx, ticket, challenge, nonce }` → `{ txId }` or a refusal with a plain reason |
 | `GET /health` | `{ ok: true }` |
@@ -72,7 +84,12 @@ Optional, with defaults: `SPONSOR_NETWORK` (preprod), `MAX_FEE_DUST` (5),
 `LIMIT_PER_NETWORK_HOUR` (3), `LIMIT_PER_NETWORK_DAY` (10), `LIMIT_REQUESTS_PER_MINUTE` (30),
 `ANCHOR_EVERY_MINUTES` (60), `ANCHOR_AT_PENDING` (25), `ANCHORER_ENABLED` (set `0` to
 turn the job off), `TRUST_PROXY_HOPS` (1 on Railway), `INDEXER_URL`, `INDEXER_WS_URL`,
-`NODE_WS_URL`, `POW_SECRET`, `VEILCORE_ARTIFACTS_DIR`.
+`NODE_WS_URL`, `POW_SECRET`, `VEILCORE_ARTIFACTS_DIR`, `SPONSOR_STATUS_TOKEN` (at least 32
+characters, e.g. 64 random hex; without it `/sponsor/status` only has the public view).
+
+`TRUST_PROXY_HOPS` must be the real number of proxies in front. A request to
+`/sponsor` or `/sponsor/challenge` with fewer `X-Forwarded-For` entries than that is
+refused (and logged once), rather than counted against the proxy's own address.
 
 **Never** set anything holding the maintenance key or its password here
 (`VEILCORE_PRIVATE_STATE_PASSWORD` or any variable named like `*MAINTENANCE*`,
@@ -106,15 +123,20 @@ Also note your deployer wallet's two addresses: run the tool with the deployer w
 Those go in `SPONSOR_FORBIDDEN_ADDRESSES`.
 
 **4. On Railway, add a proof server** in the same project: New → Docker Image →
-`midnightntwrk/proof-server:8.0.3`, start command `midnight-proof-server -v`, name it
-`proof-server`. Don't give it a public domain. Its private address is
-`http://proof-server.railway.internal:6300`.
+`midnightntwrk/proof-server:8.0.3@sha256:<digest>`, start command
+`midnight-proof-server -v`, name it `proof-server`. Get the digest once with
+`docker buildx imagetools inspect midnightntwrk/proof-server:8.0.3` (the `Digest:` line):
+a tag can be re-pushed, a digest cannot. Don't give it a public domain. Its private
+address is `http://proof-server.railway.internal:6300`.
 
 **5. Stage the sponsor** (on your Mac, from the repo root):
 `npm run stage -w sponsor`. It builds the service and makes a folder next to the repo,
-`veilcore-sponsor-deploy`, with the service and the compiled contract. (The compiled
-contract is not in git, which is why this step exists.) It worked when it prints
-"Staged …" and the next command.
+`veilcore-sponsor-deploy`, with the service, the compiled contract and a lockfile made
+from the repo's own `package-lock.json`, so the deploy installs exactly the versions the
+tests ran against. (The compiled contract is not in git, which is why this step exists.)
+It worked when it prints "Staged …" and the next command. If it says "Staging FAILED", it
+removed the folder; read the reason (for example a package version that is not in the
+repo lockfile) and fix that first. Never deploy an older staged folder instead.
 
 **6. Create the sponsor service on Railway:** New → Empty Service, name it
 `veilcore-sponsor`. Then:
@@ -153,7 +175,7 @@ make the record keys, download the backup, anchor. Then on a phone. Note how lon
 
 **9. Set the real limits** from what you saw: the fee of each call (explorer) times 2 is
 `MAX_FEE_DUST`; keep `DAILY_BUDGET_DUST` well under what the wallet's tNIGHT generates in
-a day.
+a day. The budget covers the anchoring job's fees too.
 
 ## Running the tests
 

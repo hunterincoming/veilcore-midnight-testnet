@@ -52,6 +52,16 @@ class EventLog {
     this.events.set(key, list);
   }
 
+  /** Take back one event recorded at `at` (the undo of one add). */
+  remove(key: string, at: number): void {
+    const list = this.events.get(key);
+    if (!list) return;
+    const i = list.lastIndexOf(at);
+    if (i < 0) return;
+    list.splice(i, 1);
+    if (list.length === 0) this.events.delete(key);
+  }
+
   sweep(now: number): void {
     for (const [k, list] of this.events) {
       const kept = list.filter((t) => t > now - this.keepMs);
@@ -84,6 +94,9 @@ export const DEFAULT_LIMITS: LimitConfig = {
 
 export type LimitCheck = { ok: true } | { ok: false; reason: string; retryAfterSeconds: number };
 
+/** What `Limits.commit` counted, so exactly that can be taken back. */
+export type QuotaClaim = { readonly bucket: string; readonly ticketKey: string; readonly at: number };
+
 export const isTicket = (t: unknown): t is string => typeof t === 'string' && /^[0-9a-f]{32,64}$/.test(t);
 
 export class Limits {
@@ -106,7 +119,11 @@ export class Limits {
     return { ok: true };
   }
 
-  /** Whether this sponsorship would fit every quota. Consumes nothing. */
+  /**
+   * Whether this sponsorship would fit every quota. Consumes nothing, so the caller must
+   * `commit` in the same synchronous step (no await in between), or a burst of
+   * concurrent requests all pass this check before any of them is counted.
+   */
   canSponsor(bucket: string, ticket: string, circuit: string): LimitCheck {
     const t = this.now();
     if (this.sponsoredByIp.count(bucket, HOUR, t) >= this.config.perIpHour) {
@@ -122,11 +139,19 @@ export class Limits {
     return { ok: true };
   }
 
-  /** Count a sponsorship that is going ahead. */
-  commit(bucket: string, ticket: string, circuit: string): void {
+  /** Count a sponsorship that is going ahead. Returns what was counted, for `uncommit`. */
+  commit(bucket: string, ticket: string, circuit: string): QuotaClaim {
     const t = this.now();
+    const ticketKey = `${ticket}:${circuit}`;
     this.sponsoredByIp.add(bucket, t);
-    this.sponsoredByTicket.add(`${ticket}:${circuit}`, t);
+    this.sponsoredByTicket.add(ticketKey, t);
+    return { bucket, ticketKey, at: t };
+  }
+
+  /** Take back a sponsorship that was counted and then refused before anything was paid. */
+  uncommit(claim: QuotaClaim): void {
+    this.sponsoredByIp.remove(claim.bucket, claim.at);
+    this.sponsoredByTicket.remove(claim.ticketKey, claim.at);
   }
 
   /** Forget everything older than its window (addresses are not kept past it). */
@@ -143,6 +168,18 @@ export class Limits {
   }
 }
 
+/**
+ * The part of the daily budget a payer needs: hold the most a payment may cost, lower the
+ * hold to the real fee, then count it (settle) or give it back (release). Both the public
+ * endpoint and the anchoring job pay from the one wallet, so both go through one budget.
+ */
+export interface FeeBudget {
+  reserveUpTo(max: bigint): { id: number; amount: bigint } | undefined;
+  shrink(id: number, amount: bigint): void;
+  settle(id: number, actual?: bigint): void;
+  release(id: number): void;
+}
+
 /** Saved budget state, so a restart does not reset the day's spending. */
 export type BudgetState = { readonly day: string; readonly spent: string };
 
@@ -150,7 +187,7 @@ export type BudgetState = { readonly day: string; readonly spent: string };
  * A hard ceiling on DUST spent per UTC day, in SPECKs. Fees are reserved before paying
  * and settled after, so concurrent requests cannot together overshoot it.
  */
-export class DailyBudget {
+export class DailyBudget implements FeeBudget {
   private day: string;
   private spent: bigint;
   private reserved = 0n;
@@ -186,6 +223,16 @@ export class DailyBudget {
     return left > 0n ? left : 0n;
   }
 
+  /**
+   * Left today counting only what was actually spent, not holds still in flight. When this
+   * is more than `remaining()`, a refusal is "busy, try in a minute", not "used up today".
+   */
+  unspent(): bigint {
+    this.roll();
+    const left = this.limit - this.spent;
+    return left > 0n ? left : 0n;
+  }
+
   /** Reserve `amount`; returns a hold id, or undefined when it does not fit. */
   reserve(amount: bigint): number | undefined {
     if (amount < 0n) throw new Error('negative amount');
@@ -196,6 +243,28 @@ export class DailyBudget {
     return id;
   }
 
+  /**
+   * Reserve up to `max`: the whole of `max` when it fits, otherwise whatever is left.
+   * Returns the hold and its size, or undefined when nothing is left at all. Used to
+   * claim budget before the real fee is known; `shrink` it once it is.
+   */
+  reserveUpTo(max: bigint): { id: number; amount: bigint } | undefined {
+    if (max < 0n) throw new Error('negative amount');
+    const left = this.remaining();
+    if (left === 0n) return undefined;
+    const amount = max < left ? max : left;
+    const id = this.reserve(amount);
+    return id === undefined ? undefined : { id, amount };
+  }
+
+  /** Lower a hold to `amount` (never raises it), giving the rest back. */
+  shrink(id: number, amount: bigint): void {
+    const held = this.holds.get(id);
+    if (held === undefined || amount < 0n || amount >= held) return;
+    this.holds.set(id, amount);
+    this.reserved -= held - amount;
+  }
+
   /** The payment went out: count `actual` (defaults to what was reserved). */
   settle(id: number, actual?: bigint): void {
     const held = this.holds.get(id);
@@ -204,7 +273,12 @@ export class DailyBudget {
     this.reserved -= held;
     this.roll();
     this.spent += actual ?? held;
-    this.onChange?.({ day: this.day, spent: this.spent.toString() });
+    try {
+      this.onChange?.({ day: this.day, spent: this.spent.toString() });
+    } catch {
+      // Saving is best effort: the spend is counted in memory either way, and a failed
+      // save must not make a payment that went out look like one that did not.
+    }
   }
 
   /** Nothing was paid: give the reservation back. */

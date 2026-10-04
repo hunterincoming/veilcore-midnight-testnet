@@ -9,12 +9,11 @@
  */
 import { type Interface } from 'node:readline/promises';
 import { type Logger } from 'pino';
-import { readFileSync } from 'node:fs';
 import { toHex } from '@midnight-ntwrk/midnight-js-utils';
 import { getNetworkId } from '@midnight-ntwrk/midnight-js-network-id';
-import { type ClaimRef, ClaimsAPI } from '../../api/src/claims-api.js';
+import { type ClaimRef, ClaimsAPI, type LabSignature } from '../../api/src/claims-api.js';
 import { type ClaimsProviders } from '../../api/src/claims-types.js';
-import { JUBJUB_ORDER, newAttesterKey } from '../../contract/src/attest.js';
+import { JUBJUB_ORDER, type JubjubPoint, newAttesterKey } from '../../contract/src/attest.js';
 import { type FieldSchema } from '../../contract/src/field-schema.js';
 import { type ClaimVerdict, verifyClaim } from '../../contract/src/verify-claims.js';
 import {
@@ -22,8 +21,11 @@ import {
   labSignature,
   readAttestationFile,
   readFieldSetFile,
+  readJsonFile,
+  readTrustedKeys,
   scaledBound,
   slotByName,
+  slotLabel,
   writeAttestation,
 } from './fields.js';
 import { showSecret } from './secret-out.js';
@@ -89,11 +91,14 @@ const showVerdict = (logger: Logger, v: ClaimVerdict): void => {
   );
 };
 
-const landed = (c: ClaimsMenuContext, r: ClaimRef, schema: FieldSchema, attested: readonly ClaimRef[] = []): void => {
+/** Say where a claim landed, as soon as it has: before anything else can go wrong. */
+const announce = (c: ClaimsMenuContext, r: ClaimRef): void => {
   c.logger.info(`Transaction ${r.txHash} at block ${r.blockHeight}.`);
   c.logger.info(`Give the verifier this transaction id: ${r.txId}`);
-  for (const a of attested)
-    c.logger.info(`and the laboratory's attested claim on record ${toHex(a.claim.record)}: ${a.txId}`);
+};
+
+/** The verdict a verifier would reach on the claim and the attested claims that landed. */
+const landed = (c: ClaimsMenuContext, r: ClaimRef, schema: FieldSchema, attested: readonly ClaimRef[] = []): void =>
   showVerdict(
     c.logger,
     verifyClaim({
@@ -102,21 +107,86 @@ const landed = (c: ClaimsMenuContext, r: ClaimRef, schema: FieldSchema, attested
       ...(attested.length > 0 ? { attestations: attested.map((a) => a.claim) } : {}),
     }),
   );
+
+/**
+ * A laboratory's signature on each record, checked off-chain (as the contract checks it)
+ * BEFORE anything is sent: a wrong entry in the attestation file stops here.
+ */
+const checkedSignatures = (
+  att: ReturnType<typeof readAttestationFile> | undefined,
+  records: readonly LoadedFieldSet[],
+): LabSignature[] => {
+  if (att === undefined) return [];
+  try {
+    return records.map((r) => labSignature(att, r.sealed));
+  } catch (e) {
+    throw new ClaimsInputError(`${e instanceof Error ? e.message : String(e)} Nothing was sent.`);
+  }
 };
 
 /**
- * A laboratory's signature is its own claim on each record (proveAttested). Made after the
- * main claim, one per record; a verifier reads them together.
+ * A laboratory's signature is its own claim on each record (proveAttested), made after the
+ * main claim, one per record. The main claim has already landed and been announced; each
+ * attested claim is reported as it lands or fails, so nothing published goes unreported.
  */
 const attestEach = async (
+  c: ClaimsMenuContext,
   api: ClaimsAPI,
-  att: ReturnType<typeof readAttestationFile> | undefined,
+  main: ClaimRef,
+  sigs: readonly LabSignature[],
   records: readonly LoadedFieldSet[],
 ): Promise<ClaimRef[]> => {
-  if (att === undefined) return [];
   const out: ClaimRef[] = [];
-  for (const r of records) out.push(await api.proveAttested(r.record, labSignature(att, r.sealed)));
+  for (const [i, sig] of sigs.entries()) {
+    const record = toHex(records[i].sealed.commitment);
+    try {
+      const a = await api.proveAttested(records[i].record, sig);
+      out.push(a);
+      c.logger.info(`and the laboratory's attested claim on record ${record}: ${a.txId}`);
+    } catch (e) {
+      c.logger.error(
+        `The laboratory's attested claim on record ${record} FAILED: ${e instanceof Error ? e.message : String(e)}`,
+      );
+      c.logger.error(
+        `The claim itself IS published (transaction id ${main.txId}). ` +
+          (out.length > 0
+            ? `Attested claims that landed: ${out.map((o) => o.txId).join(', ')}. `
+            : 'No attested claim landed. ') +
+          'A verifier will read the claim without a laboratory signature on that record.',
+      );
+    }
+  }
   return out;
+};
+
+const askDirection = async (c: ClaimsMenuContext): Promise<'at least' | 'at most'> => {
+  const a = (await ask(c, 'At (L)east or at (M)ost? ')).toLowerCase().replace(/\s+/g, ' ');
+  if (['l', 'least', 'at least'].includes(a)) return 'at least';
+  if (['m', 'most', 'at most'].includes(a)) return 'at most';
+  throw new ClaimsInputError('Answer L (at least) or M (at most). Nothing was sent.');
+};
+
+/** A JSON file named at a prompt: refusals are input errors and never repeat the contents. */
+const jsonFile = (path: string): unknown => {
+  try {
+    return readJsonFile(path);
+  } catch (e) {
+    throw new ClaimsInputError(e instanceof Error ? e.message : String(e));
+  }
+};
+
+const isEmptySlot = (f: LoadedFieldSet, slot: number): boolean => f.sealed.fieldSet.values[slot].every((b) => b === 0);
+
+/**
+ * A secret as typed: hex if it starts with 0x or contains a letter a-f, else decimal.
+ * Anything else is 0 (refused by the caller).
+ */
+export const parseLabSecret = (typed: string): bigint => {
+  const t = typed.trim();
+  if (/^0x[0-9a-fA-F]{1,64}$/.test(t)) return BigInt(t);
+  if (/^[0-9a-fA-F]{1,64}$/.test(t) && /[a-fA-F]/.test(t)) return BigInt(`0x${t}`);
+  if (/^\d{1,80}$/.test(t)) return BigInt(t);
+  return 0n;
 };
 
 /** Handle a main-menu choice 34-40. Returns false for any other choice. */
@@ -162,7 +232,7 @@ export const handleClaimsChoice = async (choice: string, c: ClaimsMenuContext): 
         const api = needApi(c);
         const txId = await ask(c, "The claim's transaction id: ");
         const schemaPath = await ask(c, 'Schema document file, from its publisher (blank to skip): ');
-        const schema = schemaPath === '' ? undefined : (JSON.parse(readFileSync(schemaPath, 'utf8')) as FieldSchema);
+        const schema = schemaPath === '' ? undefined : (jsonFile(schemaPath) as FieldSchema);
         const labIds = (
           await ask(
             c,
@@ -172,13 +242,30 @@ export const handleClaimsChoice = async (choice: string, c: ClaimsMenuContext): 
           .split(',')
           .map((s) => s.trim())
           .filter((s) => s !== '');
+        const trustedPath = await ask(
+          c,
+          'Laboratory keys you trust: a JSON file of [{"x": "...", "y": "..."}] (blank for none; then no key is called a laboratory\'s): ',
+        );
+        let trustedAttesters: JubjubPoint[] | undefined;
+        if (trustedPath !== '') {
+          try {
+            trustedAttesters = readTrustedKeys(trustedPath);
+          } catch (e) {
+            throw new ClaimsInputError(e instanceof Error ? e.message : String(e));
+          }
+        }
         const reading = await api.readClaim(txId, c.indexerUri);
         c.logger.info(`Read from call ${reading.entryPoint ?? '(unknown)'} on ${api.deployedContractAddress}.`);
         const attestations = [];
         for (const id of labIds) attestations.push((await api.readClaim(id, c.indexerUri)).claim);
         showVerdict(
           c.logger,
-          verifyClaim({ claim: reading.cells, schema, ...(labIds.length > 0 ? { attestations } : {}) }),
+          verifyClaim({
+            claim: reading.cells,
+            schema,
+            ...(labIds.length > 0 ? { attestations } : {}),
+            ...(trustedAttesters !== undefined ? { trustedAttesters } : {}),
+          }),
         );
         return true;
       }
@@ -191,7 +278,7 @@ export const handleClaimsChoice = async (choice: string, c: ClaimsMenuContext): 
         if (paths.length === 0) throw new ClaimsInputError('No records named. Nothing was written.');
         const records = paths.map((p) => readFieldSetFile(p).sealed.commitment);
         const typed = await c.hidden(
-          'Laboratory signing secret (decimal or 64 hex; nothing shows; blank to generate a TEST key): ',
+          'Laboratory signing secret (decimal digits, or hex starting 0x; nothing shows; blank to generate a TEST key): ',
         );
         let secret: bigint;
         if (typed === '') {
@@ -200,11 +287,10 @@ export const handleClaimsChoice = async (choice: string, c: ClaimsMenuContext): 
           secret = newAttesterKey().secret;
           showSecret(
             'TEST LABORATORY SECRET — for trying the flow only; a real laboratory keeps its own key offline:',
-            secret.toString(16).padStart(64, '0'),
+            `0x${secret.toString(16).padStart(64, '0')}`,
           );
         } else {
-          const t = typed.trim();
-          secret = /^[0-9a-fA-F]{64}$/.test(t) ? BigInt(`0x${t}`) : /^\d+$/.test(t) ? BigInt(t) : 0n;
+          secret = parseLabSecret(typed);
           if (secret <= 0n || secret >= JUBJUB_ORDER)
             throw new ClaimsInputError('That is not a laboratory signing secret. Nothing was written.');
         }
@@ -244,37 +330,44 @@ const makeClaim = async (c: ClaimsMenuContext): Promise<void> => {
   if (att !== undefined)
     c.logger.info(
       "The laboratory's signature is published as its own claim on each record (one more transaction each), " +
-        'after the claim itself.',
+        'after the claim itself. Each signature is checked here first.',
     );
 
   switch (kind[0]) {
     case 'v': {
       const slot = slotByName(a.file, await ask(c, 'Slot (number or path): '));
+      const label = slotLabel(a.file, slot);
       c.logger.warn('A value claim PUBLISHES the value, permanently. It proves authenticity, never confidentiality.');
+      if (isEmptySlot(a, slot))
+        c.logger.warn(`${label} is EMPTY: no value was sealed there. This claim would publish that the slot is empty.`);
       c.logger.info(
         `Already published about this slot from here in this run: ${api.disclosedSoFar(a.record, slot, schema)}`,
       );
-      if (!(await askYes(c, `Publish the sealed value of slot ${slot}?`))) return c.logger.info('Nothing was sent.');
-      if (att !== undefined) labSignature(att, a.sealed); // refused here, before anything is sent
+      if (!(await askYes(c, `Publish the sealed value of ${label}${isEmptySlot(a, slot) ? ' (EMPTY)' : ''}?`)))
+        return c.logger.info('Nothing was sent.');
+      const sigs = checkedSignatures(att, [a]);
       const r = await api.proveValue(a.record, slot);
-      landed(c, r, schema, await attestEach(api, att, [a]));
+      announce(c, r);
+      landed(c, r, schema, await attestEach(c, api, r, sigs, [a]));
       return;
     }
     case 'b': {
       const slot = slotByName(a.file, await ask(c, 'Number slot (number or path): '));
+      const label = slotLabel(a.file, slot);
       const d = schema.slots.find((s) => s.slot === slot);
-      const dir = (await ask(c, 'At (L)east or at (M)ost? ')).toLowerCase().startsWith('m') ? 'at most' : 'at least';
+      const dir = await askDirection(c);
       const raw = await ask(c, `Bound${d?.unit ? ` in ${d.unit}` : ''}: `);
       const bound = scaledBound(a.file, slot, raw);
       c.logger.info(
         `Already published about this slot from here in this run: ${api.disclosedSoFar(a.record, slot, schema)}`,
       );
       c.logger.info('Each bound you prove is public; several bounds narrow the hidden number.');
-      if (!(await askYes(c, `Publish "slot ${slot} is ${dir} ${raw}${d?.unit ? ` ${d.unit}` : ''}"?`)))
+      if (!(await askYes(c, `Publish "${label} is ${dir} ${raw}${d?.unit ? ` ${d.unit}` : ''}"?`)))
         return c.logger.info('Nothing was sent.');
-      if (att !== undefined) labSignature(att, a.sealed);
+      const sigs = checkedSignatures(att, [a]);
       const r = await api.proveRange(a.record, schema, slot, dir, bound);
-      landed(c, r, schema, await attestEach(api, att, [a]));
+      announce(c, r);
+      landed(c, r, schema, await attestEach(c, api, r, sigs, [a]));
       return;
     }
     case 'd': {
@@ -284,12 +377,10 @@ const makeClaim = async (c: ClaimsMenuContext): Promise<void> => {
           'determination of distinctness. Do not run it against references chosen by someone else.',
       );
       if (!(await askYes(c, 'Publish it?'))) return c.logger.info('Nothing was sent.');
-      if (att !== undefined) {
-        labSignature(att, a.sealed);
-        labSignature(att, b.sealed);
-      }
+      const sigs = checkedSignatures(att, [a, b]);
       const r = await api.proveDistinct(a.record, b.record, schema);
-      landed(c, r, schema, await attestEach(api, att, [a, b]));
+      announce(c, r);
+      landed(c, r, schema, await attestEach(c, api, r, sigs, [a, b]));
       return;
     }
     case 'u': {
@@ -301,9 +392,12 @@ const makeClaim = async (c: ClaimsMenuContext): Promise<void> => {
         .map((s) => slotByName(a.file, s));
       const mask = Array.from({ length: 16 }, (_, i) => slots.includes(i));
       if (mask.every(Boolean)) throw new ClaimsInputError('A mask of every slot says nothing. Nothing was sent.');
-      if (!(await askYes(c, `Publish that only slot(s) ${slots.join(', ') || 'none'} changed?`)))
+      const labels = [...new Set(slots)].map((s) => slotLabel(a.file, s)).join(', ');
+      if (!(await askYes(c, `Publish that only ${labels || 'no slot'} changed?`)))
         return c.logger.info('Nothing was sent.');
-      landed(c, await api.proveUnchanged(a.record, b.record, mask), schema);
+      const r = await api.proveUnchanged(a.record, b.record, mask);
+      announce(c, r);
+      landed(c, r, schema);
       return;
     }
   }

@@ -381,6 +381,7 @@ const COMMITTED = [
   "holder",
   "identification",
   "jurisdictionBindings",
+  "ledgerIdentity",
   "parents",
   "profile",
   "profileData",
@@ -402,6 +403,33 @@ const REQUIRED = [
 ] as const;
 
 /**
+ * A record's ledger identity (SPEC 3.6), refused exactly as the SDK refuses it
+ * (veilcore-sdk src/commit.ts, checkLedgerIdentity). Absent is allowed.
+ */
+const checkLedgerIdentity = (li: unknown): void => {
+  if (li === undefined) return;
+  if (typeof li !== "object" || li === null || Array.isArray(li))
+    throw new Error("ledgerIdentity is an object");
+  const o = li as Record<string, unknown>;
+  const allowed = new Set(["chain", "contractAddress", "identity"]);
+  for (const k of Object.keys(o))
+    if (!allowed.has(k))
+      throw new Error(`ledgerIdentity has an unknown field: ${k}`);
+  if (typeof o.chain !== "string" || o.chain.length === 0)
+    throw new Error("ledgerIdentity.chain is a non-empty string");
+  if (typeof o.identity !== "string" || !HEX32.test(o.identity))
+    throw new Error("ledgerIdentity.identity is 64 lowercase hex characters");
+  if (
+    o.contractAddress !== undefined &&
+    (typeof o.contractAddress !== "string" || !HEX32.test(o.contractAddress))
+  ) {
+    throw new Error(
+      "ledgerIdentity.contractAddress is 64 lowercase hex characters",
+    );
+  }
+};
+
+/**
  * SHA-256 of a sha256/fields/v1 record's committed JSON (SPEC 4.2): the `jsonDigest` its
  * field set is sealed with. Throws on anything the SDK would refuse.
  */
@@ -410,6 +438,7 @@ export const committedJsonDigest = (
 ): Uint8Array => {
   for (const k of REQUIRED)
     if (env[k] === undefined) throw new Error(`a record needs ${k}`);
+  checkLedgerIdentity(env.ledgerIdentity);
   if (env.commitmentAlgorithm !== "sha256/fields/v1")
     throw new Error(
       `commitmentAlgorithm is ${JSON.stringify(env.commitmentAlgorithm)}, not sha256/fields/v1`,

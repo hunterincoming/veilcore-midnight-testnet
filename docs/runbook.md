@@ -278,29 +278,39 @@ when the record is sealed.
 2. Give the path to the field-set file. For `d`, also the reference record's file; for
    `u`, the original first, then the correction's.
 3. For `v`, `b` and `d`: the path to a **laboratory attestation file** if a laboratory
-   signed the record, or press Enter for none. The laboratory's signature is published as
-   its own claim on each record (one more transaction each, after the claim).
-4. Answer the questions (which slot, at least or at most, the bound in the schema's
-   unit). Before a value or a bound it shows what this run has already published about
-   that slot. **A value claim publishes the value, permanently. Every bound is public too;
-   several bounds narrow the hidden number.**
+   signed the record, or press Enter for none. Every signature in it is checked here
+   first: a wrong entry stops the claim before anything is sent. The laboratory's
+   signature is published as its own claim on each record (one more transaction each,
+   after the claim).
+4. Answer the questions (which slot, `l` or `m` for at least or at most, the bound in the
+   schema's unit). Before a value or a bound it shows what this run has already published
+   about that slot, and it warns if the slot is empty. The question that sends it names
+   the slot's path and type: check it. **A value claim publishes the value, permanently.
+   Every bound is public too; several bounds narrow the hidden number.**
 5. Type `yes` to send it. Anything else sends nothing.
-6. It shows `Give the verifier this transaction id: …` (and, with a laboratory file, the
-   attested claims' ids) and the claim in plain words. Send the verifier all of them.
+6. It shows `Give the verifier this transaction id: …` as soon as the claim lands, then
+   each attested claim's id as it lands (or that it failed, and what did land), and the
+   claim in plain words. Send the verifier all of the ids. Without a list of trusted keys
+   the claim names the signing key and says it is not checked against a laboratory's
+   published key: that is for the verifier to decide.
 
 ### Check a claim (as a verifier)
 
 Type `38`, paste the transaction id, give the schema document's file (from whoever
 published the schema, not from the prover) or press Enter to skip, and paste the
-laboratory's attested claim ids if you were given any. It shows the claim in
-plain words, each check made (`ok` or `FAILED`), and a list of `to check:` lines this tool
-cannot check for you, such as whether the record is anchored and whether a laboratory key
-is one you trust.
+laboratory's attested claim ids if you were given any. Then give a JSON file of the
+laboratory keys you trust (`[{"x": "...", "y": "..."}]`, decimal strings, as the
+laboratory published them), or press Enter for none. Only with that file, and only when
+every signing key is in it, does the claim say "on values a laboratory signed"; otherwise
+it names the key and says it is not checked. It shows the claim in plain words, each
+check made (`ok` or `FAILED`), and a list of `to check:` lines this tool cannot check for
+you, such as whether the record is anchored.
 
 ### Other options
 
-- `39` signs records as a laboratory and writes an attestation file. Press Enter at the
-  secret to make a **test** key (shown once on screen). On mainnet a laboratory uses its
-  own key.
+- `39` signs records as a laboratory and writes an attestation file. The secret is read
+  as decimal digits, or as hex when it starts with `0x` (or contains a letter a-f). Press
+  Enter at the secret to make a **test** key (shown once on screen, with `0x`). On mainnet
+  a laboratory uses its own key.
 - `40` shows a field-set file's schema id, `fieldSetRoot` and record commitment. Those are
   public.

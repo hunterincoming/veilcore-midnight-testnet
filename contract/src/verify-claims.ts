@@ -30,7 +30,7 @@ import {
   slotValueOf,
 } from "./field-schema.js";
 import { SLOTS, numberFrom } from "./fields.js";
-import { type JubjubPoint } from "./attest.js";
+import { type JubjubPoint, isSigningKey } from "./attest.js";
 
 const hex = (b: Uint8Array): string => Buffer.from(b).toString("hex");
 
@@ -159,18 +159,90 @@ export type ClaimVerifyInput = {
 
 const isClaim = (c: Claim | ClaimsLedger): c is Claim => "kind" in c;
 
-/** A uint as the schema means it: the stored number divided by `scale`, with its unit. */
-const measured = (n: bigint, d?: { scale?: number; unit?: string }): string => {
+/** How an approximation may round: never in the favour of the claim it describes. */
+export type Rounding = "down" | "up" | "nearest";
+
+const pow10Digits = (s: bigint): number | undefined => {
+  let k = 0;
+  while (s % 10n === 0n) {
+    s /= 10n;
+    k++;
+  }
+  return s === 1n ? k : undefined;
+};
+
+/** n / 10^digits, written with exactly `digits` decimal places. */
+const fixed = (n: bigint, digits: number): string => {
+  if (digits === 0) return String(n);
+  const p = 10n ** BigInt(digits);
+  return `${n / p}.${String(n % p).padStart(digits, "0")}`;
+};
+
+const gcd = (a: bigint, b: bigint): bigint => {
+  while (b !== 0n) [a, b] = [b, a % b];
+  return a;
+};
+
+/** Decimal places shown in an approximation of a fraction with no exact decimal form. */
+const APPROX_DIGITS = 4;
+
+/**
+ * A uint as the schema means it: the stored number divided by `scale`, with its unit,
+ * always exact. A power-of-ten scale is written as a decimal (9550 at scale 100 is
+ * 95.50); any other scale is a decimal when the quotient has one (3 at scale 4 is 0.75),
+ * and otherwise the exact fraction with a marked approximation (10 at scale 3 is
+ * "10/3 (≈ 3.3333, rounded down)"), rounded as `round` says: down for a lower bound, up
+ * for an upper bound, so the words never claim more than was proved.
+ */
+export const measured = (
+  n: bigint,
+  d?: { scale?: number; unit?: string },
+  round: Rounding = "nearest",
+): string => {
   const scale = BigInt(d?.scale ?? 1);
-  const whole = n / scale;
-  const frac = n % scale;
-  const digits = String(scale).length - 1;
-  const num =
-    scale === 1n ? String(n) : `${whole}.${String(frac).padStart(digits, "0")}`;
-  return d?.unit ? `${num} ${d.unit}` : num;
+  const unit = d?.unit ? ` ${d.unit}` : "";
+  const p10 = pow10Digits(scale);
+  if (p10 !== undefined) return `${fixed(n, p10)}${unit}`;
+  const den = scale / gcd(n, scale);
+  let r = den;
+  let twos = 0;
+  let fives = 0;
+  while (r % 2n === 0n) {
+    r /= 2n;
+    twos++;
+  }
+  while (r % 5n === 0n) {
+    r /= 5n;
+    fives++;
+  }
+  if (r === 1n) {
+    const digits = Math.max(twos, fives);
+    return `${fixed((n * 10n ** BigInt(digits)) / scale, digits)}${unit}`;
+  }
+  const scaled = n * 10n ** BigInt(APPROX_DIGITS);
+  let q = scaled / scale;
+  const rem = scaled % scale;
+  if (round === "up" && rem > 0n) q++;
+  if (round === "nearest" && 2n * rem >= scale) q++;
+  const how =
+    round === "down"
+      ? ", rounded down"
+      : round === "up"
+        ? ", rounded up"
+        : ", rounded";
+  return `${n}/${scale}${unit} (≈ ${fixed(q, APPROX_DIGITS)}${how})`;
 };
 
 const short = (b: Uint8Array): string => hex(b).slice(0, 16) + "…";
+
+/** 32 zero bytes: a slot with no value sealed (SPEC 4.5, absent). */
+const isEmpty = (v: Uint8Array): boolean =>
+  v.length === 32 && v.every((b) => b === 0);
+
+const EMPTY = "empty (no value sealed)";
+
+const sameKey = (a: JubjubPoint, b: JubjubPoint): boolean =>
+  a.x === b.x && a.y === b.y;
 
 export const verifyClaim = (input: ClaimVerifyInput): ClaimVerdict => {
   const claim = isClaim(input.claim)
@@ -190,10 +262,12 @@ export const verifyClaim = (input: ClaimVerifyInput): ClaimVerdict => {
     claim.slot === undefined
       ? ""
       : `slot ${claim.slot}${d ? ` (${d.path})` : ""}`;
+  /** Whether the schema document passed every schema check: only then is it used to word the claim. */
+  let schemaFits = schema !== undefined;
 
-  // 1. Which contract, read how.
+  // 1. Which contract, read how: the claim AND every attested claim read with it.
   toCheck.push(
-    "to check: the claim is on the published claims contract, whose verifier keys match the published fingerprints, and it was read per contract call (readClaim does this), not per transaction or block",
+    "to check: the claim is on the published claims contract, whose verifier keys match the published fingerprints; every attested claim read with it is on that same contract; and each was read per contract call (readClaim does this), not per transaction or block",
   );
 
   // 2. Anchored records.
@@ -206,6 +280,7 @@ export const verifyClaim = (input: ClaimVerifyInput): ClaimVerdict => {
   );
 
   // 3. The schema (an attested claim names none: the signature is on the whole record).
+  const empty = claim.kind === "value" && isEmpty(claim.value!);
   if (claim.kind === "attested") {
     // nothing to check
   } else if (schema === undefined) {
@@ -213,19 +288,21 @@ export const verifyClaim = (input: ClaimVerifyInput): ClaimVerdict => {
       `to check: obtain schema ${short(claim.schema)} from its publisher and recompute its id; apply its scale and unit`,
     );
   } else {
+    const schemaCheck = (ok: boolean, detail: string): void => {
+      if (!ok) schemaFits = false;
+      check(3, ok, detail);
+    };
     let id: string | undefined;
     try {
       id = hex(fieldSchemaId(schema));
     } catch (e) {
-      check(
-        3,
+      schemaCheck(
         false,
         `the schema document is not a valid field schema: ${e instanceof Error ? e.message : String(e)}`,
       );
     }
     if (id !== undefined) {
-      check(
-        3,
+      schemaCheck(
         id === hex(claim.schema),
         id === hex(claim.schema)
           ? `the schema document "${schema.id}" recomputes to the claim's schema id`
@@ -233,8 +310,7 @@ export const verifyClaim = (input: ClaimVerifyInput): ClaimVerdict => {
       );
     }
     if (claim.kind === "range") {
-      check(
-        3,
+      schemaCheck(
         d?.type === "uint",
         d?.type === "uint"
           ? `${slotName} is a number slot`
@@ -242,23 +318,24 @@ export const verifyClaim = (input: ClaimVerifyInput): ClaimVerdict => {
       );
     }
     if (claim.kind === "value") {
-      if (d === undefined)
-        check(3, false, `${slotName} is not described by the schema`);
+      if (empty)
+        schemaCheck(
+          true,
+          d === undefined
+            ? `${slotName} is not described by the schema and is ${EMPTY}, as it must be`
+            : `${slotName} is ${EMPTY}`,
+        );
+      else if (d === undefined)
+        schemaCheck(false, `${slotName} is not described by the schema`);
       else if (d.type === "uint") {
-        let ok = true;
-        try {
-          numberFrom(claim.value!);
-        } catch {
-          ok = false;
-        }
-        check(
-          3,
+        const ok = isNumber(claim.value!);
+        schemaCheck(
           ok,
           ok
             ? `${slotName} is a number slot and the published value is a number`
             : `${slotName} is a number slot but the published value is not a number`,
         );
-      } else check(3, true, `${slotName} is a text slot`);
+      } else schemaCheck(true, `${slotName} is a text slot`);
     }
   }
   if (claim.kind === "value" && input.shownValue !== undefined) {
@@ -282,12 +359,16 @@ export const verifyClaim = (input: ClaimVerifyInput): ClaimVerdict => {
       );
   } else if (
     claim.kind === "value" &&
+    !empty &&
     !(d?.type === "uint" && isNumber(claim.value!))
   ) {
     toCheck.push(
       "to check: the published value is a SHA-256 digest of text; compare it with the text you were shown (pass shownValue)",
     );
   }
+  // The schema is used to word the claim only if it is the claim's schema.
+  const wordWith = schemaFits ? schema : undefined;
+  const dw = schemaFits ? d : undefined;
 
   // 4. The records' committed JSON.
   const records = input.records ?? [];
@@ -346,33 +427,44 @@ export const verifyClaim = (input: ClaimVerifyInput): ClaimVerdict => {
   );
 
   // 6. Laboratory signatures: the claim itself (attested), or one attested claim per record.
+  // A key is a laboratory's only if the verifier says so (trustedAttesters, SPEC 7); without
+  // that list a key is reported as a key, never as a laboratory.
+  const trusted = input.trustedAttesters;
   const trust = (k: JubjubPoint): void => {
-    if (input.trustedAttesters !== undefined) {
-      const trusted = input.trustedAttesters.some(
-        (t) => t.x === k.x && t.y === k.y,
-      );
+    if (trusted !== undefined) {
+      const ok = trusted.some((t) => sameKey(t, k));
       check(
         6,
-        trusted,
-        trusted
+        ok,
+        ok
           ? `laboratory key ${keyText(k)} is one you trust`
           : `laboratory key ${keyText(k)} is NOT one you listed as trusted`,
       );
     } else
       toCheck.push(
-        `to check: laboratory key ${keyText(k)} belongs to a laboratory you trust (SPEC 7)`,
+        `to check: key ${keyText(k)} belongs to a laboratory you trust (SPEC 7); until then it is reported as a key, not as a laboratory`,
       );
   };
-  const signers: JubjubPoint[] = [];
-  if (claim.kind === "attested") {
-    const k = claim.attester!;
+  const keyCheck = (k: JubjubPoint): boolean => {
+    const ok = isSigningKey(k);
     check(
       6,
-      k.x !== 0n || k.y !== 0n,
-      `laboratory key ${keyText(k)} is published`,
+      ok,
+      ok
+        ? `key ${keyText(k)} is a signing key the claims contract accepts`
+        : `key ${keyText(k)} is NOT a signing key (x = 0, off the curve, or outside the prime-order subgroup): the claims contract never publishes one`,
     );
-    trust(k);
-    signers.push(k);
+    return ok;
+  };
+  /** Valid signing keys on each named record (hex), from the attested claims given. */
+  const signers = new Map<string, JubjubPoint[]>();
+  if (claim.kind === "attested") {
+    if (claim.attester === undefined)
+      check(6, false, "the attested claim names no key");
+    else if (keyCheck(claim.attester)) {
+      trust(claim.attester);
+      signers.set(hex(claim.record), [claim.attester]);
+    }
   } else if (input.attestations === undefined) {
     toCheck.push(
       "note: no laboratory signature was considered. It shows only that the holder sealed these values; pass the laboratory's attested claims on the record(s) to check that a laboratory did",
@@ -383,38 +475,36 @@ export const verifyClaim = (input: ClaimVerifyInput): ClaimVerdict => {
         check(
           6,
           false,
-          `an attestation given is a ${a.kind} claim, not a laboratory's signature`,
+          `an attestation given is a ${a.kind} claim${a.kind === "attested" ? " with no key" : ""}, not a laboratory's signature`,
         );
         continue;
       }
-      if (!named.some((n) => hex(n) === hex(a.record)))
+      if (!named.some((n) => hex(n) === hex(a.record))) {
         check(
           6,
           false,
           `an attestation given is on record ${short(a.record)}, which this claim does not name`,
         );
+        continue;
+      }
+      if (!keyCheck(a.attester)) continue;
+      const list = signers.get(hex(a.record)) ?? [];
+      if (!list.some((k) => sameKey(k, a.attester!))) list.push(a.attester);
+      signers.set(hex(a.record), list);
     }
     for (const n of named) {
-      const on = input.attestations.filter(
-        (a) =>
-          a.kind === "attested" &&
-          a.attester !== undefined &&
-          hex(a.record) === hex(n),
-      );
+      const on = signers.get(hex(n)) ?? [];
       check(
         6,
         on.length > 0,
         on.length > 0
-          ? `record ${short(n)} is signed by a laboratory (attested claim)`
-          : `record ${short(n)} has no laboratory's attested claim among those given`,
+          ? `record ${short(n)} is signed by key ${on.map(keyText).join(" and ")} (attested claim)`
+          : `record ${short(n)} has no valid attested claim among those given`,
       );
-      for (const a of on) {
-        trust(a.attester!);
-        signers.push(a.attester!);
-      }
+      for (const k of on) trust(k);
     }
   }
-  if (signers.length > 0)
+  if (signers.size > 0)
     toCheck.push(
       "to check: each laboratory key was valid at the time of its attested claim, not only at the record's anchor",
     );
@@ -462,7 +552,7 @@ export const verifyClaim = (input: ClaimVerifyInput): ClaimVerdict => {
         (e.kind === "range" || e.kind === "value"),
     );
     toCheck.push(
-      `disclosed so far on this record and slot: ${disclosedText([...same, claim], d)}`,
+      `disclosed so far on this record and slot: ${disclosedText([...same, claim], dw)}`,
     );
   } else if (claim.slot !== undefined) {
     toCheck.push(
@@ -470,23 +560,25 @@ export const verifyClaim = (input: ClaimVerifyInput): ClaimVerdict => {
     );
   }
 
-  const labSigned =
-    claim.kind !== "attested" &&
-    input.attestations !== undefined &&
-    checks.filter((c) => c.spec === 6).every((c) => c.ok) &&
-    named.every((n) =>
-      input.attestations!.some(
-        (a) => a.kind === "attested" && hex(a.record) === hex(n),
-      ),
-    );
+  const spec6ok = checks.filter((c) => c.spec === 6).every((c) => c.ok);
+  const allSigned = named.every((n) => (signers.get(hex(n)) ?? []).length > 0);
+  const signing: Signing =
+    !spec6ok || !allSigned
+      ? "none"
+      : trusted !== undefined
+        ? "trusted"
+        : "unchecked";
   return {
     claim,
-    statement: statementOf(claim, schema, d, labSigned),
+    statement: statementOf(claim, wordWith, dw, signing, named, signers),
     checks,
     toCheck,
     passed: checks.every((c) => c.ok),
   };
 };
+
+/** How the signatures on the claim's record(s) stand: see statementOf. */
+type Signing = "none" | "trusted" | "unchecked";
 
 const isNumber = (v: Uint8Array): boolean => {
   try {
@@ -507,7 +599,8 @@ export const disclosedText = (
   const values = new Set<string>();
   for (const c of claims) {
     if (c.kind === "value" && c.value) {
-      if (isNumber(c.value)) values.add(measured(numberFrom(c.value), d));
+      if (isEmpty(c.value)) values.add(EMPTY);
+      else if (isNumber(c.value)) values.add(measured(numberFrom(c.value), d));
       else values.add(`text digest ${short(c.value)}`);
     }
     if (c.kind === "range" && c.bound !== undefined) {
@@ -523,38 +616,79 @@ export const disclosedText = (
     parts.push(
       lo === hi
         ? `the number exactly: ${measured(lo, d)}`
-        : `the number is between ${measured(lo, d)} and ${measured(hi, d)}`,
+        : `the number is between ${measured(lo, d, "down")} and ${measured(hi, d, "up")}`,
     );
   else if (lo !== undefined)
-    parts.push(`the number is at least ${measured(lo, d)}`);
+    parts.push(`the number is at least ${measured(lo, d, "down")}`);
   else if (hi !== undefined)
-    parts.push(`the number is at most ${measured(hi, d)}`);
+    parts.push(`the number is at most ${measured(hi, d, "up")}`);
   return parts.length === 0 ? "nothing about its value" : parts.join("; ");
 };
 
 const keyText = (k: JubjubPoint): string =>
   `(${k.x.toString(16).slice(0, 12)}…, ${k.y.toString(16).slice(0, 12)}…)`;
 
+/**
+ * The signature clause: which key signed which record and, only when the verifier listed
+ * the keys it trusts and every signer is one of them, that a laboratory signed.
+ */
+const signedBy = (
+  signing: Signing,
+  named: readonly Uint8Array[],
+  signers: ReadonlyMap<string, readonly JubjubPoint[]>,
+): string => {
+  if (signing === "none") return "";
+  const on = named.map((n) => signers.get(hex(n)) ?? []);
+  const all = on.flat();
+  const oneKey = all.every((k) => sameKey(k, all[0]));
+  const keys = (ks: readonly JubjubPoint[]): string =>
+    `${ks.length > 1 ? "keys" : "key"} ${ks.map(keyText).join(" and ")}`;
+  const which =
+    named.length === 1
+      ? keys(on[0])
+      : oneKey
+        ? `${keys([all[0]])} on both records`
+        : named
+            .map((n, i) => `record ${short(n)} by ${keys(on[i])}`)
+            .join("; ");
+  if (signing === "trusted")
+    return oneKey
+      ? `, on values a laboratory signed (${which}, one you trust)`
+      : `, on values laboratories signed (${which}; each a key you trust)`;
+  return `, on values signed by ${which}, not checked against a laboratory's published key`;
+};
+
 const statementOf = (
   c: Claim,
   schema: FieldSchema | undefined,
   d: FieldSchemaSlot | undefined,
-  labSigned: boolean,
+  signing: Signing,
+  named: readonly Uint8Array[],
+  signers: ReadonlyMap<string, readonly JubjubPoint[]>,
 ): string => {
-  const lab = labSigned ? ", on values a laboratory signed" : "";
   const where = `slot ${c.slot}${d?.path ? ` (${d.path})` : ""}`;
+  if (c.kind === "attested") {
+    const k = c.attester === undefined ? "(no key)" : keyText(c.attester);
+    const what = `record ${hex(c.record)} (its commitment, which binds every value it seals)`;
+    return signing === "trusted"
+      ? `the laboratory with key ${k}, one you trust, signed ${what}.`
+      : signing === "unchecked"
+        ? `key ${k} signed ${what}. The key is not checked against a laboratory's published key.`
+        : `key ${k} is claimed to have signed ${what}, but a check on the key failed.`;
+  }
+  const lab = signedBy(signing, named, signers);
   switch (c.kind) {
     case "value":
-      return isNumber(c.value!) && d?.type !== "text"
-        ? `${where} of record ${hex(c.record)}, as sealed, holds ${measured(numberFrom(c.value!), d)}${lab}.`
-        : `${where} of record ${hex(c.record)}, as sealed, holds the text whose SHA-256 is ${hex(c.value!)}${lab}.`;
+      return isEmpty(c.value!)
+        ? `${where} of record ${hex(c.record)}, as sealed, is ${EMPTY}${lab}.`
+        : isNumber(c.value!) && d?.type !== "text"
+          ? `${where} of record ${hex(c.record)}, as sealed, holds ${measured(numberFrom(c.value!), d)}${lab}.`
+          : `${where} of record ${hex(c.record)}, as sealed, holds the text whose SHA-256 is ${hex(c.value!)}${lab}.`;
     case "range":
-      return `the number in ${where} of record ${hex(c.record)}, as sealed, is ${c.op} ${measured(c.bound!, d)}${lab}. The number itself is not published.`;
+      return `the number in ${where} of record ${hex(c.record)}, as sealed, is ${c.op} ${measured(c.bound!, d, c.op === "at least" ? "down" : "up")}${lab}. The number itself is not published.`;
     case "distinct":
       return `records ${hex(c.record)} and ${hex(c.other!)}, as sealed, differ in at least ${schema ? schema.k : "the schema's k"} comparable values${lab}. This is a count, not a determination of distinctness, which is the examining body's.`;
     case "unchanged":
       return `record ${hex(c.other!)} has the same values as record ${hex(c.record)} outside slots ${c.mayChange!.flatMap((b, i) => (b ? [i] : [])).join(", ") || "(none)"}${lab}. It does not say which is the correction.`;
-    case "attested":
-      return `the laboratory with key ${keyText(c.attester!)} signed record ${hex(c.record)} (its commitment, which binds every value it seals).`;
   }
 };

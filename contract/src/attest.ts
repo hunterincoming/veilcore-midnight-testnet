@@ -4,7 +4,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { randomBytes } from "node:crypto";
-import { ecMulGenerator } from "@midnight-ntwrk/compact-runtime";
+import {
+  MAX_FIELD,
+  ecAdd,
+  ecMul,
+  ecMulGenerator,
+} from "@midnight-ntwrk/compact-runtime";
 import { pureCircuits } from "./managed/veilcore-claims/contract/index.js";
 
 /** The order of the Jubjub prime-order subgroup. */
@@ -62,3 +67,58 @@ export const schnorrReduction = (h: bigint): [bigint, bigint] => [
   h / TWO_248,
   h % TWO_248,
 ];
+
+/** The BLS12-381 scalar field modulus: every coordinate and response is below it. */
+const FIELD_P = MAX_FIELD + 1n;
+
+/**
+ * Whether `key` is a laboratory signing key the claims contract accepts
+ * (schnorr.compact, schnorrVerify): a point on Jubjub, x != 0 (not the identity or the
+ * order-2 point), and in the prime-order subgroup (r * key is the identity). Any point
+ * the JS runtime refuses (off the curve, outside the subgroup) is not one.
+ */
+export const isSigningKey = (key: JubjubPoint): boolean => {
+  if (typeof key?.x !== "bigint" || typeof key?.y !== "bigint") return false;
+  if (key.x <= 0n || key.x >= FIELD_P || key.y < 0n || key.y >= FIELD_P)
+    return false;
+  try {
+    const rk = ecAdd(ecMul(key, JUBJUB_ORDER - 1n), key);
+    return rk.x === 0n && rk.y === 1n;
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * Check a laboratory's signature on a record commitment off-chain, exactly as the claims
+ * contract's proveAttested does (schnorr.compact): the key rule of isSigningKey, the
+ * challenge transientHash over (announcement, key, attestationMessage(record)) split at
+ * 2^248 by integer division (the only split the circuit accepts), and
+ * response * G = announcement + (challenge mod 2^248) * key.
+ * Never throws: anything malformed is `false`.
+ */
+export const verifyRecordSignature = (
+  key: JubjubPoint,
+  record: Uint8Array,
+  sig: AttestationSignature,
+): boolean => {
+  try {
+    if (!(record instanceof Uint8Array) || record.length !== 32) return false;
+    if (!isSigningKey(key)) return false;
+    const R = sig?.announcement;
+    const s = sig?.response;
+    if (typeof R?.x !== "bigint" || typeof R?.y !== "bigint") return false;
+    if (typeof s !== "bigint") return false;
+    for (const v of [R.x, R.y]) if (v < 0n || v >= FIELD_P) return false;
+    // The runtime that builds the proof takes the response as a Jubjub scalar and refuses
+    // one at or above the subgroup order, so such a signature can never be published.
+    if (s < 0n || s >= JUBJUB_ORDER) return false;
+    const h = pureCircuits.attestationChallenge(R.x, R.y, key.x, key.y, record);
+    const [, c] = schnorrReduction(h);
+    const lhs = ecMulGenerator(s);
+    const rhs = ecAdd(R, ecMul(key, c));
+    return lhs.x === rhs.x && lhs.y === rhs.y;
+  } catch {
+    return false;
+  }
+};

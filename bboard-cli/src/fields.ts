@@ -22,7 +22,14 @@
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { toHex } from '@midnight-ntwrk/midnight-js-utils';
 import { type FieldSetFile, type SealedFieldSet, sealFieldSetFile } from '../../contract/src/field-schema.js';
-import { type AttestationSignature, type JubjubPoint, attesterKeyOf, signRecord } from '../../contract/src/attest.js';
+import {
+  type AttestationSignature,
+  type JubjubPoint,
+  attesterKeyOf,
+  isSigningKey,
+  signRecord,
+  verifyRecordSignature,
+} from '../../contract/src/attest.js';
 import { type LabSignature, type SealedRecord } from '../../api/src/claims-api.js';
 
 export type LoadedFieldSet = {
@@ -76,20 +83,70 @@ export const slotByName = (f: FieldSetFile, answer: string): number => {
   return found.slot;
 };
 
-/** A typed number for a slot, as the schema means it ("95.5" percent with scale 100 is 9550). */
+/**
+ * A typed number for a slot, as the schema means it ("95.5" percent with scale 100 is
+ * 9550; "0.75" with scale 4 is 3). Exact or refused: a bound is never rounded.
+ */
 export const scaledBound = (f: FieldSetFile, slot: number, answer: string): bigint => {
   const d = f.schema.slots.find((s) => s.slot === slot);
   if (d?.type !== 'uint') throw new Error(`Slot ${slot} is not a number slot in this schema.`);
   const scale = BigInt(d.scale ?? 1);
   const m = /^(\d+)(?:\.(\d+))?$/.exec(answer.trim());
   if (m === null) throw new Error('A bound is a number, like 95 or 95.5.');
-  const digits = String(scale).length - 1;
   const frac = m[2] ?? '';
-  if (frac !== '' && (frac.length > digits || scale !== 10n ** BigInt(digits)))
-    throw new Error(`That bound has more decimal places than the schema stores (scale ${scale}).`);
-  const n = BigInt(m[1]) * scale + (frac === '' ? 0n : BigInt(frac.padEnd(digits, '0')));
+  const p = 10n ** BigInt(frac.length);
+  const scaledFrac = (frac === '' ? 0n : BigInt(frac)) * scale;
+  if (scaledFrac % p !== 0n)
+    throw new Error(
+      `That bound has more decimal places than the schema stores (scale ${scale}): it is not a whole number of 1/${scale} units.`,
+    );
+  const n = BigInt(m[1]) * scale + scaledFrac / p;
   if (n >= 1n << 64n) throw new Error('That bound is too large.');
   return n;
+};
+
+/** A slot as a holder should see it before publishing: its number, path and type. */
+export const slotLabel = (f: FieldSetFile, slot: number): string => {
+  const d = f.schema.slots.find((s) => s.slot === slot);
+  return d === undefined ? `slot ${slot} (not described by the schema)` : `slot ${slot} (${d.path}, ${d.type})`;
+};
+
+/** Read a JSON file the holder or verifier named. Errors never repeat its contents. */
+export const readJsonFile = (path: string): unknown => {
+  if (!existsSync(path)) throw new Error('No file at that path.');
+  try {
+    return JSON.parse(readFileSync(path, 'utf8'));
+  } catch {
+    throw new Error('That file is not JSON.');
+  }
+};
+
+/**
+ * Laboratory keys a verifier trusts (SPEC 7), from a JSON file: a list of {"x": "...",
+ * "y": "..."} (decimal strings, as option 39 prints them and attestation files carry
+ * them), or a single one. Each must be a signing key the claims contract accepts.
+ */
+export const readTrustedKeys = (path: string): JubjubPoint[] => {
+  const f = readJsonFile(path);
+  const list: unknown[] = Array.isArray(f) ? f : [f];
+  const keys: JubjubPoint[] = [];
+  for (const [i, k] of list.entries()) {
+    const o = k as { x?: unknown; y?: unknown } | null;
+    if (
+      o === null ||
+      typeof o !== 'object' ||
+      typeof o.x !== 'string' ||
+      typeof o.y !== 'string' ||
+      !/^\d+$/.test(o.x) ||
+      !/^\d+$/.test(o.y)
+    )
+      throw new Error('That is not a list of laboratory keys: [{"x": "...", "y": "..."}], decimal strings.');
+    const key = { x: BigInt(o.x), y: BigInt(o.y) };
+    if (!isSigningKey(key)) throw new Error(`Key ${i + 1} in that file is not a laboratory signing key.`);
+    keys.push(key);
+  }
+  if (keys.length === 0) throw new Error('That file lists no keys.');
+  return keys;
 };
 
 // ───────────────────────────────────────────────────────── attestation files
@@ -117,6 +174,7 @@ export const readAttestationFile = (
   }
   try {
     const key = { x: big(f.key?.x, 'key.x'), y: big(f.key?.y, 'key.y') };
+    if (!isSigningKey(key)) throw new Error('key is not a laboratory signing key');
     const signatures = new Map<string, AttestationSignature>();
     for (const [record, s] of Object.entries(f.signatures ?? {})) {
       if (!/^[0-9a-f]{64}$/.test(record)) throw new Error('each signature is keyed by a record commitment (64 hex)');
@@ -137,10 +195,19 @@ const signatureFor = (a: ReturnType<typeof readAttestationFile>, record: SealedF
   return s;
 };
 
-export const labSignature = (a: ReturnType<typeof readAttestationFile>, record: SealedFieldSet): LabSignature => ({
-  key: a.key,
-  signature: signatureFor(a, record),
-});
+/**
+ * The laboratory's key and its signature on a record, checked off-chain exactly as the
+ * claims contract checks it (attest.ts, verifyRecordSignature), so a wrong entry is
+ * refused before anything is sent.
+ */
+export const labSignature = (a: ReturnType<typeof readAttestationFile>, record: SealedFieldSet): LabSignature => {
+  const signature = signatureFor(a, record);
+  if (!verifyRecordSignature(a.key, record.commitment, signature))
+    throw new Error(
+      `The attestation file's signature on record ${toHex(record.commitment)} does not verify under its key.`,
+    );
+  return { key: a.key, signature };
+};
 
 /**
  * Sign record commitments as a laboratory and write (or add to) an attestation file. For

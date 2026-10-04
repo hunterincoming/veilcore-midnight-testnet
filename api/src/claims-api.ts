@@ -37,7 +37,7 @@ import {
   compiledClaimsDeploying,
   emptyClaimsPrivateState,
 } from '../../contract/src/claims.js';
-import { type AttestationSignature, type JubjubPoint } from '../../contract/src/attest.js';
+import { type AttestationSignature, type JubjubPoint, verifyRecordSignature } from '../../contract/src/attest.js';
 import { SALT_BYTES, SLOTS, commitmentOf, numberFrom, openSlot, type FieldSet } from '../../contract/src/fields.js';
 import { type FieldSchema, fieldSchemaId, schemaTermsOf, slotOf } from '../../contract/src/field-schema.js';
 import { type Claim, claimFromCells, disclosedText } from '../../contract/src/verify-claims.js';
@@ -211,6 +211,10 @@ export class ClaimsAPI {
    * over two signed records needs one of these for each.
    */
   async proveAttested(record: SealedRecord, lab: LabSignature): Promise<ClaimRef> {
+    // Checked off-chain first, exactly as the circuit checks it, so a wrong signature or
+    // key is refused before anything is proved or sent.
+    if (!verifyRecordSignature(lab.key, recordCommitment(record), lab.signature))
+      throw new Error('The laboratory signature does not verify on that record under that key. Nothing was sent.');
     const input: ClaimInput = { attester: lab.key, signature: lab.signature };
     return this.claim('proveAttested', input, (c) => c.callTx.proveAttested(recordCommitment(record)));
   }

@@ -70,8 +70,13 @@ A new commitment algorithm, `sha256/fields/v1`, alongside the existing
 
 `H` is SHA-256 over 32-byte elements, tag right-padded with zeros. Every hash here,
 including the leaf and the root, is exactly what Compact's `persistentHash` computes over
-those bytes, so anyone can recompute every value with SHA-256 alone. No two kinds of hash
-take inputs of the same length (55, 96, 560 bytes), so none can be presented as another.
+those bytes, so anyone can recompute every value with SHA-256 alone. A leaf (55 bytes)
+and a set root (560 bytes) each have a length no other hash here takes. The record
+commitment, the schema id and the salt derivation all take 96 bytes (a 32-byte tag and
+two 32-byte elements); they are kept apart by their tags (`veilcore:v1:frecord`,
+`veilcore:v1:fschema`, `veilcore:v1:fsalt`), which differ in the first element, so one
+cannot be presented as another. The second attestation hash (`veilcore:v1:fattest2`,
+64 bytes) has its own length and tag.
 
 ## The contract (`contract/src/veilcore-claims.compact`)
 

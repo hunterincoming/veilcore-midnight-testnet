@@ -38,7 +38,6 @@ export type Private = {
   terms?: SchemaTerms;
   attester?: JubjubPoint;
   signature?: SchnorrSignature;
-  secondSignature?: SchnorrSignature;
   /** Overrides the challenge split the prover supplies (honest by default). */
   reduction?: (h: bigint) => [bigint, bigint];
 };
@@ -90,10 +89,6 @@ const contract = (p: Private): Contract<Record<string, never>> =>
     attesterSignature: ({ privateState }) => [
       privateState,
       need(p.signature, "a laboratory signature"),
-    ],
-    secondAttesterSignature: ({ privateState }) => [
-      privateState,
-      need(p.secondSignature, "a second laboratory signature"),
     ],
     schnorrReduction: ({ privateState }, h: bigint) => [
       privateState,

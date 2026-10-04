@@ -1,6 +1,6 @@
 # VeilCore claims: proving one fact about a record without showing the rest
 
-Status: DESIGN, 3 October 2026. Second contract, deployed alongside `veilcore.compact`,
+Status: DESIGN, 3 October 2026; layout revised 4 October after measuring proofs (see Size). Second contract, deployed alongside `veilcore.compact`,
 which stays frozen. Closes the "Per-field commitments" entry in SPEC section 12.
 
 ## What it lets a holder prove
@@ -18,15 +18,23 @@ record's sealed values, and none of them revealing anything beyond the claim:
 A claim the sealed values do not support cannot be constructed: the proof fails on the
 prover's machine and nothing reaches the chain.
 
-**Laboratory-signed versions.** `proveAttestedValue`, `proveAttestedRange` and
-`proveAttestedDistinct` also check a laboratory's signature (Schnorr over Jubjub,
-`contract/src/schnorr.compact`, from Midnight's `example-zkloan`, with a subgroup check on
-the key and an exact challenge split added) on the **record commitment**, and publish the
-laboratory's key. Signing the record rather than the field-set root means the signature
-cannot be moved to another record built around the same values (attack round, 3 Oct). Without it, "germination is at least 95%" proves only
-that the holder sealed that number; with it, that a laboratory sealed it. Which keys
-belong to which laboratories is the verifier's decision (SPEC section 7); the contract
-keeps no registry. For distinctness, one laboratory must have signed both field sets.
+**Laboratory signatures.** `proveAttested` checks a laboratory's signature (Schnorr over
+Jubjub, `contract/src/schnorr.compact`, from Midnight's `example-zkloan`, with a subgroup
+check on the key and an exact challenge split added) on a **record commitment**, and
+publishes the record and the laboratory's key. It is its own claim: read together with a
+value, range, distinct or unchanged claim on the same record, it makes that claim about
+values a laboratory sealed. Without it, "germination is at least 95%" proves only that the
+holder sealed that number; with it, that a laboratory sealed it. Signing the record rather
+than the field-set root means the signature cannot be moved to another record built
+around the same values (attack round, 3 Oct). A distinctness claim over two signed records
+needs one attested claim on each. Which keys belong to which laboratories is the
+verifier's decision (SPEC section 7); the contract keeps no registry.
+
+(Until 4 October the signature was checked inside each claim, as `proveAttestedValue`,
+`proveAttestedRange` and `proveAttestedDistinct`. The distinct one needed two signature
+checks on top of two whole records and could not be brought under k=17; a separate claim
+says the same thing, since the signature already binds every value through the record
+commitment, and keeps every circuit small.)
 
 ## How a record seals its fields (SDK, all three languages)
 
@@ -38,33 +46,38 @@ A new commitment algorithm, `sha256/fields/v1`, alongside the existing
   towards distinctness), and for comparable text a **format** (`allele-pair`, `allele`
   or `code`) whose canonical form is the only one accepted. It also fixes **k**, the
   distinctness threshold. Its id is `schemaId = H("veilcore:v1:fschema", SHA-256(canonical
-  schema JSON), comparable mask, count(k), numeric mask)`, so the comparable slots, k and
-  which slots are numbers are fixed by the schema and cannot be chosen per claim.
+  schema JSON), terms)`, where `terms` packs the comparable mask (bytes 0-1), the numeric
+  mask (bytes 2-3) and k (byte 4) into one 32-byte element, so the comparable slots, k
+  and which slots are numbers are fixed by the schema and cannot be chosen per claim.
 - Each slot holds 32 bytes: a `uint` as an unsigned 64-bit integer, little-endian in
   bytes 0-7, with byte 8 set to 1 to mark it present; a `text` value as SHA-256 of its
   UTF-8 after NFC normalisation; an absent value as 32 zero bytes. The present-marker
   exists so that a missing result can never pass as the number 0 (a record with no THC
   test must not prove "at most 0.3%").
-- `leaf_i = H("veilcore:v1:field", value_i, salt_i)`, with `salt_i = SHA-256("veilcore:v1:fsalt"
-  ‖ fieldSecret ‖ i)` (i as a 32-byte little-endian count). `fieldSecret` is 32 random bytes kept with the record's private part
-  and **never** inside the disclosed JSON: if the salts could be derived from anything a
-  recipient is shown, low-entropy hidden values could be guessed back.
-- `tree` = binary Merkle tree over the 16 leaves, `node = H("veilcore:v1:fnode", left, right)`.
-- `setRoot = H("veilcore:v1:fset", schemaId, tree)`.
+- `leaf_i = SHA-256(value_i ‖ salt_i)`, 55 bytes, one SHA-256 block, with `salt_i` the
+  first 23 bytes of `H("veilcore:v1:fsalt", fieldSecret, i)` (i as a 32-byte
+  little-endian count; 184 bits). `fieldSecret` is 32 random bytes kept with the record's
+  private part and **never** inside the disclosed JSON: if the salts could be derived from
+  anything a recipient is shown, low-entropy hidden values could be guessed back.
+- `setRoot = SHA-256("veilcore:v1:fset" ‖ schemaId ‖ leaf_0 ‖ … ‖ leaf_15)`: one hash over
+  all 16 leaves (560 bytes, the tag unpadded at 16 bytes). Opening one slot discloses its
+  value and salt and the other 15 leaves, which are salted and say nothing.
 - **Record commitment** = `H("veilcore:v1:frecord", setRoot, jsonDigest)`, where
   `jsonDigest` is SHA-256 of the canonical JSON of the committed fields (SPEC 4.2, which
   now includes `fieldSchema` and `fieldSetRoot`), exactly as today. So the existing record, its nonce, its batch
   anchor and its inclusion proof all work unchanged; the commitment simply also binds
   the field set.
 
-`H` is SHA-256 over 32-byte elements, tag right-padded with zeros: exactly Compact's
-`persistentHash`, so anyone can recompute every value with SHA-256 alone.
+`H` is SHA-256 over 32-byte elements, tag right-padded with zeros. Every hash here,
+including the leaf and the root, is exactly what Compact's `persistentHash` computes over
+those bytes, so anyone can recompute every value with SHA-256 alone. No two kinds of hash
+take inputs of the same length (55, 96, 560 bytes), so none can be presented as another.
 
 ## The contract (`contract/src/veilcore-claims.compact`)
 
-Seven circuits: `proveValue`, `proveRange`, `proveDistinct`, `proveUnchanged`, and the
-three laboratory-signed versions. Each
-recomputes the record commitment(s) from the witnesses and records the claim in event
+Five circuits: `proveValue`, `proveRange`, `proveDistinct`, `proveUnchanged` and
+`proveAttested`. Each recomputes the record commitment(s) from the witnesses (or, for
+`proveAttested`, checks a signature on one) and records the claim in event
 cells (`lastClaimKind`, `lastClaimRecord`, `lastClaimOther`, `lastClaimSchema`,
 `lastClaimSlot`, `lastClaimParam`, `lastClaimOp`) and a counter. Verifiers read the
 cells per transaction from the indexer, as for ownership proofs in the main contract.
@@ -82,7 +95,7 @@ fingerprints. (A maintenance update also cannot add ledger fields, so every fiel
 contract will need is in it from the start.)
 
 **How, provably** (`api/src/maintenance.ts`, `retireMaintenanceAuthorityProvably`). After
-the seven circuit keys are on chain, the deploy replaces the authority with an **empty
+the five circuit keys are on chain, the deploy replaces the authority with an **empty
 committee and a threshold of 1**: an authority no signature can ever satisfy, which anyone
 can read from the contract's state (`committee: []`, `threshold: 1`). That is checkable,
 unlike "we threw the key away". midnight-js cannot build it, so the signed maintenance
@@ -125,11 +138,49 @@ Nothing needs VeilCore's servers or VeilCore's cooperation.
   describes this). An absent value never counts as a difference.
 - **Statistical distance over thousands of values** (SNP arrays) is the wrong shape for
   per-slot claims; attest the laboratory's computation instead.
-- **Cost** (measured with Nite ZK Profiler, 3 Oct): `value` and `range` are k=16 (about
-  46,000 rows); the laboratory signature adds about 1,500. `distinct` and `unchanged`
-  rebuild two full trees and are k=19 (about 280,000 rows), against k=14 for the largest
-  circuit in the main contract. Both must be proved on the preprod proof server and in a
-  browser before mainnet; if k=19 is too slow in a browser, those two need a proof server.
+- **Size** (see below): every circuit is at most k=17, so a holder proves on their own
+  computer.
+
+## Size, and why the layout is what it is
+
+Memory for a proof roughly doubles with each step of k. On 3-4 October the first layout
+(a binary Merkle tree of 3-element hashes) was proved on a local chain on a 16 GB laptop:
+`distinct` (k=19) peaked at about 8.2 GB and passed; `unchanged` (k=19), right after it,
+took the proof server past the 12 GB Docker had and it was killed. A holder who cannot
+prove on their own machine has to hand the values to someone who can, which defeats the
+point. So the layout was changed before anything was published or deployed.
+
+In-circuit, one SHA-256 block costs about 1,940 rows (measured with `zkir mock-compile`).
+The old layout spent 2 blocks on each of 16 leaves and 15 nodes per record. Now a leaf is
+one block, the root is one hash of 9 blocks, and the schema terms are one element:
+
+| Circuit | Before (k, rows) | Now (k, rows) |
+|---|---|---|
+| `proveDistinct` | 19, 284,507 | **17, 128,015** |
+| `proveUnchanged` | 19, 277,391 | **17, 123,547** |
+| `proveRange` | 16, 54,037 | 16, 34,828 |
+| `proveValue` | 16, 45,868 | **15**, 29,339 |
+| `proveAttested` | (inside each claim) | **13**, 6,371 |
+| largest in the main contract | 14 | 14 |
+
+`contract/scripts/circuit-sizes.sh` prints these and fails if any circuit passes k=17.
+`proveDistinct` is about 3,000 rows under the k=17 limit: a compiler change could push it
+over, which that script would catch. Memory at k=17 is to be measured on the same laptop.
+
+## Mutation testing
+
+Every `assert` removed and every comparison flipped, one at a time, against the claims
+tests (4 Oct, after the layout change: 71 mutants). Survivors other than comments:
+
+- `schnorr.compact`, the subgroup check (`r * pk` is the identity) removed, or its AND
+  weakened to OR; and `q < 116` relaxed to `q <= 116`. These survived the run before too
+  and were wrongly reported as comments. Each now has a test that fails with it
+  (`claims-schnorr.test.ts`): the first two read the compiled circuit, because the JS
+  runtime refuses keys outside the subgroup before the circuit's check can run; the
+  third builds the one alternative challenge split that only `q < 116` refuses.
+- `schnorr.compact`, `c < p - 115 * 2^248` relaxed to `<=`: equivalent in practice. The
+  two differ only when `q = 115` and `c = p - 115 * 2^248`, which is a split of the
+  challenge 0; a challenge hash of 0 is not something anyone can produce.
 
 ## Prior art
 

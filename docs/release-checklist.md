@@ -15,10 +15,11 @@ to skip.
 ## 2. Build and test
 
 - [ ] Contract compiled with the pinned compiler. The version is named in the commit.
-- [ ] Every circuit of the main contract under the 700 ZKIR instruction budget. The claims
-      contract's two-tree circuits (proveDistinct, proveUnchanged, k=19) are the
-      exception, and are proved once on the release proof server and once in a browser,
-      with times recorded in the deployment record.
+- [ ] Every circuit of the main contract under the 700 ZKIR instruction budget.
+- [ ] `cd contract && bash scripts/circuit-sizes.sh` passes: every claims circuit at most
+      k=17, so a holder can prove on their own computer. The two largest (proveDistinct,
+      proveUnchanged) are proved back to back on an ordinary 16 GB laptop, with peak
+      memory and times recorded in the deployment record.
 - [ ] Mutation testing on any changed contract (remove each assert, flip each comparison):
       every surviving mutant is either a comment or explained in `docs/`.
 - [ ] `cd contract && npm test` passes, with the expected-fail attack tests still failing.

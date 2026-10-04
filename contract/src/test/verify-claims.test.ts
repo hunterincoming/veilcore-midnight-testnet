@@ -35,7 +35,7 @@ import {
   openSlot,
   sealFields,
   setRootOf,
-  treeOf,
+  leavesOf,
 } from "../fields.js";
 import { newAttesterKey, signRecord } from "../attest.js";
 import { type Claim, claimFromCells, verifyClaim } from "../verify-claims.js";
@@ -77,7 +77,7 @@ const sealRecord = (
   const schemaId = fieldSchemaId(SCHEMA);
   const setRoot = setRootOf(
     schemaId,
-    treeOf(
+    leavesOf(
       sealFields(
         typedSlotValues(SCHEMA, values),
         Buffer.from(fieldSecret, "hex"),
@@ -174,7 +174,9 @@ describe("verifyClaim", () => {
     expect(v.toCheck.join("\n")).toMatch(
       /to check: whether the record is current/,
     );
-    expect(v.toCheck.join("\n")).toMatch(/not laboratory-signed/);
+    expect(v.toCheck.join("\n")).toMatch(
+      /no laboratory signature was considered/,
+    );
     expect(v.toCheck.join("\n")).toMatch(/published claims contract/);
   });
 
@@ -251,24 +253,39 @@ describe("verifyClaim", () => {
     ).toMatch(/compare it with the text you were shown/);
   });
 
-  it("a laboratory-signed claim: the key is checked against the verifier's list", () => {
+  it("a laboratory-signed claim: an attested claim on the record, checked against the verifier's list", () => {
     const lab = newAttesterKey();
     const l = cells(
-      impure.proveAttestedValue(
-        ctx({
-          opening: openSlot(A.sealed.fieldSet, 13),
-          attester: lab.key,
-          signature: signRecord(lab.secret, A.sealed.commitment),
-        }),
+      impure.proveValue(
+        ctx({ opening: openSlot(A.sealed.fieldSet, 13) }),
         A.sealed.commitment,
         A.sealed.schemaId,
         13n,
         numberValue(9980n),
       ),
     );
+    const att = claimFromCells(
+      cells(
+        impure.proveAttested(
+          ctx({
+            attester: lab.key,
+            signature: signRecord(lab.secret, A.sealed.commitment),
+          }),
+          A.sealed.commitment,
+        ),
+      ),
+    );
+    expect(att.kind).toBe("attested");
+    expect(att.attester).toEqual(lab.key);
+    // The attested claim on its own.
+    const own = verifyClaim({ claim: att, trustedAttesters: [lab.key] });
+    expect(own.passed).toBe(true);
+    expect(own.statement).toContain("signed record");
+    // The value claim, read with it.
     const trusted = verifyClaim({
       claim: l,
       schema: SCHEMA,
+      attestations: [att],
       trustedAttesters: [lab.key],
     });
     expect(trusted.passed).toBe(true);
@@ -276,17 +293,83 @@ describe("verifyClaim", () => {
       "holds 99.80 percent, on values a laboratory signed",
     );
     expect(trusted.toCheck.join("\n")).toMatch(
-      /valid at the time of the claim transaction/,
+      /valid at the time of its attested claim/,
     );
+    // An untrusted key: refused, and the statement does not say "laboratory signed".
     const other = verifyClaim({
       claim: l,
       schema: SCHEMA,
+      attestations: [att],
       trustedAttesters: [newAttesterKey().key],
     });
     expect(other.passed).toBe(false);
-    expect(verifyClaim({ claim: l }).toCheck.join("\n")).toMatch(
-      /belongs to a laboratory you trust/,
+    expect(other.statement).not.toContain("laboratory signed");
+    expect(
+      verifyClaim({ claim: l, attestations: [att] }).toCheck.join("\n"),
+    ).toMatch(/belongs to a laboratory you trust/);
+    // An attestation on another record does not count, and is called out.
+    const elsewhere = { ...att, record: B.sealed.commitment };
+    const wrong = verifyClaim({
+      claim: l,
+      schema: SCHEMA,
+      attestations: [elsewhere],
+      trustedAttesters: [lab.key],
+    });
+    expect(wrong.passed).toBe(false);
+    expect(
+      wrong.checks
+        .filter((c) => !c.ok)
+        .map((c) => c.detail)
+        .join("\n"),
+    ).toMatch(/does not name|has no laboratory/);
+    expect(wrong.statement).not.toContain("laboratory signed");
+    // A non-attested claim passed as an attestation is refused.
+    const notOne = verifyClaim({
+      claim: l,
+      schema: SCHEMA,
+      attestations: [claimFromCells(l)],
+    });
+    expect(notOne.passed).toBe(false);
+  });
+
+  it("a distinctness claim is laboratory-signed only when both records are", () => {
+    const lab = newAttesterKey();
+    const d = cells(
+      impure.proveDistinct(
+        ctx({
+          first: A.sealed.fieldSet,
+          second: B.sealed.fieldSet,
+          terms: A.sealed.terms,
+        }),
+        A.sealed.commitment,
+        B.sealed.commitment,
+      ),
     );
+    const attest = (c: Uint8Array) =>
+      claimFromCells(
+        cells(
+          impure.proveAttested(
+            ctx({ attester: lab.key, signature: signRecord(lab.secret, c) }),
+            c,
+          ),
+        ),
+      );
+    const one = verifyClaim({
+      claim: d,
+      schema: SCHEMA,
+      attestations: [attest(A.sealed.commitment)],
+      trustedAttesters: [lab.key],
+    });
+    expect(one.passed).toBe(false);
+    expect(one.statement).not.toContain("laboratory signed");
+    const both = verifyClaim({
+      claim: d,
+      schema: SCHEMA,
+      attestations: [attest(A.sealed.commitment), attest(B.sealed.commitment)],
+      trustedAttesters: [lab.key],
+    });
+    expect(both.passed).toBe(true);
+    expect(both.statement).toContain("on values a laboratory signed");
   });
 
   it("distinct: states k as a count, never a verdict, and asks who chose the reference", () => {

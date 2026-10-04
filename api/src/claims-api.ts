@@ -3,7 +3,8 @@
 //
 // A holder proves one fact about a record it sealed with sha256/fields/v1: a value, a
 // bound on a number, that two records differ in enough comparable slots, or that a
-// correction changed only some slots; optionally on values a laboratory signed. Inputs
+// correction changed only some slots. A laboratory's signature on a record is its own
+// claim (proveAttested), read together with any other claim on that record. Inputs
 // are what the SDK hands a holder: the record's field set and the digest of its committed
 // JSON, the published schema document, and a laboratory's key and signature.
 //
@@ -37,7 +38,7 @@ import {
   emptyClaimsPrivateState,
 } from '../../contract/src/claims.js';
 import { type AttestationSignature, type JubjubPoint } from '../../contract/src/attest.js';
-import { SLOTS, commitmentOf, numberFrom, openSlot, type FieldSet } from '../../contract/src/fields.js';
+import { SALT_BYTES, SLOTS, commitmentOf, numberFrom, openSlot, type FieldSet } from '../../contract/src/fields.js';
 import { type FieldSchema, fieldSchemaId, schemaTermsOf, slotOf } from '../../contract/src/field-schema.js';
 import { type Claim, claimFromCells, disclosedText } from '../../contract/src/verify-claims.js';
 import { RECORD_NOT_REQUIRED, resolveNetwork } from './deploy-guard.js';
@@ -71,13 +72,6 @@ export type SealedRecord = {
 /** A laboratory's key and its signature on one record's commitment (contract/src/attest.ts). */
 export type LabSignature = { readonly key: JubjubPoint; readonly signature: AttestationSignature };
 
-/** One laboratory's key and its signatures on both records of a distinctness claim. */
-export type LabPairSignature = {
-  readonly key: JubjubPoint;
-  readonly first: AttestationSignature;
-  readonly second: AttestationSignature;
-};
-
 export type RangeDirection = 'at least' | 'at most';
 
 /** A landed claim: where it is, and what it published (read from that call's own state). */
@@ -97,6 +91,10 @@ export type ClaimCallTxData = { readonly public: { readonly nextContractState: P
 const toContractFieldSet = (r: SealedRecord): FieldSet => {
   if (r.fieldSet.values.length !== SLOTS || r.fieldSet.salts.length !== SLOTS)
     throw new Error('A field set has 16 values and 16 salts.');
+  if (r.fieldSet.salts.some((s) => s.length !== SALT_BYTES))
+    throw new Error(
+      'Each salt is 23 bytes (SPEC 4.5). A field set with 32-byte salts was sealed by an earlier draft of the format; seal it again.',
+    );
   if (r.jsonDigest.length !== 32) throw new Error('jsonDigest is 32 bytes.');
   return { values: [...r.fieldSet.values], salts: [...r.fieldSet.salts], jsonDigest: r.jsonDigest };
 };
@@ -206,65 +204,15 @@ export class ClaimsAPI {
     );
   }
 
-  /** proveValue, on a record a laboratory signed. Publishes the laboratory's key. */
-  async proveAttestedValue(record: SealedRecord, slot: number, lab: LabSignature): Promise<ClaimRef> {
-    checkSlot(slot);
-    const fs = toContractFieldSet(record);
-    const input: ClaimInput = { opening: openSlot(fs, slot), attester: lab.key, signature: lab.signature };
-    return this.claim('proveAttestedValue', input, (c) =>
-      c.callTx.proveAttestedValue(recordCommitment(record), record.fieldSet.schemaId, BigInt(slot), fs.values[slot]),
-    );
-  }
-
-  /** proveRange, on a record a laboratory signed. Publishes the laboratory's key. */
-  async proveAttestedRange(
-    record: SealedRecord,
-    schema: FieldSchema,
-    slot: number,
-    direction: RangeDirection,
-    bound: bigint,
-    lab: LabSignature,
-  ): Promise<ClaimRef> {
-    checkSlot(slot);
-    const terms = termsFor(schema, record);
-    const fs = toContractFieldSet(record);
-    const input: ClaimInput = {
-      opening: openSlot(fs, slot),
-      number: numberOrRefuse(fs.values[slot], slot),
-      terms,
-      attester: lab.key,
-      signature: lab.signature,
-    };
-    return this.claim('proveAttestedRange', input, (c) =>
-      c.callTx.proveAttestedRange(
-        recordCommitment(record),
-        record.fieldSet.schemaId,
-        BigInt(slot),
-        op(direction),
-        bound,
-      ),
-    );
-  }
-
-  /** proveDistinct, where one laboratory signed both records. Publishes the laboratory's key. */
-  async proveAttestedDistinct(
-    first: SealedRecord,
-    second: SealedRecord,
-    schema: FieldSchema,
-    lab: LabPairSignature,
-  ): Promise<ClaimRef> {
-    const terms = termsFor(schema, first, second);
-    const input: ClaimInput = {
-      first: toContractFieldSet(first),
-      second: toContractFieldSet(second),
-      terms,
-      attester: lab.key,
-      signature: lab.first,
-      secondSignature: lab.second,
-    };
-    return this.claim('proveAttestedDistinct', input, (c) =>
-      c.callTx.proveAttestedDistinct(recordCommitment(first), recordCommitment(second)),
-    );
+  /**
+   * A laboratory signed the record (its commitment, which binds every value). Publishes
+   * the record and the laboratory's key. Read together with any other claim on the same
+   * record, it makes that claim about values the laboratory sealed; a distinctness claim
+   * over two signed records needs one of these for each.
+   */
+  async proveAttested(record: SealedRecord, lab: LabSignature): Promise<ClaimRef> {
+    const input: ClaimInput = { attester: lab.key, signature: lab.signature };
+    return this.claim('proveAttested', input, (c) => c.callTx.proveAttested(recordCommitment(record)));
   }
 
   /**

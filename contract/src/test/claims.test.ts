@@ -13,11 +13,9 @@ import {
   SLOTS,
   type FieldSet,
   commitmentOf,
-  countValue,
   digestValue,
   leafOf,
   maskValue,
-  nodeOf,
   numberFrom,
   numberValue,
   openSlot,
@@ -25,6 +23,7 @@ import {
   schemaIdOf,
   sealFields,
   setRootOf,
+  termsValue,
 } from "../fields.js";
 import {
   JUBJUB_ORDER,
@@ -110,25 +109,21 @@ describe("off-chain field sets agree with the circuits", () => {
   it("every hash and encoding matches the compiled contract", () => {
     const v = digestValue("x");
     const s = sha("salt");
-    expect(hex(CC.fieldLeaf(v, s))).toBe(hex(leafOf(v, s)));
-    expect(hex(CC.fieldNode(v, s))).toBe(hex(nodeOf(v, s)));
-    expect(hex(CC.fieldSetRoot(v, s))).toBe(hex(setRootOf(v, s)));
+    const salt = s.slice(0, 23);
+    const leaves = Array.from({ length: SLOTS }, (_, i) => sha(`leaf ${i}`));
+    expect(hex(CC.fieldLeaf(v, salt))).toBe(hex(leafOf(v, salt)));
+    expect(hex(CC.fieldSetRoot(v, leaves))).toBe(hex(setRootOf(v, leaves)));
     expect(hex(CC.fieldRecord(v, s))).toBe(hex(recordOf(v, s)));
     for (const n of [0n, 1n, 258n, 9650n, (1n << 64n) - 1n])
       expect(hex(CC.numberBytes(n))).toBe(hex(numberValue(n)));
     expect(hex(CC.maskBytes(comparable))).toBe(hex(maskValue(comparable)));
-    for (const n of [0n, 3n, 16n])
-      expect(hex(CC.countBytes(n))).toBe(hex(countValue(n)));
-    expect(
-      hex(
-        CC.schemaId(
-          TERMS.documentDigest,
-          maskValue(comparable),
-          countValue(3n),
-          maskValue(numeric),
-        ),
-      ),
-    ).toBe(hex(SCHEMA));
+    for (const k of [0n, 3n, 16n, 255n])
+      expect(hex(CC.termsBytes({ ...TERMS, k }))).toBe(
+        hex(termsValue({ ...TERMS, k })),
+      );
+    expect(hex(CC.schemaId(TERMS.documentDigest, termsValue(TERMS)))).toBe(
+      hex(SCHEMA),
+    );
   });
 
   it("numbers round-trip and non-numbers are refused", () => {
@@ -223,16 +218,43 @@ describe("proveValue", () => {
     ).toThrow(/16 slots/);
   });
 
-  it("refuses a forged path that reorders siblings", () => {
+  it("refuses an opening whose leaves are reordered", () => {
     const sim = new ClaimsSimulator({ terms: TERMS });
     const o = openSlot(A.fs, 6);
-    const forged = {
-      ...o,
-      siblings: [o.siblings[1], o.siblings[0], o.siblings[2], o.siblings[3]],
-    };
+    // Slot 6's leaf moved to slot 7: the value is in the leaves, but not in its place.
+    const moved = [...o.leaves];
+    [moved[6], moved[7]] = [moved[7], moved[6]];
     expect(() =>
-      sim.call({ opening: forged }, "proveValue", A.c, SCHEMA, 6n, o.value),
+      sim.call(
+        { opening: { ...o, leaves: moved } },
+        "proveValue",
+        A.c,
+        SCHEMA,
+        6n,
+        o.value,
+      ),
+    ).toThrow(/different slot/);
+    // Swapping two other leaves keeps slot 6 in place but changes the root.
+    const other = [...o.leaves];
+    [other[0], other[1]] = [other[1], other[0]];
+    expect(() =>
+      sim.call(
+        { opening: { ...o, leaves: other } },
+        "proveValue",
+        A.c,
+        SCHEMA,
+        6n,
+        o.value,
+      ),
     ).toThrow(/does not belong/);
+  });
+
+  it("refuses an opening that claims slot 7 with slot 6's value", () => {
+    const sim = new ClaimsSimulator({ terms: TERMS });
+    const o = openSlot(A.fs, 6);
+    expect(() =>
+      sim.call({ opening: o }, "proveValue", A.c, SCHEMA, 7n, o.value),
+    ).toThrow(/different slot/);
   });
 });
 
@@ -654,31 +676,25 @@ describe("contract behaviour", () => {
   });
 });
 
-describe("laboratory-signed claims", () => {
+describe("laboratory-signed records", () => {
   const lab = newAttesterKey();
   const other = newAttesterKey();
   const commitOf = (fs: FieldSet): Uint8Array => commitmentOf(SCHEMA, fs);
 
-  it("a range claim on a field set the laboratory signed publishes the laboratory's key", () => {
+  it("an attested claim publishes the record and the laboratory's key, nothing else", () => {
     const sim = new ClaimsSimulator({ terms: TERMS });
-    const sig = signRecord(lab.secret, commitOf(A.fs));
     sim.call(
-      {
-        opening: openSlot(A.fs, 12),
-        number: 9650n,
-        attester: lab.key,
-        signature: sig,
-      },
-      "proveAttestedRange",
+      { attester: lab.key, signature: signRecord(lab.secret, commitOf(A.fs)) },
+      "proveAttested",
       A.c,
-      SCHEMA,
-      12n,
-      RangeOp.AT_LEAST,
-      9500n,
     );
-    expect(sim.state.lastClaimKind).toBe(ClaimKind.RANGE);
+    expect(sim.state.lastClaimKind).toBe(ClaimKind.ATTESTED);
+    expect(hex(sim.state.lastClaimRecord)).toBe(hex(A.c));
     expect(sim.state.lastClaimAttesterX).toBe(lab.key.x);
     expect(sim.state.lastClaimAttesterY).toBe(lab.key.y);
+    expect(hex(sim.state.lastClaimOther)).toBe("00".repeat(32));
+    expect(hex(sim.state.lastClaimSchema)).toBe("00".repeat(32));
+    expect(hex(sim.state.lastClaimParam)).toBe("00".repeat(32));
     // An unsigned claim afterwards clears the key: a verifier never sees a stale one.
     sim.call(
       { opening: openSlot(A.fs, 12), number: 9650n },
@@ -689,30 +705,22 @@ describe("laboratory-signed claims", () => {
       RangeOp.AT_LEAST,
       9500n,
     );
+    expect(sim.state.lastClaimKind).toBe(ClaimKind.RANGE);
     expect(sim.state.lastClaimAttesterX).toBe(0n);
+    expect(sim.state.lastClaimAttesterY).toBe(0n);
   });
 
-  it("refuses a signature on another field set, by another key, or tampered", () => {
+  it("refuses a signature on another record, by another key, or tampered", () => {
     const sim = new ClaimsSimulator({ terms: TERMS });
-    const base = {
-      opening: openSlot(A.fs, 12),
-      number: 9650n,
-      attester: lab.key,
-    };
     const go = (signature: ReturnType<typeof signRecord>, attester = lab.key) =>
-      sim.call(
-        { ...base, attester, signature },
-        "proveAttestedRange",
-        A.c,
-        SCHEMA,
-        12n,
-        RangeOp.AT_LEAST,
-        9500n,
-      );
+      sim.call({ attester, signature }, "proveAttested", A.c);
     expect(() => go(signRecord(lab.secret, commitOf(B.fs)))).toThrow(
       /signature does not verify/,
     );
     expect(() => go(signRecord(other.secret, commitOf(A.fs)))).toThrow(
+      /signature does not verify/,
+    );
+    expect(() => go(signRecord(lab.secret, commitOf(A.fs)), other.key)).toThrow(
       /signature does not verify/,
     );
     const good = signRecord(lab.secret, commitOf(A.fs));
@@ -724,52 +732,31 @@ describe("laboratory-signed claims", () => {
     ).toThrow(/not a signing key/);
   });
 
-  it("a value claim and a distinctness claim with one laboratory signing both field sets", () => {
+  it("one laboratory signing both records of a distinctness claim: one attested claim each", () => {
     const sim = new ClaimsSimulator({ terms: TERMS });
-    sim.call(
-      {
-        opening: openSlot(A.fs, 3),
-        attester: lab.key,
-        signature: signRecord(lab.secret, commitOf(A.fs)),
-      },
-      "proveAttestedValue",
-      A.c,
-      SCHEMA,
-      3n,
-      digestValue("155/159"),
-    );
-    expect(sim.state.lastClaimAttesterX).toBe(lab.key.x);
-    const p = {
-      first: A.fs,
-      second: B.fs,
-      terms: TERMS,
-      attester: lab.key,
-      signature: signRecord(lab.secret, commitOf(A.fs)),
-    };
-    sim.call(
-      { ...p, secondSignature: signRecord(lab.secret, commitOf(B.fs)) },
-      "proveAttestedDistinct",
-      A.c,
-      B.c,
-    );
+    sim.call({ first: A.fs, second: B.fs }, "proveDistinct", A.c, B.c);
     expect(sim.state.lastClaimKind).toBe(ClaimKind.DISTINCT);
-    expect(sim.state.lastClaimAttesterX).toBe(lab.key.x);
-    // The second field set signed by a different laboratory does not pass as one lab's work.
+    for (const r of [A, B]) {
+      sim.call(
+        {
+          attester: lab.key,
+          signature: signRecord(lab.secret, commitOf(r.fs)),
+        },
+        "proveAttested",
+        r.c,
+      );
+      expect(hex(sim.state.lastClaimRecord)).toBe(hex(r.c));
+      expect(sim.state.lastClaimAttesterX).toBe(lab.key.x);
+    }
+    // B's signature cannot be presented as A's.
     expect(() =>
       sim.call(
-        { ...p, secondSignature: signRecord(other.secret, commitOf(B.fs)) },
-        "proveAttestedDistinct",
+        {
+          attester: lab.key,
+          signature: signRecord(lab.secret, commitOf(B.fs)),
+        },
+        "proveAttested",
         A.c,
-        B.c,
-      ),
-    ).toThrow(/signature does not verify/);
-    // A signature over the wrong set in the second slot fails too.
-    expect(() =>
-      sim.call(
-        { ...p, secondSignature: signRecord(lab.secret, commitOf(A.fs)) },
-        "proveAttestedDistinct",
-        A.c,
-        B.c,
       ),
     ).toThrow(/signature does not verify/);
   });

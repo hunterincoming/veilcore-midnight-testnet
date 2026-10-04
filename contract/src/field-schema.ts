@@ -20,7 +20,7 @@ import {
   schemaIdOf,
   sealFields,
   setRootOf,
-  treeOf,
+  leavesOf,
 } from "./fields.js";
 
 const sha256 = (b: Uint8Array): Uint8Array =>
@@ -339,7 +339,7 @@ export const sealFieldSetFile = (f: FieldSetFile): SealedFieldSet => {
     schemaId,
     terms,
     fieldSet,
-    setRoot: setRootOf(schemaId, treeOf(fieldSet)),
+    setRoot: setRootOf(schemaId, leavesOf(fieldSet)),
     commitment: commitmentOf(schemaId, fieldSet),
   };
 };
@@ -354,6 +354,7 @@ export const fieldSetSummary = (input: {
   schemaId: string;
   slotValues: string[];
   salts: string[];
+  leaves: string[];
   setRoot: string;
 } => {
   const s = sealFieldSetFile({ ...input, jsonDigest: "00".repeat(32) });
@@ -362,6 +363,7 @@ export const fieldSetSummary = (input: {
     schemaId: hex(s.schemaId),
     slotValues: s.fieldSet.values.map(hex),
     salts: s.fieldSet.salts.map(hex),
+    leaves: leavesOf(s.fieldSet).map(hex),
     setRoot: hex(s.setRoot),
   };
 };

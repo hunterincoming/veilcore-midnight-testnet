@@ -3,8 +3,9 @@
 //
 // Some checks are mechanical given the right inputs, and are made here: the schema
 // document recomputes to the claim's schema id (3), the slot has the type the claim
-// needs (3), a record's committed JSON matches the claim (4), a laboratory key is
-// present and, if the verifier lists the keys it trusts, one of them (6), an unchanged
+// needs (3), a record's committed JSON matches the claim (4), every record the claim
+// names carries a laboratory's attested claim and, if the verifier lists the keys it
+// trusts, by one of them (6), an unchanged
 // claim's mask is not every slot and the correction names the original (8), and what
 // earlier claims on the same slot already published (9). The rest need knowledge this
 // code cannot have (who identified a reference, whether a key was valid on a date) and
@@ -33,13 +34,18 @@ import { type JubjubPoint } from "./attest.js";
 
 const hex = (b: Uint8Array): string => Buffer.from(b).toString("hex");
 
-/** One claim, as published. */
+/**
+ * One claim, as published. "attested" is a laboratory's signature on a record (the record
+ * commitment, which binds every value); read together with another claim on the same
+ * record, it makes that claim about values a laboratory sealed.
+ */
 export type Claim = {
-  readonly kind: "value" | "range" | "distinct" | "unchanged";
+  readonly kind: "value" | "range" | "distinct" | "unchanged" | "attested";
   /** The record the claim is about (distinct: the first; unchanged: the original). */
   readonly record: Uint8Array;
   /** distinct: the other record; unchanged: the correction. */
   readonly other?: Uint8Array;
+  /** The schema id (32 zero bytes for an attested claim, which names none). */
   readonly schema: Uint8Array;
   /** value and range: the slot. */
   readonly slot?: number;
@@ -50,7 +56,7 @@ export type Claim = {
   readonly op?: "at least" | "at most";
   /** unchanged: the slots allowed to change. */
   readonly mayChange?: boolean[];
-  /** The laboratory key, for a laboratory-signed claim. */
+  /** attested: the laboratory's key. */
   readonly attester?: JubjubPoint;
 };
 
@@ -99,6 +105,12 @@ export const claimFromCells = (l: ClaimsLedger): Claim => {
         other: l.lastClaimOther,
         mayChange: maskFrom(l.lastClaimParam),
       };
+    case ClaimKind.ATTESTED:
+      if (attester === undefined)
+        throw new Error(
+          "An attested claim with no laboratory key: not a claim this contract writes.",
+        );
+      return { ...base, kind: "attested" };
     default:
       throw new Error("Those cells hold no claim (no claim has been made).");
   }
@@ -136,6 +148,11 @@ export type ClaimVerifyInput = {
   readonly shownValue?: TypedSlotValue;
   /** Laboratory keys the verifier trusts (SPEC 7). */
   readonly trustedAttesters?: readonly JubjubPoint[];
+  /**
+   * Attested claims (a laboratory's signature, read from the chain) on the record(s) this
+   * claim names. Each named record needs its own.
+   */
+  readonly attestations?: readonly Claim[];
   /** Earlier claims on the same record(s), read from the chain, for disclosure accounting. */
   readonly earlierClaims?: readonly Claim[];
 };
@@ -188,8 +205,10 @@ export const verifyClaim = (input: ClaimVerifyInput): ClaimVerdict => {
         : ""),
   );
 
-  // 3. The schema.
-  if (schema === undefined) {
+  // 3. The schema (an attested claim names none: the signature is on the whole record).
+  if (claim.kind === "attested") {
+    // nothing to check
+  } else if (schema === undefined) {
     toCheck.push(
       `to check: obtain schema ${short(claim.schema)} from its publisher and recompute its id; apply its scale and unit`,
     );
@@ -295,12 +314,13 @@ export const verifyClaim = (input: ClaimVerifyInput): ClaimVerdict => {
       continue;
     }
     recordFor.set(c, env);
-    const schemaOk = env.fieldSchema === hex(claim.schema);
+    const schemaOk =
+      claim.kind === "attested" || env.fieldSchema === hex(claim.schema);
     check(
       4,
       schemaOk,
       schemaOk
-        ? `record JSON ${i + 1} is sha256/fields/v1, recomputes to ${short(named[which])} and names the claim's schema`
+        ? `record JSON ${i + 1} is sha256/fields/v1, recomputes to ${short(named[which])}${claim.kind === "attested" ? "" : " and names the claim's schema"}`
         : `record JSON ${i + 1} recomputes to a named record but its fieldSchema is not the claim's schema`,
     );
     if (
@@ -325,18 +345,8 @@ export const verifyClaim = (input: ClaimVerifyInput): ClaimVerdict => {
     "to check: whether the record is current (not superseded). Until that is established, report the claim as about the record as sealed",
   );
 
-  // 6. Laboratory signature.
-  if (claim.attester === undefined) {
-    toCheck.push(
-      "note: not laboratory-signed. It shows only that the holder sealed these values, not that a laboratory did",
-    );
-  } else {
-    const k = claim.attester;
-    check(
-      6,
-      k.x !== 0n || k.y !== 0n,
-      `laboratory key (${k.x.toString(16).slice(0, 12)}…, ${k.y.toString(16).slice(0, 12)}…) is published`,
-    );
+  // 6. Laboratory signatures: the claim itself (attested), or one attested claim per record.
+  const trust = (k: JubjubPoint): void => {
     if (input.trustedAttesters !== undefined) {
       const trusted = input.trustedAttesters.some(
         (t) => t.x === k.x && t.y === k.y,
@@ -345,17 +355,69 @@ export const verifyClaim = (input: ClaimVerifyInput): ClaimVerdict => {
         6,
         trusted,
         trusted
-          ? "the laboratory key is one you trust"
-          : "the laboratory key is NOT one you listed as trusted",
+          ? `laboratory key ${keyText(k)} is one you trust`
+          : `laboratory key ${keyText(k)} is NOT one you listed as trusted`,
       );
     } else
       toCheck.push(
-        "to check: the laboratory key belongs to a laboratory you trust (SPEC 7)",
+        `to check: laboratory key ${keyText(k)} belongs to a laboratory you trust (SPEC 7)`,
       );
-    toCheck.push(
-      "to check: the laboratory key was valid at the time of the claim transaction, not only at the record's anchor",
+  };
+  const signers: JubjubPoint[] = [];
+  if (claim.kind === "attested") {
+    const k = claim.attester!;
+    check(
+      6,
+      k.x !== 0n || k.y !== 0n,
+      `laboratory key ${keyText(k)} is published`,
     );
+    trust(k);
+    signers.push(k);
+  } else if (input.attestations === undefined) {
+    toCheck.push(
+      "note: no laboratory signature was considered. It shows only that the holder sealed these values; pass the laboratory's attested claims on the record(s) to check that a laboratory did",
+    );
+  } else {
+    for (const a of input.attestations) {
+      if (a.kind !== "attested" || a.attester === undefined) {
+        check(
+          6,
+          false,
+          `an attestation given is a ${a.kind} claim, not a laboratory's signature`,
+        );
+        continue;
+      }
+      if (!named.some((n) => hex(n) === hex(a.record)))
+        check(
+          6,
+          false,
+          `an attestation given is on record ${short(a.record)}, which this claim does not name`,
+        );
+    }
+    for (const n of named) {
+      const on = input.attestations.filter(
+        (a) =>
+          a.kind === "attested" &&
+          a.attester !== undefined &&
+          hex(a.record) === hex(n),
+      );
+      check(
+        6,
+        on.length > 0,
+        on.length > 0
+          ? `record ${short(n)} is signed by a laboratory (attested claim)`
+          : `record ${short(n)} has no laboratory's attested claim among those given`,
+      );
+      for (const a of on) {
+        trust(a.attester!);
+        signers.push(a.attester!);
+      }
+    }
   }
+  if (signers.length > 0)
+    toCheck.push(
+      "to check: each laboratory key was valid at the time of its attested claim, not only at the record's anchor",
+    );
 
   // 7. Distinct: who identified the reference.
   if (claim.kind === "distinct")
@@ -408,9 +470,18 @@ export const verifyClaim = (input: ClaimVerifyInput): ClaimVerdict => {
     );
   }
 
+  const labSigned =
+    claim.kind !== "attested" &&
+    input.attestations !== undefined &&
+    checks.filter((c) => c.spec === 6).every((c) => c.ok) &&
+    named.every((n) =>
+      input.attestations!.some(
+        (a) => a.kind === "attested" && hex(a.record) === hex(n),
+      ),
+    );
   return {
     claim,
-    statement: statementOf(claim, schema, d),
+    statement: statementOf(claim, schema, d, labSigned),
     checks,
     toCheck,
     passed: checks.every((c) => c.ok),
@@ -461,12 +532,16 @@ export const disclosedText = (
   return parts.length === 0 ? "nothing about its value" : parts.join("; ");
 };
 
+const keyText = (k: JubjubPoint): string =>
+  `(${k.x.toString(16).slice(0, 12)}…, ${k.y.toString(16).slice(0, 12)}…)`;
+
 const statementOf = (
   c: Claim,
   schema: FieldSchema | undefined,
   d: FieldSchemaSlot | undefined,
+  labSigned: boolean,
 ): string => {
-  const lab = c.attester ? ", on values a laboratory signed" : "";
+  const lab = labSigned ? ", on values a laboratory signed" : "";
   const where = `slot ${c.slot}${d?.path ? ` (${d.path})` : ""}`;
   switch (c.kind) {
     case "value":
@@ -478,6 +553,8 @@ const statementOf = (
     case "distinct":
       return `records ${hex(c.record)} and ${hex(c.other!)}, as sealed, differ in at least ${schema ? schema.k : "the schema's k"} comparable values${lab}. This is a count, not a determination of distinctness, which is the examining body's.`;
     case "unchanged":
-      return `record ${hex(c.other!)} has the same values as record ${hex(c.record)} outside slots ${c.mayChange!.flatMap((b, i) => (b ? [i] : [])).join(", ") || "(none)"}. It does not say which is the correction.`;
+      return `record ${hex(c.other!)} has the same values as record ${hex(c.record)} outside slots ${c.mayChange!.flatMap((b, i) => (b ? [i] : [])).join(", ") || "(none)"}${lab}. It does not say which is the correction.`;
+    case "attested":
+      return `the laboratory with key ${keyText(c.attester!)} signed record ${hex(c.record)} (its commitment, which binds every value it seals).`;
   }
 };

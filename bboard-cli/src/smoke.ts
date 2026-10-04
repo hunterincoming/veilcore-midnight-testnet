@@ -341,21 +341,30 @@ export const claimsPhase = async (
   );
 
   const lab = newAttesterKey();
-  const ar = await cl.proveAttestedRange(A.record, SMOKE_SCHEMA, 4, 'at most', 9700n, {
+  const at = await cl.proveAttested(A.record, {
     key: lab.key,
     signature: signRecord(lab.secret, A.sealed.commitment),
   });
-  const reading = await cl.readClaim(ar.txId, indexerUri);
+  const reading = await cl.readClaim(at.txId, indexerUri);
   must(
-    reading.entryPoint === 'proveAttestedRange' &&
+    reading.entryPoint === 'proveAttested' &&
+      reading.claim.kind === 'attested' &&
+      same(reading.claim.record, A.sealed.commitment) &&
       reading.claim.attester?.x === lab.key.x &&
       reading.claim.attester?.y === lab.key.y,
-    "proveAttestedRange: the chain shows the laboratory's key with the bound",
+    "proveAttested: the chain shows the laboratory's key on the record",
   );
-  const verdict = verifyClaim({ claim: reading.cells, schema: SMOKE_SCHEMA, trustedAttesters: [lab.key] });
+  const hi = await cl.proveRange(A.record, SMOKE_SCHEMA, 4, 'at most', 9700n);
+  const hiReading = await cl.readClaim(hi.txId, indexerUri);
+  const verdict = verifyClaim({
+    claim: hiReading.cells,
+    schema: SMOKE_SCHEMA,
+    attestations: [reading.claim],
+    trustedAttesters: [lab.key],
+  });
   must(
-    verdict.passed && verdict.statement.includes('at most 97.00 percent'),
-    'the claims verifier accepts it against the schema document and the trusted key',
+    verdict.passed && verdict.statement.includes('at most 97.00 percent, on values a laboratory signed'),
+    'the claims verifier reads a range claim with the attested claim, against the schema document and the trusted key',
   );
   await refused(
     'reading a claim from a transaction that made no claim on this contract',

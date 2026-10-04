@@ -23,7 +23,7 @@ import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { toHex } from '@midnight-ntwrk/midnight-js-utils';
 import { type FieldSetFile, type SealedFieldSet, sealFieldSetFile } from '../../contract/src/field-schema.js';
 import { type AttestationSignature, type JubjubPoint, attesterKeyOf, signRecord } from '../../contract/src/attest.js';
-import { type LabPairSignature, type LabSignature, type SealedRecord } from '../../api/src/claims-api.js';
+import { type LabSignature, type SealedRecord } from '../../api/src/claims-api.js';
 
 export type LoadedFieldSet = {
   readonly file: FieldSetFile;
@@ -141,12 +141,6 @@ export const labSignature = (a: ReturnType<typeof readAttestationFile>, record: 
   key: a.key,
   signature: signatureFor(a, record),
 });
-
-export const labPairSignature = (
-  a: ReturnType<typeof readAttestationFile>,
-  first: SealedFieldSet,
-  second: SealedFieldSet,
-): LabPairSignature => ({ key: a.key, first: signatureFor(a, first), second: signatureFor(a, second) });
 
 /**
  * Sign record commitments as a laboratory and write (or add to) an attestation file. For

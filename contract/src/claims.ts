@@ -35,7 +35,7 @@ export const claimsPureCircuits = Claims.pureCircuits;
  *   value, range           opening (+ number and terms for a range)
  *   distinct               first, second, terms
  *   unchanged              first, second
- *   attested versions      the same, plus attester and signature (and secondSignature for distinct)
+ *   attested               attester and signature
  * A witness asked for something not given throws, so the call is never built.
  */
 export type ClaimInput = {
@@ -46,7 +46,6 @@ export type ClaimInput = {
   readonly terms?: Claims.SchemaTerms;
   readonly attester?: JubjubPoint;
   readonly signature?: AttestationSignature;
-  readonly secondSignature?: AttestationSignature;
 };
 
 /** Private state of a claims client: the input of the call being made, or nothing. */
@@ -94,13 +93,6 @@ export const claimsWitnesses: W = {
   attesterSignature: ({ privateState }: Ctx) => [
     privateState,
     need(privateState.input.signature, "a laboratory signature"),
-  ],
-  secondAttesterSignature: ({ privateState }: Ctx) => [
-    privateState,
-    need(
-      privateState.input.secondSignature,
-      "a laboratory signature on the second record",
-    ),
   ],
   schnorrReduction: ({ privateState }: Ctx, h: bigint) => [
     privateState,

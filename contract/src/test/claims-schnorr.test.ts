@@ -5,12 +5,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { createHash, randomBytes } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { ecAdd, ecMul, ecMulGenerator } from "@midnight-ntwrk/compact-runtime";
-import {
-  RangeOp,
-  ClaimKind,
-} from "../managed/veilcore-claims/contract/index.js";
+import { ClaimKind } from "../managed/veilcore-claims/contract/index.js";
 import { CC, ClaimsSimulator } from "./claims-simulator.js";
 import {
   ABSENT,
@@ -18,7 +16,6 @@ import {
   commitmentOf,
   digestValue,
   numberValue,
-  openSlot,
   schemaIdOf,
   sealFields,
 } from "../fields.js";
@@ -65,21 +62,7 @@ const rangeClaim = (
   signature: AttestationSignature,
   reduction?: (h: bigint) => [bigint, bigint],
 ): void =>
-  sim.call(
-    {
-      opening: openSlot(A.fs, 12),
-      number: 9650n,
-      attester: lab.key,
-      signature,
-      reduction,
-    },
-    "proveAttestedRange",
-    A.c,
-    SCHEMA,
-    12n,
-    RangeOp.AT_LEAST,
-    9500n,
-  );
+  sim.call({ attester: lab.key, signature, reduction }, "proveAttested", A.c);
 
 describe("laboratory signature check", () => {
   it("an honest signature verifies (the harness itself works)", () => {
@@ -125,6 +108,65 @@ describe("laboratory signature check", () => {
       return;
     }
     throw new Error("no suitable challenge found in 2000 tries");
+  });
+
+  it("refuses the alternative split with a quotient of exactly 116 (challenges below 2^248)", () => {
+    // For q = 0 the alternative (116, c - d) passes every other check: c - d is always below
+    // p - 115 * 2^248, and 116 * 2^248 + c - d = c + p. Only "q < 116" refuses it, so a
+    // mutant "q <= 116" must fail here (mutation run, 4 Oct).
+    const d = 116n * TWO_248 - P;
+    for (let tries = 0; tries < 20000; tries++) {
+      const k = rnd();
+      const Rp = ecMulGenerator(k);
+      const h = challenge(Rp, A.c);
+      if (h >= TWO_248 || h < d) continue;
+      const c2 = h - d;
+      expect((116n * TWO_248 + c2) % P).toBe(h % P);
+      expect(c2 < P - 115n * TWO_248).toBe(true);
+      const sig = { announcement: Rp, response: (k + c2 * lab.secret) % R };
+      const sim = new ClaimsSimulator({ terms: TERMS });
+      expect(() => rangeClaim(sim, sig, () => [116n, c2])).toThrow(
+        /quotient out of range/,
+      );
+      return;
+    }
+    throw new Error("no challenge below 2^248 found in 20000 tries");
+  });
+
+  it("the circuit asserts r * pk is the identity, both coordinates (x = 0 AND y = 1)", () => {
+    // The JS runtime refuses keys outside the subgroup before the circuit's own check runs,
+    // so no call can reach it; the compiled circuit is read instead. Between the subgroup
+    // product and the challenge hash there must be exactly: x == 0, y == 1, their AND,
+    // and an assert. Removing the assert, or weakening AND to OR, changes this shape
+    // (mutation run, 4 Oct: both survived every behavioural test).
+    const ins = (
+      JSON.parse(
+        readFileSync(
+          new URL(
+            "../managed/veilcore-claims/zkir/proveAttested.zkir",
+            import.meta.url,
+          ),
+          "utf8",
+        ),
+      ) as {
+        instructions: { op: string; a?: number; b?: number; bit?: number }[];
+      }
+    ).instructions;
+    const firstAdd = ins.findIndex((i) => i.op === "ec_add");
+    const hash = ins.findIndex((i) => i.op === "transient_hash");
+    expect(firstAdd).toBeGreaterThan(0);
+    expect(hash).toBeGreaterThan(firstAdd);
+    const between = ins.slice(firstAdd + 1, hash);
+    expect(between.map((i) => i.op)).toEqual([
+      "test_eq",
+      "test_eq",
+      "cond_select",
+      "assert",
+    ]);
+    // AND is cond_select(x == 0, y == 1, false). "false" is the constant the x != 0 check
+    // selects when x == 0 (its "a").
+    const notZero = ins.slice(0, firstAdd).find((i) => i.op === "cond_select")!;
+    expect(between[2].b).toBe(notZero.a);
   });
 
   it("refuses a signature whose two sides agree in y but not x", () => {

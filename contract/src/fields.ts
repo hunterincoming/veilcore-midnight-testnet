@@ -1,5 +1,7 @@
 // Field sets (SPEC 4.5, commitment algorithm `sha256/fields/v1`), computed with plain
-// SHA-256 so that nothing here depends on Midnight tooling. The claims contract
+// SHA-256 so that nothing here depends on Midnight tooling. A leaf is one SHA-256 block
+// and the root is one hash over the 16 leaves, so the claims contract's proofs stay small
+// enough to make on an ordinary computer (docs/claims-design.md, "Size"). The claims contract
 // recomputes the same values in-circuit; contract/src/test/claims.test.ts checks that
 // the two agree.
 // SPDX-License-Identifier: Apache-2.0
@@ -77,26 +79,56 @@ export type SchemaTerms = {
   readonly numeric: boolean[];
 };
 
+/**
+ * The schema's terms in one 32-byte element: the comparable mask in bytes 0-1 and the
+ * numeric mask in bytes 2-3 (slot i is bit i, little-endian), k in byte 4, the rest zero.
+ */
+export const termsValue = (t: SchemaTerms): Uint8Array => {
+  if (t.k < 0n || t.k > 255n) throw new Error("k is 0 to 255");
+  const c = maskValue(t.comparable);
+  const n = maskValue(t.numeric);
+  const b = new Uint8Array(32);
+  b.set(c.subarray(0, 2), 0);
+  b.set(n.subarray(0, 2), 2);
+  b[4] = Number(t.k);
+  return b;
+};
+
 export const schemaIdOf = (t: SchemaTerms): Uint8Array =>
-  h(
-    tag("veilcore:v1:fschema"),
-    t.documentDigest,
-    maskValue(t.comparable),
-    countValue(t.k),
-    maskValue(t.numeric),
+  h(tag("veilcore:v1:fschema"), t.documentDigest, termsValue(t));
+
+/** A slot's salt: the first 23 bytes of H(fsalt, fieldSecret, count(slot)). */
+export const SALT_BYTES = 23;
+export const saltOf = (fieldSecret: Uint8Array, slot: number): Uint8Array =>
+  h(tag("veilcore:v1:fsalt"), fieldSecret, countValue(BigInt(slot))).slice(
+    0,
+    SALT_BYTES,
   );
 
-export const saltOf = (fieldSecret: Uint8Array, slot: number): Uint8Array =>
-  h(tag("veilcore:v1:fsalt"), fieldSecret, countValue(BigInt(slot)));
+/** leaf = SHA-256(value || salt): 55 bytes, one SHA-256 block. */
+export const leafOf = (value: Uint8Array, salt: Uint8Array): Uint8Array => {
+  if (value.length !== 32) throw new Error("a slot value is 32 bytes");
+  if (salt.length !== SALT_BYTES) throw new Error("a salt is 23 bytes");
+  const b = new Uint8Array(55);
+  b.set(value);
+  b.set(salt, 32);
+  return sha256(b);
+};
 
-export const leafOf = (value: Uint8Array, salt: Uint8Array): Uint8Array =>
-  h(tag("veilcore:v1:field"), value, salt);
+const SET_TAG = new TextEncoder().encode("veilcore:v1:fset"); // exactly 16 bytes
 
-export const nodeOf = (l: Uint8Array, r: Uint8Array): Uint8Array =>
-  h(tag("veilcore:v1:fnode"), l, r);
-
-export const setRootOf = (schemaId: Uint8Array, tree: Uint8Array): Uint8Array =>
-  h(tag("veilcore:v1:fset"), schemaId, tree);
+/** fieldSetRoot = SHA-256("veilcore:v1:fset" || schemaId || the 16 leaves): 560 bytes. */
+export const setRootOf = (
+  schemaId: Uint8Array,
+  leaves: readonly Uint8Array[],
+): Uint8Array => {
+  if (leaves.length !== SLOTS) throw new Error("a field set has 16 leaves");
+  const b = new Uint8Array(16 + 32 + 32 * SLOTS);
+  b.set(SET_TAG);
+  b.set(schemaId, 16);
+  leaves.forEach((l, i) => b.set(l, 48 + 32 * i));
+  return sha256(b);
+};
 
 export const recordOf = (
   setRoot: Uint8Array,
@@ -126,51 +158,32 @@ export const sealFields = (
   };
 };
 
-/** Every level of the tree, leaves first. */
-const levels = (fs: FieldSet): Uint8Array[][] => {
-  const out: Uint8Array[][] = [fs.values.map((v, i) => leafOf(v, fs.salts[i]))];
-  while (out[out.length - 1].length > 1) {
-    const prev = out[out.length - 1];
-    const next: Uint8Array[] = [];
-    for (let i = 0; i < prev.length; i += 2)
-      next.push(nodeOf(prev[i], prev[i + 1]));
-    out.push(next);
-  }
-  return out;
-};
-
-export const treeOf = (fs: FieldSet): Uint8Array => levels(fs)[4][0];
+/** The 16 leaves. Each reveals nothing about its value without its salt. */
+export const leavesOf = (fs: FieldSet): Uint8Array[] =>
+  fs.values.map((v, i) => leafOf(v, fs.salts[i]));
 
 /** The record commitment of a field set under a schema. */
 export const commitmentOf = (schemaId: Uint8Array, fs: FieldSet): Uint8Array =>
-  recordOf(setRootOf(schemaId, treeOf(fs)), fs.jsonDigest);
+  recordOf(setRootOf(schemaId, leavesOf(fs)), fs.jsonDigest);
 
+/**
+ * One slot, opened: its value and salt, and all 16 leaves (the other 15 are salted
+ * hashes and disclose nothing about their values).
+ */
 export type SlotOpening = {
   value: Uint8Array;
   salt: Uint8Array;
-  siblings: Uint8Array[];
-  bits: boolean[];
+  leaves: Uint8Array[];
   jsonDigest: Uint8Array;
 };
 
-/** Open one slot: its value, salt and the path to the tree root. */
 export const openSlot = (fs: FieldSet, slot: number): SlotOpening => {
   if (!Number.isInteger(slot) || slot < 0 || slot >= SLOTS)
     throw new Error("slot is 0 to 15");
-  const lv = levels(fs);
-  const siblings: Uint8Array[] = [];
-  const bits: boolean[] = [];
-  let i = slot;
-  for (let level = 0; level < 4; level++) {
-    bits.push((i & 1) === 1);
-    siblings.push(lv[level][i ^ 1]);
-    i >>= 1;
-  }
   return {
     value: fs.values[slot],
     salt: fs.salts[slot],
-    siblings,
-    bits,
+    leaves: leavesOf(fs),
     jsonDigest: fs.jsonDigest,
   };
 };

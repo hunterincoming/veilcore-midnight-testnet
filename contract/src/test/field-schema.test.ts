@@ -91,14 +91,7 @@ describe("a sealed field-set file is what the claims contract recomputes", () =>
   it("the schema id is the contract's", () => {
     const t = schemaTermsOf(input.schema);
     expect(hex(fieldSchemaId(input.schema))).toBe(
-      hex(
-        CC.schemaId(
-          t.documentDigest,
-          CC.maskBytes(t.comparable),
-          CC.countBytes(t.k),
-          CC.maskBytes(t.numeric),
-        ),
-      ),
+      hex(CC.schemaId(t.documentDigest, CC.termsBytes(t))),
     );
   });
 

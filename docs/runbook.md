@@ -256,10 +256,10 @@ not in a filed deployment record and its keys have no committed fingerprints.
 ### Deploy it
 
 1. At the main menu, type `34`. It explains what happens; type `yes`.
-2. It deploys, adds its seven circuit keys, then replaces its maintenance authority with
+2. It deploys, adds its five circuit keys, then replaces its maintenance authority with
    an **empty committee**. You do not write any key down: there is none to keep. Anyone
    reading the contract can see that nobody can change it.
-3. Done when you see `Claims contract ready at …: all 7 circuit keys on chain, maintenance
+3. Done when you see `Claims contract ready at …: all 5 circuit keys on chain, maintenance
    authority an empty committee`. Copy the address.
 4. If it stops partway, do not choose `34` again. Run again with the same password and
    wallet, choose `36` (Finish a claims deploy), and paste the address.
@@ -278,19 +278,21 @@ when the record is sealed.
 2. Give the path to the field-set file. For `d`, also the reference record's file; for
    `u`, the original first, then the correction's.
 3. For `v`, `b` and `d`: the path to a **laboratory attestation file** if a laboratory
-   signed the record, or press Enter for none.
+   signed the record, or press Enter for none. The laboratory's signature is published as
+   its own claim on each record (one more transaction each, after the claim).
 4. Answer the questions (which slot, at least or at most, the bound in the schema's
    unit). Before a value or a bound it shows what this run has already published about
    that slot. **A value claim publishes the value, permanently. Every bound is public too;
    several bounds narrow the hidden number.**
 5. Type `yes` to send it. Anything else sends nothing.
-6. It shows `Give the verifier this transaction id: …` and the claim in plain words. Send
-   the verifier that transaction id.
+6. It shows `Give the verifier this transaction id: …` (and, with a laboratory file, the
+   attested claims' ids) and the claim in plain words. Send the verifier all of them.
 
 ### Check a claim (as a verifier)
 
-Type `38`, paste the transaction id, and give the schema document's file (from whoever
-published the schema, not from the prover) or press Enter to skip. It shows the claim in
+Type `38`, paste the transaction id, give the schema document's file (from whoever
+published the schema, not from the prover) or press Enter to skip, and paste the
+laboratory's attested claim ids if you were given any. It shows the claim in
 plain words, each check made (`ok` or `FAILED`), and a list of `to check:` lines this tool
 cannot check for you, such as whether the record is anchored and whether a laboratory key
 is one you trust.

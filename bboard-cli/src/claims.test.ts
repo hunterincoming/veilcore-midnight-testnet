@@ -33,16 +33,8 @@ vi.mock('@midnight-ntwrk/midnight-js-contracts', async (orig) => {
 
 const { ClaimsAPI, assertClaimsDeployAllowed } = await import('../../api/src/claims-api');
 const { claimsPrivateStateKey } = await import('../../api/src/claims-types');
-const {
-  loadFieldSet,
-  readFieldSetFile,
-  scaledBound,
-  slotByName,
-  readAttestationFile,
-  writeAttestation,
-  labSignature,
-  labPairSignature,
-} = await import('./fields');
+const { loadFieldSet, readFieldSetFile, scaledBound, slotByName, readAttestationFile, writeAttestation, labSignature } =
+  await import('./fields');
 
 const ADDR = 'ab'.repeat(32);
 const VECTORS = JSON.parse(readFileSync(new URL('../../contract/vectors/fields-v1.json', import.meta.url), 'utf8')) as {
@@ -116,7 +108,7 @@ describe('field-set files', () => {
   it('seal to the same schema id and commitment as the SDK vectors', () => {
     const a = loadFieldSet(fileA);
     expect(Buffer.from(a.sealed.schemaId).toString('hex')).toBe(
-      '53304a427e34f78ebbb162464ca1a2fe67a51ed70b28ac2f1a61bee19c37d754',
+      '875d8a6c21137ec1aae6d2c8ad6b929c4ef53b09a247a834f39b126dc910f5f9',
     );
     expect(a.record.fieldSet.values).toHaveLength(16);
   });
@@ -155,7 +147,8 @@ describe('field-set files', () => {
     expect(key).toEqual(lab.key);
     const read = readAttestationFile(p);
     expect(read.key).toEqual(lab.key);
-    expect(labPairSignature(read, a.sealed, b.sealed).key).toEqual(lab.key);
+    expect(labSignature(read, a.sealed).key).toEqual(lab.key);
+    expect(labSignature(read, b.sealed).key).toEqual(lab.key);
     expect(() => writeAttestation(p, newAttesterKey().secret, [a.sealed.commitment])).toThrow(/another laboratory/);
     const other = loadFieldSet({ ...fileA, jsonDigest: '0c'.repeat(32) });
     expect(() => labSignature(read, other.sealed)).toThrow(/no signature on record/);
@@ -206,7 +199,7 @@ describe('ClaimsAPI against the compiled contract', () => {
     expect(ch.seen).toHaveLength(0);
   });
 
-  it('value, distinct, unchanged and the three laboratory-signed claims', async () => {
+  it("value, distinct, unchanged and a laboratory's attested claim on each record", async () => {
     const ch = chain();
     const api = await join(ch);
     const a = loadFieldSet(fileA);
@@ -233,21 +226,22 @@ describe('ClaimsAPI against the compiled contract', () => {
     const lab = newAttesterKey();
     writeAttestation(path.join(dir, 'lab.json'), lab.secret, [a.sealed.commitment, b.sealed.commitment]);
     const att = readAttestationFile(path.join(dir, 'lab.json'));
-    expect((await api.proveAttestedValue(a.record, 13, labSignature(att, a.sealed))).claim.attester).toEqual(lab.key);
-    const ar = await api.proveAttestedRange(a.record, fileA.schema, 12, 'at most', 9700n, labSignature(att, a.sealed));
-    expect(ar.claim.op).toBe('at most');
-    expect(ar.claim.attester).toEqual(lab.key);
-    const ad = await api.proveAttestedDistinct(
-      a.record,
-      b.record,
-      fileA.schema,
-      labPairSignature(att, a.sealed, b.sealed),
-    );
-    expect(ad.claim.attester).toEqual(lab.key);
+    for (const r of [a, b]) {
+      const at = await api.proveAttested(r.record, labSignature(att, r.sealed));
+      expect(at.claim.kind).toBe('attested');
+      expect(Buffer.from(at.claim.record).toString('hex')).toBe(Buffer.from(r.sealed.commitment).toString('hex'));
+      expect(at.claim.attester).toEqual(lab.key);
+    }
     // A signature on another record does not carry over.
     await expect(
-      api.proveAttestedValue(b.record, 13, { key: lab.key, signature: labSignature(att, a.sealed).signature }),
-    ).rejects.toThrow();
+      api.proveAttested(b.record, { key: lab.key, signature: labSignature(att, a.sealed).signature }),
+    ).rejects.toThrow(/signature does not verify/);
+    // A field set sealed with 32-byte salts (an earlier draft of the format) is refused with a reason.
+    const old = {
+      ...a.record,
+      fieldSet: { ...a.record.fieldSet, salts: a.record.fieldSet.salts.map(() => new Uint8Array(32)) },
+    };
+    await expect(api.proveValue(old, 12)).rejects.toThrow(/23 bytes/);
     expect(ch.store.get(claimsPrivateStateKey)).toEqual({ input: {} });
   });
 
@@ -367,7 +361,7 @@ describe('main menu options 34 to 40', () => {
     const a = loadFieldSet(fileA);
     const out = m.lines.join('\n');
     expect(out).toContain(Buffer.from(a.sealed.commitment).toString('hex'));
-    expect(out).toContain('53304a427e34f78ebbb162464ca1a2fe67a51ed70b28ac2f1a61bee19c37d754');
+    expect(out).toContain('875d8a6c21137ec1aae6d2c8ad6b929c4ef53b09a247a834f39b126dc910f5f9');
     expect(out).not.toContain(fileA.fieldSecret);
     expect(out).not.toContain('Harbour Mist');
   });

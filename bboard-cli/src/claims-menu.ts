@@ -12,14 +12,13 @@ import { type Logger } from 'pino';
 import { readFileSync } from 'node:fs';
 import { toHex } from '@midnight-ntwrk/midnight-js-utils';
 import { getNetworkId } from '@midnight-ntwrk/midnight-js-network-id';
-import { ClaimsAPI, type ClaimRef } from '../../api/src/claims-api.js';
+import { type ClaimRef, ClaimsAPI } from '../../api/src/claims-api.js';
 import { type ClaimsProviders } from '../../api/src/claims-types.js';
 import { JUBJUB_ORDER, newAttesterKey } from '../../contract/src/attest.js';
 import { type FieldSchema } from '../../contract/src/field-schema.js';
 import { type ClaimVerdict, verifyClaim } from '../../contract/src/verify-claims.js';
 import {
   type LoadedFieldSet,
-  labPairSignature,
   labSignature,
   readAttestationFile,
   readFieldSetFile,
@@ -90,10 +89,34 @@ const showVerdict = (logger: Logger, v: ClaimVerdict): void => {
   );
 };
 
-const landed = (c: ClaimsMenuContext, r: ClaimRef, schema: FieldSchema): void => {
+const landed = (c: ClaimsMenuContext, r: ClaimRef, schema: FieldSchema, attested: readonly ClaimRef[] = []): void => {
   c.logger.info(`Transaction ${r.txHash} at block ${r.blockHeight}.`);
   c.logger.info(`Give the verifier this transaction id: ${r.txId}`);
-  showVerdict(c.logger, verifyClaim({ claim: r.claim, schema }));
+  for (const a of attested)
+    c.logger.info(`and the laboratory's attested claim on record ${toHex(a.claim.record)}: ${a.txId}`);
+  showVerdict(
+    c.logger,
+    verifyClaim({
+      claim: r.claim,
+      schema,
+      ...(attested.length > 0 ? { attestations: attested.map((a) => a.claim) } : {}),
+    }),
+  );
+};
+
+/**
+ * A laboratory's signature is its own claim on each record (proveAttested). Made after the
+ * main claim, one per record; a verifier reads them together.
+ */
+const attestEach = async (
+  api: ClaimsAPI,
+  att: ReturnType<typeof readAttestationFile> | undefined,
+  records: readonly LoadedFieldSet[],
+): Promise<ClaimRef[]> => {
+  if (att === undefined) return [];
+  const out: ClaimRef[] = [];
+  for (const r of records) out.push(await api.proveAttested(r.record, labSignature(att, r.sealed)));
+  return out;
 };
 
 /** Handle a main-menu choice 34-40. Returns false for any other choice. */
@@ -103,7 +126,7 @@ export const handleClaimsChoice = async (choice: string, c: ClaimsMenuContext): 
       case '34': {
         const p = needProviders(c);
         c.logger.info(
-          'This deploys a claims contract, adds its seven circuit keys, then replaces its maintenance authority ' +
+          'This deploys a claims contract, adds its five circuit keys, then replaces its maintenance authority ' +
             'with an empty committee, so nobody, including us, can ever change it. Test networks only.',
         );
         if (!(await askYes(c, 'Deploy a claims contract now?'))) {
@@ -140,9 +163,23 @@ export const handleClaimsChoice = async (choice: string, c: ClaimsMenuContext): 
         const txId = await ask(c, "The claim's transaction id: ");
         const schemaPath = await ask(c, 'Schema document file, from its publisher (blank to skip): ');
         const schema = schemaPath === '' ? undefined : (JSON.parse(readFileSync(schemaPath, 'utf8')) as FieldSchema);
+        const labIds = (
+          await ask(
+            c,
+            "Transaction ids of the laboratory's attested claims on the record(s) (comma-separated, blank for none): ",
+          )
+        )
+          .split(',')
+          .map((s) => s.trim())
+          .filter((s) => s !== '');
         const reading = await api.readClaim(txId, c.indexerUri);
         c.logger.info(`Read from call ${reading.entryPoint ?? '(unknown)'} on ${api.deployedContractAddress}.`);
-        showVerdict(c.logger, verifyClaim({ claim: reading.cells, schema }));
+        const attestations = [];
+        for (const id of labIds) attestations.push((await api.readClaim(id, c.indexerUri)).claim);
+        showVerdict(
+          c.logger,
+          verifyClaim({ claim: reading.cells, schema, ...(labIds.length > 0 ? { attestations } : {}) }),
+        );
         return true;
       }
       case '39': {
@@ -204,6 +241,11 @@ const makeClaim = async (c: ClaimsMenuContext): Promise<void> => {
   const labPath =
     kind[0] === 'u' ? '' : await ask(c, 'Laboratory attestation file (blank for a claim no laboratory signed): ');
   const att = labPath === '' ? undefined : readAttestationFile(labPath);
+  if (att !== undefined)
+    c.logger.info(
+      "The laboratory's signature is published as its own claim on each record (one more transaction each), " +
+        'after the claim itself.',
+    );
 
   switch (kind[0]) {
     case 'v': {
@@ -213,13 +255,9 @@ const makeClaim = async (c: ClaimsMenuContext): Promise<void> => {
         `Already published about this slot from here in this run: ${api.disclosedSoFar(a.record, slot, schema)}`,
       );
       if (!(await askYes(c, `Publish the sealed value of slot ${slot}?`))) return c.logger.info('Nothing was sent.');
-      landed(
-        c,
-        att === undefined
-          ? await api.proveValue(a.record, slot)
-          : await api.proveAttestedValue(a.record, slot, labSignature(att, a.sealed)),
-        schema,
-      );
+      if (att !== undefined) labSignature(att, a.sealed); // refused here, before anything is sent
+      const r = await api.proveValue(a.record, slot);
+      landed(c, r, schema, await attestEach(api, att, [a]));
       return;
     }
     case 'b': {
@@ -234,13 +272,9 @@ const makeClaim = async (c: ClaimsMenuContext): Promise<void> => {
       c.logger.info('Each bound you prove is public; several bounds narrow the hidden number.');
       if (!(await askYes(c, `Publish "slot ${slot} is ${dir} ${raw}${d?.unit ? ` ${d.unit}` : ''}"?`)))
         return c.logger.info('Nothing was sent.');
-      landed(
-        c,
-        att === undefined
-          ? await api.proveRange(a.record, schema, slot, dir, bound)
-          : await api.proveAttestedRange(a.record, schema, slot, dir, bound, labSignature(att, a.sealed)),
-        schema,
-      );
+      if (att !== undefined) labSignature(att, a.sealed);
+      const r = await api.proveRange(a.record, schema, slot, dir, bound);
+      landed(c, r, schema, await attestEach(api, att, [a]));
       return;
     }
     case 'd': {
@@ -250,13 +284,12 @@ const makeClaim = async (c: ClaimsMenuContext): Promise<void> => {
           'determination of distinctness. Do not run it against references chosen by someone else.',
       );
       if (!(await askYes(c, 'Publish it?'))) return c.logger.info('Nothing was sent.');
-      landed(
-        c,
-        att === undefined
-          ? await api.proveDistinct(a.record, b.record, schema)
-          : await api.proveAttestedDistinct(a.record, b.record, schema, labPairSignature(att, a.sealed, b.sealed)),
-        schema,
-      );
+      if (att !== undefined) {
+        labSignature(att, a.sealed);
+        labSignature(att, b.sealed);
+      }
+      const r = await api.proveDistinct(a.record, b.record, schema);
+      landed(c, r, schema, await attestEach(api, att, [a, b]));
       return;
     }
     case 'u': {

@@ -29,15 +29,14 @@ import {
   commitmentOf,
   digestValue,
   leafOf,
+  leavesOf,
   maskValue,
-  nodeOf,
   numberValue,
   openSlot,
   recordOf,
   schemaIdOf,
   sealFields,
   setRootOf,
-  treeOf,
 } from "../fields.js";
 
 // Record every randomBytes request so the nonce width (A7) can be checked.
@@ -119,29 +118,19 @@ const B = make(
 const lab = newAttesterKey();
 const sim = (): ClaimsSimulator => new ClaimsSimulator({ terms: TERMS });
 
-/** proveAttestedRange on slot 12 of `rec` (default A), returning the landed state. */
+/** proveAttested on `rec` (default A), returning the landed state. */
 const attestedRange = (
   sig: AttestationSignature,
   opts: {
     key?: { x: bigint; y: bigint };
-    fs?: FieldSet;
     rec?: Uint8Array;
   } = {},
 ) => {
   const s = sim();
   s.call(
-    {
-      opening: openSlot(opts.fs ?? A.fs, 12),
-      number: 9650n,
-      attester: opts.key ?? lab.key,
-      signature: sig,
-    },
-    "proveAttestedRange",
+    { attester: opts.key ?? lab.key, signature: sig },
+    "proveAttested",
     opts.rec ?? A.c,
-    SCHEMA,
-    12n,
-    RangeOp.AT_LEAST,
-    9500n,
   );
   return s.state;
 };
@@ -164,10 +153,6 @@ const runWithReduction = (
     schemaTerms: ({ privateState }) => [privateState, w(p.terms)],
     attesterKey: ({ privateState }) => [privateState, w(p.attester)],
     attesterSignature: ({ privateState }) => [privateState, w(p.signature)],
-    secondAttesterSignature: ({ privateState }) => [
-      privateState,
-      w(p.secondSignature),
-    ],
     schnorrReduction: ({ privateState }, h: bigint) => [
       privateState,
       reduce(h),
@@ -180,7 +165,7 @@ const runWithReduction = (
     init.currentContractState,
     {},
   );
-  const fn = c.impureCircuits.proveAttestedRange.bind(
+  const fn = c.impureCircuits.proveAttested.bind(
     c.impureCircuits,
   ) as unknown as (c: unknown, ...a: unknown[]) => unknown;
   fn(ctx, ...args);
@@ -217,49 +202,20 @@ describe("laboratory attestation binding", () => {
     };
     const moved = commitmentOf(SCHEMA, otherSubject);
     expect(hex(moved)).not.toBe(hex(A.c));
-    expect(() => attestedRange(sig, { fs: otherSubject, rec: moved })).toThrow(
+    expect(() => attestedRange(sig, { rec: moved })).toThrow(
       /signature does not verify/,
     );
-    // ... nor into a distinctness claim about a re-wrapped pair.
-    const otherB = {
-      ...B.fs,
-      jsonDigest: sha("json: someone else's reference"),
-    };
-    const s = sim();
-    expect(() =>
-      s.call(
-        {
-          first: otherSubject,
-          second: otherB,
-          attester: lab.key,
-          signature: sig,
-          secondSignature: signRecord(lab.secret, B.c),
-        },
-        "proveAttestedDistinct",
-        moved,
-        commitmentOf(SCHEMA, otherB),
-      ),
-    ).toThrow(/signature does not verify/);
     // A signature on the field-set root (the old message) is no longer accepted either.
-    const rootSig = signRecord(lab.secret, setRootOf(SCHEMA, treeOf(A.fs)));
+    const rootSig = signRecord(lab.secret, setRootOf(SCHEMA, leavesOf(A.fs)));
     expect(() => attestedRange(rootSig)).toThrow(/signature does not verify/);
   });
 
   it("FIXED-A1: one lab's signatures on A and B do not serve B and A swapped", () => {
-    const s = sim();
     expect(() =>
-      s.call(
-        {
-          first: A.fs,
-          second: B.fs,
-          attester: lab.key,
-          signature: signRecord(lab.secret, B.c),
-          secondSignature: signRecord(lab.secret, A.c),
-        },
-        "proveAttestedDistinct",
-        A.c,
-        B.c,
-      ),
+      attestedRange(signRecord(lab.secret, B.c), { rec: A.c }),
+    ).toThrow(/signature does not verify/);
+    expect(() =>
+      attestedRange(signRecord(lab.secret, A.c), { rec: B.c }),
     ).toThrow(/signature does not verify/);
   });
 
@@ -275,7 +231,7 @@ describe("laboratory attestation binding", () => {
       /signature does not verify/,
     );
     // In the circuit: the transient hash now takes 7 inputs (annX annY pkX pkY tag rec h(rec)).
-    const th = zkir("proveAttestedValue").instructions.filter(
+    const th = zkir("proveAttested").instructions.filter(
       (i) => i.op === "transient_hash",
     );
     expect(th).toHaveLength(1);
@@ -285,22 +241,9 @@ describe("laboratory attestation binding", () => {
   it("DEFENCE: a signature does not replay across schemas (the schema id is inside the record)", () => {
     const S2 = schemaIdOf({ ...TERMS, k: 4n });
     const a2 = commitmentOf(S2, A.fs);
-    const s = new ClaimsSimulator({ terms: { ...TERMS, k: 4n } });
+    expect(hex(a2)).not.toBe(hex(A.c));
     expect(() =>
-      s.call(
-        {
-          opening: openSlot(A.fs, 12),
-          number: 9650n,
-          attester: lab.key,
-          signature: signRecord(lab.secret, A.c),
-        },
-        "proveAttestedRange",
-        a2,
-        S2,
-        12n,
-        RangeOp.AT_LEAST,
-        9500n,
-      ),
+      attestedRange(signRecord(lab.secret, A.c), { rec: a2 }),
     ).toThrow(/signature does not verify/);
   });
 
@@ -330,14 +273,8 @@ describe("Schnorr port", () => {
       announcement: R,
       response: (k + cAlt * lab.secret) % JUBJUB_ORDER,
     };
-    const args = [A.c, SCHEMA, 12n, RangeOp.AT_LEAST, 9500n];
-    const p = {
-      opening: openSlot(A.fs, 12),
-      number: 9650n,
-      terms: TERMS,
-      attester: lab.key,
-      signature: sigAlt,
-    };
+    const args = [A.c];
+    const p = { attester: lab.key, signature: sigAlt };
     expect(() => runWithReduction(p, () => [115n, cAlt], ...args)).toThrow(
       /quotient out of range/,
     );
@@ -363,23 +300,9 @@ describe("Schnorr port", () => {
     };
     expect(attestedRange(sig).lastClaimAttesterX).toBe(lab.key.x);
     // q = 116 with any remainder is refused.
-    const p = {
-      opening: openSlot(A.fs, 12),
-      number: 9650n,
-      terms: TERMS,
-      attester: lab.key,
-      signature: sig,
-    };
+    const p = { attester: lab.key, signature: sig };
     expect(() =>
-      runWithReduction(
-        p,
-        (x) => [116n, x - 116n * TWO_248 + P],
-        A.c,
-        SCHEMA,
-        12n,
-        RangeOp.AT_LEAST,
-        9500n,
-      ),
+      runWithReduction(p, (x) => [116n, x - 116n * TWO_248 + P], A.c),
     ).toThrow(/quotient out of range|Invalid challenge reduction|Uint/);
   }, 120_000);
 
@@ -462,7 +385,7 @@ describe("Schnorr port", () => {
     });
 
     it("the circuit itself checks r * pk = identity (independent of the JS runtime)", () => {
-      const ins = zkir("proveAttestedValue").instructions;
+      const ins = zkir("proveAttested").instructions;
       const rMinus1 = immHex(JUBJUB_ORDER - 1n);
       expect(
         ins.some(
@@ -513,16 +436,18 @@ describe("range claims and schema terms", () => {
         100n,
       ),
     ).toThrow(/not a number slot/);
-    // The same for the laboratory-signed version, even with a genuine signature.
+    // A laboratory's genuine signature on the record does not make the slot a number:
+    // the attested claim lands, the range claim still does not.
+    s.call(
+      { attester: lab.key, signature: signRecord(lab.secret, c) },
+      "proveAttested",
+      c,
+    );
+    expect(s.state.lastClaimKind).toBe(ClaimKind.ATTESTED);
     expect(() =>
       s.call(
-        {
-          opening: openSlot(fs, 14),
-          number: 42n,
-          attester: lab.key,
-          signature: signRecord(lab.secret, c),
-        },
-        "proveAttestedRange",
+        { opening: openSlot(fs, 14), number: 42n },
+        "proveRange",
         c,
         SCHEMA,
         14n,
@@ -604,19 +529,20 @@ describe("event cells, bundling, replay", () => {
   it("DEFENCE: consecutive claims in one transaction never mix cells (every circuit writes every cell)", () => {
     const s = sim();
     s.call(
-      {
-        opening: openSlot(A.fs, 12),
-        number: 9650n,
-        attester: lab.key,
-        signature: signRecord(lab.secret, A.c),
-      },
-      "proveAttestedRange",
+      { attester: lab.key, signature: signRecord(lab.secret, A.c) },
+      "proveAttested",
+      A.c,
+    );
+    s.call(
+      { opening: openSlot(A.fs, 12), number: 9650n },
+      "proveRange",
       A.c,
       SCHEMA,
       12n,
       RangeOp.AT_MOST,
       9700n,
     );
+    expect(s.state.lastClaimAttesterX).toBe(0n);
     s.call({ first: A.fs, second: B.fs }, "proveDistinct", A.c, B.c);
     const st = s.state;
     expect(st.lastClaimKind).toBe(ClaimKind.DISTINCT);
@@ -667,26 +593,24 @@ describe("event cells, bundling, replay", () => {
 // ───────────────────────────────────────────────────────── binding and encodings
 
 describe("binding between field set and commitment", () => {
-  it("DEFENCE: an interior node cannot be opened as a leaf (tags differ, depth fixed)", () => {
-    const l0 = leafOf(A.fs.values[0], A.fs.salts[0]);
-    const l1 = leafOf(A.fs.values[1], A.fs.salts[1]);
+  it("DEFENCE: a leaf, or any other hash, cannot be opened as a value (leaves are 55-byte preimages)", () => {
+    const leaves = leavesOf(A.fs);
     const o = openSlot(A.fs, 0);
-    const forged = {
-      ...o,
-      value: l0,
-      salt: l1,
-      siblings: [o.siblings[1], o.siblings[2], o.siblings[3], o.siblings[3]],
-    };
-    expect(hex(nodeOf(l0, l1))).not.toBe(hex(leafOf(l0, l1)));
+    // Present leaf 1 as slot 0's value, with leaf 2's bytes as the salt.
+    const forged = { ...o, value: leaves[1], salt: leaves[2].slice(0, 23) };
     expect(() =>
-      sim().call({ opening: forged }, "proveValue", A.c, SCHEMA, 0n, l0),
-    ).toThrow(/does not belong/);
+      sim().call({ opening: forged }, "proveValue", A.c, SCHEMA, 0n, leaves[1]),
+    ).toThrow(/different slot/);
+    // A leaf over 55 bytes is never the hash of 32+32 bytes of the same data.
+    expect(hex(leafOf(leaves[1], leaves[2].slice(0, 23)))).not.toBe(
+      hex(leaves[0]),
+    );
   });
 
-  it("DEFENCE: setRoot and record cannot be swapped (fieldRecord vs fieldSetRoot tags)", () => {
-    const root = setRootOf(SCHEMA, treeOf(A.fs));
+  it("DEFENCE: setRoot and record cannot be swapped (different lengths and tags)", () => {
+    const root = setRootOf(SCHEMA, leavesOf(A.fs));
     expect(hex(recordOf(root, A.fs.jsonDigest))).toBe(hex(A.c));
-    expect(hex(setRootOf(root, A.fs.jsonDigest))).not.toBe(hex(A.c));
+    expect(hex(recordOf(A.fs.jsonDigest, root))).not.toBe(hex(A.c));
   });
 
   it("DEFENCE: the Uint<8> difference counter cannot overflow (max 16); k = 16 works, k = 17 does not", () => {
@@ -723,18 +647,31 @@ describe("binding between field set and commitment", () => {
     ).toThrow(/enough comparable/);
   });
 
-  it("OPEN-A11: fields.ts still mints schema ids no circuit can satisfy (k >= 256)", () => {
-    const bad = { ...TERMS, k: 300n };
-    expect(() => schemaIdOf(bad)).not.toThrow();
-    const S = schemaIdOf(bad);
-    expect(() =>
-      new ClaimsSimulator({ terms: bad }).call(
-        { first: A.fs, second: B.fs },
-        "proveDistinct",
-        commitmentOf(S, A.fs),
-        commitmentOf(S, B.fs),
-      ),
-    ).toThrow();
+  it("FIXED-A11: fields.ts no longer mints schema ids with k >= 256 (k is one byte of the terms)", () => {
+    expect(() => schemaIdOf({ ...TERMS, k: 256n })).toThrow(/k is 0 to 255/);
+    expect(() => schemaIdOf({ ...TERMS, k: 300n })).toThrow(/k is 0 to 255/);
+    expect(() => schemaIdOf({ ...TERMS, k: 255n })).not.toThrow();
+  });
+
+  it("DEFENCE: the packed terms are injective (masks are 16 bits each, k one byte)", () => {
+    const all = Array.from({ length: SLOTS }, () => true);
+    const none = Array.from({ length: SLOTS }, () => false);
+    const seen = new Set<string>();
+    for (const comparable of [all, none, TERMS.comparable])
+      for (const numeric of [all, none, TERMS.numeric])
+        for (const k of [0n, 1n, 16n, 255n]) {
+          const h = hex(CC.termsBytes({ ...TERMS, comparable, numeric, k }));
+          expect(seen.has(h)).toBe(false);
+          seen.add(h);
+        }
+    // An all-ones comparable mask does not spill into the numeric mask's bytes.
+    const t = CC.termsBytes({
+      ...TERMS,
+      comparable: all,
+      numeric: none,
+      k: 0n,
+    });
+    expect(hex(t.slice(0, 5))).toBe("ffff000000");
   });
 
   it("OPEN-A12: distinctness counts byte inequality, so one genotype written two ways counts as a difference", () => {
@@ -746,29 +683,17 @@ describe("binding between field set and commitment", () => {
       "Y",
     );
     const s = sim();
-    s.call(
-      {
-        first: X.fs,
-        second: Y.fs,
-        attester: lab.key,
-        signature: signRecord(lab.secret, X.c),
-        secondSignature: signRecord(lab.secret, Y.c),
-      },
-      "proveAttestedDistinct",
-      X.c,
-      Y.c,
-    );
+    s.call({ first: X.fs, second: Y.fs }, "proveDistinct", X.c, Y.c);
     expect(s.state.lastClaimKind).toBe(ClaimKind.DISTINCT);
   });
 
-  it("DEFENCE: numberBytes/maskBytes/countBytes are injective over their domains", () => {
+  it("DEFENCE: numberBytes and maskBytes are injective over their domains", () => {
     const seen = new Set<string>();
     for (const n of [0n, 1n, 255n, 256n, 65535n, (1n << 64n) - 1n]) {
       const h = hex(CC.numberBytes(n));
       expect(seen.has(h)).toBe(false);
       seen.add(h);
       expect(CC.numberBytes(n)[8]).toBe(1);
-      expect(hex(CC.countBytes(n))).not.toBe(h);
     }
     const m1 = Array.from({ length: SLOTS }, (_, i) => i === 15);
     const m2 = Array.from({ length: SLOTS }, (_, i) => i === 14);

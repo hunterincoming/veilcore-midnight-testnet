@@ -24,7 +24,7 @@ import {
 } from "../claims.js";
 import { Contract } from "../managed/veilcore-claims/contract/index.js";
 import { type FieldSetFile, sealFieldSetFile } from "../field-schema.js";
-import { numberFrom, numberValue, openSlot } from "../fields.js";
+import { numberFrom, openSlot } from "../fields.js";
 import { newAttesterKey, signRecord } from "../attest.js";
 
 const COIN = "0".repeat(64);
@@ -67,12 +67,10 @@ const withInput = (ctx: Ctx, input: ClaimInput): Ctx => ({
 const impure = new Contract<ClaimsPrivateState>(claimsWitnesses).impureCircuits;
 
 describe("the claims contract wrapper", () => {
-  it("knows all seven circuits that need a key", () => {
+  it("knows all five circuits that need a key", () => {
     expect([...CLAIMS_PROVABLE_CIRCUITS]).toEqual(
       [
-        "proveAttestedDistinct",
-        "proveAttestedRange",
-        "proveAttestedValue",
+        "proveAttested",
         "proveDistinct",
         "proveRange",
         "proveUnchanged",
@@ -136,22 +134,16 @@ describe("the claims contract wrapper", () => {
     ).toThrow(/does not meet the bound/);
   });
 
-  it("a laboratory-signed value claim publishes the laboratory's key", () => {
+  it("a laboratory's attested claim publishes the record and the laboratory's key", () => {
     const lab = newAttesterKey();
     const ctx = withInput(fresh(), {
-      opening: openSlot(sealed.fieldSet, 13),
       attester: lab.key,
       signature: signRecord(lab.secret, sealed.commitment),
     });
-    const r = impure.proveAttestedValue(
-      ctx,
-      sealed.commitment,
-      sealed.schemaId,
-      13n,
-      numberValue(9980n),
-    );
+    const r = impure.proveAttested(ctx, sealed.commitment);
     const l = claimsLedger(r.context.currentQueryContext.state);
-    expect(l.lastClaimKind).toBe(ClaimKind.VALUE);
+    expect(l.lastClaimKind).toBe(ClaimKind.ATTESTED);
+    expect(hex(l.lastClaimRecord)).toBe(hex(sealed.commitment));
     expect(l.lastClaimAttesterX).toBe(lab.key.x);
     expect(l.lastClaimAttesterY).toBe(lab.key.y);
   });

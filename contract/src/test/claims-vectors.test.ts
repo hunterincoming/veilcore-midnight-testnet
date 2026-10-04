@@ -13,8 +13,8 @@ type Summary = {
   schemaId: string;
   slotValues: string[];
   salts: string[];
+  leaves: string[];
   setRoot: string;
-  openings: { slot: number; siblings: string[]; bits: boolean[] }[];
 };
 type Vector = {
   name: string;
@@ -50,46 +50,32 @@ describe("SDK field-set vectors, recomputed by the claims contract", () => {
       const numeric = Array.from({ length: 16 }, (_, i) =>
         v.input.schema.slots.some((s) => s.slot === i && s.type === "uint"),
       );
-      const mask = Array.from({ length: 16 }, (_, i) =>
+      const comparable = Array.from({ length: 16 }, (_, i) =>
         v.input.schema.slots.some((s) => s.slot === i && s.comparable === true),
       );
-      expect(
-        hex(
-          CC.schemaId(
-            b(e.schemaDocumentDigest),
-            CC.maskBytes(mask),
-            CC.countBytes(BigInt(v.input.schema.k)),
-            CC.maskBytes(numeric),
-          ),
-        ),
-      ).toBe(e.schemaId);
+      const terms = {
+        documentDigest: b(e.schemaDocumentDigest),
+        comparable,
+        k: BigInt(v.input.schema.k),
+        numeric,
+      };
+      expect(hex(CC.schemaId(terms.documentDigest, CC.termsBytes(terms)))).toBe(
+        e.schemaId,
+      );
 
       v.input.values.forEach((val, i) => {
         if (val !== null && "uint" in val)
           expect(hex(CC.numberBytes(BigInt(val.uint)))).toBe(e.slotValues[i]);
         if (val === null) expect(e.slotValues[i]).toBe("00".repeat(32));
         expect(hex(saltOf(b(v.input.fieldSecret), i))).toBe(e.salts[i]);
+        expect(hex(CC.fieldLeaf(b(e.slotValues[i]), b(e.salts[i])))).toBe(
+          e.leaves[i],
+        );
       });
 
-      let level = e.slotValues.map((s, i) => CC.fieldLeaf(b(s), b(e.salts[i])));
-      const layers = [level];
-      while (level.length > 1) {
-        const next: Uint8Array[] = [];
-        for (let i = 0; i < level.length; i += 2)
-          next.push(CC.fieldNode(level[i], level[i + 1]));
-        level = next;
-        layers.push(next);
-      }
-      expect(hex(CC.fieldSetRoot(b(e.schemaId), level[0]))).toBe(e.setRoot);
-
-      for (const o of e.openings) {
-        let idx = o.slot;
-        for (let l = 0; l < 4; l++) {
-          expect(o.bits[l]).toBe((idx & 1) === 1);
-          expect(o.siblings[l]).toBe(hex(layers[l][idx ^ 1]));
-          idx >>= 1;
-        }
-      }
+      expect(hex(CC.fieldSetRoot(b(e.schemaId), e.leaves.map(b)))).toBe(
+        e.setRoot,
+      );
     });
   }
 });

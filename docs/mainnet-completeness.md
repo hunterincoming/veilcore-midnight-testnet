@@ -66,6 +66,24 @@ registry's Bitcoin-timestamp branch.
      without a laboratory's signature a dishonest holder can inflate a distinctness count.
      Already true in spirit (lab-signed claims are the strong form); to be stated in SPEC 4.5.
 
+## Attack round D, 4 October (everything else)
+
+Website, fee-paying demo service, SDK, registry, operator tool, supply chain; see
+`docs/security-pass-4oct-roundD.md`. Main contract: nothing found. All findings fixed and
+independently re-checked. What changes for the mainnet deploy:
+
+1. Re-run the preprod smoke test on this build first (the join check is new and has not
+   run against a live indexer).
+2. First run of this tool version: it finds the old `bboard-cli/midnight-level-db` store
+   and asks; type MOVE, confirm it works, then delete the old folder (and its backups).
+3. The maintenance key is never saved on the computer; "Finish a deploy" asks for the
+   paper copy.
+4. Write down the `Deploy transaction id` the tool prints, next to the address.
+5. Mainnet joins are refused until the address is pinned in the code
+   (`MAINNET_VEILCORE_ADDRESS`) after the deploy.
+6. Registry `ots` must go live before the website is redeployed (the site now saves
+   disclosure choices to the registry, and the registry fix for `profile` is on `ots`).
+
 ## Open design question
 
 **Claims are read from event cells, per transaction, through the indexer.** That keeps

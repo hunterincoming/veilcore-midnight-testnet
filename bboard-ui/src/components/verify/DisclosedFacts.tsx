@@ -21,8 +21,9 @@ import { networkLabel, isTestNetwork } from '../../config/network';
 
 const fmt = (t: number | string) => new Date(t).toLocaleString();
 
+// data-fact names what the line is, so a test (or an auditor) can count the ticks.
 export const Fact: React.FC<{ ok?: boolean; children: React.ReactNode }> = ({ ok = true, children }) => (
-  <Stack direction="row" spacing={1} sx={{ alignItems: 'flex-start' }}>
+  <Stack direction="row" spacing={1} sx={{ alignItems: 'flex-start' }} data-fact={ok ? 'checked' : 'reported'}>
     {ok ? (
       <CheckCircleIcon sx={{ fontSize: 18, color: TEAL, mt: '2px' }} />
     ) : (
@@ -80,9 +81,14 @@ export const SharedFacts: React.FC<{ data: SharedFactsData; preview?: boolean }>
             : 'The holder has not paired a DNA report with this record.'}
         </Fact>
       )}
+      {/* No tick: "intact" is the registry's say-so, and this page walks no descent
+          (round D verification). Every line here is a report, never a check. */}
       {shared.has('lineage') &&
         (data.lineageIntact === true ? (
-          <Fact>Lineage intact — unbroken chain back to the sealed record.</Fact>
+          <Fact ok={false}>
+            The registry reports the lineage intact — an unbroken chain back to the sealed record. This page has not
+            checked it.
+          </Fact>
         ) : (
           <Fact ok={false}>
             Lineage: not checked on this page. The registry does not walk descent for a shared link.

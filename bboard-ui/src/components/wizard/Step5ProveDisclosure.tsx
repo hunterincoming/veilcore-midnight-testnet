@@ -43,6 +43,7 @@ import {
   type DisclosureKey,
 } from '../../veilcore/disclosure';
 import { canonicalUrl } from '../../config/network';
+import { verifyPath } from '../../veilcore/verify-link';
 import { DisclosedFacts } from '../verify/DisclosedFacts';
 
 export const Step5ProveDisclosure: React.FC<{ recordId: string; onDone: () => void; onBack: () => void }> = ({
@@ -99,7 +100,9 @@ export const Step5ProveDisclosure: React.FC<{ recordId: string; onDone: () => vo
         return;
       }
       setStored(out);
-      const relative = `/verify/${encodeURIComponent(record.id)}`;
+      // The link names the record's fingerprint, so the page checks against the record
+      // this holder means rather than whatever fingerprint the registry answers with.
+      const relative = verifyPath(record.id, record.recordFingerprint);
       setResult({ absolute: canonicalUrl(relative), relative });
     } finally {
       setBusy(false);

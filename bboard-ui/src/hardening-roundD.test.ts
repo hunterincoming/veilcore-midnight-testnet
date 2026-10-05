@@ -570,6 +570,43 @@ describe('F12 disclosure: the holder’s choice is saved as a grant before any l
   });
 });
 
+// ============================ V1: verify links carry the fingerprint (round D verification)
+
+describe('V1 verify links name the record’s fingerprint; the page checks against the link, not the registry', () => {
+  const X = 'a1'.repeat(32);
+  const Y = 'b2'.repeat(32);
+
+  it('verifyPath adds ?fp= for a sealed record, keeps other params, and leaves an unsealed record’s link alone', async () => {
+    const { verifyPath } = await import('./veilcore/verify-link');
+    expect(verifyPath('VEIL-A', X)).toBe(`/verify/VEIL-A?fp=${X}`);
+    expect(verifyPath('VEIL A/1', X)).toBe(`/verify/VEIL%20A%2F1?fp=${X}`);
+    expect(verifyPath('VEIL-A', X, { show: 'existence' })).toBe(`/verify/VEIL-A?show=existence&fp=${X}`);
+    // A stale fp passed in is replaced, never duplicated.
+    expect(verifyPath('VEIL-A', X, new URLSearchParams({ fp: Y }))).toBe(`/verify/VEIL-A?fp=${X}`);
+    expect(verifyPath('VEIL-A', '')).toBe('/verify/VEIL-A');
+    expect(verifyPath('VEIL-A', 'not-a-fingerprint')).toBe('/verify/VEIL-A');
+  });
+
+  it('the link’s fingerprint decides: same → bound; different, missing or malformed → mismatch; none → unbound', async () => {
+    const { bindingOf, linkFingerprint } = await import('./veilcore/verify-link');
+    expect(linkFingerprint(null)).toEqual({ state: 'absent' });
+    expect(linkFingerprint(X.toUpperCase())).toEqual({ state: 'given', fingerprint: X });
+    expect(linkFingerprint(X.slice(0, 63)).state).toBe('invalid');
+    expect(linkFingerprint('').state).toBe('invalid');
+
+    expect(bindingOf(linkFingerprint(X), X)).toEqual({ kind: 'bound', fingerprint: X });
+    // The lying registry: the link was made for X, the registry answers Y.
+    expect(bindingOf(linkFingerprint(X), Y)).toEqual({ kind: 'mismatch', linked: X, reported: Y });
+    expect(bindingOf(linkFingerprint(X), undefined)).toEqual({ kind: 'mismatch', linked: X, reported: undefined });
+    // The registry's value is compared exactly: an uppercase answer does not pass for the link's.
+    expect(bindingOf(linkFingerprint(X), X.toUpperCase()).kind).toBe('mismatch');
+    expect(bindingOf(linkFingerprint('zz'), X)).toEqual({ kind: 'mismatch', reported: X });
+    // Old links still work, against the registry's value, which the page shows as its report.
+    expect(bindingOf(linkFingerprint(null), Y)).toEqual({ kind: 'unbound', fingerprint: Y });
+    expect(bindingOf(linkFingerprint(null), '')).toEqual({ kind: 'unbound', fingerprint: undefined });
+  });
+});
+
 // ======================================================= docs pinned and bundled
 
 describe('Docs are bundled from the pinned package, not fetched from a branch', () => {
@@ -916,7 +953,7 @@ describe.skipIf(!haveBrowser)('browser: built site under the production headers'
     await ctx.close();
   }, 60_000);
 
-  it('verify page: nothing sealed → grey mark; a genuine proof → tick, with the anchor as the registry’s report', async () => {
+  it('verify page: nothing sealed → grey mark; a genuine proof → tick (link names the fingerprint), with the anchor as the registry’s report', async () => {
     {
       const { ctx, pg } = await page((u) =>
         u.startsWith('/verify/') ? { found: true, cultivar: 'Unsealed', disclosed: [] } : undefined,
@@ -944,7 +981,7 @@ describe.skipIf(!haveBrowser)('browser: built site under the production headers'
           ? { ...proofs[FP], anchor: { chain: 'midnight', network: 'preprod', txHash: 'beef' } }
           : undefined,
     );
-    await pg.goto(`${origin}/verify/VEIL-Z`, { waitUntil: 'networkidle' });
+    await pg.goto(`${origin}/verify/VEIL-Z?fp=${FP}`, { waitUntil: 'networkidle' });
     await pg.waitForSelector('text=In a sealed batch · anchor reported, not checked', { timeout: 15_000 });
     const text = await pg.evaluate(() => document.body.innerText);
     expect(text).toMatch(/Checked in this browser: this fingerprint is in batch real/);
@@ -979,6 +1016,153 @@ describe.skipIf(!haveBrowser)('browser: built site under the production headers'
     // The request carries no key and nothing that could widen the answer.
     const req = external.find((e) => e.url.includes('/verify/'));
     expect(req?.url).toContain('show=existence%2Cparent-names%2Cbreeding-method');
+    await ctx.close();
+  }, 60_000);
+
+  // ------------------------------- V1: the link's fingerprint decides (round D verification)
+
+  /**
+   * A lying registry: asked for VEIL-Y, it answers with record X's fingerprint, X's
+   * genuine inclusion proof and X's genuine signed attestation from a vetted lab.
+   */
+  const lyingRegistry = async () => {
+    const { buildBatch, generateKeypair, signAttestation } = await import('veilcore-records');
+    const X = 'd'.repeat(64);
+    const { proofs } = await buildBatch([X, 'e'.repeat(64)], 'genuine-x');
+    const lab = await generateKeypair();
+    const att = await signAttestation(
+      {
+        attestationId: 'att_x',
+        type: 'laboratory-report',
+        subjectCommitment: X,
+        attester: { publicKey: lab.publicKey, displayName: 'Real Lab' },
+        documentHash: 'e'.repeat(64),
+        hashAlgorithm: 'sha256',
+        issuedAt: '2026-10-01T00:00:00Z',
+      },
+      lab.privateKey,
+    );
+    const api: Api = (u) =>
+      u.startsWith('/verify/')
+        ? {
+            found: true,
+            id: 'VEIL-Y',
+            cultivar: 'Borrowed Name',
+            recordFingerprint: X,
+            anchored: true,
+            anchor: { network: 'mainnet', txHash: 'cafe' },
+            disclosed: ['lineage'],
+            lineageIntact: true,
+            signedAttestation: true,
+            attestedByVettedLab: true,
+          }
+        : u === `/proof/${X}`
+          ? { ...proofs[X], anchor: { chain: 'midnight', network: 'mainnet', txHash: 'cafe' } }
+          : u === `/attestations/subject/${X}`
+            ? {
+                attestations: [
+                  {
+                    ...att,
+                    strength: 'signed',
+                    vettedAttester: true,
+                    registeredAs: { displayName: 'Real Lab' },
+                    retraction: null,
+                  },
+                ],
+              }
+            : undefined;
+    return { X, api };
+  };
+  const ticks = (pg: PwPage) => pg.evaluate(() => document.querySelectorAll('[data-fact="checked"]').length);
+  const badge = (pg: PwPage) =>
+    pg.evaluate(() => document.querySelector('[data-checked]')?.getAttribute('data-checked'));
+
+  it('verify page: a link made for record Y, answered with record X’s fingerprint, proof and lab signature → warning, no ticks, nothing checked', async () => {
+    const { api } = await lyingRegistry();
+    const Y = 'f'.repeat(64);
+    const { ctx, pg, external, violations, errors } = await page(api);
+    await pg.goto(`${origin}/verify/VEIL-Y?fp=${Y}`, { waitUntil: 'networkidle' });
+    await pg.waitForSelector('text=Do not rely on this page.', { timeout: 15_000 });
+    const text = await pg.evaluate(() => document.body.innerText);
+    expect(text).toMatch(/Fingerprint does not match this link · nothing checked/i);
+    expect(text).toContain(`This link was made for the record with fingerprint ${Y.slice(0, 12)}`);
+    expect(text).toMatch(/the registry reports fingerprint dddd/);
+    // None of the registry's answer is shown as this record's.
+    expect(text).not.toMatch(
+      /Borrowed Name|Signed attestation|sealed batch|Lineage|lineage intact|Checked in this browser/,
+    );
+    expect(await ticks(pg)).toBe(0);
+    expect(await badge(pg)).toBe('no');
+    // Nothing was fetched to check: neither X's proof nor X's attestations.
+    expect(external.some((e) => e.url.includes('/proof/') || e.url.includes('/attestations/'))).toBe(false);
+    // fp is not sent to the registry; it is what the registry is checked against.
+    expect(external.find((e) => e.url.includes('/verify/'))?.url).toBe(`${API}/verify/VEIL-Y`);
+    expect(violations).toEqual([]);
+    expect(errors).toEqual([]);
+    await ctx.close();
+  }, 60_000);
+
+  it('verify page: a cut-short fp, or an fp for a record the registry calls unsealed → warning, no ticks', async () => {
+    for (const [fp, reply] of [
+      ['d'.repeat(40), { found: true, cultivar: 'Cut', recordFingerprint: 'd'.repeat(64), disclosed: [] }],
+      ['d'.repeat(64), { found: true, cultivar: 'Unsealed', disclosed: [] }],
+    ] as const) {
+      const { ctx, pg, external } = await page((u) => (u.startsWith('/verify/') ? reply : undefined));
+      await pg.goto(`${origin}/verify/VEIL-Q?fp=${fp}`, { waitUntil: 'networkidle' });
+      await pg.waitForSelector('text=Do not rely on this page.', { timeout: 15_000 });
+      const text = await pg.evaluate(() => document.body.innerText);
+      expect(text, fp).toMatch(fp.length === 64 ? /the registry reports no fingerprint/ : /not valid/);
+      expect(await ticks(pg), fp).toBe(0);
+      expect(external.some((e) => e.url.includes('/proof/'))).toBe(false);
+      await ctx.close();
+    }
+  }, 60_000);
+
+  it('verify page: an old link with no fp still works, but shows the same lie only as "the registry reports" — no ticks', async () => {
+    const { api } = await lyingRegistry();
+    const { ctx, pg, violations, errors } = await page(api);
+    await pg.goto(`${origin}/verify/VEIL-Y`, { waitUntil: 'networkidle' });
+    await pg.waitForSelector('text=Registry report · this link carries no fingerprint to check against', {
+      timeout: 15_000,
+    });
+    await pg.waitForSelector('text=Signed attestation, signature verified in this browser', { timeout: 15_000 });
+    const text = await pg.evaluate(() => document.body.innerText);
+    expect(text).toMatch(/Borrowed Name/); // the page still opens
+    expect(text).toMatch(/For the fingerprint the registry reports: it is in batch genuine-x/);
+    expect(text).toMatch(
+      /For the fingerprint the registry reports: Signed attestation, signature verified in this browser, from a key VeilCore says it has checked/,
+    );
+    expect(text).toMatch(/This link does not name the record's fingerprint/);
+    expect(text).toMatch(/this link names no fingerprint, so nothing on this page is ticked/);
+    expect(text).not.toMatch(/Checked in this browser: this fingerprint/);
+    // The registry's "lineage intact" is its report, not a tick (DisclosedFacts).
+    expect(text).toMatch(/The registry reports the lineage intact/);
+    // The same lines are there, every one marked as a report.
+    expect(await pg.evaluate(() => document.querySelectorAll('[data-fact="reported"]').length)).toBeGreaterThan(4);
+    expect(await ticks(pg)).toBe(0);
+    expect(await badge(pg)).toBe('no');
+    expect(violations).toEqual([]);
+    expect(errors).toEqual([]);
+    await ctx.close();
+  }, 60_000);
+
+  it('verify page: the link names X and the registry agrees → the proof and the vetted signature are ticked; "lineage intact" still is not', async () => {
+    const { X, api } = await lyingRegistry();
+    const { ctx, pg, violations, errors } = await page(api);
+    await pg.goto(`${origin}/verify/VEIL-Y?fp=${X}`, { waitUntil: 'networkidle' });
+    await pg.waitForSelector('text=In a sealed batch · anchor reported, not checked', { timeout: 15_000 });
+    await pg.waitForSelector('text=from a key VeilCore says it has checked', { timeout: 15_000 });
+    const text = await pg.evaluate(() => document.body.innerText);
+    expect(text).toMatch(/This link was made for fingerprint dddd.*and the registry\s+reports the same fingerprint/s);
+    expect(text).toMatch(/Checked in this browser: this fingerprint is in batch genuine-x/);
+    expect(text).not.toMatch(/For the fingerprint the registry reports/);
+    expect(text).toMatch(/The registry reports the lineage intact/);
+    expect(text).toMatch(/Ticked lines checked in this browser/);
+    // Exactly two ticks: the inclusion proof and the signed attestation. Not the lineage line.
+    expect(await ticks(pg)).toBe(2);
+    expect(await badge(pg)).toBe('yes');
+    expect(violations).toEqual([]);
+    expect(errors).toEqual([]);
     await ctx.close();
   }, 60_000);
 
@@ -1024,7 +1208,14 @@ describe.skipIf(!haveBrowser)('browser: built site under the production headers'
         expect(await pg.locator('input[value*="/verify/"]').count()).toBe(0);
       } else {
         await pg.waitForSelector('text=Saved on the registry', { timeout: 15_000 });
-        expect(await pg.locator('input[value="https://veilcore.org/verify/VEIL-A"]').count()).toBe(1);
+        // The link names the record's fingerprint, so the page checks against it.
+        expect(
+          await pg.locator(`input[value="https://veilcore.org/verify/VEIL-A?fp=${record.recordFingerprint}"]`).count(),
+        ).toBe(1);
+        expect(
+          await pg.locator(`a[href="/verify/VEIL-A?fp=${record.recordFingerprint}"]`).count(),
+          'Open what they’ll see',
+        ).toBe(1);
       }
       const put = external.find((e) => e.method === 'PUT' && e.url.endsWith('/disclosure'));
       expect(JSON.parse(put?.body ?? '{}')).toEqual({
@@ -1069,6 +1260,13 @@ describe.skipIf(!haveBrowser)('browser: built site under the production headers'
         localStorage.setItem('veilcore.role.v1', 'breeder');
       },
     );
+    await pg.addInitScript(() => {
+      Object.defineProperty(navigator, 'clipboard', {
+        value: {
+          writeText: (t: string) => ((window as unknown as { __copied: string }).__copied = t) && Promise.resolve(),
+        },
+      });
+    });
     await pg.goto(`${origin}/record/VEIL-C`, { waitUntil: 'networkidle' });
     await pg.getByRole('button', { name: 'Evidence package' }).click();
     await pg.waitForSelector('text=Second-party confirmation', { timeout: 15_000 });
@@ -1078,6 +1276,11 @@ describe.skipIf(!haveBrowser)('browser: built site under the production headers'
     expect(text).not.toMatch(/anchored on|tx dead/i);
     expect(text).toMatch(/Delivery taken via a transfer code/);
     expect(text).toMatch(/fingerprint recomputed from the stored fields: it matches/);
+    // The certificate's link (and the QR code drawn from the same value) names the fingerprint.
+    await pg.getByRole('button', { name: /Copy (verification )?link/i }).click();
+    expect(await pg.evaluate(() => (window as unknown as { __copied?: string }).__copied)).toBe(
+      `https://veilcore.org/verify/VEIL-C?fp=${record.recordFingerprint}`,
+    );
     await pg.getByRole('button', { name: 'Download (PNG)' }).click();
     await pg.waitForSelector('text=Certificate downloaded.', { timeout: 20_000 });
     expect(violations).toEqual([]);

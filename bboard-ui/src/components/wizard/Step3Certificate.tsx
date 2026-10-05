@@ -18,6 +18,7 @@ import { proofFor, type ProofState } from '../../veilcore/proofs';
 import { NETWORK, networkLabel, canonicalUrl } from '../../config/network';
 import { useLicenses, activeLicenseCount, licensesForRecord } from '../../veilcore/licenses';
 import { shortFingerprint } from '../../veilcore/commitment';
+import { verifyPath } from '../../veilcore/verify-link';
 import { TEAL } from '../../config/theme';
 
 const fmtStamp = (ms: number) => new Date(ms).toLocaleString();
@@ -78,7 +79,9 @@ export const Step3Certificate: React.FC<{ recordId: string; onDone: () => void; 
           ? 'Not yet: in a batch awaiting anchoring. Until then, its date rests on this registry’s records.'
           : 'Not yet. Until it is anchored, its date rests on this registry’s records.';
 
-  const verifyLink = canonicalUrl(`/verify/${encodeURIComponent(record.id)}`);
+  // The link and QR code name the record's fingerprint: the verify page checks the
+  // proof and attestations against it, not against the registry's answer.
+  const verifyLink = canonicalUrl(verifyPath(record.id, record.recordFingerprint));
 
   // What a delivery confirmation actually is. The registry writes it when someone
   // holding the sender's claim code takes delivery; it carries no lab name and no
@@ -214,7 +217,8 @@ export const Step3Certificate: React.FC<{ recordId: string; onDone: () => void; 
 
           <Stack spacing={1} sx={{ alignItems: 'center', justifyContent: 'center' }}>
             <Box sx={{ p: 1.5, background: '#fff', borderRadius: 2 }}>
-              <QRCodeSVG value={verifyLink} size={120} bgColor="#ffffff" fgColor="#04070a" level="M" />
+              {/* Drawn larger than before: the link now carries the 64-character fingerprint. */}
+              <QRCodeSVG value={verifyLink} size={144} bgColor="#ffffff" fgColor="#04070a" level="M" />
             </Box>
             <Typography variant="caption" color="text.secondary">
               Scan to verify

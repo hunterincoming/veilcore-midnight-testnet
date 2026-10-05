@@ -4,7 +4,13 @@
 // What it says is split by who stands behind it (attack round D):
 //   - checked in this browser: the record's inclusion proof (bound to its fingerprint,
 //     path folding to the batch root) and any signed attestations (bound to the
-//     fingerprint, signatures verified here). Only these get a tick;
+//     fingerprint, signatures verified here). Only these get a tick, and only when the
+//     fingerprint came from the link (`?fp=`), not from the registry's answer. Checked
+//     against the registry's own value, a lying registry could answer one record's id
+//     with another record's fingerprint and borrow its proof and lab signature (round D
+//     verification). A link whose fingerprint the registry does not report gets no
+//     checks and a warning; an old link without `fp` gets the checks worded as the
+//     registry's report, with no ticks;
 //   - reported by the registry: everything else — that a record with this fingerprint
 //     exists, when the registry first stored it, an anchor, whether a key is vetted, and
 //     the facts the holder chose to share. Worded as reports, never as checks.
@@ -13,7 +19,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import React, { useEffect, useState } from 'react';
-import { Box, Chip, CircularProgress, Container, Divider, Paper, Stack, Typography } from '@mui/material';
+import { Alert, Box, Chip, CircularProgress, Container, Divider, Paper, Stack, Typography } from '@mui/material';
 import { useParams, useSearchParams } from 'react-router-dom';
 import VerifiedIcon from '@mui/icons-material/VerifiedOutlined';
 import { shortFingerprint } from '../veilcore/commitment';
@@ -23,6 +29,7 @@ import { attestationsFor, countsAsSigned, type ResolvedAttestation } from '../ve
 import { TEAL } from '../config/theme';
 import { NETWORK, isTestNetwork, networkLabel } from '../config/network';
 import { Fact, SharedFacts } from '../components/verify/DisclosedFacts';
+import { bindingOf, linkFingerprint } from '../veilcore/verify-link';
 
 const API = import.meta.env.VITE_API_BASE ?? '';
 const fmt = (t: number | string) => new Date(t).toLocaleString();
@@ -138,6 +145,9 @@ export const VerifyPage: React.FC = () => {
   const { id = '' } = useParams();
   const [params] = useSearchParams();
   const show = params.get('show');
+  // The fingerprint the link was made for. It is not sent to the registry: it is what
+  // the registry's answer is checked against.
+  const fp = params.get('fp');
 
   const [result, setResult] = useState<VerifyResult | null>(null);
   const [loading, setLoading] = useState(true);
@@ -172,9 +182,13 @@ export const VerifyPage: React.FC = () => {
     };
   }, [id, show]);
 
-  // The two things this page can check for itself, against the fingerprint the
-  // registry reported.
-  const fingerprint = result?.found ? result.recordFingerprint : undefined;
+  // The two things this page can check for itself. With a fingerprint in the link they
+  // are checked against it (and the registry must report the same one); an old link is
+  // checked against the registry's value and shown as its report; on a mismatch nothing
+  // is checked.
+  const binding = bindingOf(linkFingerprint(fp), result?.found ? result.recordFingerprint : undefined);
+  const bound = binding.kind === 'bound';
+  const fingerprint = binding.kind === 'mismatch' ? undefined : binding.fingerprint;
   useEffect(() => {
     let live = true;
     setProof('checking');
@@ -191,7 +205,10 @@ export const VerifyPage: React.FC = () => {
     };
   }, [fingerprint]);
 
-  const checked = proof !== 'checking' && proof.status !== 'none';
+  // A tick (and the teal mark) only for a check against the link's own fingerprint.
+  const checked = bound && proof !== 'checking' && proof.status !== 'none';
+  // Before the link's fingerprint is known to match, say whose fingerprint was used.
+  const forWhom = bound ? '' : 'For the fingerprint the registry reports: ';
   const reportedNetwork =
     proof !== 'checking' && proof.status === 'anchor-reported'
       ? proof.proof.anchor?.network
@@ -200,6 +217,7 @@ export const VerifyPage: React.FC = () => {
         : undefined;
   const signed = (atts ?? []).filter(countsAsSigned);
   const signedVetted = signed.filter((a) => a.vettedAttester === true);
+  const ticked = checked || (bound && signedVetted.length > 0);
 
   return (
     <Box sx={{ minHeight: '100vh', background: '#04070a' }}>
@@ -225,12 +243,52 @@ export const VerifyPage: React.FC = () => {
               unmodified.
             </Typography>
           </Paper>
+        ) : binding.kind === 'mismatch' ? (
+          // The link names a record the registry does not answer for. Its answer is about
+          // some other record (or none), so nothing on it is checked or shown as this one.
+          <Paper sx={{ p: { xs: 3, md: 4 } }}>
+            <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', mb: 2 }}>
+              <VerifiedIcon data-checked="no" sx={{ color: 'text.disabled', fontSize: 30 }} />
+              <Typography variant="overline" sx={{ color: 'error.main' }}>
+                Fingerprint does not match this link · nothing checked
+              </Typography>
+            </Stack>
+            <Alert severity="error" variant="outlined" data-mismatch="yes">
+              <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
+                Do not rely on this page.
+              </Typography>
+              <Typography variant="body2">
+                {binding.linked
+                  ? `This link was made for the record with fingerprint ${shortFingerprint(binding.linked)}, `
+                  : 'This link carries a fingerprint that is not valid (it should be 64 hexadecimal characters); it may have been cut short or changed, '}
+                but the registry reports{' '}
+                {binding.reported ? `fingerprint ${shortFingerprint(binding.reported)}` : 'no fingerprint'} for{' '}
+                {id || 'this ID'}. Its answer is not about the record the link names, so this page has checked nothing
+                and shows none of it. Ask whoever gave you the link for the record itself.
+              </Typography>
+            </Alert>
+            <Divider sx={{ my: 2 }} />
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+              {binding.linked
+                ? `Fingerprint in the link: ${binding.linked}`
+                : `Fingerprint in the link: ${(fp ?? '').slice(0, 80)}`}
+            </Typography>
+            <Box sx={{ mt: 2, textAlign: 'right' }}>
+              <Chip
+                size="small"
+                variant="outlined"
+                label="The registry's answer does not match this link — nothing on this page was checked"
+                sx={{ height: 'auto', '& .MuiChip-label': { whiteSpace: 'normal', py: 0.5 } }}
+              />
+            </Box>
+          </Paper>
         ) : (
           <Paper sx={{ p: { xs: 3, md: 4 } }}>
             <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', mb: 2 }}>
-              {/* Teal only when something was checked here: the record's fingerprint is in
-                  a sealed batch whose path this browser folded. A record with nothing
-                  sealed, or nothing checkable, gets a grey mark. */}
+              {/* Teal only when something was checked here against the link's own
+                  fingerprint: it is in a sealed batch whose path this browser folded. A
+                  record with nothing sealed or nothing checkable, or an old link with no
+                  fingerprint, gets a grey mark. */}
               <VerifiedIcon
                 data-checked={checked ? 'yes' : 'no'}
                 sx={{ color: checked ? TEAL : 'text.disabled', fontSize: 30 }}
@@ -239,13 +297,15 @@ export const VerifyPage: React.FC = () => {
                 <Typography variant="overline" sx={{ color: checked ? TEAL : 'text.secondary' }}>
                   {!result.recordFingerprint
                     ? 'Record found — nothing sealed'
-                    : proof === 'checking'
-                      ? 'Checking…'
-                      : proof.status === 'anchor-reported'
-                        ? 'In a sealed batch · anchor reported, not checked'
-                        : proof.status === 'pending'
-                          ? 'In a sealed batch · not yet anchored'
-                          : 'Fingerprint on file · not in a batch this page could check'}
+                    : !bound
+                      ? 'Registry report · this link carries no fingerprint to check against'
+                      : proof === 'checking'
+                        ? 'Checking…'
+                        : proof.status === 'anchor-reported'
+                          ? 'In a sealed batch · anchor reported, not checked'
+                          : proof.status === 'pending'
+                            ? 'In a sealed batch · not yet anchored'
+                            : 'Fingerprint on file · not in a batch this page could check'}
                 </Typography>
                 <Typography variant="h5">{result.cultivar}</Typography>
               </Box>
@@ -258,17 +318,31 @@ export const VerifyPage: React.FC = () => {
             <Divider sx={{ mb: 2 }} />
 
             <Stack spacing={1.25}>
-              {result.recordFingerprint ? (
-                <Fact ok={false}>
-                  The registry reports a record with fingerprint {shortFingerprint(result.recordFingerprint)}
-                  {result.registryFirstSeen ? `, first stored on ${fmt(result.registryFirstSeen)}` : ''}. The fields it
-                  covers are not shared, so this page cannot recompute it.
-                </Fact>
-              ) : (
+              {!result.recordFingerprint ? (
                 <Fact ok={false}>
                   This record carries no commitment, so nothing about it can be checked. It exists in the registry and
                   that is all.
                 </Fact>
+              ) : bound ? (
+                <Fact ok={false}>
+                  This link was made for fingerprint {shortFingerprint(result.recordFingerprint)}, and the registry
+                  reports the same fingerprint for this record
+                  {result.registryFirstSeen ? `, first stored on ${fmt(result.registryFirstSeen)}` : ''}. The fields it
+                  covers are not shared, so this page cannot recompute it.
+                </Fact>
+              ) : (
+                <>
+                  <Fact ok={false}>
+                    The registry reports a record with fingerprint {shortFingerprint(result.recordFingerprint)}
+                    {result.registryFirstSeen ? `, first stored on ${fmt(result.registryFirstSeen)}` : ''}. The fields
+                    it covers are not shared, so this page cannot recompute it.
+                  </Fact>
+                  <Fact ok={false}>
+                    This link does not name the record&apos;s fingerprint, so this page cannot tell whether the registry
+                    answered with this record&apos;s fingerprint or another&apos;s. Nothing below is ticked. A link made
+                    now from the record ends in ?fp=…; ask the holder for one.
+                  </Fact>
+                </>
               )}
 
               {result.recordFingerprint &&
@@ -279,10 +353,17 @@ export const VerifyPage: React.FC = () => {
                   </Fact>
                 ) : (
                   <>
-                    <Fact>
-                      Checked in this browser: this fingerprint is in batch {proof.proof.batchId}, and its path folds to
-                      the batch root {proof.proof.root.slice(0, 16)}….
-                    </Fact>
+                    {bound ? (
+                      <Fact>
+                        Checked in this browser: this fingerprint is in batch {proof.proof.batchId}, and its path folds
+                        to the batch root {proof.proof.root.slice(0, 16)}….
+                      </Fact>
+                    ) : (
+                      <Fact ok={false}>
+                        {forWhom}it is in batch {proof.proof.batchId}, and its path folds to the batch root{' '}
+                        {proof.proof.root.slice(0, 16)}…. Checked here, but against the registry&apos;s own fingerprint.
+                      </Fact>
+                    )}
                     {proof.status === 'anchor-reported' ? (
                       <Fact ok={false}>
                         The registry reports that root was recorded on {networkLabel(reportedNetwork ?? NETWORK)}
@@ -299,17 +380,19 @@ export const VerifyPage: React.FC = () => {
                 ))}
 
               {/* Base data: shown whatever the holder shared. Signatures are checked here;
-                  who holds a key is the registry operator's word. */}
+                  who holds a key is the registry operator's word. Ticked only against the
+                  link's own fingerprint. */}
               {result.recordFingerprint &&
                 atts !== null &&
                 (signedVetted.length > 0 ? (
-                  <Fact>
-                    Signed attestation, signature verified in this browser, from a key VeilCore says it has checked.
+                  <Fact ok={bound}>
+                    {forWhom}Signed attestation, signature verified in this browser, from a key VeilCore says it has
+                    checked.
                   </Fact>
                 ) : signed.length > 0 ? (
                   <Fact ok={false}>
-                    Signed attestation, signature verified in this browser, from a key not verified by VeilCore — it
-                    does not show who signed.
+                    {forWhom}Signed attestation, signature verified in this browser, from a key not verified by VeilCore
+                    — it does not show who signed.
                   </Fact>
                 ) : result.signedAttestation === true ||
                   result.attestedByVettedLab === true ||
@@ -363,9 +446,11 @@ export const VerifyPage: React.FC = () => {
                 size="small"
                 variant="outlined"
                 label={
-                  checked
+                  ticked
                     ? 'Ticked lines checked in this browser; the rest reported by the VeilCore registry'
-                    : 'Reported by the VeilCore registry — nothing on this page could be checked'
+                    : !bound && result.recordFingerprint
+                      ? 'Reported by the VeilCore registry — this link names no fingerprint, so nothing on this page is ticked'
+                      : 'Reported by the VeilCore registry — nothing on this page could be checked'
                 }
                 sx={{ height: 'auto', '& .MuiChip-label': { whiteSpace: 'normal', py: 0.5 } }}
               />

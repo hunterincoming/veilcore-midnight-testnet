@@ -82,6 +82,17 @@ and asks:
 Pressing Enter instead uses the old folder for that run only, as before, and asks again
 next time.
 
+**If the copy is interrupted** (Ctrl+C, a crash, the Mac shutting down): to copy, the CLI
+first makes a temporary full copy of the old folder, and that copy can hold an old
+maintenance key. It is made in the Mac's temporary folder (private to your account, not
+in your home folder, not backed up by Time Machine) and deleted as soon as the copy ends,
+however it ends. If the program was killed outright, the next run deletes what was left
+and says so, starting `Removed …: a scratch copy of an older private-state store`; it then
+asks `Type MOVE …` again. Your old folder is unchanged either way. (A version before 4
+October made that temporary copy inside `~/.veilcore/<network>/`; the next run deletes
+that too, with the same message. If you see it, and Time Machine ran in between, delete
+the backups of that folder as in step 2.)
+
 ---
 
 ## A. Rehearsal on a local chain
@@ -219,13 +230,16 @@ Preprod is Midnight's test network. Use the **test wallet only**.
     transaction carried 8 keys) and so on, one transaction each.
 20. Done when you see `all 24 circuit keys are on chain`, then `Deployed. Every circuit
     key is on chain.` and `Contract address: …`. Copy the address again and check it
-    matches.
+    matches. Earlier, after the first transaction, it also printed `Deploy transaction
+    id: …`. Copy that too (it is public); see "How joining checks the contract" below.
 21. The main menu appears. Optional: type `30` to see `Protocol version 1.` Type `0` to exit.
 22. Close the Terminal window.
 
 ### Write down afterwards
 
 - The contract address (also in the newest file in `bboard-cli/logs/mainnet/`).
+- The deploy transaction id (the `Deploy transaction id: …` line; also in the log). It
+  goes in the deployment record next to the address.
 - The date and time of the deploy.
 - That the maintenance key is on paper, where it is kept, and that no digital copy exists.
 - Send Claude the contract address. It is public. **Joining the contract on mainnet
@@ -250,6 +264,11 @@ that deploys a second contract.
    RETIRE, or Enter to keep it`, press **Enter**.
 5. It says `Deploy finished: every circuit key is on chain.` and `Contract address: …`.
    Then step 21.
+
+If, after adding the keys, it says `Could not check how the contract at … started` and
+asks `Deploy transaction id (hex; Enter to stop)`: paste the id from the stopped run's
+log (the line `deploy transaction submitted (…)`) and press Enter. This only happens if
+someone used the contract between the two runs. It is not a sign anything is wrong.
 
 If the screen says `The contract IS on chain at …`, that is this case: use `4` as above.
 If it says `The network refused the deploy`, nothing was created and nothing was spent:
@@ -302,10 +321,38 @@ landed before you issued the challenge. Ask the licensee to present again.
 
 ### Joining on mainnet
 
-Option 2 on mainnet only accepts the contract address pinned in the code, and only after
-checking the contract started from VeilCore's own starting state (another contract can
-carry the same circuits with forged records). Matching circuit keys show the code; the
-address is what says which contract is VeilCore's.
+Option 2 on mainnet only accepts the contract address pinned in the code. Matching
+circuit keys show the code; the address is what says which contract is VeilCore's
+(another contract can carry the same circuits with forged records).
+
+### How joining checks the contract (changed 4 October)
+
+Before joining, the CLI checks that the contract started from VeilCore's own empty
+starting state, by reading the contract's **deploy transaction** and comparing what it
+started with against this build. In plain words, what happens:
+
+- **Usually** the indexer leads straight to the deploy transaction, the check runs, and the
+  log says `Starting state checked: deploy transaction … carries the VeilCore
+  constructor's state.` Nothing to do.
+- **If the contract's most recent action is a maintenance change** (a circuit key added or
+  replaced with the maintenance key), the indexer cannot lead back to the deploy. Then:
+  - if nobody has used the contract yet (just deployed, or "Finish a deploy"), its records
+    are still exactly the empty starting state, which is checked directly. Nothing to do;
+  - **on mainnet**, at the pinned address, the CLI joins and the log says `Starting state
+    not re-checked: …`. The pin is the authority there: it is the address from your own
+    deploy, written into the code and the deployment record;
+  - on a test network, it says `Could not check how the contract at … started. … This is
+    NOT a finding that the contract is forged` and asks for the deploy transaction id.
+    Paste the id (the deployer's `Deploy transaction id: …` line) and it checks from that
+    transaction. Enter stops, with nothing written.
+- **It only ever says a contract `is not a genuine VeilCore deployment`** after reading its
+  actual deploy transaction. Do not use a contract it says that about; send Claude the
+  message.
+
+Before this change the CLI asked the indexer for the "deploy state" through midnight-js,
+which, after a maintenance change, hands back the contract's *current* state instead. Once
+records existed, the real VeilCore contract would then have been refused as forged after
+any key change. That can no longer happen.
 
 ---
 

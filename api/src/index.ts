@@ -24,6 +24,7 @@ export * from './deploy-guard.js';
 export * from './veilcore-types.js';
 export * from './veilcore-api.js';
 export * from './presentation-lookup.js';
+export { StartingStateUnreachableError, checkStartingState, deployedStateIn } from './starting-state.js';
 export * from '../../contract/src/verify.js';
 export * from './claims-types.js';
 export * from './claims-api.js';

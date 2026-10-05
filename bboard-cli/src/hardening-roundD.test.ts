@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { NEVER, Observable, config as rxConfig, throwError } from 'rxjs';
 import {
   chmodSync,
+  cpSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -16,6 +17,7 @@ import {
   statSync,
   writeFileSync,
 } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { type Interface } from 'node:readline/promises';
@@ -30,6 +32,13 @@ import {
   createConstructorContext,
   sampleSigningKey,
 } from '@midnight-ntwrk/compact-runtime';
+import {
+  ContractDeploy,
+  ContractState as LedgerContractState,
+  Intent,
+  MaintenanceUpdate,
+  Transaction,
+} from '@midnight-ntwrk/midnight-js-protocol/ledger';
 
 // The provable retirement sends one transaction through midnight-js's submitTx; here it
 // is recorded, and the chain (a fake) flips to an empty committee when it is "sent".
@@ -49,6 +58,7 @@ vi.mock('@midnight-ntwrk/midnight-js-contracts', async (orig) => {
 const { LandedButUnconfirmedError, RecoveryReplacedButUnconfirmedError, VeilcoreAPI } =
   await import('../../api/src/veilcore-api');
 const { assertJoinAllowed, MAINNET_VEILCORE_ADDRESS } = await import('../../api/src/deploy-guard');
+const { StartingStateUnreachableError, checkStartingState } = await import('../../api/src/starting-state');
 const { matchEntryPoint, singleCallState } = await import('../../api/src/presentation-lookup');
 const { memorySigningKeys, transientSecrets } = await import('../../api/src/memory-overlays');
 const { veilcorePrivateStateKey } = await import('../../api/src/veilcore-types');
@@ -61,7 +71,7 @@ const { oneAtATime } = await import('./one-at-a-time');
 const { assertKeysMatchRecord, gitEnvironment } = await import('./keys-check');
 const { forgetPassword, privateStatePassword, settlePassword } = await import('./password');
 const { guardProcess, watchState } = await import('./state-watch');
-const { deployOrJoin } = await import('./index');
+const { deployOrJoin, joinChecked } = await import('./index');
 
 type Api = Awaited<ReturnType<typeof VeilcoreAPI.join>>;
 const PASSWORD = 'Veilcore-Mainnet-Pw-7q'; // passes midnight-js validatePassword
@@ -461,6 +471,81 @@ describe('D-2 FIXED: the maintenance key and one-call secrets never reach the st
       writeFileSync(path.join(target, 'CURRENT'), 'x');
       await expect(copyLiveStore(old, target, STORE, PASSWORD)).rejects.toThrow();
     });
+
+    // Round D verification, Low: a MOVE killed mid-copy left a full copy of the old store
+    // (maintenance key included) in ~/.veilcore/<net>/, never removed or mentioned.
+    it('MOVE reads from a scratch copy in the temp folder, never the home folder, and removes it however the copy ends', async () => {
+      const { old } = await oldFolder();
+      const home = mkdtempSync(path.join(tmpdir(), 'vc-hd-home-'));
+      const tmp = mkdtempSync(path.join(tmpdir(), 'vc-hd-tmp-'));
+      const base = { networkId: 'mainnet', storeName: STORE, logger: silent, home, candidates: [old], tmp };
+      // The copy fails partway (after the scratch copy is made): nothing is left anywhere.
+      await expect(chooseStore({ ...base, password: 'Another-Password-9x', ask: async () => 'MOVE' })).rejects.toThrow(
+        /does not open the old store/,
+      );
+      expect(readdirSync(tmp)).toEqual([]);
+      expect(readdirSync(path.join(home, '.veilcore', 'mainnet'))).toEqual([]);
+      // The scratch copy is made in `tmp`: with no usable temp folder, MOVE cannot start.
+      await expect(
+        chooseStore({ ...base, tmp: path.join(tmp, 'absent'), password: PASSWORD, ask: async () => 'MOVE' }),
+      ).rejects.toThrow(/ENOENT/);
+      expect(readdirSync(path.join(home, '.veilcore', 'mainnet'))).toEqual([]);
+      // A MOVE that works: only the new store in the home folder, nothing in `tmp`.
+      await chooseStore({ ...base, password: PASSWORD, ask: async () => 'MOVE' });
+      expect(readdirSync(tmp)).toEqual([]);
+      expect(readdirSync(path.join(home, '.veilcore', 'mainnet'))).toEqual(['private-state']);
+    });
+
+    it('a MOVE killed mid-copy: the next start removes what it left, says so, and offers MOVE again', async () => {
+      const { old } = await oldFolder();
+      const home = mkdtempSync(path.join(tmpdir(), 'vc-hd-home-'));
+      const tmp = mkdtempSync(path.join(tmpdir(), 'vc-hd-tmp-'));
+      const dead = spawnSync(process.execPath, ['-e', '']).pid; // a process that has exited
+      const net = path.join(home, '.veilcore', 'mainnet');
+      mkdirSync(net, { recursive: true });
+      // What a kill left: the scratch copy (where this version and the one before made it)
+      // and the unfinished new store.
+      const leftovers = [
+        path.join(tmp, `veilcore-old-store-${dead}-Ab12Cd`),
+        path.join(net, `private-state.copying-${dead}.reading`),
+        path.join(net, `private-state.copying-${dead}`),
+      ];
+      cpSync(old, path.join(leftovers[0], 'db'), { recursive: true });
+      cpSync(old, leftovers[1], { recursive: true });
+      mkdirSync(leftovers[2]);
+      writeFileSync(path.join(leftovers[2], 'CURRENT'), 'x');
+      // Not leftovers: a copy still running (this process), and anything else in the temp folder.
+      const running = path.join(tmp, `veilcore-old-store-${process.pid}-Zz99Yy`);
+      mkdirSync(running);
+      writeFileSync(path.join(tmp, 'unrelated.txt'), 'x');
+      const keyOnDisk = async (dir: string) => (await everyValueOnDisk(dir)).some((v) => v.includes('e7'.repeat(32)));
+      expect(await keyOnDisk(leftovers[1])).toBe(true); // the old maintenance key really was there
+
+      const { lines, logger } = recording();
+      const ask = vi.fn(async () => 'MOVE');
+      const choice = await chooseStore({
+        networkId: 'mainnet',
+        storeName: STORE,
+        password: PASSWORD,
+        ask,
+        logger,
+        home,
+        candidates: [old],
+        tmp,
+      });
+      for (const p of leftovers) {
+        expect(existsSync(p)).toBe(false);
+        expect(lines.some((l) => l.startsWith(`Removed ${p}: `))).toBe(true);
+      }
+      expect(lines.filter((l) => l.includes('could hold an old maintenance key'))).toHaveLength(2);
+      expect(existsSync(running)).toBe(true);
+      expect(existsSync(path.join(tmp, 'unrelated.txt'))).toBe(true);
+      // The unfinished store did not count as "in use": MOVE was offered again and done.
+      expect(ask).toHaveBeenCalledTimes(1);
+      expect(choice.dir).toBe(storeDirFor('mainnet', home));
+      expect(readdirSync(net)).toEqual(['private-state']);
+      expect(await keyOnDisk(choice.dir)).toBe(false);
+    });
   });
 
   describe('"Finish a deploy" takes the key from paper every time, and drops it however it ends', () => {
@@ -622,25 +707,84 @@ describe('D-1 FIXED: join checks the starting state, and on mainnet the pinned a
     } as never).initialState(createConstructorContext({}, '0'.repeat(64))).currentContractState;
   };
 
-  const joinProviders = (deployState: ContractState | null) => {
+  /** A genuine contract after record activity: the constructor's operations, a used ledger. */
+  const usedState = (): ContractState => {
+    const sim = new VeilcoreSimulator();
+    sim.call(as(secret('rd1-used-a')), 'anchor', freshRecovery());
+    sim.call(as(secret('rd1-used-b')), 'anchor', freshRecovery());
+    const genuine = genuineDeployState();
+    const built = (sim as any).ctx.currentQueryContext.state as ChargedState;
+    const used = new ContractState();
+    used.data = new ChargedState(StateValue.decode(built.state.encode()));
+    for (const op of genuine.operations()) used.setOperation(op, genuine.operation(op)!);
+    return used;
+  };
+
+  type Act = { readonly kind: 'deploy' | 'call' | 'update'; readonly state: ContractState; readonly txId: string };
+  const toLedger = (s: ContractState) => LedgerContractState.deserialize(s.serialize());
+  const unprovenTx = (intent: unknown) => Transaction.fromParts('undeployed', undefined, undefined, intent as never);
+
+  /**
+   * One contract's history on a fake indexer, behind a public data provider that answers
+   * as midnight-js-indexer-public-data-provider 4.1.1 does (dist/index.mjs): the
+   * "contractAction" it asks for is the LATEST action; for a call it follows the call's
+   * `deploy` link, for a deploy or a maintenance update it takes that action as it is.
+   * The transactions are real ledger transactions (a ContractDeploy; a MaintenanceUpdate).
+   */
+  const chain = (deployState: ContractState, later: readonly Omit<Act, 'txId'>[] = []) => {
+    const deploy = new ContractDeploy(toLedger(deployState));
+    const address = deploy.address;
+    const ttl = new Date(Date.now() + 3_600_000);
+    const acts: Act[] = [
+      { kind: 'deploy', state: deployState, txId: 'd0' },
+      ...later.map((a, i) => ({ ...a, txId: `a${i + 1}` })),
+    ];
+    const txs = new Map<string, unknown>([['d0', unprovenTx(Intent.new(ttl).addDeploy(deploy))]]);
+    for (const a of acts.slice(1))
+      txs.set(
+        a.txId,
+        a.kind === 'update'
+          ? unprovenTx(Intent.new(ttl).addMaintenanceUpdate(new MaintenanceUpdate(address, [], 0n)))
+          : unprovenTx(Intent.new(ttl)), // a call: no deploy in it (its call is not needed here)
+      );
+    const finalized = (txId: string) => ({ tx: txs.get(txId), status: SucceedEntirely, txId, identifiers: [txId] });
+    const latest = (): Act => acts[acts.length - 1];
     const writes: string[] = [];
-    return {
-      writes,
-      providers: {
-        privateStateProvider: {
-          setContractAddress: () => void writes.push('setContractAddress'),
-          get: async () => (writes.push('get'), null),
-          set: async () => void writes.push('set'),
-          getSigningKey: async () => null,
-          setSigningKey: async () => void writes.push('setSigningKey'),
-        },
-        publicDataProvider: {
-          queryDeployContractState: async () => deployState,
-          queryContractState: async () => deployState,
-          contractStateObservable: () => NEVER,
-        },
+    const providers = {
+      privateStateProvider: {
+        setContractAddress: () => void writes.push('setContractAddress'),
+        get: async () => (writes.push('get'), null),
+        set: async () => void writes.push('set'),
+        getSigningKey: async () => null,
+        setSigningKey: async () => void writes.push('setSigningKey'),
+      },
+      publicDataProvider: {
+        queryContractState: async (a: string) => (a === address ? latest().state : null),
+        // DEPLOY_CONTRACT_STATE_TX_QUERY: `if (!('deploy' in contract)) return contract.state`.
+        queryDeployContractState: async (a: string) =>
+          a !== address ? null : latest().kind === 'call' ? acts[0].state : latest().state,
+        // DEPLOY_TX_QUERY: `'deploy' in contract ? contract.deploy.transaction : contract.transaction`.
+        watchForDeployTxData: async (a: string) =>
+          a !== address ? new Promise(() => undefined) : finalized(latest().kind === 'call' ? 'd0' : latest().txId),
+        // Polls until the transaction exists: never resolves for an unknown id.
+        watchForTxData: async (id: string) => (txs.has(id) ? finalized(id) : new Promise(() => undefined)),
+        contractStateObservable: () => NEVER,
       },
     };
+    return { address, providers, writes };
+  };
+  /** join got past the starting-state check: it wrote for the address, then failed later on the fake. */
+  const pastTheCheck = async (p: Promise<unknown>, writes: string[]) => {
+    const e = await p.then(
+      () => undefined,
+      (x: unknown) => x,
+    );
+    expect(String(e)).not.toMatch(/did not start from|not a genuine|Could not check|cannot be checked/);
+    expect(writes[0]).toBe('setContractAddress');
+  };
+  const refusedUntouched = async (p: Promise<unknown>, writes: string[], why: RegExp) => {
+    await expect(p).rejects.toThrow(why);
+    expect(writes).toEqual([]);
   };
 
   it('the genuine constructor state passes the comparison; the look-alike does not', () => {
@@ -650,36 +794,251 @@ describe('D-1 FIXED: join checks the starting state, and on mainnet the pinned a
 
   it('join refuses the look-alike before writing anything for its address', async () => {
     setNetworkId('preprod');
-    const { providers, writes } = joinProviders(forgedDeployState());
-    await expect(VeilcoreAPI.join(providers as never, ADDR, silent)).rejects.toThrow(
+    const { address, providers, writes } = chain(forgedDeployState());
+    await refusedUntouched(
+      VeilcoreAPI.join(providers as never, address, silent),
+      writes,
       /did not start from the VeilCore constructor's state/,
     );
-    expect(writes).toEqual([]);
   });
 
-  it('join refuses an address the indexer gives no deploy state for', async () => {
+  it('join refuses an address the indexer has no contract at', async () => {
     setNetworkId('preprod');
-    const { providers } = joinProviders(null);
-    await expect(VeilcoreAPI.join(providers as never, ADDR, silent)).rejects.toThrow(/no deploy state/);
+    const { providers, writes } = chain(genuineDeployState());
+    await refusedUntouched(VeilcoreAPI.join(providers as never, ADDR, silent), writes, /has no contract at/);
+  });
+
+  // Round D verification, Medium: the check used midnight-js's queryDeployContractState,
+  // which, when the latest action is a maintenance update, returns the CURRENT state. After
+  // record activity and then a key change, the genuine contract was refused as forged.
+  it('a genuine contract whose latest action is a key change after record activity is NOT refused as forged', async () => {
+    setNetworkId('preprod');
+    const used = usedState();
+    expect(startsFromConstructor(used)).toBe(false); // its ledger has moved on
+    const c = chain(genuineDeployState(), [
+      { kind: 'call', state: used },
+      { kind: 'update', state: used },
+    ]);
+    // Exactly the situation: midnight-js's "deploy state" here is the current state.
+    expect(startsFromConstructor((await c.providers.publicDataProvider.queryDeployContractState(c.address))!)).toBe(
+      false,
+    );
+    // Without the deploy transaction id: not called forged; told why, and what to give.
+    await refusedUntouched(
+      VeilcoreAPI.join(c.providers as never, c.address, silent),
+      c.writes,
+      /NOT a finding that the contract is forged/,
+    );
+    await expect(VeilcoreAPI.join(c.providers as never, c.address, silent)).rejects.toBeInstanceOf(
+      StartingStateUnreachableError,
+    );
+    // With it: the deploy transaction is read, and the contract passes.
+    await pastTheCheck(VeilcoreAPI.join(c.providers as never, c.address, silent, { deployTxId: 'd0' }), c.writes);
+  });
+
+  it('a look-alike whose latest action is a key change: still refused, as forged once its deploy is read', async () => {
+    setNetworkId('preprod');
+    const forged = forgedDeployState();
+    const c = chain(forged, [{ kind: 'update', state: forged }]);
+    // Its ledger is not the constructor's now either, so nothing lets it through unread.
+    await refusedUntouched(VeilcoreAPI.join(c.providers as never, c.address, silent), c.writes, /NOT a finding/);
+    await refusedUntouched(
+      VeilcoreAPI.join(c.providers as never, c.address, silent, { deployTxId: 'd0' }),
+      c.writes,
+      /did not start from the VeilCore constructor's state/,
+    );
+  });
+
+  it("a deploy transaction id that is not this contract's deploy is refused, and nothing is written", async () => {
+    setNetworkId('preprod');
+    const used = usedState();
+    const c = chain(genuineDeployState(), [
+      { kind: 'call', state: used },
+      { kind: 'update', state: used },
+    ]);
+    const other = chain(genuineDeployState());
+    for (const id of ['a2', 'a1']) // the key change itself; a call
+      await refusedUntouched(
+        VeilcoreAPI.join(c.providers as never, c.address, silent, { deployTxId: id }),
+        c.writes,
+        /is not a successful deploy of the contract at/,
+      );
+    // Another contract's deploy (looked up on that contract's indexer, same id 'd0', different address).
+    const mixed = {
+      ...c.providers,
+      publicDataProvider: {
+        ...c.providers.publicDataProvider,
+        watchForTxData: other.providers.publicDataProvider.watchForTxData,
+      },
+    };
+    await refusedUntouched(
+      VeilcoreAPI.join(mixed as never, c.address, silent, { deployTxId: 'd0' }),
+      c.writes,
+      /is not a successful deploy/,
+    );
+    await refusedUntouched(
+      VeilcoreAPI.join(c.providers as never, c.address, silent, { deployTxId: 'not hex' }),
+      c.writes,
+      /not a transaction id/,
+    );
+    // An id the indexer never finds: midnight-js polls for ever; the check gives up, says so.
+    await expect(
+      checkStartingState({
+        publicDataProvider: c.providers.publicDataProvider as never,
+        address: c.address,
+        deployTxId: 'ee',
+        pinned: false,
+        timeoutMs: 20,
+      }),
+    ).rejects.toThrow(/did not find transaction ee within/);
+  });
+
+  it("midnight-js failing to map a key change's transaction (IndexerDataError) is where the latest action is, not a verdict", async () => {
+    setNetworkId('preprod');
+    const fresh = genuineDeployState();
+    const c = chain(fresh, [{ kind: 'update', state: fresh }]);
+    const failing = (e: Error) => ({
+      ...c.providers.publicDataProvider,
+      watchForDeployTxData: async () => {
+        throw e;
+      },
+    });
+    const dataError = Object.assign(new Error('Missing identifier'), { name: 'IndexerDataError' });
+    expect(
+      await checkStartingState({ publicDataProvider: failing(dataError) as never, address: c.address, pinned: false }),
+    ).toEqual({
+      checked: 'current-state',
+    });
+    // The indexer never handing the transaction over: a time-out, not a verdict; the pin still decides.
+    const used = usedState();
+    const u = chain(genuineDeployState(), [
+      { kind: 'call', state: used },
+      { kind: 'update', state: used },
+    ]);
+    const hanging = { ...u.providers.publicDataProvider, watchForDeployTxData: () => new Promise(() => undefined) };
+    await expect(
+      checkStartingState({ publicDataProvider: hanging as never, address: u.address, pinned: false, timeoutMs: 20 }),
+    ).rejects.toThrow(/did not hand over the deploy transaction/);
+    expect(
+      await checkStartingState({
+        publicDataProvider: hanging as never,
+        address: u.address,
+        pinned: true,
+        timeoutMs: 20,
+      }),
+    ).toEqual({ checked: 'pinned-address' });
+    // Any other failure (the indexer down) is passed on as it is.
+    await expect(
+      checkStartingState({
+        publicDataProvider: failing(new Error('socket hang up')) as never,
+        address: c.address,
+        pinned: false,
+      }),
+    ).rejects.toThrow(/socket hang up/);
+  });
+
+  it('read from the deploy transaction whenever the latest action leads to it: deploy, call, or call after a key change', async () => {
+    setNetworkId('preprod');
+    const used = usedState();
+    for (const later of [
+      [],
+      [{ kind: 'call' as const, state: used }],
+      [
+        { kind: 'update' as const, state: genuineDeployState() },
+        { kind: 'call' as const, state: used },
+      ],
+    ]) {
+      const c = chain(genuineDeployState(), later);
+      const { lines, logger } = recording();
+      await pastTheCheck(VeilcoreAPI.join(c.providers as never, c.address, logger), c.writes);
+      expect(lines).toContain(
+        "Starting state checked: deploy transaction d0 carries the VeilCore constructor's state.",
+      );
+    }
+  });
+
+  it('a fresh deploy with its keys added (latest action a key change, no record activity): accepted, as "Finish a deploy" needs', async () => {
+    setNetworkId('preprod');
+    const fresh = genuineDeployState();
+    const c = chain(fresh, [
+      { kind: 'update', state: fresh },
+      { kind: 'update', state: fresh },
+    ]);
+    const { lines, logger } = recording();
+    await pastTheCheck(VeilcoreAPI.join(c.providers as never, c.address, logger, { deploying: true }), c.writes);
+    expect(lines.join('\n')).toMatch(/ledger is still exactly the VeilCore constructor's/);
+  });
+
+  it('mainnet, the pinned address, latest action a key change after record activity: joined, and the log says the pin decided', async () => {
+    const used = usedState();
+    const c = chain(genuineDeployState(), [
+      { kind: 'call', state: used },
+      { kind: 'update', state: used },
+    ]);
+    setNetworkId('mainnet');
+    try {
+      const { lines, logger } = recording();
+      const r = await checkStartingState({
+        publicDataProvider: c.providers.publicDataProvider as never,
+        address: c.address,
+        pinned: assertJoinAllowed(c.address, silent, c.address) === 'pinned',
+        logger,
+      });
+      expect(r).toEqual({ checked: 'pinned-address' });
+      expect(lines.join('\n')).toMatch(
+        /Starting state not re-checked: .*that pin is what identifies VeilCore's contract/,
+      );
+      // The pin never excuses a deploy that WAS read and is forged.
+      const forged = chain(forgedDeployState());
+      await expect(
+        checkStartingState({
+          publicDataProvider: forged.providers.publicDataProvider as never,
+          address: forged.address,
+          pinned: true,
+        }),
+      ).rejects.toThrow(/did not start from/);
+    } finally {
+      setNetworkId('preprod');
+    }
+  });
+
+  it('the CLI asks for the deploy transaction id when the deploy cannot be reached, and checks from it', async () => {
+    setNetworkId('preprod');
+    const used = usedState();
+    const c = chain(genuineDeployState(), [
+      { kind: 'call', state: used },
+      { kind: 'update', state: used },
+    ]);
+    const asked: string[] = [];
+    const rli = { question: async (q: string) => (asked.push(q), 'd0') } as unknown as Interface;
+    await pastTheCheck(joinChecked(rli, c.providers as never, c.address, silent), c.writes);
+    expect(asked).toEqual(['Deploy transaction id (hex; Enter to stop): ']);
+    // Enter stops, with the explanation, and nothing written.
+    const c2 = chain(genuineDeployState(), [
+      { kind: 'call', state: used },
+      { kind: 'update', state: used },
+    ]);
+    const stop = { question: async () => '' } as unknown as Interface;
+    await refusedUntouched(joinChecked(stop, c2.providers as never, c2.address, silent), c2.writes, /NOT a finding/);
   });
 
   it('mainnet: no join while no address is pinned; only the pinned one once it is; deploy and finish are not joins by address', async () => {
     expect(MAINNET_VEILCORE_ADDRESS).toBe(''); // empty until the deploy, by design
     setNetworkId('mainnet');
-    const { providers, writes } = joinProviders(genuineDeployState());
+    const { providers, writes } = chain(genuineDeployState());
     await expect(VeilcoreAPI.join(providers as never, ADDR, silent)).rejects.toThrow(/pins no address yet/);
     expect(writes).toEqual([]);
     expect(() => assertJoinAllowed(ADDR, silent, 'cd'.repeat(32))).toThrow(/the VeilCore contract is cdcd/);
-    expect(() => assertJoinAllowed(ADDR.toUpperCase(), silent, `0x${ADDR}`)).not.toThrow();
+    expect(assertJoinAllowed(ADDR.toUpperCase(), silent, `0x${ADDR}`)).toBe('pinned');
     // A deploy's own join skips only the pin: the state check still runs (and refuses a forgery).
-    const forged = joinProviders(forgedDeployState());
-    await expect(VeilcoreAPI.join(forged.providers as never, ADDR, silent, { deploying: true })).rejects.toThrow(
-      /did not start from the VeilCore constructor's state/,
-    );
+    const forged = chain(forgedDeployState());
+    await expect(
+      VeilcoreAPI.join(forged.providers as never, forged.address, silent, { deploying: true }),
+    ).rejects.toThrow(/did not start from the VeilCore constructor's state/);
     // Development networks: any address.
     for (const n of ['preprod', 'preview', 'undeployed']) {
       setNetworkId(n);
-      expect(() => assertJoinAllowed(ADDR, silent)).not.toThrow();
+      expect(assertJoinAllowed(ADDR, silent)).toBe('development');
     }
   });
 });
@@ -983,7 +1342,14 @@ describe('D-8 FIXED: a state-stream error is handled, not a crash', () => {
       const seen: (number | undefined)[] = [];
       const { lines, logger } = recording();
       const s = watchState(flaky, logger, (v) => seen.push(v), 1);
-      await new Promise((r) => setTimeout(r, 50));
+      // Wait for the outcome, not for a fixed time: the two retries are 1 ms and 2 ms
+      // timers, and a fixed 50 ms wait failed whenever the event loop stalled ~50 ms (a GC
+      // pause, a WASM call, a busy machine). Busy-blocking here proves the wait survives one.
+      const end = Date.now() + 80;
+      while (Date.now() < end) {
+        /* a stalled event loop */
+      }
+      await vi.waitFor(() => expect(seen).toEqual([undefined, undefined, 7]), { timeout: 5000, interval: 5 });
       s.unsubscribe();
       expect(unhandled).toEqual([]);
       expect(seen).toEqual([undefined, undefined, 7]);

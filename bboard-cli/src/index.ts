@@ -19,6 +19,7 @@ import {
   FIRST_FRAGMENT,
   LandedButUnconfirmedError,
   RecoveryReplacedButUnconfirmedError,
+  StartingStateUnreachableError,
   assertDeploymentRecordCurrent,
   decide,
   resolveNetwork,
@@ -124,6 +125,29 @@ const askContractAddress = async (rli: Interface, logger: Logger): Promise<strin
     const a = (await rli.question('Contract address (hex): ')).trim();
     if (/^[0-9a-fA-F]{64}$/.test(a)) return a.toLowerCase();
     logger.error('That is not a contract address (64 characters, each 0-9 or a-f, no 0x). Nothing was sent.');
+  }
+};
+
+/**
+ * VeilcoreAPI.join, and when the indexer cannot lead back to the contract's deploy (its
+ * latest action is a key change; api/src/starting-state.ts), ask once for the deploy
+ * transaction id and check from that transaction. Blank stops, with nothing written.
+ */
+export const joinChecked = async (
+  rli: Interface,
+  providers: VeilcoreProviders,
+  address: string,
+  logger: Logger,
+  options: { readonly deploying?: boolean } = {},
+): Promise<VeilcoreAPI> => {
+  try {
+    return await VeilcoreAPI.join(providers, address, logger, options);
+  } catch (e) {
+    if (!(e instanceof StartingStateUnreachableError)) throw e;
+    logger.warn(e.message);
+    const id = (await rli.question('Deploy transaction id (hex; Enter to stop): ')).trim();
+    if (id === '') throw e;
+    return VeilcoreAPI.join(providers, address, logger, { ...options, deployTxId: id });
   }
 };
 
@@ -314,7 +338,7 @@ export const deployOrJoin = async (
         // On mainnet, check this build against the committed fingerprints before joining,
         // as deploy does: join compares the chain's keys with THIS build's keys.
         if (getNetworkId() === 'mainnet') checkBuild(zkConfigPath, logger);
-        const api = await VeilcoreAPI.join(providers, await askContractAddress(rli, logger), logger);
+        const api = await joinChecked(rli, providers, await askContractAddress(rli, logger), logger);
         logger.info(`Joined contract at address: ${api.deployedContractAddress}`);
         return api;
       }
@@ -361,7 +385,7 @@ export const deployOrJoin = async (
         try {
           await during(() => VeilcoreAPI.addMissingCircuitKeys(providers, address, logger));
           // The address is the operator's own deploy, so not the mainnet pin; the state check applies.
-          api = await VeilcoreAPI.join(providers, address, logger, { deploying: true });
+          api = await joinChecked(rli, providers, address, logger, { deploying: true });
         } catch (e) {
           // The key typed in for this does not stay here; the paper copy is unchanged.
           await providers.privateStateProvider.removeSigningKey(address);

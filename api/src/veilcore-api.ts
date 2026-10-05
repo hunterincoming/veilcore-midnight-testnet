@@ -16,12 +16,7 @@ import {
 } from '@midnight-ntwrk/midnight-js-protocol/compact-runtime';
 import { type Logger } from 'pino';
 import * as Veilcore from '../../contract/src/managed/veilcore/contract/index.js';
-import {
-  CompiledVeilcore,
-  PROVABLE_CIRCUITS,
-  compiledVeilcoreDeploying,
-  startsFromConstructor,
-} from '../../contract/src/veilcore';
+import { CompiledVeilcore, PROVABLE_CIRCUITS, compiledVeilcoreDeploying } from '../../contract/src/veilcore';
 import { type VeilcorePrivateState, createVeilcorePrivateState } from '../../contract/src/witnesses.js';
 import {
   acceptOwnership,
@@ -43,6 +38,7 @@ import { assertDeploymentRecordCurrent, assertJoinAllowed } from './deploy-guard
 import { FIRST_FRAGMENT, addMissingKeys, deployInFragments, unknownCircuits } from './deploy-fragments.js';
 import { retireMaintenanceAuthorityProvably } from './maintenance.js';
 import { callState, presentationWithTime } from './presentation-lookup.js';
+import { checkStartingState } from './starting-state.js';
 import * as utils from './utils/index.js';
 import {
   type VeilcoreProviders,
@@ -700,6 +696,9 @@ export class VeilcoreAPI {
   ): Promise<VeilcoreAPI> {
     const retire = options.retire ?? signingKey === null;
     assertDeploymentRecordCurrent('veilcore', logger);
+    // The confirmed deploy is the last transaction submitted (a refused one is retried at a
+    // new address). Its id lets join read the deploy itself (starting-state.ts).
+    let deployTxId: string | undefined;
     const address = await deployInFragments({
       providers,
       circuits: PROVABLE_CIRCUITS,
@@ -710,7 +709,7 @@ export class VeilcoreAPI {
           initialPrivateState: createVeilcorePrivateState(utils.randomBytes(32)),
           signingKey: signingKey ?? sampleSigningKey(),
         }),
-      submit: (unprovenTx) => submitTxAsync(providers, { unprovenTx }),
+      submit: async (unprovenTx) => (deployTxId = await submitTxAsync(providers, { unprovenTx })),
       store: async (candidate, unsubmitted) => {
         providers.privateStateProvider.setContractAddress(candidate);
         await providers.privateStateProvider.set(
@@ -723,12 +722,17 @@ export class VeilcoreAPI {
       keyOnPaper: true,
       logger,
     });
+    logger?.info(
+      `Deploy transaction id: ${deployTxId}. Keep it with the contract address: on a network with no pinned ` +
+        'address, a verifier may be asked for it to check how the contract started.',
+    );
     let api: VeilcoreAPI;
     try {
       await VeilcoreAPI.addMissingCircuitKeys(providers, address, logger);
-      // Checks every key on chain, and the starting state. Not the mainnet address pin:
-      // this IS the deploy that makes the address the record will name.
-      api = await VeilcoreAPI.join(providers, address, logger, { deploying: true });
+      // Checks every key on chain, and the starting state, read from the deploy transaction
+      // itself. Not the mainnet address pin: this IS the deploy that makes the address the
+      // record will name.
+      api = await VeilcoreAPI.join(providers, address, logger, { deploying: true, deployTxId });
     } catch (e) {
       // The contract exists from here on. Deploying again would make a second one.
       logger?.error(
@@ -778,31 +782,27 @@ export class VeilcoreAPI {
    * address; `deploying` skips only that pin, for a deploy and "Finish a deploy", which
    * work on an address their own deploy made. Then refused unless every circuit of this
    * build has its key on chain, no unknown circuit is there, and the contract STARTED from
-   * this build's constructor: the deploy transaction's ledger data must equal what the
-   * constructor produces (contract/src/veilcore.ts, startsFromConstructor; round D, D-1).
+   * this build's constructor, checked from its deploy transaction (starting-state.ts:
+   * found by `deployTxId` when given, else through the indexer's latest action).
+   * Throws StartingStateUnreachableError, never a forgery verdict, when the deploy cannot
+   * be reached and nothing else settles it; join again with `deployTxId` then.
    */
   static async join(
     providers: VeilcoreProviders,
     contractAddress: ContractAddress,
     logger?: Logger,
-    options: { readonly deploying?: boolean } = {},
+    options: { readonly deploying?: boolean; readonly deployTxId?: string } = {},
   ): Promise<VeilcoreAPI> {
-    if (options.deploying !== true) assertJoinAllowed(contractAddress, logger);
+    const pinned = options.deploying !== true && assertJoinAllowed(contractAddress, logger) === 'pinned';
     // Checked before anything is written for this address. Matching keys show the code,
-    // not the contract: anyone can deploy this build with a forged starting ledger. The
-    // deploy transaction's state must be the constructor's.
-    const deployState = await providers.publicDataProvider.queryDeployContractState(contractAddress);
-    if (deployState === null || deployState === undefined) {
-      throw new Error(
-        `The indexer gives no deploy state for ${contractAddress}, so it cannot be checked. Do not use it.`,
-      );
-    }
-    if (!startsFromConstructor(deployState)) {
-      throw new Error(
-        `The contract at ${contractAddress} did not start from the VeilCore constructor's state: its deploy ` +
-          "carried other ledger data. It has VeilCore's circuits but is not a genuine VeilCore deployment. Do not use it.",
-      );
-    }
+    // not the contract: anyone can deploy this build with a forged starting ledger.
+    await checkStartingState({
+      publicDataProvider: providers.publicDataProvider,
+      address: contractAddress,
+      deployTxId: options.deployTxId,
+      pinned,
+      logger,
+    });
     providers.privateStateProvider.setContractAddress(contractAddress);
     const existing = await providers.privateStateProvider.get(veilcorePrivateStateKey);
     const deployed = await findDeployedContract<VeilcoreContract>(providers, {

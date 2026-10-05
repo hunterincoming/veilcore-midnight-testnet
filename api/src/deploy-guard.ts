@@ -71,17 +71,18 @@ export const MAINNET_VEILCORE_ADDRESS = '';
 
 /**
  * Throw unless the VeilCore contract at `address` may be joined on the configured
- * network. Development networks accept any address; every other network, mainnet
- * included, or no network at all, accepts only MAINNET_VEILCORE_ADDRESS, and nothing
- * while that is empty. The same allowlist as the record gate and assertClaimsDeployAllowed.
+ * network. Development networks accept any address ('development'); every other network,
+ * mainnet included, or no network at all, accepts only MAINNET_VEILCORE_ADDRESS
+ * ('pinned'), and nothing while that is empty. The same allowlist as the record gate and
+ * assertClaimsDeployAllowed.
  */
 export const assertJoinAllowed = (
   address: string,
   logger?: Logger,
   pinned: string = MAINNET_VEILCORE_ADDRESS,
-): void => {
+): 'development' | 'pinned' => {
   const network = resolveNetwork();
-  if (network !== null && RECORD_NOT_REQUIRED.has(network)) return;
+  if (network !== null && RECORD_NOT_REQUIRED.has(network)) return 'development';
   const want = pinned.trim().toLowerCase().replace(/^0x/, '');
   if (want === '') {
     throw new Error(
@@ -97,6 +98,7 @@ export const assertJoinAllowed = (
     );
   }
   logger?.info(`Contract address matches the pinned VeilCore address for ${network ?? 'this network'}.`);
+  return 'pinned';
 };
 
 /** Throw unless `contractName` may be deployed to the configured network. */

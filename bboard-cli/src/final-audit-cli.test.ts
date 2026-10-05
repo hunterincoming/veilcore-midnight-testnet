@@ -425,6 +425,8 @@ describe('M1 FIXED: a deploy whose confirmation fails can still be finished', ()
         `remove key ${second}`,
       ]);
       expect(add).toHaveBeenCalledWith(providers, second, logger);
+      // join reads the starting state from the deploy that landed (round D verification).
+      expect(join).toHaveBeenCalledWith(providers, second, logger, { deploying: true, deployTxId: 'tx2' });
     } finally {
       add.mockRestore();
       join.mockRestore();

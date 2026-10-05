@@ -399,7 +399,14 @@ deploy this exact build, every key byte-identical, with a forged ledger (records
 parents confirmed) and even hand its authority to VeilCore's public key (round D, D-1).
 So joining also compares the ledger data of the deploy transaction's state with what
 this build's constructor produces (`startsFromConstructor`, contract/src/veilcore.ts),
-and on mainnet accepts only the address in the filed deployment record
+reading the ContractDeploy action in the deploy transaction itself
+(api/src/starting-state.ts; not midnight-js's `queryDeployContractState`, which after a
+maintenance update returns the current state). When the indexer cannot lead back to the
+deploy (the latest action is a maintenance update) and no deploy transaction id is given,
+it accepts a ledger still equal to the constructor's (maintenance updates never change
+ledger data), on mainnet relies on the pinned address, and elsewhere asks for the deploy
+transaction id; it calls a contract forged only after reading its deploy. And it
+on mainnet accepts only the address in the filed deployment record
 (`MAINNET_VEILCORE_ADDRESS`, api/src/deploy-guard.ts; empty until the deploy, and joins
 are refused until it is set). **The address is the contract's identity.** A verifier
 checking by hand reads the contract's verifier keys from the indexer and compares them

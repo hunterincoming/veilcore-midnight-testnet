@@ -19,7 +19,8 @@
  * has been seen to work.
  */
 import { createRequire } from 'node:module';
-import { chmod, cp, mkdir, readdir, rename, rm, stat } from 'node:fs/promises';
+import { rmSync } from 'node:fs';
+import { chmod, cp, mkdir, mkdtemp, readdir, rename, rm, stat } from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { type Logger } from 'pino';
@@ -132,6 +133,19 @@ export type CopyReport = {
   readonly keysLeftOut: number;
 };
 
+/** The scratch folder a MOVE reads the old store from: <system temp>/veilcore-old-store-<pid>-XXXXXX. */
+export const SCRATCH_PREFIX = 'veilcore-old-store-';
+
+/**
+ * Remove `p` if this process exits before `dispose` is called: Ctrl+C during a copy ends
+ * the CLI with process.exit, which runs 'exit' listeners but not `finally` blocks.
+ */
+const removeOnExit = (p: string): (() => void) => {
+  const remove = (): void => rmSync(p, { recursive: true, force: true });
+  process.once('exit', remove);
+  return () => process.off('exit', remove);
+};
+
 /**
  * Copy the live entries of `oldDir` that belong to `storeName` into a NEW store at
  * `newDir` (which must not exist yet): the main private state with its one-call secrets
@@ -140,23 +154,107 @@ export type CopyReport = {
  *
  * `oldDir` itself is never opened: LevelDB rewrites a folder when it opens it (it replays
  * the log into a new table and may compact), which would change, and could silently
- * drop, what the operator was told is there. A scratch duplicate next to `newDir` is
- * opened instead, and removed afterwards.
+ * drop, what the operator was told is there. A scratch duplicate is opened instead. It
+ * holds everything the old folder does, an old maintenance key included, so it is made
+ * in the system's temporary folder (private to this user, 0700; not in the home folder,
+ * where backups and sync would pick it up), removed however the copy ends (`finally`,
+ * and on process exit), and, if the process was killed outright, removed at the next
+ * start (cleanLeftovers).
  */
 export const copyLiveStore = async (
   oldDir: string,
   newDir: string,
   storeName: string,
   password: string,
+  tmp: string = os.tmpdir(),
 ): Promise<CopyReport> => {
-  const scratch = `${newDir}.reading`;
-  await rm(scratch, { recursive: true, force: true });
-  await cp(oldDir, scratch, { recursive: true, errorOnExist: true });
+  const scratch = await mkdtemp(path.join(tmp, `${SCRATCH_PREFIX}${process.pid}-`));
+  const keep = removeOnExit(scratch);
   try {
-    return await copyLiveEntries(scratch, newDir, storeName, password);
+    await chmod(scratch, 0o700);
+    const db = path.join(scratch, 'db');
+    await cp(oldDir, db, { recursive: true, errorOnExist: true });
+    return await copyLiveEntries(db, newDir, storeName, password);
   } finally {
+    keep();
     await rm(scratch, { recursive: true, force: true });
   }
+};
+
+/** A leftover's process: gone, or so old it cannot be a copy still running (a MOVE takes seconds). */
+const abandoned = async (p: string, pid: number): Promise<boolean> => {
+  if (pid === process.pid) return false;
+  try {
+    process.kill(pid, 0);
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'ESRCH') return true;
+  }
+  try {
+    return Date.now() - (await stat(p)).mtimeMs > 60 * 60 * 1000;
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * Remove what an interrupted MOVE (the process killed mid-copy) left behind, and say so:
+ * - <system temp>/veilcore-old-store-<pid>-*: the scratch copy of the old store. It can
+ *   hold an old maintenance key.
+ * - ~/.veilcore/<network>/private-state.copying-<pid>.reading: the same scratch copy, where
+ *   the version before this one made it (in the home folder).
+ * - ~/.veilcore/<network>/private-state.copying-<pid>: the unfinished new store. It holds
+ *   no maintenance key; the old folder is still there and MOVE is offered again.
+ * Only folders of this user whose process is gone are touched.
+ */
+export const cleanLeftovers = async (args: {
+  readonly networkId: string;
+  readonly logger: Logger;
+  readonly home?: string;
+  readonly tmp?: string;
+}): Promise<string[]> => {
+  const { logger } = args;
+  const home = args.home ?? os.homedir();
+  const tmp = args.tmp ?? os.tmpdir();
+  const dir = storeDirFor(args.networkId, home);
+  const uid = typeof process.getuid === 'function' ? process.getuid() : undefined;
+  const removed: string[] = [];
+  const scan = async (where: string, pattern: RegExp, say: (p: string) => string): Promise<void> => {
+    let names: string[];
+    try {
+      names = await readdir(where);
+    } catch {
+      return;
+    }
+    for (const name of names) {
+      const m = pattern.exec(name);
+      if (m === null) continue;
+      const p = path.join(where, name);
+      try {
+        const st = await stat(p);
+        if (uid !== undefined && st.uid !== uid) continue;
+      } catch {
+        continue;
+      }
+      if (!(await abandoned(p, Number(m[1])))) continue;
+      await rm(p, { recursive: true, force: true });
+      removed.push(p);
+      logger.warn(say(p));
+    }
+  };
+  const scratchSaid = (p: string): string =>
+    `Removed ${p}: a scratch copy of an older private-state store, left by a copy (MOVE) that was interrupted. ` +
+    'It could hold an old maintenance key: if a backup or sync service copied it, delete it there too.';
+  await scan(tmp, new RegExp(`^${SCRATCH_PREFIX}(\\d+)-`), scratchSaid);
+  // storeDirFor's last part is always 'private-state'.
+  await scan(path.dirname(dir), /^private-state\.copying-(\d+)\.reading$/, scratchSaid);
+  await scan(
+    path.dirname(dir),
+    /^private-state\.copying-(\d+)$/,
+    (p) =>
+      `Removed ${p}: an unfinished copy of your private state, left by a copy (MOVE) that was interrupted. ` +
+      'It held no maintenance key. Your old folder is unchanged; MOVE is offered again.',
+  );
+  return removed;
 };
 
 const copyLiveEntries = async (
@@ -254,10 +352,14 @@ export const chooseStore = async (args: {
   readonly home?: string;
   /** Where to look for an older version's folder (default: oldStoreCandidates()). */
   readonly candidates?: readonly string[];
+  /** Where a MOVE makes its scratch copy (default: the system's temporary folder). */
+  readonly tmp?: string;
 }): Promise<StoreChoice> => {
   const { logger } = args;
   const home = args.home ?? os.homedir();
   const dir = storeDirFor(args.networkId, home);
+  // First, whatever an interrupted copy left behind (it may be what makes `dir` look in use).
+  await cleanLeftovers({ networkId: args.networkId, logger, home, tmp: args.tmp });
   const olds: string[] = [];
   for (const c of args.candidates ?? oldStoreCandidates())
     if (path.resolve(c) !== path.resolve(dir) && (await exists(c))) olds.push(c);
@@ -285,9 +387,11 @@ export const chooseStore = async (args: {
   }
   await makePrivate(path.dirname(dir), home);
   const staging = `${dir}.copying-${process.pid}`;
+  const keep = removeOnExit(staging);
   try {
-    const r = await copyLiveStore(old, staging, args.storeName, args.password);
+    const r = await copyLiveStore(old, staging, args.storeName, args.password, args.tmp);
     await rename(staging, dir);
+    keep();
     await makePrivate(dir, home);
     logger.info(`Copied ${r.copied} entries to ${dir}. One-call secrets were left out.`);
     if (r.keysLeftOut > 0)
@@ -297,6 +401,7 @@ export const chooseStore = async (args: {
       );
   } catch (e) {
     // Only the partial copy this run just made is removed; the old folder is untouched.
+    keep();
     await rm(staging, { recursive: true, force: true });
     logger.error(
       `The copy did not complete (${e instanceof Error ? e.message : String(e)}). The old folder is unchanged.`,

@@ -305,13 +305,23 @@ describe('ClaimsAPI against the compiled contract', () => {
 
   describe('deploying', () => {
     afterEach(() => setNetworkId('undeployed'));
-    it('is allowed on development networks only', () => {
+    it('is allowed on development networks with nothing checked; refused on mainnet without a build check', () => {
       for (const n of ['undeployed', 'preview', 'preprod']) {
         setNetworkId(n);
-        expect(() => assertClaimsDeployAllowed()).not.toThrow();
+        expect(assertClaimsDeployAllowed({ authority: 'empty-committee' })).toBe('development');
       }
+      // The full mainnet decision table is in claims-mainnet.test.ts.
       setNetworkId('mainnet');
-      expect(() => assertClaimsDeployAllowed()).toThrow(/Refusing to deploy the claims contract on mainnet/);
+      const saved = process.env.VEILCORE_DEPLOYMENT_RECORD_REVISION;
+      process.env.VEILCORE_DEPLOYMENT_RECORD_REVISION = '4';
+      try {
+        expect(() => assertClaimsDeployAllowed({ authority: 'empty-committee' })).toThrow(
+          /Refusing to deploy the claims contract on mainnet: nothing checked this build/,
+        );
+      } finally {
+        if (saved === undefined) delete process.env.VEILCORE_DEPLOYMENT_RECORD_REVISION;
+        else process.env.VEILCORE_DEPLOYMENT_RECORD_REVISION = saved;
+      }
     });
   });
 });
@@ -370,13 +380,20 @@ describe('main menu options 34 to 40', () => {
     const no = menu(['no']);
     await handleClaimsChoice('34', no.ctx);
     expect(no.lines).toContain('Nothing was sent.');
+    // Refused before the question, here by the record gate (no revision declared); the full
+    // mainnet table, fingerprints and authority included, is in claims-mainnet.test.ts.
     setNetworkId('mainnet');
+    const saved = process.env.VEILCORE_DEPLOYMENT_RECORD_REVISION;
+    delete process.env.VEILCORE_DEPLOYMENT_RECORD_REVISION;
     try {
-      await expect(handleClaimsChoice('34', menu(['yes']).ctx)).rejects.toThrow(
-        /Refusing to deploy the claims contract on mainnet/,
+      const answers = ['yes'];
+      await expect(handleClaimsChoice('34', menu(answers).ctx)).rejects.toThrow(
+        /Refusing to deploy veilcore-claims\. Network "mainnet" requires a filed deployment record/,
       );
+      expect(answers).toEqual(['yes']); // never asked
     } finally {
       setNetworkId('undeployed');
+      if (saved !== undefined) process.env.VEILCORE_DEPLOYMENT_RECORD_REVISION = saved;
     }
   });
 

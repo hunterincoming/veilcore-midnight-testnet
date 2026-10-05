@@ -1,6 +1,6 @@
 # What VeilCore needs before mainnet
 
-Status as of 4 October 2026. Owner: Claude (CTO work) unless marked. Decisions are for
+Status as of 5 October 2026. Owner: Claude (CTO work) unless marked. Decisions are for
 Hunter and Mako. This list replaces "is it ready?" with what is done and what is not.
 
 ## Already in the main contract (frozen, tested, fingerprinted)
@@ -13,11 +13,11 @@ change or recover a key · licences (issue, countersign, transfer, revoke, prove
 
 | # | What | Why it matters | Status |
 |---|---|---|---|
-| 1 | **Claims contract**: prove one value, a bound, distinctness, or an unchanged correction without showing the rest; a laboratory's signature on a record as its own claim | The examiner and certifier problems (USDA PVPO, AOSCA ACR) | Built, two attack rounds fixed, mutation tested. Layout revised 4 Oct so every circuit fits a laptop (item 3). Branch `claims-contract` |
+| 1 | **Claims contract**: prove one value, a bound, distinctness, or an unchanged correction without showing the rest; a laboratory's signature on a record as its own claim | The examiner and certifier problems (USDA PVPO, AOSCA ACR) | Built, two attack rounds fixed, mutation tested. Layout revised 4 Oct so every circuit fits a laptop (item 3). Preprod 37/37 (item 4). **Ready for mainnet in code (5 Oct, branch `claims-mainnet`):** a mainnet claims deploy is allowed only when the claims build matches its own committed fingerprints, record revision 4 is declared, and the deploy ends with an empty-committee authority; joining on mainnet accepts only `MAINNET_CLAIMS_ADDRESS` (empty until deployed). **Hunter: make the claims fingerprints on the Mac (runbook C0)**, then it deploys on deploy day right after the main contract (runbook C, steps 23-31) |
 | 2 | **Field sets in the record format** (SPEC 4.5) in TypeScript, Python, Rust | So any registry can seal records the claims contract can prove | Done: 100 shared test vectors, all three agree, and the compiled contract recomputes them. Merged to main 4 Oct |
 | 3 | Prove the two heavy claims (distinct, unchanged) on an ordinary computer | A holder who cannot prove on their own machine has to hand their values to someone else | **Done 4 Oct.** At k=19 (old layout) the unchanged claim crashed the proof server on Hunter's 16 GB Mac. Leaner layout: every claim k=17 or less. Re-run on the same Mac: all claims back to back, proof server peak 3.7 GB, distinct 8.6 s, unchanged 6.7 s |
 | 4 | Operator tool: deploy the claims contract, make claims, read them back; smoke test covers it | Nothing ships that has not run end to end on preprod | **Done 4 Oct.** Menu options 34-40, claims verifier, smoke test 37 checks. Local chain with real proofs 37/37, then **preprod 37/37** (main contract f239e680…, claims contract 175f2357…, maintenance authority provably retired on chain). See docs/preprod-run-4oct.md |
-| 5 | Deploy the claims contract with **no** maintenance authority, provably (an empty committee, not a discarded key) | Otherwise every claim depends on trusting us | Built and tested against the real ledger code locally; the claims deploy does it by default. **Decision to confirm: Hunter + Mako** (recommended) |
+| 5 | Deploy the claims contract with **no** maintenance authority, provably (an empty committee, not a discarded key) | Otherwise every claim depends on trusting us | Built and tested against the real ledger code locally, and on preprod (PASS 28). Since 5 Oct the tool **only** allows this on mainnet: a claims deploy that would keep an authority is refused there. **Decision to confirm: Hunter + Mako** (recommended); if they want an authority on the claims contract instead, that rule has to change first |
 | 6 | Website demo uses the real test-network contracts, VeilCore pays the network fees | Today licensing and settlement in the demo are simulated | Phase 1 built on branch `demo-real` behind `VITE_REAL_CHAIN=1`: proofs made in the visitor's browser, a separate fee-paying service (`sponsor/`) with strict limits, automatic batch anchoring. 107 tests with mocks. **Hunter: fund the fee wallet, set up Railway, first live runs (sponsor/README.md)**. Phase 2 (licences) after |
 | 7 | Second, independent timestamp on Bitcoin (OpenTimestamps) for every batch | Dates no longer depend on Midnight alone; Chinese courts check consistency across chains | Built: the registry stamps every sealed batch and serves `root.bin` and `root.bin.ots`; files checked against the OpenTimestamps project's own parser. veilcore-api branch `ots`. Needs one real stamp from Railway after merge |
 | 8 | One-click evidence package (record, proofs, timestamps, plain recompute guide, affidavit template) | What a lawyer or examiner actually receives | Built in the SDK (`buildEvidencePackage`), with `verify.py` that runs on plain Python; tested against tampering. Website button comes with the SDK release |
@@ -83,6 +83,19 @@ independently re-checked. What changes for the mainnet deploy:
    (`MAINNET_VEILCORE_ADDRESS`) after the deploy.
 6. Registry `ots` must go live before the website is redeployed (the site now saves
    disclosure choices to the registry, and the registry fix for `profile` is on `ots`).
+
+## Deploy day, claims contract (added 5 October)
+
+1. **Before:** the claims contract's fingerprints made on Hunter's Mac and committed
+   (runbook C0: `cd contract && npm run compact && npm run fingerprints:claims`), checked by
+   Claude against an independent build of its ZKIR and contract code, and copied into the
+   deployment record. Until then the CLI refuses a mainnet claims deploy, join or finish.
+2. **On the day:** the main contract first (runbook C, steps 1-21), then in the same run
+   option 34 (steps 23-31). No paper key: the claims deploy ends with an empty committee.
+3. **Write down:** the claims contract address and the `Claims deploy transaction id`,
+   next to the main contract's.
+4. **After:** Claude pins the address (`MAINNET_CLAIMS_ADDRESS` in `api/src/deploy-guard.ts`)
+   and puts both in the deployment record; until then joining it on mainnet is refused.
 
 ## Open design question
 

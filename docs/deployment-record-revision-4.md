@@ -6,7 +6,8 @@
 > circuits, source at `ceb3a16`. It replaces the header approved in August and
 > revised on 13 September. That header is kept as filed, with headings moved down one
 > level and notes added, under *Superseded: the contract to 13 September 2026*. What changed, what was found, and what is still open are in
-> *Revision 4* at the end of this document.
+> *Revision 4* at the end of this document. Revision 4 also adds a second, separate
+> contract, the claims contract, described under *The claims contract* in Revision 4.
 
 **Brief description:**
 
@@ -718,6 +719,9 @@ at the top of this document now describes this contract. What it replaced is kep
   `contract/index.js`.
 - Deployed in fragments, as described below, with a maintenance authority kept at
   launch.
+- A second contract, `contract/src/veilcore-claims.compact` (5 circuits), with its own
+  fingerprint table, deployed with **no** maintenance authority (an empty committee). See
+  *The claims contract* below.
 
 ### The 16 September defect is fixed
 
@@ -1120,6 +1124,79 @@ date is public. And anyone can compare the circuits and keys on chain with a bui
 `ceb3a16`, as `join` does, to see whether the circuit set has changed since. That
 detects a change after it happens. It does not prevent one.
 
+### The claims contract
+
+**[DRAFT, 5 October 2026: fingerprints, address and transaction ids to be filled in. The
+no-authority deployment is recommended and awaits both founders (`docs/mainnet-completeness.md`, item 5).]**
+
+A second contract, deployed separately from the main one, which stays unchanged. A holder
+uses it to prove one fact about a record sealed with `sha256/fields/v1` (SPEC 4.5) without
+showing the rest. Design, limits and measurements: `docs/claims-design.md`.
+
+- **Circuits (5):** `proveValue`, `proveRange`, `proveDistinct`, `proveUnchanged`,
+  `proveAttested`. Every one at most k=17 (`contract/scripts/circuit-sizes.sh`), so a
+  holder proves on an ordinary laptop.
+- **State:** fixed event cells (`lastClaimKind`, `lastClaimRecord`, `lastClaimOther`,
+  `lastClaimSchema`, `lastClaimSlot`, `lastClaimParam`, `lastClaimOp`,
+  `lastClaimAttesterX`, `lastClaimAttesterY`) and one counter (`claimSeq`). Nothing grows
+  with the number of claims. Verifiers read each claim per transaction through the
+  indexer.
+- **What a claim publishes:** the record commitment(s), the schema id, and per claim kind
+  a slot, a bound and its direction, a mask, or a laboratory's public key. A value claim
+  publishes the value itself, by the holder's explicit choice. No other value, salt or
+  field secret reaches the chain.
+- **Funds:** none. No circuit receives, holds or sends tokens.
+
+| Category | Self-assessed score (1–3) | Rationale |
+|---|---|---|
+| Privacy-at-risk | 2 | As for the main contract: pseudonymous record commitments and their timing. A value claim publishes one value by the holder's choice; repeated range claims narrow a hidden number, and the tool shows what was already published. |
+| Value-at-risk | 1 | Holds no funds. A false claim accepted would mislead a verifier off chain; it cannot drain anything. |
+| State-space-at-risk | 1 | Fixed cells and one counter; nothing is added per claim or per user. |
+
+**Maintenance authority: none.** The deploy adds the five circuit keys, then replaces the
+authority with an empty committee and threshold 1 (`api/src/maintenance.ts`,
+`retireMaintenanceAuthorityProvably`), which no signature can satisfy and which anyone can
+read from the contract's state. On mainnet the operator tool refuses any claims deploy that
+would end otherwise (`assertClaimsDeployAllowed`, `api/src/claims-api.ts`). An upgrade is a
+new deployment at a new address; claims made on the old one stay in the chain's history.
+
+**Source and build.** `contract/src/veilcore-claims.compact` (with `schnorr.compact`) at
+`[commit]`, compactc 0.31.1, built by `cd contract && npm run compact`, which compiles both
+contracts. Fingerprints: `npm run fingerprints:claims` writes the claims table of
+`docs/fingerprints.md` (it refuses unless the same build of the main contract still matches
+the main table above). On mainnet the CLI refuses to deploy, join or finish the claims
+contract unless the local build matches that table as committed
+(`bboard-cli/src/keys-check.ts`).
+
+SHA-256 of compiled artefacts (`contract/src/managed/veilcore-claims/`), copied from
+`docs/fingerprints.md`: a prover and a verifier key for each of the 5 circuits, the ZKIR of
+each circuit in two forms, and the compiled contract code (21 rows).
+
+**[NOT YET GENERATED: the founder runs `npm run fingerprints:claims` on his Mac (runbook
+C0); the table is copied here from `docs/fingerprints.md` once committed, with the commit
+that carries it.]** A second build with compactc 0.31.1, without key generation, is to be
+compared against the 5 `.zkir` files and `contract/index.js`.
+
+| Artefact | SHA-256 |
+|---|---|
+| `keys/proveAttested.prover` … `contract/index.js` (21 rows) | [from `docs/fingerprints.md`] |
+
+**Deployment on mainnet.** Deployed on deploy day right after the main contract, from the
+same operator run (CLI main menu option 34). Joining it on mainnet accepts only the
+address pinned in the code (`MAINNET_CLAIMS_ADDRESS`, `api/src/deploy-guard.ts`), the one
+recorded here.
+
+- **Claims contract address:** [address]
+- **Deploy transaction id:** [transaction id]
+- **Retirement (empty committee) transaction:** [transaction id]
+- **Deployed:** [date, time]
+
+**Preprod.** 4 October 2026, smoke test with the claims phase, PASSED 37 of 37 on the
+founder's MacBook Air (16 GB): claims contract
+`175f23573c3d9c9dd20d8bee159df07fc3b739e6a2a895f14ae4d20de5d2a4af`, its authority read
+back from the chain as an empty committee (check 28), then every claim kind proved on the
+laptop and landed (`docs/preprod-run-4oct.md`).
+
 ### Testing and deployment status
 
 - **Contract tests on this build:** `Test Files 18 passed; Tests 266 passed | 9
@@ -1163,10 +1240,12 @@ detects a change after it happens. It does not prevent one.
   `f75d42dc1e4ec5a2cdcc50509f2d432ad60fb5c64b5da921a0ec22a0e287f939` (27 September,
   before the merge).
 - **Nothing is deployed to mainnet. The deploy key issued on 8 September has not been
-  used.**
+  used.** Neither contract is on mainnet.
 
 ### What this revision changes in this document
 
+- A second contract, the claims contract, is added under *The claims contract*, with its
+  own fingerprint table, deployment details and self-assessment.
 - The header now describes this contract: the brief description, the scores, the ledger
   layout, source and build, and the fingerprint table.
 - The header as it stood on 13 September is kept as filed, with headings moved down one

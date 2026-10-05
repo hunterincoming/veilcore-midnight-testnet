@@ -41,7 +41,12 @@ import { type AttestationSignature, type JubjubPoint, verifyRecordSignature } fr
 import { SALT_BYTES, SLOTS, commitmentOf, numberFrom, openSlot, type FieldSet } from '../../contract/src/fields.js';
 import { type FieldSchema, fieldSchemaId, schemaTermsOf, slotOf } from '../../contract/src/field-schema.js';
 import { type Claim, claimFromCells, disclosedText } from '../../contract/src/verify-claims.js';
-import { RECORD_NOT_REQUIRED, resolveNetwork } from './deploy-guard.js';
+import {
+  RECORD_NOT_REQUIRED,
+  assertClaimsJoinAllowed,
+  assertDeploymentRecordCurrent,
+  resolveNetwork,
+} from './deploy-guard.js';
 import { FIRST_FRAGMENT, addMissingKeys, deployInFragments, unknownCircuits } from './deploy-fragments.js';
 import { type AuthorityView, isProvablyRetired, retireMaintenanceAuthorityProvably } from './maintenance.js';
 import { singleCallState } from './presentation-lookup.js';
@@ -123,18 +128,61 @@ const sameSchema = (a: SealedRecord, b: SealedRecord): void => {
     throw new Error('The two records were sealed under different schemas. Nothing was sent.');
 };
 
-/** Refuse a claims deploy anywhere but a development network (see deploy). */
-export const assertClaimsDeployAllowed = (logger?: Logger): void => {
+/**
+ * What a claims deploy will do, as far as the deploy gate needs to know.
+ *
+ * `authority`: how the deploy leaves the maintenance authority. ClaimsAPI.deploy has one
+ * way, 'empty-committee' (retireMaintenanceAuthorityProvably). 'kept' exists so that a
+ * deploy which would keep one, if one is ever written, is refused off a test network.
+ *
+ * `checkBuild`: checks the built claims keys, ZKIR and contract code against the claims
+ * table of docs/fingerprints.md as committed, returning how many matched, or throws. The
+ * CLI passes bboard-cli/src/keys-check.ts (assertKeysMatchRecord, section 'claims'), the
+ * same check the main contract's mainnet deploy makes. Required off a test network.
+ */
+export type ClaimsDeployPlan = {
+  readonly authority: 'empty-committee' | 'kept';
+  readonly checkBuild?: () => number;
+};
+
+/**
+ * Throw unless a claims deploy may go ahead on the configured network. Development
+ * networks (undeployed, preview, preprod): always. Any other network, mainnet included,
+ * or none set: only when the deploy leaves no maintenance authority (an empty committee),
+ * the deployment record revision is declared (as for the main contract), and the build
+ * matches the committed claims fingerprints. Checked in that order, cheapest first.
+ */
+export const assertClaimsDeployAllowed = (plan: ClaimsDeployPlan, logger?: Logger): 'development' | 'checked' => {
   const network = resolveNetwork();
   if (network !== null && RECORD_NOT_REQUIRED.has(network)) {
     logger?.info(`veilcore-claims: network ${network}, test deploy allowed`);
-    return;
+    return 'development';
   }
-  throw new Error(
-    `Refusing to deploy the claims contract on ${network ?? 'an unknown network'}. It is not in a filed deployment ` +
-      'record and its keys have no committed fingerprints yet (docs/fingerprints.md covers the main contract). ' +
-      'Nothing was made or sent.',
+  const refuse = (why: string): Error =>
+    new Error(
+      `Refusing to deploy the claims contract on ${network ?? 'an unknown network'}: ${why} Nothing was made or sent.`,
+    );
+  if (plan.authority !== 'empty-committee')
+    throw refuse(
+      'off a test network it is deployed only without a maintenance authority (an empty committee, which anyone can ' +
+        'read on chain), and this deploy would keep one.',
+    );
+  assertDeploymentRecordCurrent('veilcore-claims', logger);
+  if (plan.checkBuild === undefined)
+    throw refuse('nothing checked this build against the committed claims fingerprints (docs/fingerprints.md).');
+  let matched: number;
+  try {
+    matched = plan.checkBuild();
+  } catch (e) {
+    throw refuse(
+      `this build is not the one docs/fingerprints.md records for it. ${e instanceof Error ? e.message : String(e)}`,
+    );
+  }
+  logger?.info(
+    `veilcore-claims: all ${matched} build artefacts match the committed claims fingerprints; ` +
+      'the deploy ends with an empty-committee maintenance authority.',
   );
+  return 'checked';
 };
 
 export class ClaimsAPI {
@@ -294,12 +342,21 @@ export class ClaimsAPI {
   // ─────────────────────────────────────────────────────────── deploy and join
 
   /**
-   * Deploy a claims contract on a development network (preprod, preview, a local chain),
-   * add every circuit key, then retire the maintenance authority provably. On any other
-   * network it is refused: the claims contract is not yet in a filed deployment record.
+   * Deploy a claims contract, add every circuit key, then retire the maintenance
+   * authority provably (an empty committee). On a development network that is all. On any
+   * other, mainnet included, assertClaimsDeployAllowed first: the record revision must be
+   * declared and `options.checkBuild` must find this build in the committed claims
+   * fingerprints, or nothing is made or sent.
    */
-  static async deploy(providers: ClaimsProviders, logger?: Logger, firstFragment = FIRST_FRAGMENT): Promise<ClaimsAPI> {
-    assertClaimsDeployAllowed(logger);
+  static async deploy(
+    providers: ClaimsProviders,
+    logger?: Logger,
+    firstFragment = FIRST_FRAGMENT,
+    options: { readonly checkBuild?: () => number } = {},
+  ): Promise<ClaimsAPI> {
+    assertClaimsDeployAllowed({ authority: 'empty-committee', checkBuild: options.checkBuild }, logger);
+    // The confirmed deploy is the last transaction submitted (a refused one is retried at a new address).
+    let deployTxId: string | undefined;
     const address = await deployInFragments({
       providers,
       circuits: CLAIMS_PROVABLE_CIRCUITS,
@@ -311,7 +368,7 @@ export class ClaimsAPI {
           // A key that exists only to add the circuit keys; it is retired, provably, below.
           signingKey: sampleSigningKey(),
         }),
-      submit: (unprovenTx) => submitTxAsync(providers, { unprovenTx }),
+      submit: async (unprovenTx) => (deployTxId = await submitTxAsync(providers, { unprovenTx })),
       store: async (candidate, unsubmitted) => {
         providers.privateStateProvider.setContractAddress(candidate);
         await providers.privateStateProvider.set(
@@ -323,6 +380,7 @@ export class ClaimsAPI {
       finish: 'Finish a claims deploy',
       logger,
     });
+    logger?.info(`Claims deploy transaction id: ${deployTxId}. Keep it with the claims contract address.`);
     return ClaimsAPI.finishDeploy(providers, address, logger);
   }
 
@@ -339,7 +397,8 @@ export class ClaimsAPI {
     try {
       if (!(await ClaimsAPI.authorityOf(providers, address)).retired)
         await ClaimsAPI.addMissingCircuitKeys(providers, address, logger);
-      api = await ClaimsAPI.join(providers, address, logger); // checks every key on chain
+      // Checks every key on chain. Not a join by address: this is the deploy's own contract.
+      api = await ClaimsAPI.join(providers, address, logger, { deploying: true });
     } catch (e) {
       logger?.error(
         `The claims contract IS on chain at ${address}, but not every circuit key was added. ` +
@@ -388,12 +447,21 @@ export class ClaimsAPI {
   }
 
   /**
-   * Join a claims contract. Refused unless every claims circuit's key on chain matches
-   * this build and the contract carries no circuit this build does not have. A contract
-   * whose authority is not retired is joined with a warning: a verifier should not rely
-   * on its claims.
+   * Join a claims contract. Refused, before anything is read or written, on a network
+   * that pins the claims address (mainnet: MAINNET_CLAIMS_ADDRESS in deploy-guard.ts)
+   * when this is another address; `deploying` skips only that pin, for a deploy and
+   * "Finish a claims deploy", which work on an address their own deploy made. Then refused
+   * unless every claims circuit's key on chain matches this build and the contract
+   * carries no circuit this build does not have. A contract whose authority is not
+   * retired is joined with a warning: a verifier should not rely on its claims.
    */
-  static async join(providers: ClaimsProviders, contractAddress: ContractAddress, logger?: Logger): Promise<ClaimsAPI> {
+  static async join(
+    providers: ClaimsProviders,
+    contractAddress: ContractAddress,
+    logger?: Logger,
+    options: { readonly deploying?: boolean } = {},
+  ): Promise<ClaimsAPI> {
+    if (options.deploying !== true) assertClaimsJoinAllowed(contractAddress, logger);
     providers.privateStateProvider.setContractAddress(contractAddress);
     const deployed = await findDeployedContract<ClaimsContract>(providers, {
       contractAddress,

@@ -1,9 +1,9 @@
 # Operator runbook
 
-**For running the VeilCore CLI on a Mac · last updated 4 October 2026 (round D changes)**
+**For running the VeilCore CLI on a Mac · last updated 5 October 2026 (claims contract on mainnet)**
 
-Three jobs, in this order: a rehearsal on a local chain, the smoke test on preprod, then
-the mainnet deploy. Every step, prompt and menu number below comes from the code in
+Four jobs, in this order: a rehearsal on a local chain, the smoke test on preprod, the
+claims contract fingerprints (once), then the mainnet deploy of both contracts. Every step, prompt and menu number below comes from the code in
 `bboard-cli/src/`. Anything marked **CHECK WITH CLAUDE BEFORE MAINNET** could not be
 confirmed from the code.
 
@@ -45,10 +45,12 @@ confirmed from the code.
 4. The contracts are compiled: the folders `contract/src/managed/veilcore` and
    `contract/src/managed/veilcore-claims` exist. If not:
    `cd contract && npm run compact` (compiles both; needs the Compact toolchain; see README.md).
-   `docs/fingerprints.md` was regenerated for the state-bounds build (`e89a387`). Do not
-   regenerate it. The CLI checks the local build against it when you pick 1, 2 or 4 on
-   mainnet, and refuses if they differ. Do not rebuild with a different compiler (use
-   0.31.1).
+   `docs/fingerprints.md` holds two tables. The main contract's, at the top, was made for
+   the state-bounds build (`e89a387`): never regenerate it. The claims contract's, at the
+   bottom, is made once, in section C0 below. On mainnet the CLI checks the local build
+   against them (the main contract when you pick 1, 2 or 4; the claims contract when you
+   pick 34, 35 or 36) and refuses if they differ. Do not rebuild with a different compiler
+   (use 0.31.1).
 
 The password rule (the CLI checks it in the first second): 16 or more characters; at
 least 3 of capital letters, small letters, numbers and symbols; no character more than
@@ -159,10 +161,63 @@ Preprod is Midnight's test network. Use the **test wallet only**.
 
 ---
 
+## C0. Claims contract fingerprints (once, before mainnet)
+
+**Why:** a mainnet deploy only uses keys whose fingerprints are written in
+`docs/fingerprints.md` and committed. The main contract's are there. The claims contract's
+are not yet: making its keys needs files Claude cannot download, so this runs on your Mac.
+Until it is done, the CLI refuses to deploy or join the claims contract on mainnet (the
+main contract is not affected).
+
+**When:** after Claude says the "claims contract on mainnet" change is merged, and before
+the zero-spend mainnet rehearsal. Docker is not needed. You need the internet and Node 24.
+Allow half an hour; almost all of it is waiting.
+
+**Steps.** Open Terminal and paste these one line at a time. Nothing here is a secret.
+
+1. `cd ~/Desktop/veilcore`
+2. `git checkout main`
+3. `git pull`
+4. `npm ci` (reinstalls packages; a few minutes)
+5. `cd contract`
+6. `npm run compact`
+   This builds both contracts with their keys. It prints a line per circuit and can sit
+   quietly for minutes on the big claims circuits (`proveDistinct`, `proveUnchanged`).
+   Expect anywhere from a few minutes to about twenty. If it stops with an error, copy the
+   last 20 lines to Claude.
+7. `npm run fingerprints:claims`
+   It prints a table of 21 lines (10 keys, 10 ZKIR files, `contract/index.js`) and then
+   `Written to docs/fingerprints.md (21 claims contract artefacts; the other table is
+   unchanged)`. It first checks that your fresh build of the **main** contract still
+   matches its table; if it says `this build of the MAIN contract does not match`, it wrote
+   nothing: stop and send Claude the whole output.
+8. `npm run fingerprints:check`
+   Two lines, both must say `all … artefacts match`:
+   `main contract: all 97 artefacts match docs/fingerprints.md.`
+   `claims contract: all 21 artefacts match docs/fingerprints.md.`
+9. `cd ..`
+10. `git status`. Only `docs/fingerprints.md` should be listed as modified. If anything
+    else is, stop and ask Claude.
+11. `git add docs/fingerprints.md`
+12. `git commit -m "Claims contract fingerprints"`
+13. `git push`
+14. `git log -1 --oneline` (shows the commit you just made)
+
+**Paste back to Claude:** the whole output of step 7 (the table), the two lines from step
+8, and the line from step 14. Claude checks the ZKIR and contract-code lines against its
+own independent build and puts the table in the deployment record.
+
+Do not run `npm run fingerprints` (without `:claims`): that rewrites the main contract's
+table, which must stay as it is.
+
+---
+
 ## C. Mainnet deploy day
 
 ### Have ready
 
+- The claims contract fingerprints are committed and pushed (section C0), and
+  `cd contract && npm run fingerprints:check` says both contracts match.
 - The preprod smoke test has passed on this build (section B). The 4 October round D
   changes are a new build, so run it again: it is the first time the new starting-state
   check in Join, and the new store location, meet a real chain.
@@ -175,7 +230,7 @@ Preprod is Midnight's test network. Use the **test wallet only**.
 - The 24-word recovery phrase of the wallet whose NIGHT generates your DUST.
 - That wallet's DUST address (starts `mn_dust1`), from your wallet app.
 - A Blockfrost project id for **Midnight Mainnet** (from blockfrost.io).
-- Paper and pen for the maintenance key and the contract address.
+- Paper and pen for the maintenance key and the two contract addresses.
 - Time: the wallet sync can take hours.
 
 ### Steps
@@ -196,7 +251,10 @@ Preprod is Midnight's test network. Use the **test wallet only**.
    interrupted (see below).
 9. It connects. You should see `Connected to the mainnet indexer (Blockfrost): block …`
    and `Connected to the mainnet node RPC (Blockfrost)`. An error saying `HTTP 403` means
-   the Blockfrost project id is wrong: start again from step 4.
+   the Blockfrost project id is wrong: start again from step 4. Around here it also checks
+   both builds: `All … build artefacts match the committed fingerprints` (main contract)
+   and `Claims contract: all 21 build artefacts match the committed fingerprints.` If the
+   claims line is a warning instead, stop (Ctrl+C) and do section C0 first.
 10. The wallet menu appears. Type `3`, press Enter, wait for the phrase prompt
     (`Recovery phrase:`), then paste the 24 words, separated by spaces (nothing shows),
     and press Enter. Never paste the phrase at `Which would you like to do?`. (Option 1
@@ -232,21 +290,57 @@ Preprod is Midnight's test network. Use the **test wallet only**.
     key is on chain.` and `Contract address: …`. Copy the address again and check it
     matches. Earlier, after the first transaction, it also printed `Deploy transaction
     id: …`. Copy that too (it is public); see "How joining checks the contract" below.
-21. The main menu appears. Optional: type `30` to see `Protocol version 1.` Type `0` to exit.
-22. Close the Terminal window.
+21. The main menu appears. Optional: type `30` to see `Protocol version 1.` Do **not** exit
+    yet: the claims contract is next, in the same run.
+
+### Then the claims contract (same run, right after the main contract)
+
+The claims contract has no maintenance key: the deploy ends by locking it so nobody,
+including us, can ever change it. There is nothing to write on paper except its address.
+
+23. At the main menu, type `34` (Deploy the claims contract).
+24. It checks the claims build (`All 21 build artefacts match the committed claims
+    fingerprints`) and the deployment record setting. If it says `Refusing to deploy the
+    claims contract`, nothing was made or sent: send Claude that line.
+25. It explains what happens and asks `Deploy a claims contract now? Type yes to send it`.
+    Type `yes`, Enter.
+26. It prints `Contract address: …` before anything is sent. **Copy it onto paper, marked
+    "claims".** It is a different address from the main contract's.
+27. Then `Claims deploy transaction id: …`. Copy that too (it is public).
+28. All 5 claims circuit keys normally fit in the deploy itself, so it goes straight on
+    (if the network refused that size, it first adds the rest, `adding circuit key 1 of
+    …`). Then `retiring the maintenance authority provably`. A few minutes in all.
+29. Done when you see `Claims contract ready at …: all 5 circuit keys on chain,
+    maintenance authority an empty committee (nobody can change it).` and `Claims contract
+    address: …`. Check the address matches your paper.
+30. A warning follows: joining it on mainnet (35) is refused until its address is pinned in
+    the code. That is expected.
+31. Type `0` to exit. Close the Terminal window.
+
+If the claims deploy stops partway: do **not** choose `34` again, and nothing is urgent:
+nobody relies on the claims contract yet. Send Claude the main contract's address and the
+claims address (from your paper or the log). Once Claude has pinned the main contract's
+address and you have run `git pull`, run `npm run mainnet` again (steps 1 to 13, **same
+password** and phrase), choose `2` (Join) with the main contract's address, then at the
+main menu choose `36` (Finish a claims deploy) and paste the claims address. Nothing is
+typed from paper: the temporary key it needs stays in this Mac's encrypted private state
+until the claims deploy finishes, and is deleted then.
 
 ### Write down afterwards
 
 - The contract address (also in the newest file in `bboard-cli/logs/mainnet/`).
 - The deploy transaction id (the `Deploy transaction id: …` line; also in the log). It
   goes in the deployment record next to the address.
+- The claims contract address and its deploy transaction id (the `Claims deploy
+  transaction id: …` line; both also in the log).
 - The date and time of the deploy.
 - That the maintenance key is on paper, where it is kept, and that no digital copy exists.
-- Send Claude the contract address. It is public. **Joining the contract on mainnet
-  (deploy menu option 2) is refused until that address is written into the code**
-  (`MAINNET_VEILCORE_ADDRESS` in `api/src/deploy-guard.ts`, committed, and the same
-  address in the deployment record). Claude makes that change from the address you
-  send; pull it before the next mainnet run. The CLI says this at the end of the deploy.
+- Send Claude both addresses and both deploy transaction ids. They are public. **Joining
+  either contract on mainnet is refused until its address is written into the code**
+  (`MAINNET_VEILCORE_ADDRESS` and `MAINNET_CLAIMS_ADDRESS` in `api/src/deploy-guard.ts`,
+  committed, and the same addresses in the deployment record). Claude makes that change
+  from what you send; `git pull` before the next mainnet run. The CLI says this at the
+  end of each deploy.
 
 ### If the deploy stops partway
 
@@ -362,8 +456,11 @@ The claims contract is a second contract. A holder uses it to prove one fact abo
 record they sealed (a value, that a number is at least or at most a bound, that two
 records differ, that a correction changed only some values) without showing the rest.
 Its options are 34 to 40 on the main menu, after you have deployed or joined the main
-contract. **It is not deployed on mainnet yet**: option 34 refuses there, because it is
-not in a filed deployment record and its keys have no committed fingerprints.
+contract. This section is for test networks. On mainnet, option 34 is part of deploy day
+(section C), and is refused unless the claims build matches its committed fingerprints
+(section C0), the deployment record revision is declared, and the deploy ends with no
+maintenance authority. Options 35 and 36 on mainnet check the build too, and 35 only
+accepts the claims address pinned in the code.
 
 ### Deploy it
 

@@ -32,6 +32,7 @@ server peaking at 3.7 GB (docs/claims-design.md, Size).
 ## What this does not show
 
 - Nothing is on mainnet yet. The claims contract refuses a mainnet deploy until its keys
-  have committed fingerprints and it is in a filed deployment record.
+  have committed fingerprints and the deployment record revision is declared (since 5
+  October: runbook C0 makes the fingerprints).
 - No independent security audit.
 - Made-up marker data only; no real breeder or laboratory has used it.

@@ -604,4 +604,7 @@ and verifying key, every circuit's ZKIR and the compiled contract code in
 `docs/fingerprints.md`, the table the deployment record carries. A mainnet deploy from
 the CLI is refused unless the local build matches that table as committed
 (`bboard-cli/src/keys-check.ts`), and unless the deployment record revision is declared
-(`api/src/deploy-guard.ts`).
+(`api/src/deploy-guard.ts`). The claims contract has its own table in the same file
+(`npm run fingerprints:claims`), checked the same way before a mainnet claims deploy, join
+or finish; a mainnet claims deploy is also refused unless it ends with no maintenance
+authority (`assertClaimsDeployAllowed`, `api/src/claims-api.ts`).

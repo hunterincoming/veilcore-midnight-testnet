@@ -101,3 +101,13 @@ Commit `ceb3a16`, compiler `0.31.1`, built with `npm run compact`.
 | `zkir/withdrawTransfer.bzkir` | `a6cc18da40ece2ee34c8cfb93c87683ff010e320dfc8a4f9c57ead589f6d23b7` |
 | `zkir/withdrawTransfer.zkir` | `64cc7b9bb7b3f13cb206126548394e3156ae5ee88b9877943411e200879d9a99` |
 | `contract/index.js` | `4e23ffc28f3de3ce670d9cea2896301dfeec8b4593d1b65332eb18f74ba5d286` |
+
+## Claims contract (`veilcore-claims`)
+
+Not yet generated. The keys need the proving parameters, so this is run on the Mac that
+builds them, from the repository folder:
+
+    cd contract && npm run compact && npm run fingerprints:claims
+
+then this file is committed and pushed. Until then a mainnet claims deploy or join is
+refused.

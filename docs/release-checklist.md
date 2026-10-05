@@ -40,7 +40,10 @@ to skip.
 - [ ] Local chain smoke test (`npm run standalone`, option 3): 26 of 26 (or the
       current count).
 - [ ] Preprod smoke test (`npm run preprod-remote`, option 3) on the same build.
-- [ ] Fingerprints regenerated, committed, and matched by an independent build.
+- [ ] Fingerprints regenerated, committed, and matched by an independent build: both
+      tables of `docs/fingerprints.md`, the main contract's (`npm run fingerprints`) and
+      the claims contract's (`npm run fingerprints:claims`); `npm run fingerprints:check`
+      says both match.
 - [ ] **The offline maintenance key still works with the SDK being released with.** Load
       the paper copy into the current midnight-js and sign a no-op on preprod. (midnight-js
       #1409: 4.x to 5.x stopped accepting stored signing keys, with no migration. A key

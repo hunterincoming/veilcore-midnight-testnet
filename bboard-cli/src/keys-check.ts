@@ -6,6 +6,11 @@
  * This checks the build itself: every key, every circuit's ZKIR and the contract code
  * must match docs/fingerprints.md as COMMITTED, and that file must be unmodified. The
  * same table goes into the deployment record, so a deploy can only use what it names.
+ *
+ * The file has two tables. The first, at the top, is the main contract's
+ * (managed/veilcore). The second, under the heading "## Claims contract", is the claims
+ * contract's (managed/veilcore-claims), written by `npm run fingerprints:claims`. Each
+ * build is checked against its own table only.
  */
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
@@ -14,10 +19,29 @@ import path from 'node:path';
 
 const sha256 = (file: string): string => createHash('sha256').update(readFileSync(file)).digest('hex');
 
-/** Rows of the committed table: path under managed/veilcore -> SHA-256. */
-export const parseFingerprints = (text: string): Map<string, string> => {
+/** Which contract's table: the main contract (the top of the file) or the claims contract. */
+export type FingerprintSection = 'main' | 'claims';
+
+/** The heading the claims contract's table sits under (contract/fingerprints.mjs writes it). */
+export const CLAIMS_HEADING = '## Claims contract';
+
+/**
+ * Rows of one table: path under managed/<contract> -> SHA-256. The main contract's rows
+ * are those before the first `## ` heading; the claims contract's, those under the
+ * CLAIMS_HEADING heading. Rows under any other heading belong to neither.
+ */
+export const parseFingerprints = (text: string, section: FingerprintSection = 'main'): Map<string, string> => {
   const out = new Map<string, string>();
-  for (const m of text.replace(/\r/g, '').matchAll(/^\| `([^`]+)` \| `([0-9a-f]{64})` \|$/gm)) out.set(m[1], m[2]);
+  let current: FingerprintSection | 'other' = 'main';
+  for (const line of text.replace(/\r/g, '').split('\n')) {
+    if (line.startsWith('## ')) {
+      current = line.startsWith(CLAIMS_HEADING) ? 'claims' : 'other';
+      continue;
+    }
+    if (current !== section) continue;
+    const m = /^\| `([^`]+)` \| `([0-9a-f]{64})` \|$/.exec(line);
+    if (m !== null) out.set(m[1], m[2]);
+  }
   return out;
 };
 
@@ -44,8 +68,16 @@ export const gitEnvironment = (): NodeJS.ProcessEnv => {
   return env;
 };
 
-/** Throws, naming the problem, unless the local build is exactly the committed one. */
-export const assertKeysMatchRecord = (zkConfigPath: string, repoRoot: string): number => {
+/**
+ * Throws, naming the problem, unless the local build is exactly the committed one.
+ * `zkConfigPath` is managed/veilcore for the main contract, managed/veilcore-claims for
+ * the claims contract, with `section` naming which table to check it against.
+ */
+export const assertKeysMatchRecord = (
+  zkConfigPath: string,
+  repoRoot: string,
+  section: FingerprintSection = 'main',
+): number => {
   const table = path.join(repoRoot, 'docs', 'fingerprints.md');
   const git = (...args: string[]): string =>
     execFileSync('git', ['-c', 'core.fsmonitor=false', '-c', 'core.hooksPath=/dev/null', ...args], {
@@ -64,9 +96,15 @@ export const assertKeysMatchRecord = (zkConfigPath: string, repoRoot: string): n
   if (!existsSync(table) || git('status', '--porcelain', '--', 'docs/fingerprints.md').trim() !== '') {
     throw new Error('docs/fingerprints.md differs from the committed copy. Commit it, or rebuild to match it.');
   }
-  const expected = parseFingerprints(committed);
+  const expected = parseFingerprints(committed, section);
   const local = artefacts(zkConfigPath);
-  if (expected.size === 0) throw new Error('docs/fingerprints.md lists nothing.');
+  if (expected.size === 0)
+    throw new Error(
+      section === 'claims'
+        ? 'docs/fingerprints.md has no claims contract fingerprints yet. On the Mac that builds the keys: ' +
+            'cd contract && npm run compact && npm run fingerprints:claims, then commit and push docs/fingerprints.md.'
+        : 'docs/fingerprints.md lists nothing.',
+    );
   if (local.length !== expected.size) {
     throw new Error(
       `The build has ${local.length} artefacts; the record lists ${expected.size}. Run a full npm run compact.`,

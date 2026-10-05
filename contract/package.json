@@ -37,7 +37,9 @@
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "sizes": "bash scripts/circuit-sizes.sh",
-    "fingerprints": "node fingerprints.mjs"
+    "fingerprints": "node fingerprints.mjs",
+    "fingerprints:claims": "node fingerprints.mjs --claims",
+    "fingerprints:check": "node fingerprints.mjs --check"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.5",

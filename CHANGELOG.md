@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Claims contract ready for mainnet (5 Oct 2026)
+
+- `docs/fingerprints.md` has a second table for the claims contract, written by
+  `npm run fingerprints:claims` (refuses unless the same build of the main contract still
+  matches its table); `npm run fingerprints:check` checks both and writes nothing. Each
+  contract's build is checked against its own table only. The claims table is not yet
+  generated (the keys need proving parameters; runbook C0).
+- A claims deploy off a test network is allowed only when it ends with an empty-committee
+  maintenance authority, the deployment record revision is declared, and the build matches
+  the committed claims fingerprints; it was refused everywhere off a test network before.
+- Joining (and so reading claims from) the claims contract on mainnet accepts only
+  `MAINNET_CLAIMS_ADDRESS` (empty until the deploy). CLI options 35 and 36 check the claims
+  build first on mainnet; the mainnet start-up warns if the claims build does not match.
+- The claims deploy prints its deploy transaction id.
+
 ### Security (round D, 4 Oct 2026: operator tooling before mainnet)
 
 - The maintenance key and one-call secrets (recovery secret, incoming record secret,

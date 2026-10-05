@@ -11,7 +11,8 @@ import { type Interface } from 'node:readline/promises';
 import { type Logger } from 'pino';
 import { toHex } from '@midnight-ntwrk/midnight-js-utils';
 import { getNetworkId } from '@midnight-ntwrk/midnight-js-network-id';
-import { type ClaimRef, ClaimsAPI, type LabSignature } from '../../api/src/claims-api.js';
+import { type ClaimRef, ClaimsAPI, type LabSignature, assertClaimsDeployAllowed } from '../../api/src/claims-api.js';
+import { FIRST_FRAGMENT } from '../../api/src/deploy-fragments.js';
 import { type ClaimsProviders } from '../../api/src/claims-types.js';
 import { JUBJUB_ORDER, type JubjubPoint, newAttesterKey } from '../../contract/src/attest.js';
 import { type FieldSchema } from '../../contract/src/field-schema.js';
@@ -32,7 +33,7 @@ import { showSecret } from './secret-out.js';
 
 export const CLAIMS_MENU = `
  Claims (second contract: prove one fact about a sealed record)
- 34. Deploy the claims contract (test networks; no maintenance authority)
+ 34. Deploy the claims contract (no maintenance authority)
  35. Join the claims contract
  36. Finish a claims deploy that stopped partway
  37. Make a claim from a field-set file
@@ -48,6 +49,12 @@ export type ClaimsMenuContext = {
   readonly hidden: (question: string) => Promise<string>;
   /** Run a deploy or maintenance transaction, so Ctrl+C says to wait (index.ts). */
   readonly during: <T>(f: () => Promise<T>) => Promise<T>;
+  /**
+   * Checks the built claims contract against the claims table of docs/fingerprints.md as
+   * committed (keys-check.ts) and returns how many artefacts matched, or throws. Used on
+   * mainnet before a claims deploy, join or finish, as the main contract's are.
+   */
+  readonly checkBuild?: () => number;
   /** The joined claims contract, if any. */
   api: ClaimsAPI | undefined;
 };
@@ -72,6 +79,17 @@ const askAddress = async (c: ClaimsMenuContext): Promise<string> => {
     if (/^[0-9a-fA-F]{64}$/.test(a)) return a.toLowerCase();
     c.logger.error('That is not a contract address (64 characters, each 0-9 or a-f, no 0x). Nothing was sent.');
   }
+};
+
+/** On mainnet, the claims build must be the committed one before anything uses its keys. */
+const checkBuildOnMainnet = (c: ClaimsMenuContext): void => {
+  if (getNetworkId() !== 'mainnet') return;
+  if (c.checkBuild === undefined)
+    throw new ClaimsInputError(
+      'This run cannot check the claims build against docs/fingerprints.md. Nothing was sent.',
+    );
+  const n = c.checkBuild();
+  c.logger.info(`All ${n} claims build artefacts match the committed fingerprints (docs/fingerprints.md).`);
 };
 
 const askFieldSet = async (c: ClaimsMenuContext, q: string): Promise<LoadedFieldSet> =>
@@ -195,20 +213,30 @@ export const handleClaimsChoice = async (choice: string, c: ClaimsMenuContext): 
     switch (choice) {
       case '34': {
         const p = needProviders(c);
+        // Checked again inside deploy; here so a refusal comes before the question.
+        assertClaimsDeployAllowed({ authority: 'empty-committee', checkBuild: c.checkBuild }, c.logger);
         c.logger.info(
           'This deploys a claims contract, adds its five circuit keys, then replaces its maintenance authority ' +
-            'with an empty committee, so nobody, including us, can ever change it. Test networks only.',
+            'with an empty committee, so nobody, including us, can ever change it. There is no key to write down.',
         );
         if (!(await askYes(c, 'Deploy a claims contract now?'))) {
           c.logger.info('Nothing was sent.');
           return true;
         }
-        c.api = await c.during(() => ClaimsAPI.deploy(p, c.logger));
+        c.api = await c.during(() => ClaimsAPI.deploy(p, c.logger, FIRST_FRAGMENT, { checkBuild: c.checkBuild }));
         c.logger.info(`Claims contract address: ${c.api.deployedContractAddress}`);
+        if (getNetworkId() === 'mainnet')
+          c.logger.warn(
+            'Joining this claims contract on mainnet (35) is refused until its address is pinned: MAINNET_CLAIMS_ADDRESS ' +
+              'in api/src/deploy-guard.ts, the same address as the deployment record. Send Claude the address above.',
+          );
         return true;
       }
       case '35': {
-        c.api = await ClaimsAPI.join(needProviders(c), await askAddress(c), c.logger);
+        const p = needProviders(c);
+        // Join compares the chain's keys with THIS build's keys: on mainnet, check the build first.
+        checkBuildOnMainnet(c);
+        c.api = await ClaimsAPI.join(p, await askAddress(c), c.logger);
         const a = await c.api.authority();
         c.logger.info(`Joined claims contract at ${c.api.deployedContractAddress}.`);
         c.logger.info(
@@ -220,6 +248,7 @@ export const handleClaimsChoice = async (choice: string, c: ClaimsMenuContext): 
       }
       case '36': {
         const p = needProviders(c);
+        checkBuildOnMainnet(c);
         const address = await askAddress(c);
         c.api = await c.during(() => ClaimsAPI.finishDeploy(p, address, c.logger));
         c.logger.info(`Claims deploy finished: ${address}`);

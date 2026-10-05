@@ -157,6 +157,17 @@ const checkBuild = (zkConfigPath: string, logger: Logger): void => {
   logger.info(`All ${n} build artefacts match the committed fingerprints (docs/fingerprints.md).`);
 };
 
+/**
+ * The claims contract's build (managed/veilcore-claims, next to managed/veilcore) against
+ * the claims table of docs/fingerprints.md as committed. Returns how many matched, or throws.
+ */
+const claimsBuildCheck = (zkConfigPath: string) => (): number =>
+  assertKeysMatchRecord(
+    path.resolve(zkConfigPath, '..', 'veilcore-claims'),
+    path.resolve(zkConfigPath, '..', '..', '..', '..'),
+    'claims',
+  );
+
 /** Ask for a 32-byte SECRET, hidden as it is typed; refuses anything but 64 hex characters. */
 const askSecret32 = async (prompt: string): Promise<Uint8Array> => {
   const r = parseSecret32(await askHidden(prompt));
@@ -482,6 +493,7 @@ const mainLoop = async (
     indexerUri,
     hidden: (q) => askHidden(q),
     during,
+    checkBuild: claimsBuildCheck(zkConfigPath),
     api: undefined,
   };
 
@@ -1132,6 +1144,17 @@ export const run = async (config: Config, testEnv: TestEnvironment, logger: Logg
         logError(logger, e);
         logger.error('Nothing was started.');
         return;
+      }
+      // The claims contract is checked too, but only warned about: until its fingerprints
+      // are committed, the main contract can still be deployed and used.
+      try {
+        const n = claimsBuildCheck(config.zkConfigPath)();
+        logger.info(`Claims contract: all ${n} build artefacts match the committed fingerprints.`);
+      } catch (e) {
+        logger.warn(
+          `Claims contract: ${e instanceof Error ? e.message : String(e)} Deploying, joining or finishing it ` +
+            '(options 34, 35, 36) will be refused; the main contract is not affected.',
+        );
       }
       const gate = decide(resolveNetwork(), process.env[REVISION_VAR]);
       if (gate.allow) logger.info(`Deployment record: ${gate.because}. Deploying is allowed.`);

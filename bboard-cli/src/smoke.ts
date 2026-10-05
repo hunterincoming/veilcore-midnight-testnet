@@ -283,7 +283,7 @@ export const claimsPhase = async (
   notAClaim: string,
 ): Promise<string> => {
   const cl = await ClaimsAPI.deploy(providers, logger);
-  pass(`claims contract deployed at ${cl.deployedContractAddress}, all seven circuit keys on chain`);
+  pass(`claims contract deployed at ${cl.deployedContractAddress}, all five circuit keys on chain`);
   const auth = await cl.authority();
   must(
     auth.retired && auth.committee.length === 0 && auth.threshold === 1,

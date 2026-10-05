@@ -103,9 +103,11 @@ class ProgressFile {
       return undefined;
     }
     try {
+      // iv, a full 16-byte tag, then at least one byte of ciphertext.
+      if (blob.length <= 28) return undefined;
       const iv = blob.subarray(0, 12);
       const tag = blob.subarray(12, 28);
-      const d = createDecipheriv('aes-256-gcm', this.key, iv);
+      const d = createDecipheriv('aes-256-gcm', this.key, iv, { authTagLength: 16 });
       d.setAuthTag(tag);
       const parsed = JSON.parse(Buffer.concat([d.update(blob.subarray(28)), d.final()]).toString('utf8')) as Saved;
       return typeof parsed.shielded === 'string' && typeof parsed.unshielded === 'string' && typeof parsed.dust === 'string'

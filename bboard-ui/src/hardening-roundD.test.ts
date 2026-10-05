@@ -609,17 +609,16 @@ describe('V1 verify links name the record’s fingerprint; the page checks again
 
 // ======================================================= docs pinned and bundled
 
-describe('Docs are bundled from the pinned package, not fetched from a branch', () => {
-  it('the bundled text is the installed veilcore-records version, with an exact source commit', async () => {
+describe('Docs are bundled from an exact SDK commit, not fetched from a branch', () => {
+  it('the bundled text is the vendored copy, linked to the exact commit it was taken from', async () => {
     const docs = await import('./veilcore/docs');
-    const lock = JSON.parse(fs.readFileSync(path.resolve(HERE, '../../package-lock.json'), 'utf8')) as {
-      packages: Record<string, { version?: string }>;
-    };
-    expect(docs.DOCS_VERSION).toBe(lock.packages['node_modules/veilcore-records'].version);
-    expect(docs.DOCS.spec.md).toBe(
-      fs.readFileSync(path.resolve(HERE, '../../node_modules/veilcore-records/SPEC.md'), 'utf8'),
-    );
-    expect(docs.REPO_VIEW).toMatch(/\/blob\/[0-9a-f]{40}$/);
+    expect(docs.DOCS_COMMIT).toMatch(/^[0-9a-f]{40}$/);
+    expect(docs.REPO_VIEW.endsWith(`/blob/${docs.DOCS_COMMIT}`)).toBe(true);
+    for (const d of Object.values(docs.DOCS)) {
+      expect(d.md).toBe(fs.readFileSync(path.join(HERE, 'docs', d.file), 'utf8'));
+      // The published contact is the company address, never a personal one.
+      expect(d.md).not.toMatch(/gmail\.com/i);
+    }
     for (const f of ['components/DocPage.tsx', 'veilcore/docs.ts'])
       expect(fs.readFileSync(path.join(HERE, f), 'utf8')).not.toMatch(/raw\.githubusercontent|\/main['`/]/);
   });

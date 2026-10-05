@@ -25,11 +25,17 @@ import { SaveProblemBar } from './components/SaveProblemBar';
 import { startRecordSync } from './veilcore/records';
 import { startLicenseSync } from './veilcore/licenses';
 
+/** Pages where someone is using the app, as opposed to reading about it. */
+const APP_PAGE = /^\/(new|records|record\/|licenses|license\/)/;
+
 const AppLayout: React.FC<React.PropsWithChildren> = ({ children }) => {
-  // The landing page is read by people deciding whether to look further (investors,
-  // labs, counsel). A dialog over it, in one language, before they have read a line, is
-  // the wrong first thing; the question is asked when they start using the app.
-  const onLanding = useLocation().pathname === '/';
+  // The role question belongs to the app: making records, holding them, licensing them.
+  // The documents and the implementations list are read by people deciding whether to
+  // look further (investors, labs, counsel); a dialog over them, in one language, before
+  // they have read a line, is the wrong first thing. The public pages outside this
+  // layout (/, /founders, /verify, /privacy) never ask either.
+  const { pathname } = useLocation();
+  const askRole = APP_PAGE.test(pathname);
   // The app pages load and follow the holder's records; the landing page, the public
   // verify page and the documents do not (attack round D). Without a holder key in this
   // browser nothing is requested at all.
@@ -48,7 +54,7 @@ const AppLayout: React.FC<React.PropsWithChildren> = ({ children }) => {
     >
       {/* Asked once, on first use. Without it the app has to guess who is reading,
         which is how a lab was told to send its own sample to a lab. */}
-      {!onLanding && <RolePicker />}
+      {askRole && <RolePicker />}
       <Container maxWidth="md" sx={{ py: { xs: 3, md: 6 } }}>
         <SaveProblemBar />
         {children}

@@ -1050,3 +1050,344 @@ html:has(.vcm) {
   color: var(--mint);
   white-space: nowrap;
 }
+
+/* Phones (below MUI's 600px "sm" breakpoint). A comfort pass, not a redesign: small
+   labels and links come up to 13px or more, the secondary grey is lighter, every
+   navigation link is a finger-sized row, vertical rhythm is tighter, and groups of
+   boxes become one box with dividers. Nothing above 600px changes. */
+@media (max-width: 599.98px) {
+  .vcm {
+    /* #849995 is 6.7:1 on --bg; this is 9.2:1, still well below --text (17.9:1). */
+    --muted: #9fb3ae;
+  }
+  .vcm section {
+    padding-block: 44px;
+  }
+  .vcm .label {
+    letter-spacing: 0.24em;
+  }
+  .vcm h2 {
+    margin-top: 14px;
+  }
+  .vcm .lede {
+    margin-top: 14px;
+  }
+
+  /* nav */
+  .vcm .nav-in {
+    padding-block: 8px;
+  }
+  .vcm .brand {
+    min-height: 44px;
+  }
+  .vcm .menu-btn {
+    min-height: 44px;
+    padding: 0 16px;
+    font-size: 15px;
+  }
+  .vcm .nav-links {
+    padding: 0 var(--gutter) 10px;
+  }
+  .vcm .nav-links li + li {
+    border-top: 1px solid rgba(27, 57, 52, 0.6);
+  }
+  .vcm .nav-links a {
+    padding: 13px 0;
+    font-size: 16px;
+  }
+  .vcm .nav-links .nav-cta {
+    border: 0;
+    border-radius: 0;
+  }
+
+  /* hero */
+  .vcm header.hero {
+    padding-block: 32px 44px;
+  }
+  .vcm header.hero h1 {
+    margin-top: 18px;
+  }
+  .vcm .hero-actions {
+    margin-top: 28px;
+  }
+  .vcm .hash-demo {
+    margin-top: 40px;
+  }
+  .vcm .arrow {
+    height: 24px;
+    margin: 14px auto;
+  }
+  .vcm .digest {
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  .vcm .note {
+    font-size: 15px;
+  }
+
+  /* where to go: one box with dividers, icon beside the text */
+  .vcm .choose {
+    gap: 0;
+    margin-top: 28px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    overflow: hidden;
+  }
+  .vcm .tile {
+    display: grid;
+    grid-template-columns: 26px 1fr;
+    column-gap: 14px;
+    row-gap: 4px;
+    min-height: 0;
+    border: 0;
+    border-radius: 0;
+    padding: 18px;
+  }
+  .vcm .tile + .tile {
+    border-top: 1px solid var(--line);
+  }
+  .vcm .tile > * {
+    grid-column: 2;
+  }
+  .vcm .tile svg.ico {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .vcm .tile .n {
+    grid-column: 1;
+    grid-row: 2;
+  }
+  .vcm .tile h3 {
+    grid-row: 1;
+    align-self: center;
+  }
+  .vcm .tile:hover {
+    transform: none;
+  }
+  .vcm .tile h3 {
+    font-size: 1.2rem;
+  }
+  .vcm .tile .go {
+    margin-top: 4px;
+  }
+
+  /* about */
+  .vcm .steps {
+    margin-top: 28px;
+  }
+  .vcm .step {
+    padding: 18px;
+  }
+  .vcm .step h3 {
+    margin: 6px 0 4px;
+  }
+  .vcm .isnt {
+    gap: 28px;
+    margin-top: 32px;
+  }
+  .vcm .isnt > div {
+    border: 0;
+    border-radius: 0;
+    padding: 0 2px;
+  }
+  .vcm .isnt h4 {
+    font-size: 13px;
+    letter-spacing: 0.22em;
+    margin-bottom: 4px;
+  }
+  .vcm .isnt li {
+    padding: 10px 0;
+  }
+
+  /* demos */
+  .vcm .demos {
+    gap: 10px;
+    margin-top: 28px;
+  }
+  .vcm .demo {
+    padding: 18px;
+    gap: 4px 14px;
+  }
+  .vcm .demo .ic {
+    width: 26px;
+    height: 30px;
+    border: 0;
+    border-radius: 0;
+    place-items: start;
+  }
+
+  /* team */
+  .vcm .team {
+    gap: 10px;
+    margin-top: 28px;
+  }
+  .vcm .person {
+    padding: 16px;
+    gap: 14px;
+    align-items: flex-start;
+  }
+  .vcm .avatar {
+    width: 56px;
+    height: 56px;
+  }
+  .vcm .more {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    margin-top: 10px;
+  }
+
+  /* updates */
+  .vcm .posts {
+    gap: 10px;
+    margin-top: 28px;
+  }
+  .vcm .post {
+    padding: 18px;
+    gap: 8px;
+  }
+  .vcm .subscribe {
+    margin-top: 12px;
+    gap: 0 10px;
+  }
+  .vcm .subscribe > span:nth-child(2) {
+    display: none;
+  }
+  .vcm .subscribe a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+
+  /* status: one box with dividers */
+  .vcm .status {
+    gap: 0;
+    margin-top: 28px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    overflow: hidden;
+    background: var(--surface);
+  }
+  .vcm .stat {
+    border: 0;
+    border-radius: 0;
+    padding: 16px 18px;
+    background: none;
+  }
+  .vcm .stat + .stat {
+    border-top: 1px solid var(--line);
+  }
+  .vcm .stat b {
+    font-size: 1.6rem;
+  }
+  .vcm .status-key {
+    margin-top: 12px;
+    padding: 16px 18px;
+  }
+  .vcm .status-key a,
+  .vcm .privacy-contact a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+  .vcm .contact {
+    margin-top: 24px;
+    gap: 10px;
+  }
+
+  /* type sizes: nothing secondary below 13px, body copy at 15px */
+  .vcm .tile .n,
+  .vcm .step .n,
+  .vcm .post time,
+  .vcm .post .tag,
+  .vcm .chip,
+  .vcm .tags li,
+  .vcm .person .role,
+  .vcm .founder .role {
+    font-size: 13px;
+  }
+  .vcm .tile .go,
+  .vcm .post .go,
+  .vcm .more {
+    font-size: 14px;
+  }
+  .vcm .tile p,
+  .vcm .step p,
+  .vcm .isnt li,
+  .vcm .demo p,
+  .vcm .person p,
+  .vcm .post p,
+  .vcm .stat span,
+  .vcm .status-key,
+  .vcm .subscribe {
+    font-size: 15px;
+  }
+
+  /* footer: every link a full row */
+  .vcm footer.bottom {
+    font-size: 14.5px;
+    padding: 28px 0 20px;
+  }
+  .vcm .foot {
+    gap: 22px 16px;
+  }
+  .vcm .foot > div:first-child {
+    grid-column: 1 / -1;
+  }
+  .vcm .foot h4 {
+    font-size: 13px;
+    letter-spacing: 0.22em;
+    margin-bottom: 2px;
+  }
+  .vcm .foot li {
+    margin-top: 0;
+  }
+  .vcm .foot li a {
+    display: block;
+    padding: 11px 0;
+  }
+  .vcm .fine {
+    margin-top: 14px;
+    font-size: 13px;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .vcm .fine a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+
+  /* founders */
+  .vcm header.page {
+    padding-block: 36px 32px;
+  }
+  .vcm header.page h1 {
+    margin-top: 18px;
+  }
+  .vcm header.page p {
+    margin-top: 18px;
+    font-size: 1.1rem;
+  }
+  .vcm .grid {
+    gap: 14px;
+    padding-bottom: 48px;
+  }
+  .vcm .fbody {
+    padding: 20px 18px;
+    gap: 12px;
+  }
+  .vcm .meta dt {
+    font-size: 13px;
+    letter-spacing: 0.22em;
+  }
+  .vcm .links a {
+    min-height: 44px;
+    box-sizing: border-box;
+    padding: 0 14px;
+    font-size: 14px;
+  }
+  .vcm .band {
+    padding: 48px 0;
+  }
+}

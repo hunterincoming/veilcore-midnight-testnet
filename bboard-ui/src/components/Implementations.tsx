@@ -24,25 +24,36 @@ const Impl: React.FC<{
   href: string;
   hrefLabel: string;
 }> = ({ name, lang, who, deps, note, href, hrefLabel }) => (
-  <Box sx={{ py: 4, borderTop: '1px solid', borderColor: 'rgba(255,255,255,0.07)' }}>
+  <Box sx={{ py: { xs: 3, sm: 4 }, borderTop: '1px solid', borderColor: 'rgba(255,255,255,0.07)' }}>
     <Stack direction={{ xs: 'column', md: 'row' }} spacing={{ xs: 2, md: 5 }}>
       <Box sx={{ minWidth: { md: 190 } }}>
         <Typography variant="h6" sx={{ mb: 0.5 }}>
           {name}
         </Typography>
-        <Typography sx={{ fontFamily: MONO, fontSize: 12.5, color: TEAL }}>{lang}</Typography>
+        <Typography sx={{ fontFamily: MONO, fontSize: { xs: 13.5, sm: 12.5 }, color: TEAL }}>{lang}</Typography>
       </Box>
       <Box sx={{ flex: 1, maxWidth: 560 }}>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5, lineHeight: 1.75 }}>
           {note}
         </Typography>
-        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+        <Typography
+          variant="caption"
+          color="text.secondary"
+          sx={{ display: 'block', mb: 0.5, fontSize: { xs: 13.5, sm: 12 } }}
+        >
           Written by {who}
         </Typography>
-        <Typography variant="caption" sx={{ color: TEAL_DIM, display: 'block', mb: 2 }}>
+        <Typography variant="caption" sx={{ color: TEAL_DIM, display: 'block', mb: 2, fontSize: { xs: 13.5, sm: 12 } }}>
           Dependencies: {deps}
         </Typography>
-        <Button size="small" variant="outlined" href={href} target="_blank" rel="noopener">
+        <Button
+          size="small"
+          variant="outlined"
+          href={href}
+          target="_blank"
+          rel="noopener"
+          sx={{ minHeight: { xs: 44, sm: 0 } }}
+        >
           {hrefLabel}
         </Button>
       </Box>
@@ -51,8 +62,9 @@ const Impl: React.FC<{
 );
 
 export const Implementations: React.FC = () => (
-  <Container maxWidth="lg" sx={{ pb: 10 }}>
-    <Box sx={{ pt: { xs: 6, md: 9 }, pb: { xs: 4, md: 6 } }}>
+  // Inside the app layout's own container, so no second set of side gutters on a phone.
+  <Container maxWidth="lg" sx={{ pb: { xs: 4, sm: 10 }, px: { xs: 0, sm: 3 } }}>
+    <Box sx={{ pt: { xs: 2, sm: 6, md: 9 }, pb: { xs: 3, sm: 4, md: 6 } }}>
       <Typography variant="overline" sx={{ color: TEAL, display: 'block', mb: 2 }}>
         Implementations
       </Typography>

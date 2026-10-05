@@ -14,19 +14,8 @@
 // limitations under the License.
 
 import { defineConfig } from 'vite';
-import fs from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-
-// The published documents (SPEC, EVIDENCE, INTEGRATING) are bundled from the
-// veilcore-records package the site already depends on, pinned by package-lock.json,
-// rather than fetched from the SDK repository at run time (attack round D). Found where
-// npm put it: this workspace's node_modules or the root's.
-const here = path.dirname(fileURLToPath(import.meta.url));
-const sdkDir = [path.join(here, 'node_modules/veilcore-records'), path.join(here, '../node_modules/veilcore-records')].find(
-  (p) => fs.existsSync(path.join(p, 'SPEC.md')),
-);
-if (!sdkDir) throw new Error('veilcore-records is not installed; the documents cannot be bundled');
+// The published documents (SPEC, EVIDENCE, INTEGRATING) are vendored in src/docs from an
+// exact SDK commit (see src/veilcore/docs.ts); nothing is resolved from a package for them.
 import react from '@vitejs/plugin-react';
 import wasm from 'vite-plugin-wasm';
 import topLevelAwait from 'vite-plugin-top-level-await';
@@ -46,7 +35,7 @@ export default defineConfig({
           if (id.includes('onchain-runtime-v3')) return 'wasm';
         },
       },
-      },
+    },
     commonjsOptions: {
       // Transform CommonJS to ESM more aggressively
       transformMixedEsModules: true,
@@ -112,7 +101,6 @@ export default defineConfig({
   },
   // Add specific import configuration for more control
   resolve: {
-    alias: { '@veilcore-docs': sdkDir },
     // Ensure WASM files are loaded properly
     extensions: ['.mjs', '.js', '.ts', '.jsx', '.tsx', '.json', '.wasm'],
     mainFields: ['browser', 'module', 'main'],

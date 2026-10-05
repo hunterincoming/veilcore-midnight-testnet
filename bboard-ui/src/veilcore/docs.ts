@@ -1,32 +1,30 @@
 // The published documents (SPEC, EVIDENCE, INTEGRATING), bundled at build time.
 //
-// They come from the veilcore-records package the site already depends on, pinned by
-// package-lock.json (version and sha512 integrity), and are the same files as the SDK
-// repository's tag for that version (attack round D). They used to be fetched at run
-// time from the repository's main branch, so whoever could push there decided what
-// rendered on veilcore.org, where holder and attester keys live in local storage. The
-// sanitiser is also narrower now: no inline styles, ids, forms or inputs, which
-// together allowed a full-page fake "re-enter your key" overlay on the real origin.
+// They are vendored into src/docs/ from one exact commit of the SDK repository
+// (DOCS_COMMIT below), byte for byte, and reviewed here like any other source file. They
+// used to be fetched at run time from the repository's main branch, so whoever could
+// push there decided what rendered on veilcore.org, where holder and attester keys live
+// in local storage (attack round D). Then they came from the veilcore-records package,
+// whose 0.13.0 copies still named a personal address as the contact; the SDK fixed that
+// after the release, so the site now takes the files from that commit instead of waiting
+// for a package. To update: copy the three files from a newer SDK commit and change
+// DOCS_VERSION and DOCS_COMMIT together. The sanitiser is also narrower now: no inline
+// styles, ids, forms or inputs, which together allowed a full-page fake "re-enter your
+// key" overlay on the real origin.
 // SPDX-License-Identifier: Apache-2.0
 
 import { marked } from 'marked';
 import DOMPurify, { type Config } from 'dompurify';
-import specMd from '@veilcore-docs/SPEC.md?raw';
-import evidenceMd from '@veilcore-docs/EVIDENCE.md?raw';
-import integratingMd from '@veilcore-docs/INTEGRATING.md?raw';
-import sdkPackageJson from '@veilcore-docs/package.json?raw';
+import specMd from '../docs/SPEC.md?raw';
+import evidenceMd from '../docs/EVIDENCE.md?raw';
+import integratingMd from '../docs/INTEGRATING.md?raw';
 
-/** The SDK version the documents were bundled from. */
-export const DOCS_VERSION: string = (JSON.parse(sdkPackageJson) as { version: string }).version;
+/** The SDK version (its package.json at DOCS_COMMIT) the documents were copied from. */
+export const DOCS_VERSION = '0.15.0';
 
-/**
- * The exact SDK commit for each bundled version, so "Source" opens the same text that is
- * rendered here. A version not listed links to its release tag.
- */
-export const DOCS_COMMIT: Record<string, string> = {
-  '0.13.0': 'f8cc0c61ac60c727f0d57d6e6cdd8ec4ae8afc81',
-};
-export const REPO_VIEW = `https://github.com/hunterincoming/veilcore-sdk/blob/${DOCS_COMMIT[DOCS_VERSION] ?? `v${DOCS_VERSION}`}`;
+/** The exact SDK commit the documents were copied from, so "Source" opens the same text. */
+export const DOCS_COMMIT = '67f54a40b2b348e62e6248f6dcbc20618db84453';
+export const REPO_VIEW = `https://github.com/hunterincoming/veilcore-sdk/blob/${DOCS_COMMIT}`;
 
 export const DOCS: Record<string, { file: string; md: string; title: string; blurb: string }> = {
   spec: {

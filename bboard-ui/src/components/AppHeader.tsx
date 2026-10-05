@@ -29,7 +29,7 @@ export const AppHeader: React.FC = () => {
           to="/records"
           direction="row"
           spacing={1.25}
-          sx={{ alignItems: 'center', textDecoration: 'none' }}
+          sx={{ alignItems: 'center', textDecoration: 'none', minHeight: { xs: 44, sm: 0 } }}
         >
           <Box sx={{ width: 12, height: 12, borderRadius: '50%', background: TEAL, boxShadow: `0 0 14px ${TEAL}` }} />
           <Typography variant="h6" sx={{ letterSpacing: '0.3em', fontWeight: 600, color: 'text.primary' }}>

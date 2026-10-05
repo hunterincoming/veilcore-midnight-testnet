@@ -65,6 +65,9 @@ export const en = {
   'm.hero.note':
     'Type in either box; nothing is sent. The mint line is the fingerprint, the only part that would be published. Nobody can work back from it to what you typed.',
 
+  // Phones only: the note in one line.
+  'm.hero.noteShort': 'Only the mint line would be published.',
+
   'm.for.label': "What it's for",
   'm.for.title1': 'Every dispute asks one thing:',
   'm.for.title2': 'what did you have, and when?',
@@ -221,6 +224,8 @@ export const en = {
   'm.updates.title1': 'Latest from',
   'm.updates.title2': 'the build.',
   'm.updates.read': 'Read →',
+  // Phones only: the toggle that opens the older updates.
+  'm.updates.more': 'All updates',
   'm.updates.all': 'Record-format changes on GitHub →',
   'm.updates.follow': 'Follow',
   'm.post0.date': '4 Oct 2026',

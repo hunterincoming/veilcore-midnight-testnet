@@ -20,6 +20,7 @@ import { Link as RouterLink, useLocation } from 'react-router-dom';
 import { computeCommitment, newNonce } from 'veilcore-records';
 import { useI18n } from '../../i18n';
 import { FOUNDERS_MAIL, SDK_REPO, SiteShell, X_HANDLE } from './SiteShell';
+import { FoldGroup, FoldItem, FoldPoint } from './Fold';
 
 const TESTNET_REPO = 'https://github.com/hunterincoming/veilcore-midnight-testnet';
 
@@ -86,23 +87,13 @@ const Fingerprint: React.FC = () => {
             )
           : '—'}
       </div>
-      <p className="note">{t('m.hero.note')}</p>
+      <p className="note">
+        <span className="note-long">{t('m.hero.note')}</span>
+        <span className="note-short">{t('m.hero.noteShort')}</span>
+      </p>
     </div>
   );
 };
-
-/** A short titled paragraph; the building block of the situation and outlast lists. */
-const Point: React.FC<{ title: string; children: React.ReactNode; wide?: boolean; span2?: boolean }> = ({
-  title,
-  children,
-  wide,
-  span2,
-}) => (
-  <div className={`pt${wide ? ' wide' : ''}${span2 ? ' span2' : ''}`}>
-    <h3>{title}</h3>
-    <p>{children}</p>
-  </div>
-);
 
 const Post: React.FC<{
   href: string;
@@ -162,16 +153,22 @@ export const Home: React.FC = () => {
           </h2>
           <p className="lede">{t('m.for.lede')}</p>
           <div className="points">
-            <Point title={t('m.for.1t')}>{t('m.for.1p')}</Point>
-            <Point title={t('m.for.2t')}>
+            <FoldPoint mode="hide" defaultOpen title={t('m.for.1t')}>
+              {t('m.for.1p')}
+            </FoldPoint>
+            <FoldPoint mode="hide" title={t('m.for.2t')}>
               {t('m.for.2p')} <a href="#claims">{t('m.for.2link')}</a>
-            </Point>
-            <Point title={t('m.for.3t')}>{t('m.for.3p')}</Point>
-            <Point title={t('m.for.4t')}>{t('m.for.4p')}</Point>
-            <Point title={t('m.for.5t')} wide>
+            </FoldPoint>
+            <FoldPoint mode="hide" title={t('m.for.3t')}>
+              {t('m.for.3p')}
+            </FoldPoint>
+            <FoldPoint mode="hide" title={t('m.for.4t')}>
+              {t('m.for.4p')}
+            </FoldPoint>
+            <FoldPoint mode="hide" title={t('m.for.5t')} wide>
               {t('m.for.5p')}{' '}
               <a href={`${FOUNDERS_MAIL}&subject=${encodeURIComponent('Animal records')}`}>{t('m.for.5ask')}</a>
-            </Point>
+            </FoldPoint>
           </div>
         </div>
       </section>
@@ -204,15 +201,15 @@ export const Home: React.FC = () => {
           <div className="claims">
             <ul className="claim-list">
               {(['1', '2', '3', '4', '5'] as const).map((n) => (
-                <li key={n}>
-                  <strong>{t(`m.claims.${n}t`)}</strong> {t(`m.claims.${n}p`)}
-                </li>
+                <FoldItem key={n} mode="hide" lead={t(`m.claims.${n}t`)}>
+                  {t(`m.claims.${n}p`)}
+                </FoldItem>
               ))}
             </ul>
             <div className="claim-notes">
-              <p>
-                <strong>{t('m.claims.limitsTitle')}</strong> {t('m.claims.limits')}
-              </p>
+              <FoldItem tag="div" className="claim-limits" lead={t('m.claims.limitsTitle')}>
+                {t('m.claims.limits')}
+              </FoldItem>
               <p>
                 <strong>{t('m.claims.statusTitle')}</strong> {t('m.claims.status')}
               </p>
@@ -235,9 +232,9 @@ export const Home: React.FC = () => {
               <h4>{t('m.get.title')}</h4>
               <ul>
                 {(['1', '2', '3'] as const).map((n) => (
-                  <li key={n}>
-                    <strong>{t(`m.get.${n}a`)}</strong> {t(`m.get.${n}b`)}
-                  </li>
+                  <FoldItem key={n} lead={t(`m.get.${n}a`)}>
+                    {t(`m.get.${n}b`)}
+                  </FoldItem>
                 ))}
               </ul>
             </div>
@@ -245,9 +242,9 @@ export const Home: React.FC = () => {
               <h4>{t('m.stops.title')}</h4>
               <ul>
                 {(['1', '2', '3', '4'] as const).map((n) => (
-                  <li key={n}>
-                    <strong>{t(`m.stops.${n}a`)}</strong> {t(`m.stops.${n}b`)}
-                  </li>
+                  <FoldItem key={n} lead={t(`m.stops.${n}a`)}>
+                    {t(`m.stops.${n}b`)}
+                  </FoldItem>
                 ))}
               </ul>
             </div>
@@ -262,13 +259,21 @@ export const Home: React.FC = () => {
             {t('m.open.title1')} <em>{t('m.open.title2')}</em>
           </h2>
           <div className="points three">
-            <Point title={t('m.open.1t')} span2>
+            <FoldPoint mode="clamp" title={t('m.open.1t')} span2>
               {t('m.open.1p')} <RouterLink to="/implementations">{t('m.open.1link')}</RouterLink>
-            </Point>
-            <Point title={t('m.open.2t')}>{t('m.open.2p')}</Point>
-            <Point title={t('m.open.3t')}>{t('m.open.3p')}</Point>
-            <Point title={t('m.open.4t')}>{t('m.open.4p')}</Point>
-            <Point title={t('m.open.5t')}>{t('m.open.5p')}</Point>
+            </FoldPoint>
+            <FoldPoint mode="clamp" title={t('m.open.2t')}>
+              {t('m.open.2p')}
+            </FoldPoint>
+            <FoldPoint mode="clamp" title={t('m.open.3t')}>
+              {t('m.open.3p')}
+            </FoldPoint>
+            <FoldPoint mode="clamp" title={t('m.open.4t')}>
+              {t('m.open.4p')}
+            </FoldPoint>
+            <FoldPoint mode="clamp" title={t('m.open.5t')}>
+              {t('m.open.5p')}
+            </FoldPoint>
           </div>
         </div>
       </section>
@@ -439,24 +444,26 @@ export const Home: React.FC = () => {
               text={t('m.post0.text')}
               go={t('m.updates.read')}
             />
-            <Post
-              href={`${TESTNET_REPO}/blob/main/docs/self-audit-3oct.md`}
-              iso="2026-10-03"
-              date={t('m.post1.date')}
-              tag={t('m.post1.tag')}
-              title={t('m.post1.title')}
-              text={t('m.post1.text')}
-              go={t('m.updates.read')}
-            />
-            <Post
-              href={`${TESTNET_REPO}/blob/main/docs/preprod-run-2oct.md`}
-              iso="2026-10-02"
-              date={t('m.post2.date')}
-              tag={t('m.post2.tag')}
-              title={t('m.post2.title')}
-              text={t('m.post2.text')}
-              go={t('m.updates.read')}
-            />
+            <FoldGroup label={t('m.updates.more')}>
+              <Post
+                href={`${TESTNET_REPO}/blob/main/docs/self-audit-3oct.md`}
+                iso="2026-10-03"
+                date={t('m.post1.date')}
+                tag={t('m.post1.tag')}
+                title={t('m.post1.title')}
+                text={t('m.post1.text')}
+                go={t('m.updates.read')}
+              />
+              <Post
+                href={`${TESTNET_REPO}/blob/main/docs/preprod-run-2oct.md`}
+                iso="2026-10-02"
+                date={t('m.post2.date')}
+                tag={t('m.post2.tag')}
+                title={t('m.post2.title')}
+                text={t('m.post2.text')}
+                go={t('m.updates.read')}
+              />
+            </FoldGroup>
           </div>
           <div className="subscribe">
             <a className="more" href={`${SDK_REPO}/commits/main`} rel="noopener noreferrer" target="_blank">
@@ -498,12 +505,12 @@ export const Home: React.FC = () => {
               <span>{t('m.stat4.s')}</span>
             </div>
           </div>
-          <p className="status-key">
-            <strong>{t('m.status.keyTitle')}</strong> {t('m.status.keyText')}{' '}
+          <FoldItem tag="div" className="status-key" lead={t('m.status.keyTitle')}>
+            {t('m.status.keyText')}{' '}
             <a href={`${TESTNET_REPO}/blob/main/docs/maintenance-policy.md`} rel="noopener noreferrer" target="_blank">
               {t('m.status.keyLink')}
             </a>
-          </p>
+          </FoldItem>
         </div>
       </section>
 

@@ -20,7 +20,9 @@ const ticket = (i: number) => i.toString(16).padStart(32, '0');
 /**
  * A wallet whose fee estimate waits on a gate, so a test can put a whole burst of requests
  * in flight at once: the window in which the race used to happen. `estimate` decides each
- * call's answer (by call number) and `pay` each payment's outcome.
+ * call's answer (by call number) and `pay` each payment's outcome. Payments wait on their
+ * own gate (`holdPayments`), and `actual` sets the fee the balanced transaction really
+ * pays (by payment number; by default the same as that transaction's estimate).
  */
 class GatedWallet implements PayingWallet {
   synced = true;
@@ -28,34 +30,49 @@ class GatedWallet implements PayingWallet {
   estimates = 0;
   payments = 0;
   gate: Promise<void> = Promise.resolve();
+  payGate: Promise<void> = Promise.resolve();
   estimate: (n: number) => Promise<bigint> = () => Promise.resolve(1_000n);
+  actual?: (n: number) => bigint;
   pay: (n: number) => 'ok' | 'not-sent' | 'not-sent-final' | 'maybe' = () => 'ok';
+  private readonly estimated = new WeakMap<SealedTx, bigint>();
   isSynced() {
     return this.synced;
   }
   waitSynced() {
     return Promise.resolve(this.synced);
   }
-  async estimateFee() {
+  async estimateFee(tx: SealedTx) {
     const n = ++this.estimates;
     await this.gate;
-    return this.estimate(n);
+    const fee = await this.estimate(n);
+    this.estimated.set(tx, fee);
+    return fee;
   }
   dustBalance() {
     return 10n ** 18n;
   }
-  payAndSubmit(tx: SealedTx) {
-    const outcome = this.pay(++this.payments);
-    if (outcome === 'not-sent') return Promise.reject(new NotSentError('indexer behind', true));
-    if (outcome === 'not-sent-final') return Promise.reject(new NotSentError('refused', false));
-    if (outcome === 'maybe') return Promise.reject(new Error('socket closed'));
+  async payAndSubmit(tx: SealedTx, _ttl: Date, approveFee: (fee: bigint) => void) {
+    const n = ++this.payments;
+    const outcome = this.pay(n);
+    await this.payGate;
+    if (outcome === 'not-sent') throw new NotSentError('indexer behind', true);
+    if (outcome === 'not-sent-final') throw new NotSentError('refused', false);
+    const fee = this.actual?.(n) ?? this.estimated.get(tx) ?? 1_000n;
+    approveFee(fee); // a refusal here means nothing is sent, as in the real wallet
+    if (outcome === 'maybe') throw new Error('socket closed');
     this.paid.push(tx);
-    return Promise.resolve(`id-${this.paid.length}`);
+    return { txId: `id-${this.paid.length}`, fee };
   }
   /** Hold every fee estimate until the returned function is called. */
   hold(): () => void {
     let release!: () => void;
     this.gate = new Promise<void>((r) => (release = r));
+    return release;
+  }
+  /** Hold every payment (after its estimate, inside the queue) until the returned function is called. */
+  holdPayments(): () => void {
+    let release!: () => void;
+    this.payGate = new Promise<void>((r) => (release = r));
     return release;
   }
 }
@@ -175,7 +192,71 @@ describe('Critical (CWE-362): quota, duplicate guard and budget are claimed befo
     expect((await s.req(await sealedCall('anchor'), '198.51.100.40')).status).toBe(200);
     expect(s.budget.remaining()).toBe(5_000n);
   });
+
+  it('the hold is lowered to the estimate while the request is still in flight, and others can use the rest', async () => {
+    // Budget 6000, ceiling 5000. A is admitted with a 5000 hold, estimates 1000, then waits
+    // to be paid. While it waits, its hold must already be 1000: B (estimate 2000) needs a
+    // 5000 hold of its own, which only fits if A's was lowered (verification S4).
+    const s = setup({ budget: 6_000n, maxFee: 5_000n });
+    s.wallet.estimate = (n) => Promise.resolve(n === 1 ? 1_000n : 2_000n);
+    const releasePay = s.wallet.holdPayments();
+    const [a, b] = await calls(2, 'anchor');
+    const reqA = s.req(a, '198.51.100.41');
+    await until(() => s.wallet.payments === 1); // A is past its estimate and inside the wallet
+    expect(s.budget.remaining()).toBe(5_000n);
+    expect(s.budget.spentToday).toBe(0n); // held, not yet spent
+    const reqB = s.req(b, '198.51.101.41');
+    await until(() => s.wallet.estimates === 2);
+    await settleTicks();
+    // B is admitted and waits behind A in the queue: 1000 (A) + 5000 (B) held, then B's own
+    // hold drops to its 2000 estimate.
+    expect(s.budget.remaining()).toBe(3_000n);
+    releasePay();
+    expect(statuses(await Promise.all([reqA, reqB]))).toEqual(['200:ok', '200:ok']);
+    expect(s.budget.spentToday).toBe(3_000n);
+    expect(s.budget.remaining()).toBe(3_000n);
+  });
+
+  it('the budget is settled to the fee the balanced transaction really pays, not the estimate', async () => {
+    const s = setup({ budget: 10_000n, maxFee: 5_000n });
+    s.wallet.estimate = () => Promise.resolve(1_000n);
+    s.wallet.actual = (n) => (n === 1 ? 1_200n : 900n);
+    expect((await s.req(await sealedCall('anchor'), '198.51.100.42')).status).toBe(200);
+    expect(s.budget.spentToday).toBe(1_200n); // raised from the 1000 hold: it fit today's budget
+    expect((await s.req(await sealedCall('anchor'), '198.51.101.42')).status).toBe(200);
+    expect(s.budget.spentToday).toBe(2_100n); // lowered to 900
+    expect(s.budget.remaining()).toBe(7_900n);
+  });
+
+  it('a real fee above the ceiling, or that no longer fits the budget, is never sent and gives the hold back', async () => {
+    // Above the ceiling: refused as fee-too-high, nothing paid, the same tx may come again.
+    const s = setup({ budget: 10_000n, maxFee: 2_000n });
+    s.wallet.actual = () => 2_500n;
+    const bytes = await sealedCall('anchor');
+    expect((await s.req(bytes, '198.51.100.43')).body.code).toBe('fee-too-high');
+    expect(s.wallet.paid).toHaveLength(0);
+    expect(s.budget.remaining()).toBe(10_000n);
+    s.wallet.actual = undefined;
+    expect((await s.req(bytes, '198.51.100.43')).status).toBe(200);
+
+    // Over the hold and over what is unspent today: "used up", nothing paid.
+    const t = setup({ budget: 1_100n, maxFee: 5_000n });
+    t.wallet.actual = () => 1_500n;
+    expect((await t.req(await sealedCall('anchor'), '198.51.100.44')).body.code).toBe('budget');
+    expect(t.wallet.paid).toHaveLength(0);
+    expect(t.budget.remaining()).toBe(1_100n);
+    expect(t.budget.spentToday).toBe(0n);
+  });
 });
+
+/** Wait (by yielding to the event loop) until `cond` holds; fail after a while. */
+const until = async (cond: () => boolean) => {
+  for (let i = 0; i < 1_000 && !cond(); i++) await new Promise((r) => setImmediate(r));
+  expect(cond()).toBe(true);
+};
+const settleTicks = async () => {
+  for (let i = 0; i < 20; i++) await new Promise((r) => setImmediate(r));
+};
 
 describe('High (CWE-362): a request releases only what it claimed', () => {
   it('a losing concurrent duplicate cannot erase the winner’s replay guard', async () => {
@@ -375,6 +456,43 @@ describe('Medium (CWE-770): anchoring fees come out of the same daily budget', (
       expect(s.budget.spentToday).toBe(0n);
       expect(s.budget.remaining()).toBe(over.budget);
     }
+  });
+
+  it('budget held by requests in flight is "busy": not a failure, no alert, and anchoring resumes once it frees', async () => {
+    const s = anchorSetup({ budget: 6_000n });
+    s.registry.list = [{ batchId: 'B-1', root: ROOT, sealedAt: 1, anchored: false }];
+    const visitor = s.budget.reserveUpTo(6_000n)!; // a visitor's hold, fee not known yet
+    for (let i = 0; i < 4; i++) expect(await s.anchorer.runOnce()).toMatch(/held by requests in flight/);
+    expect(s.chain.prepared).toBe(0);
+    expect(s.anchorer.status()).toMatchObject({ consecutiveFailures: 0, alert: false, lastOutcomeCode: 'busy' });
+    expect(s.anchorer.publicStatus()).toMatchObject({ lastOutcome: 'busy', alert: false });
+    s.budget.shrink(visitor.id, 1_000n); // its fee became known
+    expect(await s.anchorer.runOnce()).toMatch(/^anchored B-1/);
+  });
+
+  it('a fee that only does not fit because of holds in flight is abandoned as "busy", not a failure', async () => {
+    const s = anchorSetup({ budget: 6_000n });
+    s.registry.list = [{ batchId: 'B-1', root: ROOT, sealedAt: 1, anchored: false }];
+    const visitor = s.budget.reserveUpTo(5_500n)!; // leaves 500; the anchor costs 1000
+    expect(await s.anchorer.runOnce()).toMatch(/waits for budget held by requests in flight; not sent/);
+    expect(s.chain.abandoned).toBe(1);
+    expect(s.chain.sent).toHaveLength(0);
+    expect(s.anchorer.status()).toMatchObject({ consecutiveFailures: 0, lastOutcomeCode: 'busy' });
+    expect(s.budget.remaining()).toBe(500n); // its own hold came back
+    s.budget.release(visitor.id);
+    expect(await s.anchorer.runOnce()).toMatch(/^anchored B-1/);
+  });
+
+  it('"busy" neither raises nor clears a run of real failures', async () => {
+    const s = anchorSetup({ budget: 6_000n });
+    s.registry.failBatches = new Error('down');
+    await s.anchorer.runOnce();
+    await s.anchorer.runOnce();
+    s.registry.failBatches = undefined;
+    s.registry.list = [{ batchId: 'B-1', root: ROOT, sealedAt: 1, anchored: false }];
+    s.budget.reserveUpTo(6_000n);
+    await s.anchorer.runOnce();
+    expect(s.anchorer.status()).toMatchObject({ consecutiveFailures: 2, alert: false, lastOutcomeCode: 'busy' });
   });
 
   it('not sent gives the hold back; maybe sent counts the fee', async () => {

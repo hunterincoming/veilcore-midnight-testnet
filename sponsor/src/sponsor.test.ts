@@ -24,12 +24,13 @@ class MockWallet implements PayingWallet {
   dustBalance() {
     return 10n ** 18n;
   }
-  payAndSubmit(tx: SealedTx) {
-    if (this.next === 'not-sent') return Promise.reject(new NotSentError('indexer behind', true));
-    if (this.next === 'not-sent-final') return Promise.reject(new NotSentError('refused', false));
-    if (this.next === 'maybe') return Promise.reject(new Error('socket closed'));
+  async payAndSubmit(tx: SealedTx, _ttl: Date, approveFee: (fee: bigint) => void) {
+    if (this.next === 'not-sent') throw new NotSentError('indexer behind', true);
+    if (this.next === 'not-sent-final') throw new NotSentError('refused', false);
+    approveFee(this.fee);
+    if (this.next === 'maybe') throw new Error('socket closed');
     this.paid.push(tx);
-    return Promise.resolve(`id-${this.paid.length}`);
+    return { txId: `id-${this.paid.length}`, fee: this.fee };
   }
 }
 

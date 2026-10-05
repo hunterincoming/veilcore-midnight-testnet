@@ -22,6 +22,9 @@ refuses to start on mainnet.
   day), a daily DUST budget, and a queue of at most 20. When any of them is hit, the site
   says so. The quota, the duplicate check and the budget are claimed together, before any
   slow work, so a burst of requests sent at once gets no more than requests sent one by one.
+  What is counted against the budget is the fee the balanced transaction actually pays,
+  checked before it is sent: above `MAX_FEE_DUST`, or more than is left today, and it is
+  not sent.
 - There is also a per-browser cap per call type (anchor 3, pairDna 5, proveOwnership 20 a
   day), but the browser makes its own ticket, so a script can make a new one per request.
   It only gives an honest visitor a friendly message; the network cap and the budget are
@@ -45,7 +48,8 @@ failures in a row raise an alert on `/sponsor/status` and in the log.
 
 Its fees come out of the same `DAILY_BUDGET_DUST` as the public endpoint (one wallet pays
 both), each one capped at `MAX_FEE_DUST`. If the day's budget is used up, anchoring waits
-for the next day. It refuses a registry answer it did not expect: a batch id with odd
+for the next day. If it is only held by visitors' requests still in flight, the run reports
+`busy` and tries again next time; that is not counted as a failure. It refuses a registry answer it did not expect: a batch id with odd
 characters, a root that is not 32 bytes of hex or is all zero, a root another batch already
 has, and a batch (or root) it has already anchored, even if the registry still lists it as
 waiting.

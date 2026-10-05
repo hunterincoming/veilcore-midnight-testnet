@@ -20,11 +20,14 @@ export interface PayingWallet {
   /** Fee for the visitor's transaction plus the sponsor's own fee part, in SPECKs. */
   estimateFee(tx: SealedTx): Promise<bigint>;
   /**
-   * Add the sponsor's fee payment and submit. Returns the identifier the network gave.
+   * Add the sponsor's fee payment and submit. Once the transaction is balanced, the fee it
+   * actually pays is passed to `approveFee` BEFORE anything is sent; if that throws, the
+   * coins are released and the error is rethrown (a NotSentError: nothing was sent).
+   * Returns the identifier the network gave and the fee it paid.
    * Throws NotSentError when nothing reached the network (any coins it set aside are
    * released), and any other error when it may have.
    */
-  payAndSubmit(tx: SealedTx, ttl: Date): Promise<string>;
+  payAndSubmit(tx: SealedTx, ttl: Date, approveFee: (fee: bigint) => void): Promise<{ txId: string; fee: bigint }>;
   /** DUST available now, if known. */
   dustBalance(): bigint | undefined;
 }
@@ -38,6 +41,14 @@ export class NotSentError extends Error {
   ) {
     super(message, options);
     this.name = 'NotSentError';
+  }
+}
+
+/** The balanced transaction's real fee was refused before sending; `refusal` is the answer to give. */
+export class FeeRefusedError extends NotSentError {
+  constructor(readonly refusal: SponsorResponse) {
+    super(String(refusal.body.reason ?? 'fee refused'), refusal.status === 503);
+    this.name = 'FeeRefusedError';
   }
 }
 
@@ -170,20 +181,42 @@ export class Sponsor {
       giveBackAll();
       return this.budgetRefusal(fee);
     }
+    // Lower the hold to the estimate now, so other requests can use the rest while this one
+    // waits in the queue.
     this.budget.shrink(hold.id, fee);
+
+    // Once balanced, the wallet reports the fee the transaction really pays, before sending.
+    // The hold is moved to exactly that: raised if it fits today's budget (else nothing is
+    // sent), lowered otherwise. That figure, not the estimate, is what gets counted.
+    let paid: bigint | undefined;
+    const approveFee = (actual: bigint): void => {
+      if (actual < 0n || actual > ceiling) {
+        throw new FeeRefusedError(this.refuse(400, 'fee-too-high', 'This transaction costs more than the sponsor pays for one call.'));
+      }
+      if (!this.budget.grow(hold.id, actual)) throw new FeeRefusedError(this.budgetRefusal(actual));
+      this.budget.shrink(hold.id, actual);
+      paid = actual;
+    };
 
     // Committed from here: the quota stays spent even if nothing is sent, so a flood
     // cannot retry its way past it; the budget and the replay slot are given back then.
     const ttl = new Date(Math.min(verdict.ttl.getTime(), this.now() + this.config.sponsorTtlMs));
     let txId: string;
     try {
-      txId = await this.queue.run(async () => {
+      const sent = await this.queue.run(async () => {
         if (!this.wallet.isSynced() && !(await this.wallet.waitSynced(this.config.syncWaitMs))) {
           throw new NotSentError('The sponsor is catching up with the network. Try again in a minute.', true);
         }
-        return this.wallet.payAndSubmit(tx, ttl);
+        return this.wallet.payAndSubmit(tx, ttl, approveFee);
       });
+      txId = sent.txId;
+      paid = sent.fee;
     } catch (e) {
+      if (e instanceof FeeRefusedError) {
+        this.budget.release(hold.id);
+        releaseSeen();
+        return e.refusal;
+      }
       if (e instanceof QueueFullError || e instanceof NotSentError) {
         // Nothing went out: give the budget back and allow the same transaction again.
         this.budget.release(hold.id);
@@ -192,8 +225,9 @@ export class Sponsor {
           ? this.refuse(503, 'busy', e.message, 120)
           : this.refuse(e.retryable ? 503 : 400, e.retryable ? 'busy' : 'refused-by-network', e.message, e.retryable ? 60 : undefined);
       }
-      // It may have reached the network. Count the fee and never pay for it again.
-      this.budget.settle(hold.id, fee);
+      // It may have reached the network. Count the fee (the real one if the wallet got that
+      // far, else the estimate) and never pay for it again.
+      this.budget.settle(hold.id, paid ?? fee);
       this.count('maybe-sent');
       return this.refuse(
         502,
@@ -202,7 +236,7 @@ export class Sponsor {
       );
     }
     // Sent. Outside the try above, so nothing here can turn a sent transaction into "maybe".
-    this.budget.settle(hold.id, fee);
+    this.budget.settle(hold.id, paid);
     this.count(`sponsored:${verdict.circuit}`);
     return { status: 200, body: { ok: true, txId, identifiers: verdict.identifiers, circuit: verdict.circuit } };
   }

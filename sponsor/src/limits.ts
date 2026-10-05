@@ -175,6 +175,8 @@ export class Limits {
  */
 export interface FeeBudget {
   reserveUpTo(max: bigint): { id: number; amount: bigint } | undefined;
+  /** Left today counting only what was actually spent (holds in flight not subtracted). */
+  unspent(): bigint;
   shrink(id: number, amount: bigint): void;
   settle(id: number, actual?: bigint): void;
   release(id: number): void;
@@ -263,6 +265,21 @@ export class DailyBudget implements FeeBudget {
     if (held === undefined || amount < 0n || amount >= held) return;
     this.holds.set(id, amount);
     this.reserved -= held - amount;
+  }
+
+  /**
+   * Raise a hold to `amount` if the extra fits in what is left today. Returns false (and
+   * changes nothing) when it does not; true when the hold is now at least `amount`.
+   */
+  grow(id: number, amount: bigint): boolean {
+    const held = this.holds.get(id);
+    if (held === undefined || amount < 0n) return false;
+    if (amount <= held) return true;
+    const extra = amount - held;
+    if (extra > this.remaining()) return false;
+    this.holds.set(id, amount);
+    this.reserved += extra;
+    return true;
   }
 
   /** The payment went out: count `actual` (defaults to what was reserved). */

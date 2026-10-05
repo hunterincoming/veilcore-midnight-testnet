@@ -8,7 +8,9 @@
 //     it is sent, so a restart looks it up instead of guessing.
 //   - The registry is told about an anchor only after the chain shows lastBatchRoot equal
 //     to the batch root, in the state right after that transaction, and batchSeq advanced.
-//   - Three failures in a row raise an alert (status endpoint and the log).
+//   - Three failures in a row raise an alert (status endpoint and the log). A budget that
+//     is only held by requests still in flight is "busy", not a failure: it frees up within
+//     seconds, so it neither counts toward the alert nor clears it.
 //   - Its fees come out of the same daily budget as the public endpoint's: one wallet
 //     pays both, so one ceiling caps both. A fee above the per-call ceiling, or above
 //     what is left today, is not paid.
@@ -130,6 +132,7 @@ export type AnchorOutcomeCode =
   | 'expired'
   | 'verify-failed'
   | 'budget'
+  | 'busy'
   | 'bad-batch'
   | 'error';
 
@@ -200,11 +203,16 @@ export class Anchorer {
     };
   }
 
-  private done(code: AnchorOutcomeCode, outcome: string, ok: boolean): string {
+  /**
+   * Record a run's outcome. `ok` true clears the failure count, false adds one; 'neither'
+   * (busy for a moment) leaves it as it is, so it can neither raise nor hide the alert.
+   */
+  private done(code: AnchorOutcomeCode, outcome: string, ok: boolean | 'neither'): string {
     this.status_.lastRunAt = new Date(this.now()).toISOString();
     this.status_.lastOutcome = outcome;
     this.status_.lastOutcomeCode = code;
-    if (ok) this.failures = 0;
+    if (ok === 'neither') this.log('info', `anchoring: ${outcome}`, { consecutiveFailures: this.failures });
+    else if (ok) this.failures = 0;
     else {
       this.failures++;
       this.log(this.failures >= 3 ? 'error' : 'warn', `anchoring: ${outcome}`, { consecutiveFailures: this.failures });
@@ -266,6 +274,11 @@ export class Anchorer {
       // Hold the most this may cost (or what is left today) before building anything.
       const hold = this.budget.reserveUpTo(this.config.maxFeeSpecks);
       if (hold === undefined) {
+        // Nothing free right now. If part of today is unspent, other requests' holds are in
+        // the way (each lasts seconds): try next run, and do not count it as a failure.
+        if (this.budget.unspent() > 0n) {
+          return { outcome: this.done('busy', 'the daily fee budget is held by requests in flight; will try next run', 'neither') };
+        }
         return { outcome: this.done('budget', 'the daily fee budget is used up; anchoring waits for tomorrow', false) };
       }
       let prepared: PreparedAnchor;
@@ -280,7 +293,12 @@ export class Anchorer {
       if (typeof prepared.fee !== 'bigint' || prepared.fee < 0n || prepared.fee > hold.amount) {
         this.budget.release(hold.id);
         await prepared.abandon().catch(() => undefined);
-        const why = prepared.fee > this.config.maxFeeSpecks ? 'costs more than the per-call ceiling' : 'does not fit what is left of today’s budget';
+        const fee = typeof prepared.fee === 'bigint' ? prepared.fee : -1n;
+        if (fee >= 0n && fee <= this.config.maxFeeSpecks && fee <= this.budget.unspent()) {
+          // It would fit what is actually unspent today: only holds in flight are in the way.
+          return { outcome: this.done('busy', `anchorBatch for ${target.batchId} waits for budget held by requests in flight; not sent`, 'neither') };
+        }
+        const why = fee > this.config.maxFeeSpecks ? 'costs more than the per-call ceiling' : 'does not fit what is left of today’s budget';
         return { outcome: this.done('budget', `anchorBatch for ${target.batchId} ${why}; not sent`, false) };
       }
       this.budget.shrink(hold.id, prepared.fee);

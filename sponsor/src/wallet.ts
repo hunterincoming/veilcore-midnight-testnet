@@ -285,7 +285,7 @@ export class FacadeWallet implements PayingWallet {
 
   private sign = (payload: Uint8Array) => this.keystore.signData(payload);
 
-  async payAndSubmit(tx: SealedTx, ttl: Date): Promise<string> {
+  async payAndSubmit(tx: SealedTx, ttl: Date, approveFee: (fee: bigint) => void): Promise<{ txId: string; fee: bigint }> {
     let recipe;
     try {
       recipe = await this.facade.balanceFinalizedTransaction(
@@ -303,7 +303,18 @@ export class FacadeWallet implements PayingWallet {
       await this.facade.revert(recipe).catch(() => undefined);
       throw new NotSentError('The sponsor could not finish its fee payment. Try again.', true, { cause: e });
     }
-    return this.submit(finalized);
+    // The fee this balanced transaction pays (the same figure estimateFee works out, now for
+    // the real coins chosen). The caller approves it before anything is sent.
+    let fee: bigint;
+    try {
+      fee = await this.feeOf(finalized);
+      approveFee(fee);
+    } catch (e) {
+      await this.facade.revert(finalized).catch(() => undefined);
+      if (e instanceof NotSentError) throw e;
+      throw new NotSentError('The sponsor could not work out its fee payment. Try again.', true, { cause: e });
+    }
+    return { txId: await this.submit(finalized), fee };
   }
 
   /** Submit; a node refusal (never admitted) becomes NotSentError and the coins are released. */

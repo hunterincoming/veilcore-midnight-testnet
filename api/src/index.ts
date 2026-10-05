@@ -28,3 +28,4 @@ export * from '../../contract/src/verify.js';
 export * from './claims-types.js';
 export * from './claims-api.js';
 export { isProvablyRetired, provableRetirementUpdate, retireMaintenanceAuthorityProvably } from './maintenance.js';
+export { memorySigningKeys, transientSecrets, TRANSIENT_FIELDS } from './memory-overlays.js';

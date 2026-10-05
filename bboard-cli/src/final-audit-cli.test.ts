@@ -345,7 +345,10 @@ describe('M1 FIXED: a deploy whose confirmation fails can still be finished', ()
     }
   });
 
-  it('M1(b): a key already held is used without asking', async () => {
+  // Round D (D-2) replaced "a key already held is used without asking": the CLI never
+  // keeps the maintenance key on disk, so it is always typed from paper, and a key the
+  // provider claims to hold is not relied on.
+  it('M1(b), round D: the paper key is asked for even when the provider claims to hold one', async () => {
     setNetworkId('preview');
     const store = fakeStore(KEY);
     const add = vi.spyOn(VeilcoreAPI, 'addMissingCircuitKeys').mockResolvedValue();
@@ -354,8 +357,9 @@ describe('M1 FIXED: a deploy whose confirmation fails can still be finished', ()
       const answers = ['4', ADDR, ''];
       const rli = { question: async () => answers.shift() ?? '' } as unknown as Interface;
       const hidden = vi.fn(async () => '');
-      await deployOrJoin(store as never, rli, quiet().logger, '.', '', hidden);
-      expect(hidden).not.toHaveBeenCalled();
+      expect(await deployOrJoin(store as never, rli, quiet().logger, '.', '', hidden)).toBeNull();
+      expect(hidden).toHaveBeenCalledOnce();
+      expect(add).not.toHaveBeenCalled(); // blank at the key prompt: nothing sent
     } finally {
       add.mockRestore();
       join.mockRestore();

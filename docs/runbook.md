@@ -1,6 +1,6 @@
 # Operator runbook
 
-**For running the VeilCore CLI on a Mac · last updated 3 October 2026**
+**For running the VeilCore CLI on a Mac · last updated 4 October 2026 (round D changes)**
 
 Three jobs, in this order: a rehearsal on a local chain, the smoke test on preprod, then
 the mainnet deploy. Every step, prompt and menu number below comes from the code in
@@ -22,9 +22,10 @@ confirmed from the code.
    mainnet. Doing it again is what made duplicate registrations before.
 4. **Keep the private-state password in your password manager.** You need the same one
    every time you run on the same network: it unlocks saved sync progress, saved
-   challenges and, during a deploy, the maintenance key. It cannot be recovered.
+   challenges and your private state (your record secret). It cannot be recovered.
 5. **Write the maintenance authority key on paper.** It controls the contract. It is shown
-   once and then removed from the computer.
+   once and is **never stored on the computer**, not even during the deploy. Whenever the
+   CLI needs it again (finishing a deploy, retiring), you type it from the paper.
 6. **Main menu option 33 retires the maintenance authority, permanently. Option 32 shows
    your record secret on screen.** Do not mix them up.
 7. When a run is done, close the Terminal window (Cmd+W) so secrets shown on screen do not
@@ -52,6 +53,34 @@ confirmed from the code.
 The password rule (the CLI checks it in the first second): 16 or more characters; at
 least 3 of capital letters, small letters, numbers and symbols; no character more than
 3 times in a row; no run of 4 in order like `1234` or `abcd`.
+
+### Where private state is kept (new on 4 October)
+
+The CLI now keeps its private state (your record secret, per network) in
+`~/.veilcore/<network>/private-state`, a folder only your user account can read. It used
+to be `bboard-cli/midnight-level-db`, inside the repository, readable by anyone on the Mac
+and picked up by Time Machine and iCloud. That old folder can still hold a copy of a
+maintenance key from an earlier preprod run, even one the CLI said it removed.
+
+**The first time you run this version on a Mac that has the old folder**, right after the
+password it says `Found a private-state store from an older version of this program in …`
+and asks:
+
+`Type MOVE to copy your private state there now (recommended), or press Enter to use the old folder for this run only`
+
+1. Type `MOVE` and press Enter. It copies your private state to the new place, leaves out
+   any maintenance key and any one-call secret, and says how many entries it copied. It
+   does not change or delete the old folder.
+2. Carry on as normal. Once you have checked that the run works with the new store (option
+   31 shows the record you expect), **delete the old folder securely**: in Terminal, from
+   the repository folder, `rm -rf bboard-cli/midnight-level-db`. Then remove it from any
+   backup: in Time Machine, find the folder, right-click, "Delete All Backups of
+   midnight-level-db"; if your Desktop or Documents sync to iCloud and the repository is
+   there, delete it in iCloud too. **CHECK WITH CLAUDE** if FileVault is off on this Mac.
+3. Until you delete it, the CLI reminds you on every run. It never deletes it for you.
+
+Pressing Enter instead uses the old folder for that run only, as before, and asks again
+next time.
 
 ---
 
@@ -123,7 +152,9 @@ Preprod is Midnight's test network. Use the **test wallet only**.
 
 ### Have ready
 
-- The preprod smoke test has passed on this build (section B).
+- The preprod smoke test has passed on this build (section B). The 4 October round D
+  changes are a new build, so run it again: it is the first time the new starting-state
+  check in Join, and the new store location, meet a real chain.
 - `git log -1` shows the latest commit.
 - A zero-spend mainnet rehearsal has been done: steps 1 to 13, then 5 (Exit) at the
   deploy menu.
@@ -181,7 +212,7 @@ Preprod is Midnight's test network. Use the **test wallet only**.
     characters.** Type `WRITTEN` and press Enter, then type the key back from your paper
     (nothing shows; spaces are fine). If it doesn't match, fix the paper and type it again
     (type `SHOW` to see the key again). Nothing is sent until it matches. The key is
-    removed from this Mac when the deploy finishes.
+    never written to this Mac: the deploy holds it in memory and drops it when it ends.
 19. The deploy runs. First it prints `Contract address: …` on its own line, before
     anything is sent. **Copy that address onto paper now.** The `contractDeployed` line
     comes after the first transaction is confirmed. Then it prints `adding circuit key 1 of 16` (if the first
@@ -197,7 +228,11 @@ Preprod is Midnight's test network. Use the **test wallet only**.
 - The contract address (also in the newest file in `bboard-cli/logs/mainnet/`).
 - The date and time of the deploy.
 - That the maintenance key is on paper, where it is kept, and that no digital copy exists.
-- Send Claude the contract address. It is public.
+- Send Claude the contract address. It is public. **Joining the contract on mainnet
+  (deploy menu option 2) is refused until that address is written into the code**
+  (`MAINNET_VEILCORE_ADDRESS` in `api/src/deploy-guard.ts`, committed, and the same
+  address in the deployment record). Claude makes that change from the address you
+  send; pull it before the next mainnet run. The CLI says this at the end of the deploy.
 
 ### If the deploy stops partway
 
@@ -207,9 +242,10 @@ that deploys a second contract.
 1. Find the contract address: on your paper (step 19), or in the newest file in
    `bboard-cli/logs/mainnet/` on the `contractDeployed` line.
 2. Run steps 1 to 13 again, with the **same password** and the **same recovery phrase**.
-   The maintenance key stays on this Mac until the deploy finishes, and only that
-   password and wallet open it.
 3. At the deploy menu, type `4` (Finish a deploy that stopped partway). Paste the address.
+   It says `The maintenance key is not kept on this computer. Type it from your paper
+   copy.` Type the key from your paper (nothing shows; spaces are fine), Enter. This
+   works before the address is pinned in the code: it is your own deploy.
 4. It adds the missing keys. When asked `Retire the maintenance authority now? Type
    RETIRE, or Enter to keep it`, press **Enter**.
 5. It says `Deploy finished: every circuit key is on chain.` and `Contract address: …`.
@@ -221,7 +257,8 @@ send Claude that line before trying again.
 
 **If it seems frozen:** a key transaction normally takes under a minute. Ctrl+C is
 refused during a transaction. If nothing has changed for 15 minutes, press Ctrl+C three
-times: it stops, keeping the key and the address. Then follow the steps above with `4`.
+times: it stops. The address is on your paper and in the log; the key is on your paper.
+Then follow the steps above with `4`.
 
 If it stopped before any `contractDeployed` line, send Claude the end of the newest log
 in `bboard-cli/logs/mainnet/` before doing anything. Do not start over with `1` without
@@ -238,9 +275,37 @@ minutes).
 ### Retiring the maintenance authority later
 
 Only on the date published in the deployment record. Run `npm run mainnet` (steps 1 to
-13; step 6 is not needed), choose `2` (Join), paste the contract address, then main
-menu option **33** (not 32). Type `RETIRE`, then type the key from your paper (nothing
-shows). This cannot be undone.
+13; step 6 is not needed), choose `2` (Join), paste the contract address (it must be the
+pinned one), then main menu option **33** (not 32). Type `RETIRE`, then type the key from
+your paper (nothing shows). This cannot be undone. The authority is replaced by an empty
+committee, so anyone reading the contract can see that nobody can change it; it says
+`Retired provably` when the chain shows that.
+
+### If a secret change reports an error (options 4, 5, 6)
+
+A rotation (4), a recovery (5) or a recovery-secret replacement (6) can land on chain
+even when the CLI reports an error (a dropped connection while confirming). The CLI
+checks the chain twice, 30 seconds apart, before it believes it landed. Either way:
+
+- **Keep every secret it showed you, old and new, until you have checked.** Do not throw
+  any away because of one message.
+- Option **31** shows whether this client's record secret is current (`Current: yes`).
+- Option **41** switches this client to a record secret you hold (it checks on chain
+  first, and refuses one that was rotated away).
+- Option **42** checks whether a recovery secret is the current one. Nothing is sent.
+
+### Checking a licence presentation (option 27)
+
+A presentation shows the licence was live **when it was presented**, not now. Option 27
+now shows the block and time it landed, and refuses one older than an hour, or one that
+landed before you issued the challenge. Ask the licensee to present again.
+
+### Joining on mainnet
+
+Option 2 on mainnet only accepts the contract address pinned in the code, and only after
+checking the contract started from VeilCore's own starting state (another contract can
+carry the same circuits with forged records). Matching circuit keys show the code; the
+address is what says which contract is VeilCore's.
 
 ---
 

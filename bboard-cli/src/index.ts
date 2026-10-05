@@ -6,7 +6,6 @@
 
 import { createHash } from 'node:crypto';
 import { type Interface } from 'node:readline/promises';
-import { oneAtATime } from './one-at-a-time.js';
 import { Buffer } from 'node:buffer';
 import { WebSocket } from 'ws';
 import {
@@ -17,7 +16,9 @@ import {
   type VeilcorePrivateStateId,
   type VeilcoreCircuitKeys,
   type SealResult,
+  FIRST_FRAGMENT,
   LandedButUnconfirmedError,
+  RecoveryReplacedButUnconfirmedError,
   assertDeploymentRecordCurrent,
   decide,
   resolveNetwork,
@@ -36,7 +37,6 @@ import { indexerPublicDataProvider } from '@midnight-ntwrk/midnight-js-indexer-p
 import { httpClientProofProvider } from '@midnight-ntwrk/midnight-js-http-client-proof-provider';
 import { type Logger } from 'pino';
 import { type Config, StandaloneConfig } from './config.js';
-import { levelPrivateStateProvider } from '@midnight-ntwrk/midnight-js-level-private-state-provider';
 import { toHex } from '@midnight-ntwrk/midnight-js-utils';
 import { sampleSigningKey } from '@midnight-ntwrk/midnight-js-protocol/compact-runtime';
 import { TestEnvironment } from '@midnight-ntwrk/testkit-js';
@@ -61,7 +61,9 @@ import {
   sameKey,
   type Prompt,
 } from './prompt';
-import { settlePassword } from './password';
+import { privateStatePassword, settlePassword } from './password';
+import { chooseStore, openStores } from './private-store';
+import { guardProcess, watchState } from './state-watch';
 import { ChallengeFile } from './challenge-file';
 import { redactThisSession } from './logger-utils';
 
@@ -206,7 +208,10 @@ export const askMaintenanceAuthority = async (
   if (answer === 'n' || answer === 'no') {
     const sure = (await rli.question('Retiring is permanent. Type RETIRE to confirm: ')).trim();
     if (sure === 'RETIRE') {
-      logger.info('Deploying, then retiring the authority with a key that is never stored.');
+      logger.info(
+        'Deploying, then retiring the authority provably (an empty committee anyone can check). A key is still ' +
+          'needed to add the circuit keys; you will be shown one to write down.',
+      );
       return null;
     }
     logger.info('Not retired. Keeping the authority.');
@@ -215,46 +220,53 @@ export const askMaintenanceAuthority = async (
     const typed = await hidden(
       'Signing key (64 hex characters; nothing shows as you type or paste; blank to generate one): ',
     );
-    if (typed === '') {
-      const key = sampleSigningKey();
-      redactThisSession(key);
-      const show = (): void =>
-        showSecret(
-          'MAINTENANCE AUTHORITY SIGNING KEY — write it down now and keep it offline (the spaces are only to make copying easier):',
-          groupKey(key),
-        );
-      show();
-      // Nothing is sent until the operator says the key is written down...
-      for (;;) {
-        const ok = (await rli.question('Type WRITTEN once the key is on paper and checked (nothing is sent before): '))
-          .trim()
-          .toUpperCase();
-        if (ok === 'WRITTEN') break;
-      }
-      // ...and has typed it back from the paper: a copying mistake found now costs a minute;
-      // found later, it costs the only key that can repair the contract.
-      for (;;) {
-        const back = await hidden(
-          'Now type the key back FROM YOUR PAPER (spaces or dashes are fine; nothing shows; SHOW to see it again): ',
-        );
-        if (sameKey(back, key)) {
-          logger.info('Your paper copy matches the key.');
-          break;
-        }
-        if (back.trim().toUpperCase() === 'SHOW') {
-          show();
-          continue;
-        }
-        logger.error('That does not match the key shown. Check your paper copy, correct it, and type it again.');
-      }
-      return key;
-    }
+    if (typed === '') return makePaperKey(rli, logger, hidden);
     const r = parseSigningKey(typed);
     if ('value' in r) {
       logger.info('Signing key accepted (not shown: you already hold it).');
       return r.value;
     }
     logger.error(`${r.problem} Try again, or leave it blank to generate one.`);
+  }
+};
+
+/**
+ * A fresh maintenance key, shown once and checked against the operator's paper before
+ * anything is sent. This program never stores it (round D, D-2): the paper copy is the
+ * only one, and "Finish a deploy" asks for it from there.
+ */
+export const makePaperKey = async (
+  rli: Interface,
+  logger: Logger,
+  hidden: (question: string) => Promise<string>,
+  title = 'MAINTENANCE AUTHORITY SIGNING KEY — write it down now and keep it offline (the spaces are only to make copying easier):',
+): Promise<string> => {
+  const key = sampleSigningKey();
+  redactThisSession(key);
+  const show = (): void => showSecret(title, groupKey(key));
+  show();
+  // Nothing is sent until the operator says the key is written down...
+  for (;;) {
+    const ok = (await rli.question('Type WRITTEN once the key is on paper and checked (nothing is sent before): '))
+      .trim()
+      .toUpperCase();
+    if (ok === 'WRITTEN') break;
+  }
+  // ...and has typed it back from the paper: a copying mistake found now costs a minute;
+  // found later, it costs the only key that can repair the contract.
+  for (;;) {
+    const back = await hidden(
+      'Now type the key back FROM YOUR PAPER (spaces or dashes are fine; nothing shows; SHOW to see it again): ',
+    );
+    if (sameKey(back, key)) {
+      logger.info('Your paper copy matches the key. It is not stored on this computer.');
+      return key;
+    }
+    if (back.trim().toUpperCase() === 'SHOW') {
+      show();
+      continue;
+    }
+    logger.error('That does not match the key shown. Check your paper copy, correct it, and type it again.');
   }
 };
 
@@ -276,9 +288,26 @@ export const deployOrJoin = async (
         // maintenance key is made and written down for nothing.
         assertDeploymentRecordCurrent('veilcore', logger);
         const authority = await askMaintenanceAuthority(rli, logger, hidden);
-        const api = await during(() => VeilcoreAPI.deploy(providers, authority, logger));
+        // Retiring still needs a key for the deploy's own key transactions. It goes on
+        // paper too: if the deploy stops partway, it is the only way to finish it.
+        const key =
+          authority ??
+          (await makePaperKey(
+            rli,
+            logger,
+            hidden,
+            'TEMPORARY MAINTENANCE KEY — write it down now. It is needed only if this deploy stops partway; once the deploy retires the authority it controls nothing:',
+          ));
+        const api = await during(() =>
+          VeilcoreAPI.deploy(providers, key, logger, FIRST_FRAGMENT, { retire: authority === null }),
+        );
         logger.info('Deployed. Every circuit key is on chain.');
         logger.info(`Contract address: ${api.deployedContractAddress}`);
+        if (getNetworkId() === 'mainnet')
+          logger.warn(
+            'Joining this contract on mainnet is refused until its address is pinned: MAINNET_VEILCORE_ADDRESS in ' +
+              'api/src/deploy-guard.ts, the same address as the deployment record. Send Claude the address above.',
+          );
         return api;
       }
       case '2': {
@@ -307,37 +336,35 @@ export const deployOrJoin = async (
       }
       case '4': {
         // A deploy is one transaction plus one per remaining circuit key. If it stopped
-        // partway, the authority's key is normally still in the local store; this adds the
-        // rest. If it is not (a deploy that stopped before the key was saved), it is asked for.
+        // partway, this adds the rest. The maintenance key is never kept on this computer
+        // (round D, D-2), so it is always typed from the paper copy, used for this run's
+        // transactions only, and dropped again however it ends.
         if (getNetworkId() === 'mainnet') checkBuild(zkConfigPath, logger);
         const address = await askContractAddress(rli, logger);
-        let typedIn = false;
-        if (!(await providers.privateStateProvider.getSigningKey(address))) {
-          logger.info('This computer does not hold the maintenance key for that contract. It is on your paper copy.');
-          for (;;) {
-            const typed = await hidden(
-              'Maintenance authority signing key, from your paper (64 hex; spaces fine; nothing shows; blank to stop): ',
-            );
-            if (typed === '') {
-              logger.info('Stopped: finishing the deploy needs the signing key. Nothing was sent.');
-              return null;
-            }
-            const r = parseSigningKey(typed.replace(/[\s-]/g, ''));
-            if ('value' in r) {
-              await providers.privateStateProvider.setSigningKey(address, r.value);
-              typedIn = true;
-              break;
-            }
-            logger.error(`${r.problem} Try again.`);
+        logger.info('The maintenance key is not kept on this computer. Type it from your paper copy.');
+        for (;;) {
+          const typed = await hidden(
+            'Maintenance authority signing key, from your paper (64 hex; spaces fine; nothing shows; blank to stop): ',
+          );
+          if (typed === '') {
+            logger.info('Stopped: finishing the deploy needs the signing key. Nothing was sent.');
+            return null;
           }
+          const r = parseSigningKey(typed.replace(/[\s-]/g, ''));
+          if ('value' in r) {
+            await providers.privateStateProvider.setSigningKey(address, r.value);
+            break;
+          }
+          logger.error(`${r.problem} Try again.`);
         }
         let api: VeilcoreAPI;
         try {
           await during(() => VeilcoreAPI.addMissingCircuitKeys(providers, address, logger));
-          api = await VeilcoreAPI.join(providers, address, logger);
+          // The address is the operator's own deploy, so not the mainnet pin; the state check applies.
+          api = await VeilcoreAPI.join(providers, address, logger, { deploying: true });
         } catch (e) {
-          // A key typed in for this does not stay on this machine; the paper copy is unchanged.
-          if (typedIn) await providers.privateStateProvider.removeSigningKey(address);
+          // The key typed in for this does not stay here; the paper copy is unchanged.
+          await providers.privateStateProvider.removeSigningKey(address);
           throw e;
         }
         const retire = (
@@ -407,6 +434,8 @@ const MAIN_LOOP_QUESTION = `
                                           31. Show your record and identity
                                           32. Show your record secret
                                           33. Retire the maintenance authority (PERMANENT)
+                                          41. Use a record secret you hold
+                                          42. Check which recovery secret is current
 ${CLAIMS_MENU}
 
   0. Exit
@@ -433,13 +462,14 @@ const mainLoop = async (
   };
 
   // Rules 5 and 8: every challenge this verifier issues is recorded, and used once.
-  const challengeFile = new ChallengeFile(getNetworkId(), process.env.VEILCORE_PRIVATE_STATE_PASSWORD ?? '');
+  const challengeFile = new ChallengeFile(getNetworkId(), privateStatePassword() ?? '');
   const loaded = await challengeFile.load();
   const book: ChallengeBook = loaded.book;
   if (loaded.warning !== undefined) logger.warn(loaded.warning);
 
   let derived: VeilcoreDerivedState | undefined;
-  const subscription = api.state$.subscribe({ next: (s) => (derived = s) });
+  // Errors on the stream are handled there (state-watch.ts): never a crash mid-call.
+  const subscription = watchState(api.state$, logger, (s) => (derived = s));
   const tx = (r: { txHash: string; blockHeight: number }): void =>
     logger.info(`Transaction ${r.txHash} at block ${r.blockHeight}.`);
   try {
@@ -493,13 +523,16 @@ const mainLoop = async (
             } catch (e) {
               if (!(e instanceof LandedButUnconfirmedError)) {
                 logger.error(
-                  'The rotation was not seen on chain, so this client keeps your OLD secret, which still works. ' +
-                    'If option 31 later says "Current: no", it landed late: keep the new secret shown above and get help before going on.',
+                  'The rotation was not seen on chain, so this client keeps your OLD secret. Keep BOTH secrets, the old ' +
+                    'and the new shown above. If option 31 later says "Current: no", it landed late: choose 41 and type ' +
+                    'the new secret. Get help before going on if unsure.',
                 );
                 throw e;
               }
               // The API has already switched this client to the new secret.
-              logger.warn(`${e.message} The new secret shown above is the real one; the old one can do nothing now.`);
+              logger.warn(
+                `${e.message} If option 31 says "Current: no", the indexer was wrong: choose 41 and type your OLD secret.`,
+              );
             }
             logger.info('Licences, parentage and obligations stay with your identity.');
             break;
@@ -522,13 +555,17 @@ const mainLoop = async (
               // show new secrets that control nothing. The API checks the chain before failing.
               if (!(e instanceof LandedButUnconfirmedError)) {
                 logger.error(
-                  'The recovery was not seen on chain. Your old recovery secret still works; the secrets above do not. ' +
-                    'If option 31 later says "Current: no", it landed late: keep both new secrets and get help before going on.',
+                  'The recovery was not seen on chain. Keep ALL the secrets: your old recovery secret and the two new ' +
+                    'ones shown above, until you know which are current. Option 42 checks a recovery secret; if option 31 ' +
+                    'later says "Current: no", it landed late: choose 41 and type the new record secret. Get help before going on.',
                 );
                 throw e;
               }
               // The API has already switched this client to the new record secret.
-              logger.warn(`${e.message} The two secrets shown above are the real ones.`);
+              logger.warn(
+                `${e.message} The two secrets shown above are the real ones; keep the old ones too until option 42 ` +
+                  'confirms the new recovery secret.',
+              );
             }
             logger.info('Recovered. Whoever held an earlier secret, including a thief, can no longer act from now on.');
             logger.info('The recovery secret you typed in is used up; only the new one works.');
@@ -543,7 +580,21 @@ const mainLoop = async (
             const next = randomBytes(32);
             showSecret('NEW RECOVERY SECRET — store it now, before it is sent:', toHex(next));
             await rli.question('Press Enter once it is stored. ');
-            tx(await api.replaceRecoveryCommitment(origin, C.recoveryCommit(next), current));
+            try {
+              tx(await api.replaceRecoveryCommitment(origin, C.recoveryCommit(next), current));
+            } catch (e) {
+              // It may have landed with only the confirmation failing: the old recovery
+              // secret is then dead, and throwing the new one away would lose recovery for good.
+              if (e instanceof RecoveryReplacedButUnconfirmedError) {
+                logger.warn(`${e.message} Keep the NEW one shown above. Option 42 checks it any time.`);
+                break;
+              }
+              logger.error(
+                'The replacement was not seen on chain. Keep BOTH recovery secrets, the old and the new shown above, ' +
+                  'until option 42 shows which one is current.',
+              );
+              throw e;
+            }
             logger.info('Replaced. The old recovery secret no longer works.');
             break;
           }
@@ -685,7 +736,9 @@ const mainLoop = async (
               logger.info(`NOT ACCEPTED: ${usable.reason}.`);
               break;
             }
-            const verdict = await api.checkPresentation(indexerUri, txId, issuer, ch);
+            // When the challenge was issued, and the presentation's own block time: a
+            // presentation shows the licence was live then, so an old one is refused.
+            const verdict = await api.checkPresentation(indexerUri, txId, issuer, ch, book.issuedAt(ch));
             const used = verdict.accepted ? await useUp(book, challengeFile, ch, 'licence', logger) : undefined;
             if (used !== undefined && !used.ok) logger.info(`NOT ACCEPTED: ${used.reason}.`);
             else logger.info(`${verdict.accepted ? 'ACCEPTED' : 'NOT ACCEPTED'}: ${verdict.reason}.`);
@@ -764,7 +817,7 @@ const mainLoop = async (
             break;
           }
           case '31':
-            if (derived === undefined) logger.info('No state yet.');
+            if (derived === undefined) logger.info('No state yet (or updates from the indexer are being retried).');
             else {
               logger.info(`Your record:   ${derived.myCommitment}`);
               logger.info(`Your identity: ${derived.myIdentity}`);
@@ -794,16 +847,40 @@ const mainLoop = async (
               else {
                 try {
                   await during(() => api.retireMaintenanceAuthority(r.value));
-                  logger.info('Retired. The key you typed was used once and removed from this machine again.');
+                  logger.info(
+                    'Retired provably: the chain shows an empty committee, which no key can satisfy. The key you typed ' +
+                      'was held in memory for this only, and is gone again.',
+                  );
                 } catch (e) {
                   logger.error(
-                    'Retiring did not complete (it may or may not have landed). The key you typed has been removed ' +
-                      'from this machine again; your offline copy is unchanged.',
+                    'Retiring did not complete (it may or may not have landed). The key you typed was held in memory ' +
+                      'only and is gone again; your paper copy is unchanged.',
                   );
                   throw e;
                 }
               }
             } else logger.info('Not retired.');
+            break;
+          }
+          case '41': {
+            // The way back to a secret this client stopped using on the indexer's word, and
+            // the way to restore a client from paper. Checked on chain before it is used.
+            const s = await askSecret32('Record secret to act as (64 hex; nothing shows as you type or paste): ');
+            const r = await api.useRecordSecret(s);
+            logger.info(
+              `This client now acts as record ${toHex(C.commit(s))}${r.anchored ? '' : ' (not anchored yet)'}. ` +
+                'Option 31 shows it.',
+            );
+            break;
+          }
+          case '42': {
+            const record = await ask32(rli, 'Any record of the identity (hex; the ORIGINAL anchored record is fine): ');
+            const rs = await askSecret32('Recovery secret to check (64 hex; nothing shows as you type or paste): ');
+            logger.info(
+              (await api.recoverySecretIsCurrent(record, rs))
+                ? 'That IS the current recovery secret for this identity. Nothing was sent.'
+                : 'That is NOT the current recovery secret for this identity. Nothing was sent.',
+            );
             break;
           }
           case '0':
@@ -993,11 +1070,34 @@ export const run = async (config: Config, testEnv: TestEnvironment, logger: Logg
   };
   rli.on('SIGINT', onInterrupt);
   process.on('SIGINT', onInterrupt);
+  // An error nothing else caught is logged, not a crash in the middle of a call (D-8).
+  const unguard = guardProcess(
+    (e) => logError(logger, e),
+    logger,
+    () => txInProgress,
+  );
+  // Everything this program writes (the private-state store above all) is for this
+  // user only; logs and ~/.veilcore already were.
+  let savedUmask: number | undefined;
+  try {
+    savedUmask = process.umask(0o077);
+  } catch {
+    // Not settable here (a worker thread); private-store.ts sets each file 0600 anyway.
+  }
 
   try {
     // Asked for up front, before the chain starts and the wallet syncs, so a password
     // midnight-js would refuse is found in the first second rather than after the sync.
     if (!(await settlePassword(askHidden, logger))) return;
+    // Where the private state lives: ~/.veilcore/<network>/private-state. An older
+    // version's folder is found, and offered to be copied, now rather than after the sync.
+    const store = await chooseStore({
+      networkId: getNetworkId(),
+      storeName: config.privateStateStoreName,
+      password: privateStatePassword() ?? '',
+      ask: (q) => rli.question(q),
+      logger,
+    });
 
     if (config.mainnet) {
       // Also checked before the long sync: a build that does not match the record, or a
@@ -1090,32 +1190,37 @@ export const run = async (config: Config, testEnv: TestEnvironment, logger: Logg
       }
     }
 
-    // This store holds the contract's maintenance authority key, which can insert or
-    // remove verifier keys and so decide what the contract accepts. The literal that used
-    // to sit here came from the example this was forked from and was published in a public
-    // repository, which is no password at all on a network where the contract matters.
+    // This store holds every record secret this client acts as. The literal password that
+    // used to sit here came from the example this was forked from and was published in a
+    // public repository, which is no password at all on a network where the contract
+    // matters. The maintenance key and one-call secrets are never written to it
+    // (openStores: memory only, round D).
     const privateStoragePasswordProvider = (): string => {
-      const password = process.env.VEILCORE_PRIVATE_STATE_PASSWORD;
+      const password = privateStatePassword();
       if (!password) {
         throw new Error(
-          'VEILCORE_PRIVATE_STATE_PASSWORD is not set. It encrypts private state and the ' +
-            'maintenance authority signing key. Sixteen characters or more, with at least ' +
-            'three of uppercase, lowercase, digits and symbols.',
+          'No private-state password was settled. It encrypts private state. Sixteen characters or more, with ' +
+            'at least three of uppercase, lowercase, digits and symbols.',
         );
       }
       return password;
     };
+    const stores = await openStores<
+      VeilcorePrivateStateId,
+      VeilcorePrivateState,
+      ClaimsPrivateStateId,
+      ClaimsPrivateState
+    >({
+      dir: store.dir,
+      storeName: config.privateStateStoreName,
+      password: privateStoragePasswordProvider,
+      accountId: seed,
+    });
+    logger.info(`Private state: ${store.dir}`);
     const zkConfigProvider = new NodeZkConfigProvider<VeilcoreCircuitKeys>(config.zkConfigPath);
     const publicDataProvider = indexerPublicDataProvider(envConfiguration.indexer, envConfiguration.indexerWS);
     const providers: VeilcoreProviders = {
-      privateStateProvider: oneAtATime(
-        levelPrivateStateProvider<VeilcorePrivateStateId, VeilcorePrivateState>({
-          privateStateStoreName: config.privateStateStoreName,
-          signingKeyStoreName: `${config.privateStateStoreName}-signing-keys`,
-          privateStoragePasswordProvider,
-          accountId: seed,
-        }),
-      ),
+      privateStateProvider: stores.main,
       publicDataProvider,
       zkConfigProvider: zkConfigProvider,
       proofProvider: httpClientProofProvider(envConfiguration.proofServer, zkConfigProvider),
@@ -1128,14 +1233,7 @@ export const run = async (config: Config, testEnv: TestEnvironment, logger: Logg
       path.resolve(config.zkConfigPath, '..', 'veilcore-claims'),
     );
     const claimsProviders: ClaimsProviders = {
-      privateStateProvider: oneAtATime(
-        levelPrivateStateProvider<ClaimsPrivateStateId, ClaimsPrivateState>({
-          privateStateStoreName: `${config.privateStateStoreName}-claims`,
-          signingKeyStoreName: `${config.privateStateStoreName}-claims-signing-keys`,
-          privateStoragePasswordProvider,
-          accountId: seed,
-        }),
-      ),
+      privateStateProvider: stores.claims,
       publicDataProvider,
       zkConfigProvider: claimsZkConfigProvider,
       proofProvider: httpClientProofProvider(envConfiguration.proofServer, claimsZkConfigProvider),
@@ -1153,6 +1251,14 @@ export const run = async (config: Config, testEnv: TestEnvironment, logger: Logg
     process.off('SIGINT', onInterrupt);
     await stopAll();
     rli.removeAllListeners();
+    unguard();
+    if (savedUmask !== undefined) {
+      try {
+        process.umask(savedUmask);
+      } catch {
+        // as above
+      }
+    }
   }
 };
 

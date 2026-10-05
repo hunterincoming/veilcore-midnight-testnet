@@ -276,9 +276,12 @@ total created by one party with many anchors.
 
 ## Verifier rules
 
-These are normative. `contract/src/verify.ts` implements rules 1 to 5 and 8, with one
-gap: rule 5's "refuse a presentation that landed before you issued its challenge" is
-not implemented, because it needs the block time of the presentation's transaction.
+These are normative. `contract/src/verify.ts` implements rules 1 to 5 and 8. Rule 5's
+"refuse a presentation that landed before you issued its challenge" needs the block time
+of the presentation's transaction: since round D, `acceptPresentationAt` takes it (the
+lookup reads it in the same indexer query) with the challenge's issue time, and also
+refuses a presentation older than an hour (`MAX_PRESENTATION_AGE_MS`), because it shows
+the licence was live when presented, not since. The CLI's option 27 uses it.
 "Use each challenge once" is implemented by `ChallengeBook` with `acceptPresentationOnce`
 and `acceptOwnershipOnce`: a challenge is accepted once, only for the kind it was issued
 for (licence or ownership), and only within 7 days of issue. The CLI keeps the book
@@ -389,22 +392,35 @@ each remaining key in its own transaction (`VeilcoreAPI.deploy`,
 ledger state and every circuit are the ones compiled; only which keys ride the first
 transaction differs. Joining the contract checks every key on chain against the local
 build, and refuses a contract carrying any circuit the build does not have, and on mainnet the local build is first checked against `docs/fingerprints.md`.
-Anyone can do the same: read the contract's verifier keys from the indexer and compare
-them with the published fingerprints.
+
+**Matching keys show the code, not the contract.** Midnight does not run the constructor
+on chain: a deploy carries whatever starting state its deployer built, so anyone can
+deploy this exact build, every key byte-identical, with a forged ledger (records anchored,
+parents confirmed) and even hand its authority to VeilCore's public key (round D, D-1).
+So joining also compares the ledger data of the deploy transaction's state with what
+this build's constructor produces (`startsFromConstructor`, contract/src/veilcore.ts),
+and on mainnet accepts only the address in the filed deployment record
+(`MAINNET_VEILCORE_ADDRESS`, api/src/deploy-guard.ts; empty until the deploy, and joins
+are refused until it is set). **The address is the contract's identity.** A verifier
+checking by hand reads the contract's verifier keys from the indexer and compares them
+with the published fingerprints, AND checks the address against the deployment record.
 
 ## Governance: the maintenance authority
 
 midnight-js always installs a maintenance authority on deployment. It can add and remove
 verifier keys, so it can repair or disable any circuit, and a key for a new circuit could
 rewrite state: whoever holds it controls the contract. VeilCore keeps it for launch, held offline by the deployer (the client shows it before
-deploying and removes it from the local store afterwards), and
+deploying and never writes it to disk: it is held in memory for the deploy, and typed from
+paper whenever it is needed again), and
 keeps it under `docs/maintenance-policy.md` (proposed 3 October 2026): no retirement
 date, because Midnight network upgrades can require verifier-key updates; every use
 announced ahead and published with fingerprints; custody moving to a two-of-three
 committee with an independent holder. Retiring stays possible through
-`retireMaintenanceAuthority` (api/src/maintenance.ts; CLI main menu option 33, which asks
-for the key from the offline copy. Option 32 shows the record secret; do not confuse
-them). Holders should treat the circuit set as changeable by VeilCore under that policy.
+`VeilcoreAPI.retireMaintenanceAuthority`, which since round D replaces the authority with
+an empty committee (`retireMaintenanceAuthorityProvably`, api/src/maintenance.ts, as the
+claims contract does): no key can satisfy it, no replacement key is made or stored, and
+anyone can see it on chain (CLI main menu option 33, which asks for the key from the
+offline copy. Option 32 shows the record secret; do not confuse them). Holders should treat the circuit set as changeable by VeilCore under that policy.
 
 ## Known limits
 
@@ -511,9 +527,19 @@ them). Holders should treat the circuit set as changeable by VeilCore under that
   that does not stop a revoked licensee who makes a new licence secret: the new
   commitment cannot be linked to them. An issuer must know who it is issuing to or
   approving.
-- **A retired maintenance authority looks the same on chain as a live one.** Retiring
-  replaces the authority's key with one nobody stores. The chain cannot show that nobody
-  holds it, so outsiders take the deployer's word for it.
+- **A retirement is visible; a live authority's custody is not.** Since round D both
+  contracts retire by installing an empty committee (threshold 1), which anyone can read
+  from the contract state and no key can satisfy. While the authority is live, the chain
+  cannot show who holds its key; outsiders rely on the maintenance policy.
+- **A licence presentation shows the licence was live when it landed, not later.**
+  Presentations are unlinkable, so a later revocation cannot be tied to one. The client
+  refuses a presentation older than an hour, or one that landed before its challenge
+  was issued (`acceptPresentationAt`, verify.ts); ask again for anything older.
+- **The client trusts its indexer for what it reports.** After a failed rotation,
+  recovery or recovery-secret replacement, it believes the change landed only when two
+  reads 30 seconds apart agree, tells the operator to keep both old and new secrets, and
+  offers a way back (CLI options 41 and 42). For decisions that matter, cross-check with
+  a second indexer or a node.
 
 ---
 

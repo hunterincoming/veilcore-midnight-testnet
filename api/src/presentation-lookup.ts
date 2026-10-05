@@ -16,6 +16,7 @@ import * as Veilcore from '../../contract/src/managed/veilcore/contract/index.js
 
 const QUERY = `query VEILCORE_PRESENTATION($offset: TransactionOffset!) {
   transactions(offset: $offset) {
+    block { height timestamp }
     ... on RegularTransaction {
       identifiers
       transactionResult { status }
@@ -25,11 +26,38 @@ const QUERY = `query VEILCORE_PRESENTATION($offset: TransactionOffset!) {
 }`;
 
 type Action = { address?: string; state?: string; entryPoint?: string };
-type Tx = { identifiers?: string[]; transactionResult?: { status?: string }; contractActions?: Action[] };
+type Tx = {
+  identifiers?: string[];
+  transactionResult?: { status?: string };
+  contractActions?: Action[];
+  block?: { height?: number; timestamp?: number };
+};
 
 const norm = (h: string): string => h.toLowerCase().replace(/^0x/, '');
-const entryNames = (name: string): Set<string> =>
-  new Set([name.toLowerCase(), Buffer.from(name, 'utf8').toString('hex')]);
+
+/**
+ * The block's time in milliseconds. The indexer gives a UNIX timestamp in milliseconds
+ * (the wallet SDK reads it with `new Date(timestamp)`); a value too small to be one is
+ * read as seconds rather than as a date in 1970.
+ */
+export const blockTimeMs = (timestamp: number | undefined): number | undefined => {
+  if (typeof timestamp !== 'number' || !Number.isFinite(timestamp) || timestamp <= 0) return undefined;
+  return timestamp < 1e12 ? timestamp * 1000 : timestamp;
+};
+
+/**
+ * Which of `entryPoints` an indexer's entry point names, matched EXACTLY. Midnight
+ * operation names are case-sensitive: `ProveLicense` is a different operation from
+ * `proveLicense` (round D, D-5), so the name is never case-folded. The indexer may give
+ * the name as text or as the hex of its UTF-8 bytes; only the hex digits are
+ * case-insensitive.
+ */
+export const matchEntryPoint = (raw: string, entryPoints: readonly string[]): string | undefined => {
+  if (entryPoints.includes(raw)) return raw;
+  const h = raw.replace(/^0x/i, '');
+  if (!/^[0-9a-fA-F]+$/.test(h) || h.length % 2 !== 0) return undefined;
+  return entryPoints.find((e) => Buffer.from(e, 'utf8').toString('hex') === h.toLowerCase());
+};
 
 export const presentationState = (
   indexerUri: string,
@@ -37,6 +65,29 @@ export const presentationState = (
   txId: string,
   timeoutMs = 20_000,
 ): Promise<Veilcore.Ledger> => callState(indexerUri, contractAddress, txId, 'proveLicense', timeoutMs);
+
+/**
+ * presentationState, with when the presentation landed: the block's height and time,
+ * from the same indexer answer. Rule 5 needs the time: a presentation shows the licence
+ * was live when it landed, so the verifier refuses one that is too old (verify.ts,
+ * acceptPresentationAt).
+ */
+export const presentationWithTime = async (
+  indexerUri: string,
+  contractAddress: string,
+  txId: string,
+  timeoutMs = 20_000,
+): Promise<{ ledger: Veilcore.Ledger; blockHeight?: number; blockTime?: number }> => {
+  const found = await singleCallState(
+    indexerUri,
+    contractAddress,
+    txId,
+    ['proveLicense'],
+    'That transaction is not a single licence presentation on this contract.',
+    timeoutMs,
+  );
+  return { ledger: Veilcore.ledger(found.state.data), blockHeight: found.blockHeight, blockTime: found.blockTime };
+};
 
 /**
  * The same lookup for any single call: the transaction must have succeeded and its only
@@ -75,9 +126,7 @@ export const singleCallState = async (
   entryPoints: readonly string[],
   refusal: string,
   timeoutMs = 20_000,
-): Promise<{ entryPoint: string; state: ContractState }> => {
-  const byName = new Map<string, string>();
-  for (const e of entryPoints) for (const n of entryNames(e)) byName.set(n, e);
+): Promise<{ entryPoint: string; state: ContractState; blockHeight?: number; blockTime?: number }> => {
   if (!/^(0x)?[0-9a-fA-F]+$/.test(txId)) throw new Error('That is not a transaction id.');
   const res = await fetch(indexerUri, {
     method: 'POST',
@@ -97,10 +146,12 @@ export const singleCallState = async (
   const calls = (tx.contractActions ?? []).filter(
     (a) => a.address !== undefined && norm(a.address) === norm(contractAddress),
   );
-  const entryPoint = calls.length === 1 ? byName.get(norm(calls[0].entryPoint ?? '')) : undefined;
+  const entryPoint = calls.length === 1 ? matchEntryPoint(calls[0].entryPoint ?? '', entryPoints) : undefined;
   if (entryPoint === undefined || calls[0].state === undefined) throw new Error(refusal);
   return {
     entryPoint,
     state: ContractState.deserialize(Uint8Array.from(Buffer.from(norm(calls[0].state), 'hex'))),
+    blockHeight: typeof tx.block?.height === 'number' ? tx.block.height : undefined,
+    blockTime: blockTimeMs(tx.block?.timestamp),
   };
 };

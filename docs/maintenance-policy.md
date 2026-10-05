@@ -52,8 +52,10 @@ network upgrades.
 (`deployContract` and `replaceAuthority` take a single key). It exists only on paper:
 two copies, one held by each founder (Hunter Roberts, Makoto Steiner), stored
 separately and securely. It is never typed into a chat, email, notes app, photo,
-password manager or cloud document. The deploy tool removes it from the deploying
-computer when the deploy finishes.
+password manager or cloud document. The deploy tool never writes it to the deploying
+computer: it holds it in memory for the deploy and drops it at the end, and finishing an
+interrupted deploy or retiring asks for it from paper again (round D, 4 October 2026;
+before that, a "removed" key could stay readable in the local store's files).
 
 **Next:** a committee of three keys with a threshold of two, one held by each founder
 and one by an independent party named publicly when chosen. The Midnight ledger supports

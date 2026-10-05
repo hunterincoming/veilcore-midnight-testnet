@@ -86,6 +86,11 @@ export const deployInFragments = async (args: {
   readonly store: (candidate: ContractAddress, unsubmitted: UnsubmittedDeploy) => Promise<void>;
   /** The menu choice that finishes a deploy that stopped partway. */
   readonly finish: string;
+  /**
+   * The authority's key is on the operator's paper, not kept by the provider (the CLI's
+   * main contract: its signing keys live in memory only). Changes only what is said.
+   */
+  readonly keyOnPaper?: boolean;
   readonly logger?: Logger;
 }): Promise<ContractAddress> => {
   const { providers, circuits, logger } = args;
@@ -148,7 +153,10 @@ export const deployInFragments = async (args: {
       }
       logger?.error(
         `The deploy did not complete. It may still have landed at contract address ${candidate}. ` +
-          `The maintenance key is kept in the local store for it: finish it with "${args.finish}" and that address.`,
+          (args.keyOnPaper === true
+            ? `The maintenance key is NOT kept on this computer: finish it with "${args.finish}", that address, ` +
+              'and the key from your paper.'
+            : `The maintenance key is kept in the local store for it: finish it with "${args.finish}" and that address.`),
       );
       throw e;
     }

@@ -3,10 +3,17 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { CompiledContract } from "@midnight-ntwrk/midnight-js-protocol/compact-js";
-import { ContractState } from "@midnight-ntwrk/compact-runtime";
+import {
+  ContractState,
+  createConstructorContext,
+} from "@midnight-ntwrk/compact-runtime";
 
 import * as CompiledVeilcoreContract from "./managed/veilcore/contract/index.js";
-import { veilcoreWitnesses, type VeilcorePrivateState } from "./witnesses";
+import {
+  createVeilcorePrivateState,
+  veilcoreWitnesses,
+  type VeilcorePrivateState,
+} from "./witnesses";
 
 export const CompiledVeilcore = CompiledContract.make<
   CompiledVeilcoreContract.Contract<VeilcorePrivateState>
@@ -79,3 +86,42 @@ export const compiledVeilcoreDeploying = (keep: readonly string[]) => {
     CompiledContract.withCompiledFileAssets("./managed/veilcore"),
   );
 };
+
+/* **********************************************************************
+ * What a genuine deploy starts from (round D, D-1).
+ *
+ * Midnight does not run the constructor on chain: a deploy carries whatever contract
+ * state its deployer built. A copy of this build with every verifier key identical can
+ * therefore start from a forged ledger (anchored identities, confirmed parents, a
+ * licence tree). Joining compares the ledger DATA of the deploy transaction's state
+ * with what this build's constructor produces. Not compared: the operations (their
+ * verifier keys are checked separately, against this build, when joining), the
+ * maintenance authority (a verifier has no expected value for it) and the balance.
+ */
+
+const hexOf = (b: Uint8Array): string =>
+  Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
+
+/** A contract state's ledger data alone, serialized (operations, authority and balance left out). */
+export const ledgerDataHex = (state: ContractState): string => {
+  const dataOnly = new ContractState();
+  dataOnly.data = state.data;
+  return hexOf(dataOnly.serialize());
+};
+
+/** The ledger data this build's constructor produces; it takes no arguments and reads no witness. */
+export const constructorLedgerDataHex = (): string =>
+  ledgerDataHex(
+    new CompiledVeilcoreContract.Contract<VeilcorePrivateState>(
+      veilcoreWitnesses,
+    ).initialState(
+      createConstructorContext(
+        createVeilcorePrivateState(new Uint8Array(32)),
+        "0".repeat(64),
+      ),
+    ).currentContractState,
+  );
+
+/** Whether a deploy state starts from exactly the constructor's ledger data. */
+export const startsFromConstructor = (deployState: ContractState): boolean =>
+  ledgerDataHex(deployState) === constructorLedgerDataHex();

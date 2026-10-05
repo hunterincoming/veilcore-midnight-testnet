@@ -193,6 +193,67 @@ export const acceptPresentation = (
 };
 
 /**
+ * How old a licence presentation may be when the verifier decides on it. A presentation
+ * shows the licence was live when it landed, nothing later: a licence revoked and sealed
+ * since still has its old presentation on chain (round D, D-7). An hour leaves time to
+ * look the transaction up; ask again for anything older.
+ */
+export const MAX_PRESENTATION_AGE_MS = 60 * 60 * 1000;
+
+/**
+ * Rule 5 with the time of the presentation. `landedAt` is the time (ms) of the block the
+ * presentation landed in, from the same indexer answer as `afterTx`. Refused when the
+ * time is unknown, when it landed before the challenge was issued (`issuedAt`, from the
+ * challenge book: no honest answer can come before the question), or when it is older
+ * than `maxAgeMs` at `now`. Otherwise acceptPresentation decides, and an acceptance says
+ * what it means: the licence was live WHEN PRESENTED.
+ */
+export const acceptPresentationAt = (
+  afterTx: Ledger,
+  issuer: Uint8Array,
+  challenge: Uint8Array,
+  when: {
+    readonly landedAt: number | undefined;
+    readonly blockHeight?: number;
+    readonly issuedAt?: number;
+    readonly now?: number;
+    readonly maxAgeMs?: number;
+  },
+): { readonly accepted: boolean; readonly reason: string } => {
+  const v = acceptPresentation(afterTx, issuer, challenge);
+  if (!v.accepted) return v;
+  const { landedAt, blockHeight, issuedAt } = when;
+  const now = when.now ?? Date.now();
+  const maxAgeMs = when.maxAgeMs ?? MAX_PRESENTATION_AGE_MS;
+  if (landedAt === undefined)
+    return {
+      accepted: false,
+      reason: "the indexer did not say when the presentation landed; ask again",
+    };
+  // A minute of slack for clocks that disagree; anything earlier came before the question.
+  if (issuedAt !== undefined && landedAt < issuedAt - 60_000)
+    return {
+      accepted: false,
+      reason: "the presentation landed before you issued this challenge",
+    };
+  const age = now - landedAt;
+  if (age > maxAgeMs)
+    return {
+      accepted: false,
+      reason: `the presentation is ${Math.floor(age / 60_000)} minutes old (at most ${Math.floor(maxAgeMs / 60_000)}); the licence may have been revoked since. Ask for a new one`,
+    };
+  const at = `${blockHeight === undefined ? "" : `block ${blockHeight}, `}${new Date(landedAt).toISOString()}, ${Math.max(0, Math.floor(age / 60_000))} minutes ago`;
+  return {
+    accepted: true,
+    reason:
+      `the licence was live when presented (${at}); ${v.reason.replace(/^a live licence from this issuer[,;]? ?/, "")}`.replace(
+        /; $/,
+        "",
+      ),
+  };
+};
+
+/**
  * Rule 8. Accept an ownership proof. `afterTx` is the contract state recorded for the
  * proof's own `proveOwnership` call, found by transaction id. The verifier chose
  * `challenge` (32 fresh random bytes, used once) and asked about `record`, any
@@ -330,6 +391,11 @@ export class ChallengeBook {
         reason: "that challenge is too old; issue a new one",
       };
     return { ok: true, reason: "an unused challenge you issued" };
+  }
+
+  /** When `challenge` was issued (ms), if this book issued it. */
+  issuedAt(challenge: Uint8Array): number | undefined {
+    return this.book.get(hex(challenge))?.issuedAt;
   }
 
   /** Use `challenge` for `kind`: ok once, then never again. */

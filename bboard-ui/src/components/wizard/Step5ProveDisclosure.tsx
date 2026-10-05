@@ -194,7 +194,7 @@ export const Step5ProveDisclosure: React.FC<{ recordId: string; onDone: () => vo
             nothing else; the registry does not send the rest, and editing the link cannot add to it. The genetics are
             never disclosed. This choice controls what the verify page shows. Proving one hidden value (a marker, a
             range, or that two varieties differ) without showing the rest is done by VeilCore&apos;s claims contract.
-            It&apos;s tested on Midnight&apos;s test network but isn&apos;t in this demo yet.
+            It&apos;s tested on Midnight&apos;s preprod test network but isn&apos;t in this demo yet.
           </Typography>
           <TextField
             value={result.absolute}

@@ -75,10 +75,11 @@ export const Implementations: React.FC = () => (
         Three implementations, one author, that now agree.
       </Typography>
       <Typography variant="h6" sx={{ color: 'text.secondary', maxWidth: 620, fontWeight: 400, lineHeight: 1.6 }}>
-        TypeScript, Python and Rust, all written by the same author. They agree on the 100 published conformance vectors
-        and on 81,000 random inputs. That shows the rules hold across three languages. It does not yet show that someone
-        else could implement the format from the document alone: an implementation by someone else is still the missing
-        test.
+        TypeScript, Python and Rust, all written by the same author. They agree on the 100 published conformance
+        vectors, and agreed on 81,000 random inputs on 3 October. A later test found edge cases where they can still
+        differ (very new Unicode characters, very deep nesting, duplicate keys); the spec fix is in progress. That shows
+        the rules hold across three languages. It does not yet show that someone else could implement the format from
+        the document alone: an implementation by someone else is still the missing test.
       </Typography>
     </Box>
 

@@ -250,8 +250,8 @@ export const VerifyPage: React.FC = () => {
           color="text.secondary"
           sx={{ textAlign: 'center', mb: 4, maxWidth: 460, mx: 'auto' }}
         >
-          This page checks a VeilCore record: a dated fingerprint of genetic material, published without the genetics.
-          Checking is free and needs no account.{' '}
+          This page checks a VeilCore record: a fingerprint of a description of genetic material, dated once it&apos;s
+          anchored, published without the genetics. Checking is free and needs no account.{' '}
           <Box component={RouterLink} to="/" sx={{ color: TEAL, whiteSpace: 'nowrap' }}>
             What is VeilCore?
           </Box>

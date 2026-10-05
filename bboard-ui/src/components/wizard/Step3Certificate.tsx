@@ -10,7 +10,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Box, Button, Divider, Snackbar, Stack, Typography } from '@mui/material';
 import DownloadIcon from '@mui/icons-material/DownloadOutlined';
 import ContentCopyIcon from '@mui/icons-material/ContentCopyOutlined';
-import VerifiedIcon from '@mui/icons-material/VerifiedOutlined';
+import ReportedIcon from '@mui/icons-material/ScheduleOutlined';
 import { QRCodeSVG } from 'qrcode.react';
 import { toPng } from 'html-to-image';
 import { getRecord, checkIntegrity, type IntegrityCheck } from '../../veilcore/records';
@@ -164,10 +164,15 @@ export const Step3Certificate: React.FC<{ recordId: string; onDone: () => void; 
               Record certificate
             </Typography>
           </Box>
-          {/* The badge appears only once the anchor is reported and the inclusion proof checks;
-              before that the certificate makes no "verified" signal. */}
+          {/* No seal: this site does not read the chain, so a reported anchor is the
+              registry's word (proofs.ts). A neutral mark, labelled as exactly that. */}
           {anchor !== 'checking' && anchor.status === 'anchor-reported' && (
-            <VerifiedIcon sx={{ color: TEAL, fontSize: 32 }} />
+            <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center', color: 'text.secondary' }}>
+              <ReportedIcon sx={{ fontSize: 20 }} />
+              <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                Anchor reported by the registry
+              </Typography>
+            </Stack>
           )}
         </Stack>
 

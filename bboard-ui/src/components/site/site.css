@@ -1919,4 +1919,17 @@ html:has(.vcm) {
   .vcm .person {
     padding-block: 10px;
   }
+  /* 5 Oct fact-check pass: the honest sentences are longer; the rhythm gives way */
+  .vcm section {
+    padding-block: 24px;
+  }
+  .vcm section h2 {
+    font-size: 1.5rem;
+  }
+  .vcm .audiences > div {
+    padding-block: 8px;
+  }
+  .vcm .claim-list li.fold .fold-btn {
+    min-height: 40px;
+  }
 }

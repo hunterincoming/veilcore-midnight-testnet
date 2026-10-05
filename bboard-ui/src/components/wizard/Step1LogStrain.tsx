@@ -114,7 +114,7 @@ export const Step1LogStrain: React.FC<{ onDone: (recordId: string) => void }> = 
           <Typography variant="body2" sx={{ mt: 0.5, color: 'text.secondary' }}>
             Sealed {fmtStamp(record.loggedAt)}, by this device&apos;s clock. Its public date comes when the next batch
             is anchored; the record&apos;s verify page will show it. The creation date ({record.dateCreated}) is
-            recorded as your own statement.
+            recorded as your own statement. Nothing here checks whether anyone else logged it first.
           </Typography>
         </Alert>
         <Box>

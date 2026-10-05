@@ -5,60 +5,21 @@
 // it costs nothing to fix: the same markdown, rendered here, with the repository there
 // for anyone who wants to check it against the code.
 //
+// The documents are bundled at build time and sanitised narrowly (veilcore/docs.ts).
 // SPDX-License-Identifier: Apache-2.0
 
-import React, { useEffect, useState } from 'react';
-import { Alert, Box, Button, Container, Stack, Typography } from '@mui/material';
+import React, { useMemo } from 'react';
+import { Box, Button, Container, Stack, Typography } from '@mui/material';
 import { Link as RouterLink, useParams } from 'react-router-dom';
 import ArrowBackIcon from '@mui/icons-material/ArrowBackOutlined';
 import CodeIcon from '@mui/icons-material/CodeOutlined';
-import { marked } from 'marked';
-import DOMPurify from 'dompurify';
 import { TEAL } from '../config/theme';
-
-const REPO = 'https://raw.githubusercontent.com/hunterincoming/veilcore-sdk/main';
-const REPO_VIEW = 'https://github.com/hunterincoming/veilcore-sdk/blob/main';
-
-const DOCS: Record<string, { file: string; title: string; blurb: string }> = {
-  spec: {
-    file: 'SPEC.md',
-    title: 'The record format',
-    blurb:
-      'The specification. Record structure, canonical serialisation, anchoring, corrections, attester identity, resolution across registries, and verification.',
-  },
-  evidence: {
-    file: 'EVIDENCE.md',
-    title: 'Records in evidence',
-    blurb:
-      'For counsel. What a party can establish, how it is authenticated under US law in detail, a sketch of four other jurisdictions, and — at length — what it does not prove.',
-  },
-  integrate: {
-    file: 'INTEGRATING.md',
-    title: 'Integrating VeilCore',
-    blurb:
-      'For developers adding this to software a laboratory or registry already uses. No account, no server, no key.',
-  },
-};
+import { DOCS, DOCS_VERSION, REPO_VIEW, docHtml } from '../veilcore/docs';
 
 export const DocPage: React.FC = () => {
   const { doc } = useParams();
-  const meta = doc ? DOCS[doc] : undefined;
-  const [html, setHtml] = useState<string | null>(null);
-  const [failed, setFailed] = useState(false);
-
-  useEffect(() => {
-    if (!meta) return;
-    setHtml(null);
-    setFailed(false);
-    void fetch(`${REPO}/${meta.file}`)
-      .then((r) => (r.ok ? r.text() : Promise.reject(new Error('not found'))))
-      // Fetched from GitHub at run time, so whoever can push to that repository decides
-      // what arrives here. Cleaned before it touches the page: scripts, event handlers
-      // and javascript: links are removed, so the documents cannot run code on
-      // veilcore.org, where holder and attester keys live in local storage.
-      .then(async (md) => setHtml(DOMPurify.sanitize(await marked.parse(md), { USE_PROFILES: { html: true } })))
-      .catch(() => setFailed(true));
-  }, [meta]);
+  const meta = doc && Object.prototype.hasOwnProperty.call(DOCS, doc) ? DOCS[doc] : undefined;
+  const html = useMemo(() => (meta ? docHtml(meta.md) : null), [meta]);
 
   if (!meta) {
     return (
@@ -96,21 +57,14 @@ export const DocPage: React.FC = () => {
           startIcon={<CodeIcon />}
           href={`${REPO_VIEW}/${meta.file}`}
           target="_blank"
-          rel="noopener"
+          rel="noopener noreferrer"
         >
           Source
         </Button>
+        <Typography variant="caption" color="text.secondary" sx={{ alignSelf: 'center' }}>
+          Version {DOCS_VERSION} of the published package
+        </Typography>
       </Stack>
-
-      {failed && (
-        <Alert severity="warning" variant="outlined">
-          This document could not be loaded. It is published at{' '}
-          <a href={`${REPO_VIEW}/${meta.file}`} target="_blank" rel="noopener noreferrer" style={{ color: TEAL }}>
-            the repository
-          </a>
-          , which is always the authoritative copy.
-        </Alert>
-      )}
 
       {html && (
         <Box

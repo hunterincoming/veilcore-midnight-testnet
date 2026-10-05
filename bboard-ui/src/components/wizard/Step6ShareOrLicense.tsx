@@ -17,6 +17,7 @@ import { getRecord, childrenOf } from '../../veilcore/records';
 import {
   useLicenses,
   createLicense,
+  sealAgreement,
   issueLicense,
   countersignLicense,
   getLicense,
@@ -28,7 +29,7 @@ import {
   type AgreementType,
   type LicenseTerms,
 } from '../../veilcore/licenses';
-import { fingerprintText } from '../../veilcore/commitment';
+import { canonicalUrl } from '../../config/network';
 import { AgreementTermsFields, emptyTermsFor, type SetTerm } from '../licensing/LicenseTermsFields';
 import { LicenseStateChip } from '../licensing/LicenseStateChip';
 import { TEAL } from '../../config/theme';
@@ -64,7 +65,7 @@ export const Step6ShareOrLicense: React.FC<{
   if (!record) return <Typography>Record not found.</Typography>;
 
   const license = licenseId ? getLicense(licenseId) : undefined;
-  const signLink = licenseId ? `${window.location.origin}/license/${licenseId}/sign` : '';
+  const signLink = licenseId ? canonicalUrl(`/license/${encodeURIComponent(licenseId)}/sign`) : '';
   const canIssue =
     type === 'license' ? Boolean(t.licensee.trim() && t.royaltyAmount.trim()) : Boolean(t.licensee.trim());
 
@@ -78,9 +79,7 @@ export const Step6ShareOrLicense: React.FC<{
     if (!canIssue || !type) return;
     setBusy(true);
     try {
-      const agreementFingerprint = await fingerprintText(
-        JSON.stringify({ type, terms: t, record: record.recordFingerprint }),
-      );
+      const { agreementFingerprint, agreementSalt } = await sealAgreement(type, t, record.recordFingerprint);
       const lic = createLicense({
         type,
         recordId: record.id,
@@ -88,8 +87,9 @@ export const Step6ShareOrLicense: React.FC<{
         dnaFingerprint: record.dnaFingerprint,
         terms: t,
         agreementFingerprint,
+        agreementSalt,
       });
-      issueLicense(lic.id);
+      await issueLicense(lic.id);
       setLicenseId(lic.id);
       setPhase('issued');
     } finally {
@@ -97,9 +97,9 @@ export const Step6ShareOrLicense: React.FC<{
     }
   };
 
-  const onCountersign = () => {
+  const onCountersign = async () => {
     if (licenseId) {
-      countersignLicense(licenseId);
+      await countersignLicense(licenseId);
       setPhase('active');
     }
   };
@@ -120,9 +120,9 @@ export const Step6ShareOrLicense: React.FC<{
             {type === 'license' ? 'Agreement recorded.' : 'Shared — on your terms.'}
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 480, mx: 'auto', mt: 1 }}>
-            Both parties signed (in this demo, signatures are simulated). Its terms are attached to {record.strainName}
-            &apos;s sealed record and its report fingerprint. VeilCore records what is owed; payment happens between
-            you.
+            Marked active from your browser. Your counterparty has not signed anything in VeilCore: counter-signing by
+            the other party, with their own key, is not built yet. Its terms are attached to {record.strainName}
+            &apos;s record. VeilCore records what is owed; payment happens between you.
           </Typography>
         </MBox>
 
@@ -181,14 +181,14 @@ export const Step6ShareOrLicense: React.FC<{
           >
             Copy link
           </Button>
-          <Button variant="contained" onClick={onCountersign}>
-            Simulate counter-signature
+          <Button variant="contained" onClick={() => void onCountersign()}>
+            Mark active myself (demo)
           </Button>
           <Chip size="small" variant="outlined" label="Demo — settlement simulated" />
         </Stack>
         <Typography variant="caption" color="text.secondary">
-          Outside this demo, the recipient would open the link, review the terms and sign; only then would it activate.
-          Here the counter-signature is simulated.
+          The link opens only in your own browser for now: the other party cannot load or sign it from theirs yet.
+          Marking it active yourself records that you did so, not that they agreed.
         </Typography>
       </Stack>
     );

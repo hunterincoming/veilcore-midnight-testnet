@@ -15,8 +15,9 @@ import UploadIcon from '@mui/icons-material/UploadFileOutlined';
 import RestartAltIcon from '@mui/icons-material/RestartAltOutlined';
 import EastIcon from '@mui/icons-material/East';
 import { motion } from 'framer-motion';
-import { useRecords, exportRecords, importRecords, resetDemo } from '../veilcore/records';
-import { useLicenses, activeLicenseCount } from '../veilcore/licenses';
+import { useRecords, exportRecords, importRecords, startOver } from '../veilcore/records';
+import { holderKeyIfAny, downloadHolderKey } from '../veilcore/holder';
+import { useLicenses, activeLicenseCount, clearLoadedLicenses } from '../veilcore/licenses';
 import { StatusChain } from './StatusChain';
 import { AttentionBar } from './AttentionBar';
 import { RecordFinder, matchesQuery, sortRecords, type SortKey } from './RecordFinder';
@@ -69,17 +70,32 @@ export const Dashboard: React.FC = () => {
   const onImport = async (file: File | null | undefined) => {
     if (!file) return;
     try {
-      const n = await importRecords(file);
-      setToast(`Imported ${n} record${n === 1 ? '' : 's'}.`);
+      const { added, alreadyHere } = await importRecords(file);
+      setToast(
+        `Imported ${added} record${added === 1 ? '' : 's'}.` +
+          (alreadyHere ? ` ${alreadyHere} already here ${alreadyHere === 1 ? 'was' : 'were'} left as they are.` : ''),
+      );
     } catch (e) {
       setToast(e instanceof Error ? e.message : 'Import failed.');
     }
   };
 
+  // Nothing is deleted anywhere: the records stay on VeilCore's registry under the
+  // current key, which is downloaded first so they can be restored (attack round D: this
+  // said "clear all records on this device" and saved an empty set to the registry).
   const onReset = () => {
-    if (window.confirm('Clear all records on this device and start the demo fresh?')) {
-      resetDemo();
-      setToast('Demo reset.');
+    const key = holderKeyIfAny();
+    if (
+      window.confirm(
+        'Start over in this browser with a new, empty set?\n\n' +
+          'Nothing is deleted. Your current records stay on VeilCore’s registry under your current holder key, ' +
+          'and you can get them back only with that key. It will be downloaded now — keep the file.',
+      )
+    ) {
+      if (key) downloadHolderKey(key);
+      startOver();
+      clearLoadedLicenses();
+      setToast('Started over. Restore your old records any time from the holder key file.');
     }
   };
 
@@ -130,7 +146,7 @@ export const Dashboard: React.FC = () => {
                 Import
               </Button>
               <Button variant="text" color="inherit" startIcon={<RestartAltIcon />} onClick={onReset}>
-                Reset demo
+                Start over
               </Button>
               <input
                 ref={importRef}

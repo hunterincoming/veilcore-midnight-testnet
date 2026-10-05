@@ -9,6 +9,7 @@ import { useNavigate, useParams, useSearchParams, Link as RouterLink } from 'rea
 import ArrowBackIcon from '@mui/icons-material/ArrowBackOutlined';
 import { getRecord } from '../../veilcore/records';
 import {
+  sealAgreement,
   createLicense,
   renewLicense,
   getLicense,
@@ -20,7 +21,6 @@ import {
   type AgreementType,
   type LicenseTerms,
 } from '../../veilcore/licenses';
-import { fingerprintText } from '../../veilcore/commitment';
 import { AppHeader } from '../AppHeader';
 import { AgreementTermsFields, emptyTermsFor, type SetTerm } from './LicenseTermsFields';
 import { AgreementTypeChip } from './AgreementTypeChip';
@@ -62,11 +62,9 @@ export const TermsBuilder: React.FC = () => {
     if (!canSave) return;
     setBusy(true);
     try {
-      const agreementFingerprint = await fingerprintText(
-        JSON.stringify({ type, terms: t, record: record.recordFingerprint }),
-      );
+      const { agreementFingerprint, agreementSalt } = await sealAgreement(type, t, record.recordFingerprint);
       const lic = supersedeId
-        ? renewLicense(supersedeId, t, agreementFingerprint)
+        ? renewLicense(supersedeId, t, agreementFingerprint, agreementSalt)
         : createLicense({
             type,
             recordId: record.id,
@@ -74,6 +72,7 @@ export const TermsBuilder: React.FC = () => {
             dnaFingerprint: record.dnaFingerprint,
             terms: t,
             agreementFingerprint,
+            agreementSalt,
           });
       if (lic) navigate(`/license/${lic.id}`);
     } finally {

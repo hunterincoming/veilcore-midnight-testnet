@@ -9,6 +9,8 @@ import { encumber as encumberRecord, discharge as dischargeRecord } from './line
 import { getRecord } from './records';
 import { store } from './store';
 import { reportSave } from './save-status';
+import { holderPartyId } from './holder';
+import { canonicalise, newNonce } from './commitment';
 
 export type LicenseState = 'draft' | 'sent' | 'active' | 'expired' | 'revoked';
 
@@ -56,10 +58,19 @@ export type License = {
   dnaFingerprint?: string;
   terms: LicenseTerms;
   agreementFingerprint: string;
+  /**
+   * The random salt in the agreement fingerprint (AGREEMENT_FINGERPRINT_V2). Absent on
+   * agreements made before it existed, whose fingerprint is unsalted and stays as made.
+   */
+  agreementSalt?: string;
   state: LicenseState;
   createdAt: number;
   breederSignedAt?: number;
   licenseeSignedAt?: number;
+  /** Party id (one-way hash of the holder key) of the browser that issued it. */
+  issuedByParty?: string;
+  /** Party id of the browser that marked it counter-signed. */
+  countersignedByParty?: string;
   revokedAt?: number;
   revokedReason?: string;
   supersedesId?: string;
@@ -98,14 +109,30 @@ const listeners = new Set<() => void>();
 
 const notify = () => listeners.forEach((l) => l());
 
-/** Hydrate from the backing store on boot. */
 const hydrate = async (): Promise<void> => {
   const loaded = await store.load(KEY, isLicense);
   // Back-compat: agreements saved before types existed are license agreements.
   licenses = loaded.map((l: License) => ({ ...l, type: l.type ?? 'license' }));
   notify();
 };
-void hydrate();
+
+/**
+ * Load from the registry. Started by the pages that show agreements, not on import:
+ * every page used to load agreements, with a holder key minted for the purpose
+ * (attack round D).
+ */
+let started = false;
+/** Forget the agreements shown, after this browser stops using a holder key. Saves nothing. */
+export const clearLoadedLicenses = (): void => {
+  licenses = [];
+  notify();
+};
+
+export const startLicenseSync = (): void => {
+  if (started) return;
+  started = true;
+  void hydrate();
+};
 
 const persist = () => {
   // A refusal is reported and the set reloaded from the registry, rather than left
@@ -138,6 +165,48 @@ export type NewLicenseInput = {
   dnaFingerprint?: string;
   terms: LicenseTerms;
   agreementFingerprint: string;
+  agreementSalt?: string;
+};
+
+export const AGREEMENT_FINGERPRINT_V2 = 'veilcore/agreement/v2';
+
+/**
+ * The agreement fingerprint: SHA-256 over the canonical form of the type, the terms, the
+ * record's fingerprint and a random salt (attack round D).
+ *
+ * It used to be the commit circuit over JSON.stringify of the same three things, with no
+ * salt. The public face of a licence shows the fingerprint, the record and the type, and
+ * the remaining terms are few and guessable (licensee, territory, a royalty percentage),
+ * so the private terms came back from about 700 guesses. JSON.stringify also follows key
+ * order, so the same terms could fingerprint differently. The salt is kept with the
+ * licence and disclosed only with the full terms, which is what anyone recomputing it
+ * needs.
+ *
+ * Checked before changing it: this value does not reach the Midnight contract (the
+ * contract's licence commitment is licenseCommit(secret, record), made from the
+ * licensee's own secret) nor the record format (an envelope's Terms.termsHash is not
+ * filled from it). The registry stores it as an opaque obligation id. Agreements made
+ * before keep the fingerprint they were made with.
+ */
+export const sealAgreement = async (
+  type: AgreementType,
+  terms: LicenseTerms,
+  recordFingerprint: string,
+  salt: string = newNonce(),
+): Promise<{ agreementFingerprint: string; agreementSalt: string }> => {
+  // Unset optional terms are omitted, which is what canonicalisation requires of an
+  // absent value (it refuses undefined rather than guess between absent and null).
+  const definedTerms = JSON.parse(JSON.stringify(terms)) as Record<string, unknown>;
+  const payload = canonicalise({
+    v: AGREEMENT_FINGERPRINT_V2,
+    type,
+    terms: definedTerms,
+    record: recordFingerprint,
+    salt,
+  });
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(payload));
+  const agreementFingerprint = Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
+  return { agreementFingerprint, agreementSalt: salt };
 };
 
 export const createLicense = (input: NewLicenseInput): License => {
@@ -159,8 +228,27 @@ const update = (id: string, patch: (l: License) => License): License | undefined
 };
 
 /** Breeder signs and issues → awaiting counter-signature. */
-export const issueLicense = (id: string): License | undefined =>
-  update(id, (l) => ({ ...l, state: 'sent', breederSignedAt: Date.now() }));
+export const issueLicense = async (id: string): Promise<License | undefined> => {
+  const party = await holderPartyId();
+  return update(id, (l) => ({ ...l, state: 'sent', breederSignedAt: Date.now(), issuedByParty: party }));
+};
+
+/**
+ * Whether two different parties are on record as having acted on this agreement.
+ *
+ * Nothing here is a cryptographic signature, and the counter-sign page can only load an
+ * agreement from the issuer's own registry set, so in this app it is always the issuer
+ * who presses "counter-sign" (attack round D). "Both parties have signed" is shown only
+ * when the issue and the counter-signature came from two different holder keys, which
+ * this version cannot produce; until counter-signing goes through the registry with the
+ * other party's own key, an active agreement says it was marked active by the issuer.
+ */
+export const signedByTwoParties = (l: License): boolean =>
+  Boolean(l.issuedByParty && l.countersignedByParty && l.issuedByParty !== l.countersignedByParty);
+
+/** Whether this browser is the one that issued the agreement. */
+export const isIssuer = async (l: License): Promise<boolean> =>
+  !l.issuedByParty || l.issuedByParty === (await holderPartyId());
 
 /**
  * Licensee counter-signs → Active only when both signatures exist.
@@ -170,10 +258,12 @@ export const issueLicense = (id: string): License | undefined =>
  * consequence of the agreement rather than a separate thing to remember — nobody
  * should have to attach one by hand.
  */
-export const countersignLicense = (id: string): License | undefined => {
+export const countersignLicense = async (id: string): Promise<License | undefined> => {
+  const party = await holderPartyId();
   const out = update(id, (l) => ({
     ...l,
     licenseeSignedAt: Date.now(),
+    countersignedByParty: party,
     state: l.breederSignedAt ? 'active' : l.state,
   }));
   if (out && out.state === 'active' && createsHeritableObligation(out.type, out.terms)) {
@@ -195,7 +285,12 @@ export const revokeLicense = (id: string, reason: string): License | undefined =
 };
 
 /** Renewal/amendment: supersede rather than mutate a signed license. */
-export const renewLicense = (id: string, terms: LicenseTerms, agreementFingerprint: string): License | undefined => {
+export const renewLicense = (
+  id: string,
+  terms: LicenseTerms,
+  agreementFingerprint: string,
+  agreementSalt?: string,
+): License | undefined => {
   const prev = licenses.find((l) => l.id === id);
   if (!prev) return undefined;
   const next = createLicense({
@@ -205,6 +300,7 @@ export const renewLicense = (id: string, terms: LicenseTerms, agreementFingerpri
     dnaFingerprint: prev.dnaFingerprint,
     terms,
     agreementFingerprint,
+    ...(agreementSalt ? { agreementSalt } : {}),
   });
   return update(next.id, (l) => ({ ...l, supersedesId: id }));
 };
@@ -251,7 +347,7 @@ export const RIGHTS_LABEL: Record<Rights, string> = {
 export const STATE_LABEL: Record<LicenseState, string> = {
   draft: 'Draft',
   sent: 'Sent — awaiting counter-signature',
-  active: 'Active',
+  active: 'Marked active',
   expired: 'Expired',
   revoked: 'Revoked',
 };

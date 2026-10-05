@@ -46,7 +46,8 @@ setNetworkId(networkId);
 
 // Create a default `pino` logger and configure it with the configured logging level.
 export const logger = pino.pino({
-  level: import.meta.env.VITE_LOGGING_LEVEL as string,
+  // warn unless a build says otherwise: the published site used to log at trace.
+  level: (import.meta.env.VITE_LOGGING_LEVEL as string | undefined) || 'warn',
 });
 
 logger.trace(`networkId = ${networkId}`);

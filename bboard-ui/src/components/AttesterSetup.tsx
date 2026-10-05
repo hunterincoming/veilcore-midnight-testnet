@@ -47,14 +47,31 @@ export const AttesterSetup: React.FC = () => {
       accId.trim() && accreditor.trim()
         ? { scheme, identifier: accId.trim(), accreditor: accreditor.trim() }
         : undefined;
-    const p = await createAttester(name.trim(), role, accreditation);
+    let p: AttesterProfile;
+    try {
+      p = await createAttester(name.trim(), role, accreditation);
+    } catch (e) {
+      setBusy(false);
+      setError(e instanceof Error ? e.message : 'Could not create a key.');
+      setProfile(loadAttester());
+      return;
+    }
+    // Shown from here on whether or not publishing works, so a failure leaves the key
+    // on screen with a way to publish it again, never a form that makes another.
+    setProfile(p);
+    await publish(p);
+  };
+
+  const publish = async (p: AttesterProfile) => {
+    setBusy(true);
+    setError(null);
     const out = await publishAttester(p);
     setBusy(false);
     if (out.error) {
-      setError(out.error);
+      setError(`Your key is saved in this browser but was not published: ${out.error}. Try again.`);
       return;
     }
-    setProfile({ ...p, registeredAt: Date.now() });
+    setProfile(loadAttester() ?? { ...p, registeredAt: Date.now() });
   };
 
   const backup = () => {
@@ -79,10 +96,23 @@ export const AttesterSetup: React.FC = () => {
         <DialogContent>
           {profile ? (
             <Stack spacing={2} sx={{ pt: 1 }}>
-              <Alert severity="success" variant="outlined">
+              <Alert severity={profile.registeredAt ? 'success' : 'warning'} variant="outlined">
                 {profile.displayName} — {profile.role}
                 {profile.accreditation && ` · ${profile.accreditation.scheme} ${profile.accreditation.identifier}`}
+                {profile.registeredAt
+                  ? ''
+                  : ' · not published yet: nobody can resolve your signatures to this name until it is.'}
               </Alert>
+              {!profile.registeredAt && (
+                <Button variant="contained" onClick={() => void publish(profile)} disabled={busy}>
+                  Publish again
+                </Button>
+              )}
+              {error && (
+                <Alert severity="warning" variant="outlined">
+                  {error}
+                </Alert>
+              )}
               <Box>
                 <Typography variant="overline" sx={{ display: 'block', color: TEAL }}>
                   Public key
@@ -92,8 +122,9 @@ export const AttesterSetup: React.FC = () => {
                 </Typography>
               </Box>
               <Alert severity="warning" variant="outlined">
-                Your private key is stored in this browser and nowhere else. If you lose it you cannot sign new
-                attestations — past ones stay valid and can still be retracted through the registry. Back it up
+                Your private key is stored in this browser&apos;s storage, unencrypted, and nowhere else. Anything that
+                can run in this site, or a browser extension with access to it, could read it. If you lose it you cannot
+                sign new attestations — past ones stay valid and can still be retracted through the registry. Back it up
                 somewhere safe.
               </Alert>
               <Button variant="outlined" startIcon={<DownloadIcon />} onClick={backup}>

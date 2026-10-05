@@ -5,8 +5,9 @@
 
 import { useSyncExternalStore } from 'react';
 import { store, type SaveResult } from './store';
-import { sealEnvelope } from './envelope';
-import { holderPartyId } from './holder';
+import { exportEnvelopeFor, toEnvelope, sealEnvelope } from './envelope';
+import { holderPartyId, forgetHolderKey } from './holder';
+import { proofFor } from './proofs';
 import { reportSave, describeRefusals } from './save-status';
 import { newNonce, fingerprintRecord } from './commitment';
 
@@ -143,27 +144,34 @@ const listeners = new Set<() => void>();
 
 const notify = () => listeners.forEach((l) => l());
 
-/** Hydrate from the backing store on boot. */
-/** Re-fetch from the registry. Used after a claim, when the server created a record. */
+/** Re-fetch from the registry. Used on start, after a claim, and by the sync below. */
 export const hydrate = async (): Promise<void> => {
   records = await store.load(KEY, isStrainRecord);
   notify();
 };
-void hydrate();
 
 // Records change on the server without this browser doing anything — an attestation
 // lands when a recipient confirms receipt, which happens on someone else's machine.
 // Polling is the honest simple answer; a socket would be better and is not worth the
 // complexity until someone is actually waiting on it.
-if (typeof window !== 'undefined') {
-  setInterval(() => {
-    void hydrate();
-  }, 20000);
+//
+// Started by the app pages, not on import (attack round D): importing this module used
+// to load and poll from every page, the landing page and a QR-scanned verify page
+// included. It asks only when the tab is visible, and the store asks the registry only
+// when this browser holds a key.
+let syncTimer: ReturnType<typeof setInterval> | undefined;
+export const SYNC_INTERVAL_MS = 30_000;
+export const startRecordSync = (): void => {
+  if (syncTimer !== undefined || typeof window === 'undefined') return;
+  void hydrate();
+  syncTimer = setInterval(() => {
+    if (typeof document === 'undefined' || document.visibilityState === 'visible') void hydrate();
+  }, SYNC_INTERVAL_MS);
   // Also on tab focus — the common case is a breeder switching back to check.
   window.addEventListener('focus', () => {
     void hydrate();
   });
-}
+};
 
 /**
  * Save the whole set and act on what the registry says. A refusal used to be ignored,
@@ -201,6 +209,16 @@ export const createRecord = (input: NewRecordInput): StrainRecord => {
   return record;
 };
 
+/**
+ * Pair a DNA report's fingerprint with a record.
+ *
+ * The pairing is a note beside the sealed record, not part of it: the record fingerprint
+ * (what the registry stores and anchors) does not cover it, and re-sealing would not
+ * change that, because the registry's commitment has no field for it. So it is dated
+ * with when it happened, and an export puts it under that date and says the registered
+ * fingerprint does not cover it (envelope.ts exportEnvelopeFor), rather than under the
+ * original sealing date.
+ */
 export const pairDna = (id: string, dnaFingerprint: string, dnaFileName: string): StrainRecord | undefined => {
   let updated: StrainRecord | undefined;
   records = records.map((r) => {
@@ -255,7 +273,12 @@ export const conflictsFor = (dnaFingerprint: string, exceptId: string): StrainRe
 export const exportEnvelope = async (id: string): Promise<void> => {
   const r = getRecord(id);
   if (!r) return;
-  const env = await sealEnvelope(r, await holderPartyId());
+  const env = await exportEnvelopeFor(
+    r,
+    await holderPartyId(),
+    await checkIntegrity(r),
+    await proofFor(r.recordFingerprint),
+  );
   const blob = new Blob([JSON.stringify(env, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -277,8 +300,63 @@ export const exportRecords = (): void => {
   URL.revokeObjectURL(url);
 };
 
-export const importRecords = async (file: File): Promise<number> => {
-  const parsed: unknown = JSON.parse(await file.text());
+/** The largest records file read for import. An export of the per-holder maximum is far smaller. */
+export const MAX_IMPORT_BYTES = 20 * 1024 * 1024;
+
+/**
+ * The fields a holder writes. Everything else on a stored record is written by the
+ * registry (the delivery confirmation, where a received record came from) or lives in
+ * another store (licence ids), and an import file is not a source for any of it: a
+ * "restore" carrying a typed-in lab confirmation used to be imported and uploaded as is
+ * (attack round D).
+ */
+const IMPORTABLE = [
+  'id',
+  'nonce',
+  'strainName',
+  'bredBy',
+  'dateCreated',
+  'notes',
+  'loggedAt',
+  'recordFingerprint',
+  'parents',
+  'breedingMethod',
+  'profile',
+  'taxon',
+  'photoFingerprints',
+  'refId',
+  'dnaFingerprint',
+  'dnaFileName',
+  'dnaPairedAt',
+  'supersedes',
+  'supersededBy',
+] as const;
+
+const importable = (r: StrainRecord): StrainRecord => {
+  const src = r as unknown as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  for (const k of IMPORTABLE) if (src[k] !== undefined) out[k] = src[k];
+  return out as unknown as StrainRecord;
+};
+
+export type ImportResult = { added: number; alreadyHere: number };
+
+/**
+ * Restore records from an export.
+ *
+ * All or nothing, and additive: a file with any entry this version cannot read, or any
+ * sealed entry whose fingerprint does not recompute from its fields, imports nothing.
+ * Records already in this set are kept as they are, never overwritten by the file, so
+ * an import cannot replace a holder's set with someone else's.
+ */
+export const importRecords = async (file: File): Promise<ImportResult> => {
+  if (file.size > MAX_IMPORT_BYTES) throw new Error('That file is larger than 20 MB. Nothing was imported.');
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(await file.text());
+  } catch {
+    throw new Error('That file is not a VeilCore records export. Nothing was imported.');
+  }
   if (!Array.isArray(parsed)) throw new Error('That file is not a VeilCore records export.');
   const valid = parsed.filter(isStrainRecord);
   // Refuse a file with unreadable entries rather than importing the rest. A partial
@@ -289,14 +367,40 @@ export const importRecords = async (file: File): Promise<number> => {
       `That file has ${String(parsed.length - valid.length)} entries this version cannot read. Nothing was imported.`,
     );
   }
-  records = valid;
-  persist();
-  return records.length;
+  const cleaned = valid.map(importable);
+  for (const r of cleaned) {
+    const check = await checkIntegrity(r);
+    if (check === 'mismatch') {
+      throw new Error(`${r.id}: its fingerprint does not match its fields. Nothing was imported.`);
+    }
+    if (check === 'no-nonce') {
+      throw new Error(`${r.id}: it has a fingerprint but no nonce, so it cannot be checked. Nothing was imported.`);
+    }
+  }
+  // Compared against what the registry holds now, not whatever this page last loaded:
+  // a save is an upsert per id, so an id missed here would be overwritten there.
+  await hydrate();
+  const have = new Set(records.map((r) => r.id));
+  const fresh = cleaned.filter((r) => !have.has(r.id));
+  if (fresh.length > 0) {
+    records = [...fresh, ...records];
+    persist();
+  }
+  return { added: fresh.length, alreadyHere: cleaned.length - fresh.length };
 };
 
-export const resetDemo = (): void => {
+/**
+ * Start over in this browser: stop using the current holder key and clear what is shown.
+ *
+ * Nothing is sent to the registry. "Clear all records on this device" used to save an
+ * empty set to the registry under the holder's key, which a registry that treats a save
+ * as the whole set would read as delete-all (attack round D). The records stay on the
+ * registry under the old key; the caller makes sure the holder has that key first.
+ */
+export const startOver = (): void => {
+  forgetHolderKey();
   records = [];
-  persist();
+  notify();
 };
 
 const subscribe = (l: () => void): (() => void) => {
@@ -343,7 +447,6 @@ export const issueCorrection = async (
   if (!before) return undefined;
 
   const { supersedesFor } = await import('veilcore-records');
-  const { toEnvelope, sealEnvelope } = await import('./envelope');
 
   const nonce = newNonce();
   // The draft is not sealed yet, so it has no commitment. Typed loosely here for that

@@ -8,7 +8,7 @@ import CheckIcon from '@mui/icons-material/Check';
 import RemoveIcon from '@mui/icons-material/Remove';
 import { TEAL } from '../../config/theme';
 
-export const STEP_LABELS = ['Log cultivar', 'Send to a lab', 'Pair DNA', 'Evidence', 'Prove', 'Share / license'];
+export const STEP_LABELS = ['Log cultivar', 'Send to a lab', 'Pair DNA', 'Evidence', 'Disclose', 'Share / license'];
 
 export const ProgressPath: React.FC<{ current: number; skipped?: number[] }> = ({ current, skipped = [] }) => (
   <Stack direction="row" sx={{ alignItems: 'flex-start', width: '100%', maxWidth: 720, mx: 'auto' }}>

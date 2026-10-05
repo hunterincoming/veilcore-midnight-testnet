@@ -137,6 +137,22 @@ export const AttachReport: React.FC<{ record: StrainRecord }> = ({ record }) => 
                 title="Drop your report"
                 hint="Hashed on this device. The file itself is never uploaded."
               />
+              {/* What the signature is over, in full, before it is made (attack round D). */}
+              {record.receivedFromCommitment && (
+                <Box sx={{ p: 1.5, borderRadius: 1, background: 'rgba(255,255,255,0.04)' }}>
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                    Your key signs that this report is about record {record.receivedFrom ?? 'the sender’s record'}, with
+                    fingerprint
+                  </Typography>
+                  <Typography sx={{ fontFamily: 'monospace', fontSize: 12, wordBreak: 'break-all' }}>
+                    {record.receivedFromCommitment}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                    That fingerprint came from the registry when you claimed the transfer. Compare it with the one the
+                    sender gave you if you have it.
+                  </Typography>
+                </Box>
+              )}
               {error && (
                 <Alert severity="warning" variant="outlined">
                   {error}

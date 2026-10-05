@@ -11,31 +11,43 @@ const API_ORIGIN = new URL(
 ).origin;
 
 // The content security policy. Checked against the built site in headless Chromium
-// (every page, zero violations) before it was tightened from the old
-// frame/plugin/base-only policy:
+// (every main page, zero violations; bboard-ui/src/hardening-roundD.test.ts) before each
+// tightening:
 //   script-src   only our own bundles. 'wasm-unsafe-eval' lets the Midnight on-chain
 //                runtime compile its WebAssembly; it does not allow eval() of strings.
 //   style-src    MUI and Emotion inject <style> tags at runtime, so 'unsafe-inline' is
-//                needed for styles (not for scripts).
+//                needed for styles (not for scripts). Rendered documents can no longer
+//                carry style attributes (DocPage forbids them), which is what made this
+//                a phishing-overlay risk.
 //   font-src     the Inter and Space Grotesk files are bundled by @fontsource; no
 //                Google Fonts. data: for any small font Vite inlines.
 //   img-src      data: and blob: for QR codes and certificate images (html-to-image).
-//   connect-src  our own origin (the .wasm file and docs), the registry API, and
-//                raw.githubusercontent.com, which DocPage reads the spec documents from.
-//                If the app starts talking to a Midnight wallet's indexer or proof
-//                server, those origins have to be added here.
+//   connect-src  our own origin (the .wasm file) and the registry API. Nothing on GitHub:
+//                the documents are bundled at build time now (attack round D), and the
+//                old entry allowed every repository on raw.githubusercontent.com. If the
+//                app starts talking to a Midnight indexer or proof server, those origins
+//                have to be added here.
+//   Trusted Types  the one HTML sink (DocPage) goes through a policy that sanitises, so
+//                no other code can hand a string to innerHTML and have it run.
 const csp = [
   "default-src 'self'",
   "script-src 'self' 'wasm-unsafe-eval'",
   "style-src 'self' 'unsafe-inline'",
   "font-src 'self' data:",
   "img-src 'self' data: blob:",
-  `connect-src 'self' ${API_ORIGIN} https://raw.githubusercontent.com`,
+  `connect-src 'self' ${API_ORIGIN}`,
   "worker-src 'self' blob:",
   "frame-ancestors 'none'",
+  // 'self', not 'none': html-to-image sets a same-origin <base> while it inlines the
+  // fonts for the certificate PNG.
   "base-uri 'self'",
   "object-src 'none'",
   "form-action 'self'",
+  "require-trusted-types-for 'script'",
+  // veilcore-docs: DocPage's sanitising policy. dompurify: the policy DOMPurify makes for
+  // its own parsing, created once when it loads.
+  'trusted-types veilcore-docs dompurify',
+  'upgrade-insecure-requests',
 ].join('; ');
 
 export const headers = {
@@ -44,6 +56,13 @@ export const headers = {
   'Referrer-Policy': 'strict-origin-when-cross-origin',
   'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
   'Content-Security-Policy': csp,
+  // Vercel adds HSTS on its own domains; whether it does on the veilcore.org alias was
+  // not verified, so it is set here. Two years, subdomains included. Not "preload": that
+  // is a submission to browser vendors and hard to undo, so it is Hunter's call.
+  'Strict-Transport-Security': 'max-age=63072000; includeSubDomains',
+  // No other origin gets a handle on a veilcore.org window, where the keys live.
+  'Cross-Origin-Opener-Policy': 'same-origin',
+  'Cross-Origin-Resource-Policy': 'same-origin',
 };
 
 writeFileSync(

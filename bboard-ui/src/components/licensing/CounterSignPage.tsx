@@ -1,22 +1,28 @@
-// CounterSignPage (/license/:id/sign) — the licensee's view. They review the terms and
-// counter-sign; in this demo that records the time of signing in the registry and marks
-// the agreement active. It is not a cryptographic signature (licenses.ts sets
-// licenseeSignedAt and nothing else), so the page must not call it one.
+// CounterSignPage (/license/:id/sign) — meant as the licensee's view. It is not one yet:
+// the agreement is read from this browser's own registry set, so the page only opens for
+// the issuer, and the issuer is the only one who can press "sign" (attack round D). It
+// says so, records which holder key pressed it, and never says "both parties have
+// signed" unless two different keys did. Counter-signing by the other party needs the
+// registry to serve the agreement to them and take their key's signature; not built.
 // SPDX-License-Identifier: Apache-2.0
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Alert, Box, Button, Chip, Container, Divider, Paper, Stack, Typography } from '@mui/material';
 import { useParams } from 'react-router-dom';
 import {
   useLicenses,
   getLicense,
   countersignLicense,
+  signedByTwoParties,
+  isIssuer,
+  startLicenseSync,
   effectiveState,
   agreementType,
   agreementRows,
   AGREEMENT_LABEL,
 } from '../../veilcore/licenses';
 import { TEAL } from '../../config/theme';
+import { startRecordSync } from '../../veilcore/records';
 
 const Line: React.FC<{ k: string; v: string }> = ({ k, v }) => (
   <Stack direction="row" spacing={2} sx={{ justifyContent: 'space-between' }}>
@@ -31,8 +37,16 @@ const Line: React.FC<{ k: string; v: string }> = ({ k, v }) => (
 
 export const CounterSignPage: React.FC = () => {
   useLicenses();
+  useEffect(() => {
+    startLicenseSync();
+    startRecordSync();
+  }, []);
   const { id = '' } = useParams();
   const license = getLicense(id);
+  const [issuerHere, setIssuerHere] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (license) void isIssuer(license).then(setIssuerHere);
+  }, [license]);
 
   return (
     <Box sx={{ minHeight: '100vh', background: '#04070a' }}>
@@ -46,7 +60,11 @@ export const CounterSignPage: React.FC = () => {
 
         {!license ? (
           <Paper sx={{ p: 4, textAlign: 'center' }}>
-            <Typography>No license found for this link.</Typography>
+            <Typography sx={{ mb: 1 }}>No agreement found for this link in this browser.</Typography>
+            <Typography variant="body2" color="text.secondary">
+              Agreements can be opened only from the browser that holds them for now. Counter-signing from the other
+              party&apos;s own browser is not built yet.
+            </Typography>
           </Paper>
         ) : (
           <Paper sx={{ p: { xs: 3, md: 4 } }}>
@@ -75,12 +93,19 @@ export const CounterSignPage: React.FC = () => {
 
             {effectiveState(license) === 'sent' && (
               <Stack spacing={1.5}>
+                {issuerHere !== false && (
+                  <Alert severity="warning" variant="outlined">
+                    This browser holds the key that issued this agreement, so pressing the button below records that the
+                    issuer marked it active — not that the other party agreed. They cannot open or sign it from their
+                    own browser yet.
+                  </Alert>
+                )}
                 <Typography variant="body2" color="text.secondary">
-                  In this demo, signing records the time you signed in VeilCore&apos;s registry. It is not a
+                  This records a time and the holder key that pressed it in VeilCore&apos;s registry. It is not a
                   cryptographic signature and not a qualified (eIDAS) electronic signature.
                 </Typography>
-                <Button variant="contained" size="large" onClick={() => countersignLicense(license.id)}>
-                  Review complete — sign &amp; accept
+                <Button variant="contained" size="large" onClick={() => void countersignLicense(license.id)}>
+                  {issuerHere === false ? 'Review complete — sign & accept' : 'Mark active as the issuer (demo)'}
                 </Button>
               </Stack>
             )}
@@ -93,9 +118,12 @@ export const CounterSignPage: React.FC = () => {
 
             {effectiveState(license) === 'active' && (
               <Stack spacing={1.5}>
-                <Alert severity="success" variant="outlined">
-                  Active in this demo: both parties have signed (signing is simulated). The terms are attached to the
-                  record. What they are worth in a dispute is for the parties and, if it comes to it, a court.
+                <Alert severity={signedByTwoParties(license) ? 'success' : 'info'} variant="outlined">
+                  {signedByTwoParties(license)
+                    ? 'Active: issued and counter-signed from two different holder keys (not cryptographic signatures).'
+                    : 'Marked active by the issuer. The other party has not signed anything in VeilCore.'}{' '}
+                  The terms are attached to the record. What they are worth in a dispute is for the parties and, if it
+                  comes to it, a court.
                 </Alert>
                 {/* This button used to set a boolean and render "license proven". No
                     circuit ran, nothing was checked, and the word next to it was

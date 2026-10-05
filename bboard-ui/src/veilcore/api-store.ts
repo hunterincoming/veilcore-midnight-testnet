@@ -6,7 +6,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { Store, SaveRefusal, SaveResult } from './store';
-import { holderKey } from './holder';
+import { holderKey, holderKeyIfAny } from './holder';
 import { readJson, isObject, isString } from './json';
 
 const BASE = import.meta.env.VITE_API_BASE ?? '';
@@ -16,9 +16,13 @@ const pathFor = (key: string): string => (key.includes('license') ? '/api/licens
 
 export const apiStore: Store = {
   async load<T>(key: string, isValid: (v: unknown) => v is T): Promise<T[]> {
+    // No key means this browser has never saved anything: nothing to load, and no
+    // reason to mint an identifier and send it to the registry (attack round D).
+    const k = holderKeyIfAny();
+    if (!k) return [];
     try {
       const res = await fetch(`${BASE}${pathFor(key)}`, {
-        headers: { 'x-holder-key': holderKey() },
+        headers: { 'x-holder-key': k },
       });
       if (!res.ok) return [];
       const parsed = await readJson(res);

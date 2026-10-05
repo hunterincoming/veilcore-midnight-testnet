@@ -30,7 +30,7 @@ export const RecordHistory: React.FC<{ record: StrainRecord }> = ({ record }) =>
         title: 'Sealed',
         detail: record.supersedes
           ? `Issued as a correction to ${record.supersedes.recordId}. Reason given: ${record.supersedes.reason}.`
-          : 'The holder committed to a description of this material. Nothing has altered it since.',
+          : 'The holder committed to a description of this material, dated by the sealing device’s clock.',
       });
 
       if (record.receivedAt && record.receivedFrom) {
@@ -49,18 +49,20 @@ export const RecordHistory: React.FC<{ record: StrainRecord }> = ({ record }) =>
           out.push({
             at: new Date(a.retraction.retractedAt).getTime(),
             title: 'Attestation retracted',
-            detail: `The attester withdrew it. Reason: ${a.retraction.reason}. The attestation remains on record — retraction is not deletion.`,
+            detail: `The attester withdrew it with a retraction signed by their key. Reason: ${a.retraction.reason}. The attestation remains on record — retraction is not deletion.`,
           });
         }
       }
 
       const proof = await proofFor(record.recordFingerprint);
-      if (proof.status === 'anchored' && proof.proof.anchor?.anchoredAt) {
+      // Only a proof checked here (bound to this record, path folding to its root) is
+      // listed, and the anchor in it is the registry's report: this page has not looked
+      // the transaction up, so it is not presented as fixing the date.
+      if (proof.status === 'anchor-reported' && proof.proof.anchor?.anchoredAt) {
         out.push({
           at: new Date(proof.proof.anchor.anchoredAt).getTime(),
-          title: 'Anchored',
-          detail: `Included in batch ${proof.proof.batchId}, whose root was published on ${proof.proof.anchor.chain}. From this point the sealing date does not rest on anyone’s word.`,
-          strong: true,
+          title: 'Anchor reported by the registry',
+          detail: `Included in batch ${proof.proof.batchId} (inclusion checked in this browser). The registry reports the batch root was recorded on ${proof.proof.anchor.chain} ${proof.proof.anchor.network}; this page has not checked the chain, so look the transaction up before relying on the date.`,
         });
       }
 

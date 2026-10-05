@@ -7,8 +7,7 @@ import React, { useState } from 'react';
 import { Alert, Box, Button, Divider, Stack, Typography } from '@mui/material';
 import ScienceIcon from '@mui/icons-material/ScienceOutlined';
 import { getRecord } from '../../veilcore/records';
-import { createLicense, type LicenseTerms } from '../../veilcore/licenses';
-import { fingerprintText } from '../../veilcore/commitment';
+import { createLicense, sealAgreement, type LicenseTerms } from '../../veilcore/licenses';
 import { AgreementTermsFields, emptyTermsFor, type SetTerm } from '../licensing/LicenseTermsFields';
 
 export const Step2LabTransfer: React.FC<{
@@ -30,9 +29,7 @@ export const Step2LabTransfer: React.FC<{
     if (!canSeal) return;
     setBusy(true);
     try {
-      const agreementFingerprint = await fingerprintText(
-        JSON.stringify({ type: 'lab-transfer', terms: t, record: record.recordFingerprint }),
-      );
+      const { agreementFingerprint, agreementSalt } = await sealAgreement('lab-transfer', t, record.recordFingerprint);
       const lic = createLicense({
         type: 'lab-transfer',
         recordId: record.id,
@@ -40,6 +37,7 @@ export const Step2LabTransfer: React.FC<{
         dnaFingerprint: record.dnaFingerprint,
         terms: t,
         agreementFingerprint,
+        agreementSalt,
       });
       onDone(lic.id);
     } finally {

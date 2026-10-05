@@ -31,8 +31,9 @@ import { AppHeader } from './AppHeader';
 import { Step2PairDna } from './wizard/Step2PairDna';
 import { Step3Certificate } from './wizard/Step3Certificate';
 import { Step4CheckReport } from './wizard/Step4CheckReport';
+import { Step5ProveDisclosure } from './wizard/Step5ProveDisclosure';
 
-type Mode = 'overview' | 'pair' | 'cert' | 'check';
+type Mode = 'overview' | 'pair' | 'cert' | 'check' | 'share';
 const fmt = (ms: number) => new Date(ms).toLocaleString();
 
 const Field: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
@@ -50,6 +51,7 @@ export const RecordDetail: React.FC = () => {
   const { id = '' } = useParams();
   const navigate = useNavigate();
   const [mode, setMode] = useState<Mode>('overview');
+  const [exportError, setExportError] = useState<string | null>(null);
   const record = getRecord(id);
 
   if (!record) {
@@ -234,10 +236,29 @@ export const RecordDetail: React.FC = () => {
             <CorrectRecord record={record} />
             {/* The wire format. Any implementation can read this and recompute the
                 commitment without our code, our chain, or our permission. */}
-            <Button variant="text" startIcon={<CodeIcon />} onClick={() => exportEnvelope(record.id)}>
+            <Button
+              variant="text"
+              startIcon={<CodeIcon />}
+              onClick={() => {
+                setExportError(null);
+                exportEnvelope(record.id).catch((e: unknown) =>
+                  setExportError(e instanceof Error ? e.message : 'The record could not be exported.'),
+                );
+              }}
+            >
               Export record
             </Button>
+            {/* The grant is kept on the registry, so it has to be changeable after the
+                wizard, not only during it. */}
+            <Button variant="outlined" startIcon={<ShareIcon />} onClick={() => setMode('share')}>
+              What strangers see
+            </Button>
           </Stack>
+          {exportError && (
+            <Alert severity="error" variant="outlined">
+              {exportError}
+            </Alert>
+          )}
 
           <Box>
             <Typography variant="overline" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
@@ -275,6 +296,7 @@ export const RecordDetail: React.FC = () => {
           {mode === 'pair' && <Step2PairDna recordId={record.id} onBack={back} onDone={back} />}
           {mode === 'cert' && <Step3Certificate recordId={record.id} onBack={back} onDone={back} />}
           {mode === 'check' && <Step4CheckReport onBack={back} onRestart={back} />}
+          {mode === 'share' && <Step5ProveDisclosure recordId={record.id} onBack={back} onDone={back} />}
         </Paper>
       )}
     </Box>

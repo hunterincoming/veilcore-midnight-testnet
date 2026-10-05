@@ -1,8 +1,14 @@
-// Selective disclosure — a recipient-specific proof spec.
+// Selective disclosure — what a stranger with a record's id is shown.
 //
-// The breeder picks exactly which facts a given recipient (a licensee, a lab, a buyer)
-// may see. The genetics are never in this set — they are undisclosable by design.
-// Encoded into the /verify link.
+// The holder picks which facts about a record anyone holding its id may see. The
+// genetics are never in this set — they are undisclosable by design.
+//
+// The choice is a GRANT stored by the registry against the record (PUT
+// /api/records/:id/disclosure, holder key required), not a list in the link. It used to
+// ride in ?show=, which whoever had the link could edit to read parent names and
+// breeding method (attack round D). The registry now answers only what the holder
+// granted; a ?show= in a link can narrow that, never widen it. One grant per record:
+// it applies to everyone who has the id, from any link or certificate QR code.
 //
 // The keys are named after what the recipient LEARNS, not after the field being
 // revealed. `descent-clean` describes an outcome; `lineage` described our internal
@@ -11,46 +17,57 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
+import { holderKey, holderKeyIfAny } from './holder';
+import { readJson, isObject, isString } from './json';
+
+const BASE = import.meta.env.VITE_API_BASE ?? '';
+
 export type DisclosureKey =
   | 'existence' // a sealed record exists, held by this party from this date
-  | 'attestation-status' // whether a second party has confirmed it
+  | 'attestation-status' // whether the holder paired a DNA report
   | 'descent-clean' // free of unmet obligations through declared ancestry
-  | 'sealed-at' // when it was sealed
+  | 'sealed-at' // when the holder says it was sealed
   | 'parent-names' // the parent cultivar names
-  | 'breeding-method' // how it was produced
-  | 'holder-portfolio' // the holder's other records
-  | 'terms-full'; // the terms of the holder's other agreements
+  | 'breeding-method'; // how it was produced
 
 export type Disclosure = Record<DisclosureKey, boolean>;
 
-/** The togglable facts, in display order, with their default on/off state. */
+/**
+ * The facts a holder can grant, in display order, with their default for a record that
+ * has no grant yet. "My other cultivars" and "Terms of my other agreements" are gone:
+ * they were facts about the holder rather than this record, and the registry never
+ * answers them.
+ */
 export const DISCLOSURE_FIELDS: { key: DisclosureKey; label: string; def: boolean }[] = [
   // Labels say what the recipient is actually shown, not the best case.
   { key: 'existence', label: 'Prior possession (shown only once anchored)', def: true },
-  { key: 'attestation-status', label: 'DNA report pairing', def: true },
+  { key: 'attestation-status', label: 'Whether you paired a DNA report', def: true },
   { key: 'descent-clean', label: 'Lineage check status', def: true },
   { key: 'sealed-at', label: 'Date you stated', def: true },
   { key: 'parent-names', label: 'Parent cultivar names', def: false },
   { key: 'breeding-method', label: 'Breeding method', def: false },
-  { key: 'holder-portfolio', label: 'My other cultivars', def: false },
-  { key: 'terms-full', label: 'Terms of my other agreements', def: false },
 ];
 
-/**
- * Links issued before this vocabulary existed carry the old keys. Mapping them keeps
- * every link ever shared working — a verification link that dies because we renamed
- * something is exactly the fragility this format is supposed to remove.
- */
-const LEGACY: Record<string, DisclosureKey> = {
-  own: 'existence',
-  dna: 'attestation-status',
-  lineage: 'descent-clean',
-  sealed: 'sealed-at',
-  parents: 'parent-names',
-  method: 'breeding-method',
-  others: 'holder-portfolio',
-  agreementTerms: 'terms-full',
+/** The registry's older names, which /verify answers in `disclosed`. */
+export const LEGACY_NAME: Record<DisclosureKey, string> = {
+  existence: 'own',
+  'attestation-status': 'dna',
+  'descent-clean': 'lineage',
+  'sealed-at': 'sealed',
+  'parent-names': 'parents',
+  'breeding-method': 'method',
 };
+
+const FROM_LEGACY: Record<string, DisclosureKey> = Object.fromEntries(
+  Object.entries(LEGACY_NAME).map(([k, v]) => [v, k as DisclosureKey]),
+);
+
+/** A key in either spelling, or undefined for anything else. */
+export const toDisclosureKey = (k: string): DisclosureKey | undefined =>
+  DISCLOSURE_FIELDS.some((f) => f.key === k) ? (k as DisclosureKey) : FROM_LEGACY[k];
+
+/** What the recipient is told about a key, by name. */
+export const labelOf = (k: DisclosureKey): string => DISCLOSURE_FIELDS.find((f) => f.key === k)?.label ?? k;
 
 /** Always hidden, never togglable — shown to the recipient as a locked row. */
 export const GENETICS_LABEL = 'The genetics themselves — never disclosed, by design';
@@ -58,20 +75,79 @@ export const GENETICS_LABEL = 'The genetics themselves — never disclosed, by d
 export const defaultDisclosure = (): Disclosure =>
   DISCLOSURE_FIELDS.reduce((acc, f) => ({ ...acc, [f.key]: f.def }), {} as Disclosure);
 
-/** The comma-joined keys of everything switched on — what rides in the ?show= param. */
-export const encodeDisclosure = (d: Disclosure): string =>
-  DISCLOSURE_FIELDS.filter((f) => d[f.key])
-    .map((f) => f.key)
-    .join(',');
+export const noDisclosure = (): Disclosure =>
+  DISCLOSURE_FIELDS.reduce((acc, f) => ({ ...acc, [f.key]: false }), {} as Disclosure);
 
-/** null when there is no ?show= param at all (legacy links keep their original behaviour). */
-export const decodeDisclosure = (s: string | null): Disclosure | null => {
-  if (s === null) return null;
-  const on = new Set(
-    s
-      .split(',')
-      .filter(Boolean)
-      .map((k) => LEGACY[k] ?? k),
-  );
+/** The keys switched on, in display order. */
+export const keysOn = (d: Disclosure): DisclosureKey[] => DISCLOSURE_FIELDS.filter((f) => d[f.key]).map((f) => f.key);
+
+export const disclosureFrom = (keys: readonly string[]): Disclosure => {
+  const on = new Set(keys.map(toDisclosureKey).filter((k): k is DisclosureKey => k !== undefined));
   return DISCLOSURE_FIELDS.reduce((acc, f) => ({ ...acc, [f.key]: on.has(f.key) }), {} as Disclosure);
+};
+
+export type Grant = { show: DisclosureKey[]; updatedAt: string | null };
+
+const isGrantBody = (v: unknown): v is { show: string[]; updatedAt?: string | null } =>
+  isObject(v) &&
+  Array.isArray(v.show) &&
+  v.show.every(isString) &&
+  (v.updatedAt === undefined || v.updatedAt === null || isString(v.updatedAt));
+
+const errorOf = async (res: Response): Promise<string> => {
+  try {
+    const body = await readJson(res);
+    if (isObject(body) && isString(body.error)) return body.error;
+  } catch {
+    /* not JSON */
+  }
+  return `the registry answered ${String(res.status)}`;
+};
+
+/**
+ * What the holder has granted for a record, as the registry holds it. null when there is
+ * no holder key in this browser or the registry could not be asked.
+ */
+export const loadGrant = async (recordId: string): Promise<Grant | { error: string } | null> => {
+  const key = holderKeyIfAny();
+  if (!key) return null;
+  try {
+    const res = await fetch(`${BASE}/api/records/${encodeURIComponent(recordId)}/disclosure`, {
+      headers: { 'x-holder-key': key },
+    });
+    if (!res.ok) return { error: await errorOf(res) };
+    const body = await readJson(res);
+    if (!isGrantBody(body)) return { error: 'unexpected response from the registry' };
+    return { show: keysOn(disclosureFrom(body.show)), updatedAt: body.updatedAt ?? null };
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Store the holder's choice as the record's grant. Replaces the previous one; [] withdraws
+ * everything. Success only on the registry's positive answer echoing what it stored, so
+ * the page never shows a link whose view the registry did not agree to.
+ */
+export const saveGrant = async (recordId: string, d: Disclosure): Promise<Grant | { error: string }> => {
+  const show = keysOn(d);
+  try {
+    const res = await fetch(`${BASE}/api/records/${encodeURIComponent(recordId)}/disclosure`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'x-holder-key': holderKey() },
+      body: JSON.stringify({ show }),
+    });
+    if (!res.ok) return { error: await errorOf(res) };
+    const body = await readJson(res);
+    if (!isGrantBody(body)) return { error: 'unexpected response from the registry' };
+    const stored = keysOn(disclosureFrom(body.show));
+    // The registry stored something other than what was asked: say so rather than show
+    // a preview that does not match what a stranger will see.
+    if (stored.join(',') !== show.join(',')) {
+      return { error: `the registry stored a different set (${stored.join(', ') || 'nothing'}) from the one chosen` };
+    }
+    return { show: stored, updatedAt: body.updatedAt ?? null };
+  } catch {
+    return { error: 'could not reach the registry' };
+  }
 };

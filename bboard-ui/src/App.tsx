@@ -3,7 +3,7 @@
 // verification.
 // SPDX-License-Identifier: Apache-2.0
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Home } from './components/site/Home';
 import { Founders, VerifyLookup } from './components/site/Founders';
 import { Privacy } from './components/site/Privacy';
@@ -22,12 +22,21 @@ import { LicenseDetail } from './components/licensing/LicenseDetail';
 import { CounterSignPage } from './components/licensing/CounterSignPage';
 import { LicensingHub } from './components/licensing/LicensingHub';
 import { SaveProblemBar } from './components/SaveProblemBar';
+import { startRecordSync } from './veilcore/records';
+import { startLicenseSync } from './veilcore/licenses';
 
 const AppLayout: React.FC<React.PropsWithChildren> = ({ children }) => {
   // The landing page is read by people deciding whether to look further (investors,
   // labs, counsel). A dialog over it, in one language, before they have read a line, is
   // the wrong first thing; the question is asked when they start using the app.
   const onLanding = useLocation().pathname === '/';
+  // The app pages load and follow the holder's records; the landing page, the public
+  // verify page and the documents do not (attack round D). Without a holder key in this
+  // browser nothing is requested at all.
+  useEffect(() => {
+    startRecordSync();
+    startLicenseSync();
+  }, []);
   return (
     <Box
       sx={{

@@ -23,8 +23,10 @@ import {
   FEE_NOTE,
   veilcoreFee,
   dealValueOf,
+  signedByTwoParties,
   type License,
 } from '../../veilcore/licenses';
+import { canonicalUrl } from '../../config/network';
 import { getRecord, childrenOf } from '../../veilcore/records';
 import { shortFingerprint } from '../../veilcore/commitment';
 import { AppHeader } from '../AppHeader';
@@ -79,7 +81,7 @@ export const LicenseDetail: React.FC = () => {
   const state = effectiveState(license);
   const type = agreementType(license);
   const record = getRecord(license.recordId);
-  const signLink = `${window.location.origin}/license/${license.id}/sign`;
+  const signLink = canonicalUrl(`/license/${encodeURIComponent(license.id)}/sign`);
   // Breeder-share lineage: if the counterparty may breed with the material, any cultivar
   // they later log with this one as a parent is exposed through the lineage graph.
   const showLineageNote = type === 'breeder-share' && license.terms.mayBreed;
@@ -181,7 +183,9 @@ export const LicenseDetail: React.FC = () => {
               </Typography>
               <Button
                 variant="contained"
-                onClick={() => (issueLicense(license.id), setToast('Issued — send the link to your licensee.'))}
+                onClick={() =>
+                  void issueLicense(license.id).then(() => setToast('Issued — send the link to your licensee.'))
+                }
               >
                 Issue &amp; sign
               </Button>
@@ -191,8 +195,8 @@ export const LicenseDetail: React.FC = () => {
           {state === 'sent' && (
             <Stack spacing={1.5}>
               <Alert severity="warning" variant="outlined">
-                You&apos;ve signed. Awaiting the licensee&apos;s counter-signature — the license is{' '}
-                <b>not active yet</b>.
+                Issued. Awaiting the licensee&apos;s counter-signature — the license is <b>not active yet</b>. The
+                counter-sign link opens only in your own browser for now; the licensee cannot sign from theirs yet.
               </Alert>
               <TextField
                 label="Counter-sign link (send to licensee)"
@@ -209,7 +213,7 @@ export const LicenseDetail: React.FC = () => {
                 >
                   Copy link
                 </Button>
-                <Button component={RouterLink} to={`/license/${license.id}/sign`} variant="text">
+                <Button component={RouterLink} to={`/license/${encodeURIComponent(license.id)}/sign`} variant="text">
                   Open counter-sign page (demo)
                 </Button>
                 <Button color="error" variant="text" onClick={onRevoke}>
@@ -222,7 +226,9 @@ export const LicenseDetail: React.FC = () => {
           {state === 'active' && (
             <Stack spacing={1.5}>
               <Alert severity="success" variant="outlined">
-                Active — both parties signed. Effective{' '}
+                {signedByTwoParties(license)
+                  ? 'Active — issued and counter-signed from two different holder keys. Effective '
+                  : 'Marked active from the issuer’s own browser — the other party has not signed anything in VeilCore. Effective '}
                 {new Date(license.licenseeSignedAt ?? license.createdAt).toLocaleDateString()}.
               </Alert>
               <Stack direction="row" spacing={1.5} sx={{ flexWrap: 'wrap' }}>

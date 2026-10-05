@@ -1,7 +1,11 @@
-// DisclosedFacts — renders exactly the facts a recipient is allowed to see under a given
-// selective-disclosure spec, plus the always-locked genetics row and an honest note that
-// the withheld fields still exist and are provable. Shared by the wizard's live preview and
-// the public /verify page so the preview is byte-for-byte what the recipient gets.
+// The facts a holder has chosen to share about a record, as a stranger sees them.
+//
+// One component renders both the public verify page (from what the registry answered)
+// and the holder's preview in step 5 (from the record and the switches), so the preview
+// says what the page will say. Facts the holder did not share are named as "not
+// shared", never shown as a negative finding: an absent field from the registry means
+// the holder did not share it, not "no" (attack round D: "DNA report not yet paired" was
+// printed for a record whose holder had paired one and not shared it).
 // SPDX-License-Identifier: Apache-2.0
 
 import React from 'react';
@@ -9,16 +13,15 @@ import { Divider, Stack, Typography } from '@mui/material';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CancelIcon from '@mui/icons-material/CancelOutlined';
 import LockIcon from '@mui/icons-material/LockOutlined';
-import { allRecords } from '../../veilcore/records';
-import { allLicenses, agreementType, AGREEMENT_LABEL } from '../../veilcore/licenses';
 import { shortFingerprint } from '../../veilcore/commitment';
-import { DISCLOSURE_FIELDS, GENETICS_LABEL, type Disclosure } from '../../veilcore/disclosure';
+import { DISCLOSURE_FIELDS, GENETICS_LABEL, LEGACY_NAME, keysOn, type Disclosure } from '../../veilcore/disclosure';
 import type { StrainRecord } from '../../veilcore/records';
 import { TEAL } from '../../config/theme';
+import { networkLabel, isTestNetwork } from '../../config/network';
 
-const fmtDate = (ms: number) => new Date(ms).toLocaleDateString();
+const fmt = (t: number | string) => new Date(t).toLocaleString();
 
-const Fact: React.FC<{ ok?: boolean; children: React.ReactNode }> = ({ ok = true, children }) => (
+export const Fact: React.FC<{ ok?: boolean; children: React.ReactNode }> = ({ ok = true, children }) => (
   <Stack direction="row" spacing={1} sx={{ alignItems: 'flex-start' }}>
     {ok ? (
       <CheckCircleIcon sx={{ fontSize: 18, color: TEAL, mt: '2px' }} />
@@ -31,67 +34,91 @@ const Fact: React.FC<{ ok?: boolean; children: React.ReactNode }> = ({ ok = true
   </Stack>
 );
 
-export const DisclosedFacts: React.FC<{ record: StrainRecord; disclosure: Disclosure }> = ({ record, disclosure }) => {
-  const parents = (record.parents ?? []).map((p) => p.name).filter(Boolean);
-  const otherRecords = allRecords().filter((r) => r.id !== record.id);
-  const otherAgreements = allLicenses().filter((l) => l.recordId !== record.id);
-  const withheld = DISCLOSURE_FIELDS.filter((f) => !disclosure[f.key]).map((f) => f.label);
+/** What the registry sends for the shared facts (the older key names it answers in). */
+export type SharedFactsData = {
+  /** The shared keys, in the registry's older names: own, dna, lineage, sealed, parents, method. */
+  disclosed: readonly string[];
+  priorPossession?: boolean;
+  anchorNetwork?: string;
+  dnaPairedByHolder?: boolean;
+  lineageIntact?: boolean | null;
+  sealedAt?: number | string;
+  registryFirstSeen?: string | null;
+  parents?: string[];
+  breedingMethod?: string | null;
+};
 
-  const anyOn = DISCLOSURE_FIELDS.some((f) => disclosure[f.key]);
-
+/** The shared facts, then what was not shared, then the genetics row. */
+export const SharedFacts: React.FC<{ data: SharedFactsData; preview?: boolean }> = ({ data, preview = false }) => {
+  const shared = new Set(data.disclosed);
+  const notShared = DISCLOSURE_FIELDS.filter((f) => !shared.has(LEGACY_NAME[f.key])).map((f) => f.label);
   return (
     <Stack spacing={1.25}>
-      {!anyOn && (
+      {shared.has('own') &&
+        (preview ? (
+          <Fact ok={false}>
+            Prior possession: shown only once the registry reports this record&apos;s batch anchored on a ledger, and
+            then as the registry&apos;s report.
+          </Fact>
+        ) : data.priorPossession ? (
+          <Fact ok={false}>
+            Prior possession: the registry reports this record&apos;s batch anchored on{' '}
+            {networkLabel(data.anchorNetwork ?? '')}. This page has not checked the chain.
+            {isTestNetwork(data.anchorNetwork ?? '')
+              ? ' A test network can be reset and its dates carry no evidential weight.'
+              : ''}
+          </Fact>
+        ) : (
+          <Fact ok={false}>
+            Prior possession: not yet anchored on a ledger, so its date rests on this registry&apos;s records.
+          </Fact>
+        ))}
+      {shared.has('dna') && (
+        <Fact ok={false}>
+          {data.dnaPairedByHolder
+            ? 'The holder paired a DNA report fingerprint with this record. Not confirmed by a lab.'
+            : 'The holder has not paired a DNA report with this record.'}
+        </Fact>
+      )}
+      {shared.has('lineage') &&
+        (data.lineageIntact === true ? (
+          <Fact>Lineage intact — unbroken chain back to the sealed record.</Fact>
+        ) : (
+          <Fact ok={false}>
+            Lineage: not checked on this page. The registry does not walk descent for a shared link.
+          </Fact>
+        ))}
+      {shared.has('sealed') && data.sealedAt !== undefined && (
+        <Fact ok={false}>
+          Date stated by the holder: {fmt(data.sealedAt)}. This is the holder&apos;s own statement.
+          {data.registryFirstSeen ? ` First stored by this registry: ${fmt(data.registryFirstSeen)}.` : ''}
+        </Fact>
+      )}
+      {shared.has('parents') && (
+        <Fact ok={false}>
+          {data.parents?.length
+            ? `Parents, as the holder states them: ${data.parents.join(' × ')}`
+            : 'No parents recorded.'}
+        </Fact>
+      )}
+      {shared.has('method') && (
+        <Fact ok={false}>
+          {data.breedingMethod
+            ? `Breeding method, as the holder states it: ${data.breedingMethod}`
+            : 'No breeding method recorded.'}
+        </Fact>
+      )}
+
+      {shared.size === 0 && (
         <Typography variant="body2" color="text.secondary">
-          Nothing selected — the recipient would see only that this record exists. Flip a toggle to share a fact.
+          The holder has shared nothing beyond the basics above.
         </Typography>
       )}
 
-      {disclosure['existence'] && (
-        <Fact>Prior possession: shown as proven once the record is anchored on a public ledger.</Fact>
-      )}
-      {disclosure['attestation-status'] && (
-        <Fact ok={!!record.dnaFingerprint}>
-          {record.dnaFingerprint
-            ? 'DNA report fingerprint paired by you (not lab-confirmed).'
-            : 'DNA report not yet paired.'}
-        </Fact>
-      )}
-      {/* Says what the verify page will say. It printed "Lineage intact" here while the
-          registry answers that descent is not checked on a shared link. */}
-      {disclosure['descent-clean'] && (
-        <Fact ok={false}>Lineage: the recipient is told it is not checked on this link, not that it is intact.</Fact>
-      )}
-      {disclosure['sealed-at'] && (
-        <Fact>
-          Date you stated: {fmtDate(record.loggedAt)} — shown as your own statement, beside the date this registry first
-          saw the record.
-        </Fact>
-      )}
-
-      {disclosure['parent-names'] && (
-        <Fact ok={parents.length > 0}>
-          {parents.length > 0 ? `Parents: ${parents.join('  ×  ')}` : 'No parent cultivars recorded.'}
-        </Fact>
-      )}
-      {disclosure['breeding-method'] && (
-        <Fact ok={!!record.breedingMethod}>Breeding method: {record.breedingMethod || 'not recorded'}.</Fact>
-      )}
-      {disclosure['holder-portfolio'] && (
-        <Fact ok={otherRecords.length > 0}>
-          {otherRecords.length > 0
-            ? `My other cultivars: ${otherRecords.map((r) => r.strainName).join(', ')}.`
-            : 'No other cultivars logged.'}
-        </Fact>
-      )}
-      {disclosure['terms-full'] && (
-        <Fact ok={otherAgreements.length > 0}>
-          {otherAgreements.length > 0
-            ? `My other agreements: ${otherAgreements
-                .map((l) => `${AGREEMENT_LABEL[agreementType(l)]} → ${l.terms.licensee || 'unnamed'}`)
-                .join('; ')}.`
-            : 'No other agreements on file.'}
-        </Fact>
+      {notShared.length > 0 && (
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+          Not shared by the holder: {notShared.join('; ')}.
+        </Typography>
       )}
 
       <Divider sx={{ my: 0.5 }} />
@@ -101,16 +128,27 @@ export const DisclosedFacts: React.FC<{ record: StrainRecord; disclosure: Disclo
           {GENETICS_LABEL}
         </Typography>
       </Stack>
-
-      {withheld.length > 0 && (
-        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-          Also sealed and provable on request — deliberately withheld from this recipient: {withheld.join(', ')}.
-        </Typography>
-      )}
-
-      <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-        Fingerprint {shortFingerprint(record.recordFingerprint)} · no genetics disclosed.
-      </Typography>
     </Stack>
   );
 };
+
+/** The holder's preview: what the verify page will show under these switches. */
+export const DisclosedFacts: React.FC<{ record: StrainRecord; disclosure: Disclosure }> = ({ record, disclosure }) => (
+  <Stack spacing={1.25}>
+    <Typography variant="body2" color="text.secondary">
+      Always shown: the cultivar name, the record id, its fingerprint ({shortFingerprint(record.recordFingerprint)}),
+      when the registry first stored it, and what this page could check about its batch and any signed attestations.
+    </Typography>
+    <SharedFacts
+      preview
+      data={{
+        disclosed: keysOn(disclosure).map((k) => LEGACY_NAME[k]),
+        dnaPairedByHolder: Boolean(record.dnaFingerprint),
+        lineageIntact: null,
+        sealedAt: record.loggedAt,
+        parents: (record.parents ?? []).map((p) => p.name).filter(Boolean),
+        breedingMethod: record.breedingMethod || null,
+      }}
+    />
+  </Stack>
+);

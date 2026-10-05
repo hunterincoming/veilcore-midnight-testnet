@@ -49,3 +49,13 @@ export const explorerFor = (n: string = NETWORK): string | undefined => {
 
 /** Demo mode: no contract address configured, so nothing in the app writes to a chain. */
 export const DEMO_MODE = !(import.meta.env.VITE_VEILCORE_CONTRACT_ADDRESS as string | undefined);
+
+/**
+ * The origin every shared link and QR code points at. Links used to be built from
+ * window.location.origin, so a certificate printed from a preview deployment, or from
+ * a copy of the static bundle hosted anywhere, sent whoever scanned it to that host.
+ */
+export const CANONICAL_ORIGIN = 'https://veilcore.org';
+
+/** An absolute link on the canonical site, for a path that starts with "/". */
+export const canonicalUrl = (path: string): string => `${CANONICAL_ORIGIN}${path}`;

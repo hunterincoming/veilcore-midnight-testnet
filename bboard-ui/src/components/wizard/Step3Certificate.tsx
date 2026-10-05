@@ -15,7 +15,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { toPng } from 'html-to-image';
 import { getRecord, checkIntegrity, type IntegrityCheck } from '../../veilcore/records';
 import { proofFor, type ProofState } from '../../veilcore/proofs';
-import { NETWORK, networkLabel } from '../../config/network';
+import { NETWORK, networkLabel, canonicalUrl } from '../../config/network';
 import { useLicenses, activeLicenseCount, licensesForRecord } from '../../veilcore/licenses';
 import { shortFingerprint } from '../../veilcore/commitment';
 import { TEAL } from '../../config/theme';
@@ -66,16 +66,27 @@ export const Step3Certificate: React.FC<{ recordId: string; onDone: () => void; 
   };
   const integrityLine = integrityText[integrity];
 
+  // Only a proof checked here (bound to this record, folding to its root) is printed,
+  // and its anchor as the registry's report. Nothing on a certificate says "anchored"
+  // on the registry's word alone (attack round D).
   const anchorLine =
     anchor === 'checking'
       ? 'checking…'
-      : anchor.status === 'anchored'
-        ? `anchored on ${networkLabel(anchor.proof.anchor?.network ?? NETWORK)} · tx ${anchor.proof.anchor?.txHash ?? ''}`
+      : anchor.status === 'anchor-reported'
+        ? `Not confirmed. In batch ${anchor.proof.batchId} (inclusion checked); the registry reports the root on ${networkLabel(anchor.proof.anchor?.network ?? NETWORK)}, tx ${anchor.proof.anchor?.txHash ?? ''}. Look it up before relying on the date.`
         : anchor.status === 'pending'
           ? 'Not yet: in a batch awaiting anchoring. Until then, its date rests on this registry’s records.'
           : 'Not yet. Until it is anchored, its date rests on this registry’s records.';
 
-  const verifyLink = `${window.location.origin}/verify/${record.id}`;
+  const verifyLink = canonicalUrl(`/verify/${encodeURIComponent(record.id)}`);
+
+  // What a delivery confirmation actually is. The registry writes it when someone
+  // holding the sender's claim code takes delivery; it carries no lab name and no
+  // signature, so "✓ <lab>" printed "✓ undefined" for a real one and a typed-in name for
+  // a forged one. Signed attestations are listed on the record page, checked there.
+  const deliveryLine = record.attestation
+    ? `Delivery taken via a transfer code on ${new Date(record.attestation.attestedAt).toLocaleDateString()} (unsigned; does not identify who)`
+    : 'none recorded';
 
   const downloadJson = () => {
     const data = {
@@ -83,6 +94,7 @@ export const Step3Certificate: React.FC<{ recordId: string; onDone: () => void; 
       licenses: licensesForRecord(record.id),
       integrity: integrityLine,
       anchored: anchorLine,
+      secondParty: deliveryLine,
       sealedAtSource: "the sealing device's clock",
       generatedAt: new Date().toISOString(),
       note: 'VeilCore record summary. No genetic data or lab files; it contains the record details.',
@@ -124,8 +136,8 @@ export const Step3Certificate: React.FC<{ recordId: string; onDone: () => void; 
         </Typography>
         <Typography variant="body2" color="text.secondary">
           A summary for your records and your lawyer: the sealed record, a fresh integrity check, whether it is
-          anchored, the report pairing, any lab attestation and active licenses. It contains the record details but no
-          genetic data or lab files.
+          anchored, the report pairing, any delivery confirmation and active licenses. It contains the record details
+          but no genetic data or lab files.
         </Typography>
       </Box>
 
@@ -165,7 +177,7 @@ export const Step3Certificate: React.FC<{ recordId: string; onDone: () => void; 
               <Box
                 component="span"
                 sx={{
-                  color: anchor !== 'checking' && anchor.status === 'anchored' ? TEAL : 'text.secondary',
+                  color: 'text.secondary',
                   wordBreak: 'break-all',
                 }}
               >
@@ -191,7 +203,7 @@ export const Step3Certificate: React.FC<{ recordId: string; onDone: () => void; 
                 {integrityLine}
               </Box>
             </Field>
-            <Field label="Lab attestation">{record.attestation ? `✓ ${record.attestation.lab}` : 'awaiting'}</Field>
+            <Field label="Second-party confirmation">{deliveryLine}</Field>
             <Field label="Active licenses">{activeLicenseCount(record.id)}</Field>
             <Field label="Record ID">
               <Box component="span" sx={{ fontFamily: '"Space Grotesk", monospace' }}>
@@ -231,7 +243,7 @@ export const Step3Certificate: React.FC<{ recordId: string; onDone: () => void; 
           Download data (JSON)
         </Button>
         <Button variant="contained" onClick={onDone}>
-          Continue — prove what you choose
+          Continue — choose what strangers see
         </Button>
       </Stack>
 

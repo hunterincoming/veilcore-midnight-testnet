@@ -76,10 +76,12 @@ export class WalletStateFile {
     }
     try {
       if (!blob.subarray(0, MAGIC.length).equals(MAGIC)) throw new Error('not a wallet-state file');
+      // Header, salt, iv and a full 16-byte tag, then at least one byte of ciphertext.
+      if (blob.length <= 49) throw new Error('damaged');
       const salt = blob.subarray(5, 21);
       const iv = blob.subarray(21, 33);
       const tag = blob.subarray(33, 49);
-      const decipher = createDecipheriv('aes-256-gcm', this.key(salt), iv);
+      const decipher = createDecipheriv('aes-256-gcm', this.key(salt), iv, { authTagLength: 16 });
       decipher.setAuthTag(tag);
       const plain = Buffer.concat([decipher.update(blob.subarray(49)), decipher.final()]);
       const parsed = JSON.parse(plain.toString('utf8')) as Partial<SavedWalletState>;

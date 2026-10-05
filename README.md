@@ -39,7 +39,7 @@ bboard-ui/    # The web app — React + Vite
 Requires **Node 24** (`.nvmrc` pins `24.11.1`). No wallet, faucet or Docker needed for the app.
 
 ```bash
-npm install --legacy-peer-deps   # from the repo root (npm workspaces)
+npm ci                           # from the repo root: installs exactly what package-lock.json pins
 cd bboard-ui
 npm run dev                      # http://localhost:5173
 ```
@@ -51,11 +51,13 @@ Log a record, pair a DNA report, view the evidence package, issue and countersig
 `contract/src/managed/` is gitignored, so a fresh clone has no compiled contract. You need the Compact toolchain, and the packages build in order.
 
 ```bash
-# 1. Install the Compact toolchain
+# 1. Install the Compact toolchain: a fixed installer release, then the compiler version
+#    the deployed contract was built with (docs/fingerprints.md). Not "latest" for either.
 curl --proto '=https' --tlsv1.2 -LsSf \
-  https://github.com/midnightntwrk/compact/releases/latest/download/compact-installer.sh | sh
+  https://github.com/midnightntwrk/compact/releases/download/compact-v0.5.3/compact-installer.sh | sh
 # open a new terminal, then:
-compact update
+compact update 0.31.1
+compact compile --version        # must print 0.31.1
 
 # 2. Compile the contract (generates contract/src/managed/) and run its tests
 cd contract && npm run compact && npm test
@@ -129,6 +131,8 @@ Midnight's standards repository.
 ## Deploying the web app
 
 Always use `--prebuilt`. A bare `vercel --prod` builds from source and has broken production before.
+
+The script runs the Vercel CLI pinned in `tools/vercel/` (exact version, own lockfile), never `npx vercel`, which would download whatever version is newest at deploy time. To upgrade it, change the version in `tools/vercel/package.json` and run `npm install --package-lock-only` in that folder.
 
 ```bash
 npm run deploy:prod

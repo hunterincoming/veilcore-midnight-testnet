@@ -40,7 +40,7 @@ confirmed from the code.
    local chain also runs in Docker).
 2. Node 24 is installed (`node --version` shows v24).
 3. In Terminal, from the repository folder, packages are installed:
-   `npm install --legacy-peer-deps`
+   `npm ci`
 4. The contracts are compiled: the folders `contract/src/managed/veilcore` and
    `contract/src/managed/veilcore-claims` exist. If not:
    `cd contract && npm run compact` (compiles both; needs the Compact toolchain; see README.md).

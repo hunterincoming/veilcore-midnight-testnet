@@ -55,3 +55,11 @@ yarn-error.log*
 # costs 27 million hashes at the production depth and a few hundred at depth 8.
 # Tracked it would put 620 lines of generated output into every review.
 contract/src/lineage-shallow.compact
+
+# npm workspaces install from the root package-lock.json only. A lockfile inside a
+# workspace is never used, goes stale, and fills the Dependabot list with alerts for
+# versions nothing installs.
+/api/package-lock.json
+/bboard-cli/package-lock.json
+/bboard-ui/package-lock.json
+/contract/package-lock.json

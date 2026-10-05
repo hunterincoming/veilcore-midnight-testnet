@@ -56,6 +56,49 @@ export const resolveNetwork = (): string | null => {
   }
 };
 
+/**
+ * The VeilCore contract's address on mainnet, as the filed deployment record names it.
+ * Empty until the mainnet deploy: set it then, in a reviewed commit, to the address the
+ * deploy printed, and put the same address in the deployment record. Until it is set,
+ * joining on mainnet is refused (deploying, and finishing a deploy, are not joins by
+ * address and still work).
+ *
+ * Why: a contract with this build's exact circuits can be deployed by anyone, with any
+ * starting state (round D, D-1). Matching verifier keys show the code; only the address
+ * says which contract is VeilCore's.
+ */
+export const MAINNET_VEILCORE_ADDRESS = '';
+
+/**
+ * Throw unless the VeilCore contract at `address` may be joined on the configured
+ * network. Development networks accept any address; every other network, mainnet
+ * included, or no network at all, accepts only MAINNET_VEILCORE_ADDRESS, and nothing
+ * while that is empty. The same allowlist as the record gate and assertClaimsDeployAllowed.
+ */
+export const assertJoinAllowed = (
+  address: string,
+  logger?: Logger,
+  pinned: string = MAINNET_VEILCORE_ADDRESS,
+): void => {
+  const network = resolveNetwork();
+  if (network !== null && RECORD_NOT_REQUIRED.has(network)) return;
+  const want = pinned.trim().toLowerCase().replace(/^0x/, '');
+  if (want === '') {
+    throw new Error(
+      `Refusing to join a VeilCore contract on ${network ?? 'an unknown network'}: this build pins no address yet ` +
+        '(MAINNET_VEILCORE_ADDRESS in api/src/deploy-guard.ts is empty until the deployed address is in the filed ' +
+        'deployment record). Nothing was sent.',
+    );
+  }
+  if (address.trim().toLowerCase().replace(/^0x/, '') !== want) {
+    throw new Error(
+      `Refusing to join ${address}: on ${network ?? 'this network'} the VeilCore contract is ${want} ` +
+        '(the deployment record). Another address can carry the same circuits with a forged starting state. Nothing was sent.',
+    );
+  }
+  logger?.info(`Contract address matches the pinned VeilCore address for ${network ?? 'this network'}.`);
+};
+
 /** Throw unless `contractName` may be deployed to the configured network. */
 export const assertDeploymentRecordCurrent = (contractName: string, logger?: Logger): void => {
   const outcome = decide(resolveNetwork(), process.env[REVISION_VAR]);

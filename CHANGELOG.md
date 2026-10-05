@@ -6,3 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+### Security (round D, 4 Oct 2026: operator tooling before mainnet)
+
+- The maintenance key and one-call secrets (recovery secret, incoming record secret,
+  licence secret, presentation challenge) are never written to the local private-state
+  store; they are held in memory for the call. "Finish a deploy" always asks for the key
+  from paper.
+- The private-state store moved from `bboard-cli/midnight-level-db` to
+  `~/.veilcore/<network>/private-state` (folders 0700, files 0600). An old folder is
+  detected and its live entries can be copied (without maintenance keys); the old folder
+  is never changed or deleted by the CLI.
+- Replacing the recovery secret checks whether it landed, and says which secrets to keep.
+- Join checks the contract started from the constructor's state; on mainnet it accepts
+  only the pinned address (`MAINNET_VEILCORE_ADDRESS`, empty until the deploy).
+- A secret change is believed landed only on two agreeing chain reads 30 s apart; new
+  menu options 41 (use a record secret you hold) and 42 (check a recovery secret).
+- State-stream errors no longer crash the CLI; rule 5 refuses presentations older than an
+  hour or older than their challenge; circuit names match exactly; the password is kept
+  out of the environment and git runs with a minimal environment; the main contract
+  retires provably (empty committee).

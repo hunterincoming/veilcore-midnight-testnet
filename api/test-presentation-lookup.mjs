@@ -32,5 +32,10 @@ await refuses('a look-alike contract', call({ contractActions: [{ address: THEIR
 await refuses('a later transaction (a seal)', call({ contractActions: [{ address: OURS, state: STATE, entryPoint: 'sealRevocations' }] }), 'not a single licence presentation');
 await refuses('a presentation bundled with a seal', call({ contractActions: [{ address: OURS, state: STATE, entryPoint: 'proveLicense' }, { address: OURS, state: STATE, entryPoint: 'sealRevocations' }] }), 'not a single licence presentation');
 await refuses('two presentations in one transaction', call({ contractActions: [{ address: OURS, state: STATE, entryPoint: 'proveLicense' }, { address: OURS, state: STATE, entryPoint: 'proveLicense' }] }), 'not a single licence presentation');
+// Round D (D-5): operation names are case-sensitive; only the hex form's digits are not.
+await refuses('another operation whose name differs only in case', call({ contractActions: [{ address: OURS, state: STATE, entryPoint: 'ProveLicense' }] }), 'not a single licence presentation');
+answer(call({ contractActions: [{ address: OURS, state: STATE, entryPoint: Buffer.from('proveLicense').toString('hex').toUpperCase() }] }));
+assert.equal((await presentationState('http://indexer', OURS, TX)).protocolVersion, 1n);
+console.log('accepted: the same name given as hex, in capitals');
 await assert.rejects(() => presentationState('http://indexer', OURS, 'not-hex'), /not a transaction id/);
 console.log('refused, as it should be: a malformed id\n\nall lookup checks pass');

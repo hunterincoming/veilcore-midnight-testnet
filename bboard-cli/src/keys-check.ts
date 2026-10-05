@@ -32,10 +32,27 @@ const artefacts = (zkConfigPath: string): string[] => {
   return [...list('keys', /\.(prover|verifier)$/), ...list('zkir', /\.b?zkir$/), 'contract/index.js'];
 };
 
+/**
+ * The only environment git gets: enough to find itself and the user's git config, and
+ * nothing else. Not the private-state password, the Blockfrost project id, or anything
+ * else this process holds (round D, D-6): git runs helpers on its own behalf
+ * (core.fsmonitor, hooks, a wrapper on PATH), and they would inherit it.
+ */
+export const gitEnvironment = (): NodeJS.ProcessEnv => {
+  const env: NodeJS.ProcessEnv = { PATH: process.env.PATH ?? '/usr/bin:/bin', GIT_CONFIG_NOSYSTEM: '1' };
+  if (process.env.HOME !== undefined) env.HOME = process.env.HOME;
+  return env;
+};
+
 /** Throws, naming the problem, unless the local build is exactly the committed one. */
 export const assertKeysMatchRecord = (zkConfigPath: string, repoRoot: string): number => {
   const table = path.join(repoRoot, 'docs', 'fingerprints.md');
-  const git = (...args: string[]): string => execFileSync('git', args, { cwd: repoRoot, encoding: 'utf8' });
+  const git = (...args: string[]): string =>
+    execFileSync('git', ['-c', 'core.fsmonitor=false', '-c', 'core.hooksPath=/dev/null', ...args], {
+      cwd: repoRoot,
+      encoding: 'utf8',
+      env: gitEnvironment(),
+    });
   let committed: string;
   try {
     committed = git('show', 'HEAD:docs/fingerprints.md');

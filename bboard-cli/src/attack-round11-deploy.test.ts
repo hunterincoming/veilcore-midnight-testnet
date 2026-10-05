@@ -18,7 +18,7 @@ import { type Logger } from 'pino';
 import { LandedButUnconfirmedError, RevokedLicenceError, VeilcoreAPI } from '../../api/src/veilcore-api';
 import { C, VeilcoreSimulator, as, secret } from '../../contract/src/test/veilcore-simulator';
 import { ChallengeBook } from '../../contract/src/verify';
-import { passwordProblem, settlePassword } from './password';
+import { forgetPassword, passwordProblem, privateStatePassword, settlePassword } from './password';
 import { parseSecret32, parseSigningKey } from './prompt';
 import { redactThisSession, scrub } from './logger-utils';
 import { isContractRefusal } from './smoke';
@@ -48,6 +48,10 @@ const ledgerHeadedBy = (origin: Uint8Array, head: Uint8Array) => ({
 const fakeApi = (
   calls: Record<string, (...a: unknown[]) => Promise<unknown>>,
   maintenance?: () => Promise<unknown>,
+  // Round D: retirement is provable (an empty committee); it reads the authority first.
+  queryContractState: () => Promise<unknown> = async () => ({
+    maintenanceAuthority: { committee: [], threshold: 1, counter: 1n },
+  }),
 ) => {
   let ps: Record<string, unknown> = { geneticSecret: old };
   const signingKeys = new Map<string, string>();
@@ -62,7 +66,7 @@ const fakeApi = (
       getSigningKey: async (a: string) => signingKeys.get(a),
       removeSigningKey: async (a: string) => void signingKeys.delete(a),
     },
-    publicDataProvider: { contractStateObservable: () => NEVER },
+    publicDataProvider: { contractStateObservable: () => NEVER, queryContractState },
   };
   const deployed = {
     deployTxData: { public: { contractAddress: ADDR } },
@@ -71,7 +75,8 @@ const fakeApi = (
   };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const api = new (VeilcoreAPI as any)(deployed, providers) as VeilcoreAPI;
-  api.landedCheck = { tries: 2, intervalMs: 1 };
+  // Round D: a landed change is believed on two agreeing reads, confirmGapMs apart.
+  api.landedCheck = { tries: 2, intervalMs: 1, confirmGapMs: 1 };
   /** What the chain shows when the API looks. */
   const chain = (l: unknown): void => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -144,9 +149,16 @@ describe('round 11: operator tooling', () => {
 
   it('R11-3 FIXED: a failed retire (menu 33) does not leave the typed authority key in the local store', async () => {
     const realKey = 'cd'.repeat(32);
-    const { api, signingKeys } = fakeApi({}, async () => {
-      throw new Error('ReplaceMaintenanceAuthorityTxFailedError / network down');
-    });
+    const { api, signingKeys } = fakeApi(
+      {},
+      async () => {
+        throw new Error('ReplaceMaintenanceAuthorityTxFailedError / network down');
+      },
+      // Round D: the provable retirement fails reading the authority, before sending.
+      async () => {
+        throw new Error('network down');
+      },
+    );
     await expect(api.retireMaintenanceAuthority(realKey)).rejects.toThrow();
     expect(signingKeys.has(ADDR)).toBe(false); // design.md: it "should not also sit on this machine"
   });
@@ -196,7 +208,10 @@ describe('R11-4 FIXED: the private-state password is checked with midnight-js ru
   it('typed: the same good password twice is taken', async () => {
     const answers = ['Tq7#mZ9!pL2@vX5$', 'Tq7#mZ9!pL2@vX5$'];
     expect(await settlePassword(async () => answers.shift() ?? '', silent)).toBe(true);
-    expect(process.env.VEILCORE_PRIVATE_STATE_PASSWORD).toBe('Tq7#mZ9!pL2@vX5$');
+    // Round D (D-6): held in memory, never put in the environment for child processes.
+    expect(privateStatePassword()).toBe('Tq7#mZ9!pL2@vX5$');
+    expect(process.env.VEILCORE_PRIVATE_STATE_PASSWORD).toBeUndefined();
+    forgetPassword();
   });
 });
 

@@ -116,8 +116,11 @@ type RetireProviders = SubmitTxProviders<Contract.Any, Contract.ProvableCircuitI
 
 /**
  * Replace the maintenance authority with an empty committee (see above), confirm it on
- * chain, then delete the stored key. Needs the current authority's key in the local
- * store. Safe to run again: an authority already retired this way is left alone.
+ * chain, then delete the stored key. Needs the current authority's key in the provider
+ * (the CLI keeps the main contract's in memory only, typed from paper). No new key is
+ * made, so nothing new is stored. Safe to run again: an authority already retired this
+ * way is left alone. Used for both contracts since round D; the one-key retirement
+ * above is kept for reference and is no longer used.
  */
 export const retireMaintenanceAuthorityProvably = async (
   providers: RetireProviders,
@@ -157,8 +160,8 @@ export const retireMaintenanceAuthorityProvably = async (
   for (let i = 0; !isProvablyRetired(await read()); i++) {
     if (i >= 30)
       throw new Error(
-        'The retirement was sent but the indexer does not show it after a minute. Read the contract state again later; ' +
-          'the maintenance key is kept on this computer until it does.',
+        'The retirement was sent but the indexer does not show it after a minute. Read the contract state again later: ' +
+          'if it shows an empty committee, it is done; if not, retire again with the same key.',
       );
     await new Promise((r) => setTimeout(r, waitMs));
   }

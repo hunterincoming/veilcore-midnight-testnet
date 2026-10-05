@@ -4,7 +4,7 @@
 // languages; it does not show that someone else could implement the format from the
 // document alone, and this page says so. It is also the page a body evaluating the
 // format will look for: what exists, how it is checked, and how to add an implementation.
-// The vector count is SDK main's conformance/vectors.json (55 on 3 October 2026).
+// The vector count is SDK main's conformance/vectors.json (100 since SDK 830498d, 5 October 2026).
 //
 // SPDX-License-Identifier: Apache-2.0
 
@@ -75,7 +75,7 @@ export const Implementations: React.FC = () => (
         Three implementations, one author, that now agree.
       </Typography>
       <Typography variant="h6" sx={{ color: 'text.secondary', maxWidth: 620, fontWeight: 400, lineHeight: 1.6 }}>
-        TypeScript, Python and Rust, all written by the same author. They agree on the 55 published conformance vectors
+        TypeScript, Python and Rust, all written by the same author. They agree on the 100 published conformance vectors
         and on 81,000 random inputs. That shows the rules hold across three languages. It does not yet show that someone
         else could implement the format from the document alone: an implementation by someone else is still the missing
         test.
@@ -120,7 +120,7 @@ export const Implementations: React.FC = () => (
         variant="h3"
         sx={{ fontSize: { xs: 26, md: 34 }, mb: 3, maxWidth: 720, lineHeight: 1.2, letterSpacing: '-0.02em' }}
       >
-        Fifty-five vectors, and one program written to fail them.
+        A hundred vectors, and one program written to fail them.
       </Typography>
 
       <Stack spacing={2.5} sx={{ maxWidth: 680 }}>

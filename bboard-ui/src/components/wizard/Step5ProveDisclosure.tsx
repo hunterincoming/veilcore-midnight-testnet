@@ -192,8 +192,9 @@ export const Step5ProveDisclosure: React.FC<{ recordId: string; onDone: () => vo
           <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, mb: 1 }}>
             Anyone who opens this link, or has this record&apos;s id any other way, sees the facts on the right and
             nothing else; the registry does not send the rest, and editing the link cannot add to it. The genetics are
-            never disclosed. Proving a withheld fact without revealing it needs the per-field scheme, which the
-            specification does not yet define.
+            never disclosed. This choice controls what the verify page shows. Proving one hidden value (a marker, a
+            range, or that two varieties differ) without showing the rest is done by VeilCore&apos;s claims contract.
+            It&apos;s tested on Midnight&apos;s test network but isn&apos;t in this demo yet.
           </Typography>
           <TextField
             value={result.absolute}

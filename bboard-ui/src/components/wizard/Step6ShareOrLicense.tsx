@@ -10,7 +10,7 @@ import { Alert, Box, Button, Chip, Divider, Paper, Stack, TextField, Typography 
 import { useNavigate } from 'react-router-dom';
 import GavelIcon from '@mui/icons-material/GavelOutlined';
 import ShareIcon from '@mui/icons-material/ShareOutlined';
-import PaidIcon from '@mui/icons-material/PaidOutlined';
+import AgreedIcon from '@mui/icons-material/HandshakeOutlined';
 import ContentCopyIcon from '@mui/icons-material/ContentCopyOutlined';
 import { motion } from 'framer-motion';
 import { getRecord, childrenOf } from '../../veilcore/records';
@@ -115,7 +115,7 @@ export const Step6ShareOrLicense: React.FC<{
           animate={{ opacity: 1, scale: 1 }}
           sx={{ textAlign: 'center', py: 1 }}
         >
-          <PaidIcon sx={{ fontSize: 52, color: TEAL, filter: `drop-shadow(0 0 18px ${TEAL})`, mb: 1 }} />
+          <AgreedIcon sx={{ fontSize: 52, color: TEAL, filter: `drop-shadow(0 0 18px ${TEAL})`, mb: 1 }} />
           <Typography variant="h4" sx={{ color: TEAL }}>
             {type === 'license' ? 'Agreement recorded.' : 'Shared — on your terms.'}
           </Typography>

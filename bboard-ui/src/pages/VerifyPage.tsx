@@ -20,7 +20,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { Alert, Box, Chip, CircularProgress, Container, Divider, Paper, Stack, Typography } from '@mui/material';
-import { useParams, useSearchParams } from 'react-router-dom';
+import { Link as RouterLink, useParams, useSearchParams } from 'react-router-dom';
 import VerifiedIcon from '@mui/icons-material/VerifiedOutlined';
 import { shortFingerprint } from '../veilcore/commitment';
 import { DISCLOSURE_FIELDS, LEGACY_NAME, toDisclosureKey, labelOf } from '../veilcore/disclosure';
@@ -222,12 +222,40 @@ export const VerifyPage: React.FC = () => {
   return (
     <Box sx={{ minHeight: '100vh', background: '#04070a' }}>
       <Container maxWidth="sm" sx={{ py: { xs: 5, md: 8 } }}>
-        <Stack direction="row" spacing={1.25} sx={{ alignItems: 'center', justifyContent: 'center', mb: 4 }}>
+        <Stack
+          component={RouterLink}
+          to="/"
+          aria-label="VeilCore home"
+          direction="row"
+          spacing={1.25}
+          sx={{
+            alignItems: 'center',
+            justifyContent: 'center',
+            mb: 2,
+            mx: 'auto',
+            width: 'fit-content',
+            minHeight: 44,
+            textDecoration: 'none',
+            color: 'text.primary',
+          }}
+        >
           <Box sx={{ width: 12, height: 12, borderRadius: '50%', background: TEAL, boxShadow: `0 0 14px ${TEAL}` }} />
           <Typography variant="h6" sx={{ letterSpacing: '0.3em', fontWeight: 600 }}>
             VEILCORE
           </Typography>
         </Stack>
+        {/* One line for a stranger who arrived from a QR code or a shared link. */}
+        <Typography
+          variant="body2"
+          color="text.secondary"
+          sx={{ textAlign: 'center', mb: 4, maxWidth: 460, mx: 'auto' }}
+        >
+          This page checks a VeilCore record: a dated fingerprint of genetic material, published without the genetics.
+          Checking is free and needs no account.{' '}
+          <Box component={RouterLink} to="/" sx={{ color: TEAL, whiteSpace: 'nowrap' }}>
+            What is VeilCore?
+          </Box>
+        </Typography>
 
         {loading ? (
           <Paper sx={{ p: 6, textAlign: 'center' }}>
@@ -242,6 +270,9 @@ export const VerifyPage: React.FC = () => {
               This verification link doesn&apos;t match any record in the registry. Check the link is complete and
               unmodified.
             </Typography>
+            <Box component={RouterLink} to="/" sx={{ display: 'inline-block', mt: 2, py: 1, color: TEAL }}>
+              Go to veilcore.org
+            </Box>
           </Paper>
         ) : binding.kind === 'mismatch' ? (
           // The link names a record the registry does not answer for. Its answer is about

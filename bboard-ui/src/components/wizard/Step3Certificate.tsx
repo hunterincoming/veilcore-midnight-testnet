@@ -164,7 +164,11 @@ export const Step3Certificate: React.FC<{ recordId: string; onDone: () => void; 
               Record certificate
             </Typography>
           </Box>
-          <VerifiedIcon sx={{ color: TEAL, fontSize: 32 }} />
+          {/* The badge appears only once the anchor is reported and the inclusion proof checks;
+              before that the certificate makes no "verified" signal. */}
+          {anchor !== 'checking' && anchor.status === 'anchor-reported' && (
+            <VerifiedIcon sx={{ color: TEAL, fontSize: 32 }} />
+          )}
         </Stack>
 
         <Divider sx={{ mb: 2.5 }} />
@@ -181,7 +185,7 @@ export const Step3Certificate: React.FC<{ recordId: string; onDone: () => void; 
                 component="span"
                 sx={{
                   color: 'text.secondary',
-                  wordBreak: 'break-all',
+                  overflowWrap: 'anywhere',
                 }}
               >
                 {anchorLine}

@@ -296,62 +296,6 @@ html:has(.vcm) {
   margin-top: 16px;
 }
 
-/* choose */
-.vcm .choose {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 14px;
-  margin-top: 40px;
-}
-.vcm .tile {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  text-decoration: none;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  padding: 22px 20px 20px;
-  min-height: 190px;
-  transition:
-    border-color 0.25s,
-    transform 0.25s,
-    background 0.25s;
-}
-.vcm .tile:hover {
-  border-color: var(--mint);
-  transform: translateY(-3px);
-  background: var(--raise);
-}
-.vcm .tile .n {
-  font-family: var(--mono);
-  font-size: 12px;
-  color: var(--muted);
-}
-.vcm .tile h3 {
-  font-family: var(--display);
-  font-size: 1.35rem;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-}
-.vcm .tile p {
-  font-size: 0.93rem;
-  color: var(--muted);
-}
-.vcm .tile .go {
-  margin-top: auto;
-  font-family: var(--mono);
-  font-size: 12.5px;
-  color: var(--mint);
-}
-.vcm svg.ico {
-  width: 26px;
-  height: 26px;
-  stroke: var(--mint);
-  fill: none;
-  stroke-width: 1.6;
-}
-
 /* about */
 .vcm .steps {
   display: grid;
@@ -668,6 +612,187 @@ html:has(.vcm) {
   margin-top: 32px;
 }
 
+/* hero status line: where things stand, in one sentence */
+.vcm .hero-status {
+  margin-top: 18px;
+  max-width: 62ch;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+/* titled paragraphs in a two- or three-column grid, divided by rules */
+.vcm h2.wide {
+  max-width: 24ch;
+}
+.vcm .points {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0 44px;
+  margin-top: 40px;
+}
+.vcm .points.three {
+  grid-template-columns: repeat(3, 1fr);
+}
+.vcm .pt {
+  border-top: 1px solid var(--line);
+  padding: 22px 0 26px;
+}
+.vcm .pt.wide {
+  grid-column: 1 / -1;
+}
+.vcm .pt.span2 {
+  grid-column: span 2;
+}
+.vcm .pt.wide p {
+  max-width: 78ch;
+}
+.vcm .pt h3 {
+  font-family: var(--display);
+  font-size: 1.15rem;
+  font-weight: 700;
+  line-height: 1.3;
+  margin-bottom: 6px;
+}
+.vcm .pt p {
+  font-size: 0.95rem;
+  color: var(--muted);
+}
+.vcm .pt a,
+.vcm .faq a,
+.vcm .lede a.inline,
+.vcm .verify-what a {
+  color: var(--mint);
+}
+
+/* prove one fact */
+.vcm .claims {
+  display: grid;
+  grid-template-columns: 1.15fr 1fr;
+  gap: 18px 44px;
+  margin-top: 40px;
+  align-items: start;
+}
+.vcm .claim-list {
+  list-style: none;
+}
+.vcm .claim-list li {
+  font-size: 0.95rem;
+  color: var(--muted);
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+}
+.vcm .claim-list li strong {
+  color: var(--text);
+  font-weight: 500;
+}
+.vcm .claim-notes {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 22px 22px 8px;
+  background: var(--surface);
+}
+.vcm .claim-notes p {
+  font-size: 0.93rem;
+  color: var(--muted);
+  margin-bottom: 12px;
+}
+.vcm .claim-notes strong {
+  color: var(--text);
+  font-weight: 500;
+}
+.vcm .claim-notes .more {
+  margin: 0 0 14px;
+}
+.vcm .isnt .lim h4 {
+  color: var(--text);
+}
+
+/* questions */
+.vcm .faq {
+  margin-top: 36px;
+  max-width: 780px;
+  border-bottom: 1px solid var(--line);
+}
+.vcm .faq details {
+  border-top: 1px solid var(--line);
+}
+.vcm .faq summary {
+  list-style: none;
+  cursor: pointer;
+  font-family: var(--display);
+  font-size: 1.1rem;
+  font-weight: 500;
+  padding: 16px 32px 16px 0;
+  position: relative;
+}
+.vcm .faq summary::-webkit-details-marker {
+  display: none;
+}
+.vcm .faq summary::after {
+  content: '+';
+  position: absolute;
+  right: 4px;
+  top: 14px;
+  color: var(--mint);
+  font-size: 1.3rem;
+  line-height: 1.2;
+}
+.vcm .faq details[open] summary::after {
+  content: '\2212';
+}
+.vcm .faq summary:hover {
+  color: var(--mint);
+}
+.vcm .faq summary:focus-visible {
+  outline: 2px solid var(--mint);
+  outline-offset: 3px;
+}
+.vcm .faq p {
+  color: var(--muted);
+  font-size: 0.97rem;
+  max-width: 68ch;
+  padding-bottom: 18px;
+}
+
+/* contact, by audience */
+.vcm .audiences {
+  margin-top: 36px;
+  border-bottom: 1px solid var(--line);
+}
+.vcm .audiences > div {
+  display: grid;
+  grid-template-columns: minmax(0, 300px) minmax(0, 1fr);
+  gap: 24px;
+  padding: 22px 0;
+  border-top: 1px solid var(--line);
+}
+.vcm .audiences dt {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 1.05rem;
+}
+.vcm .audiences dd {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+.vcm .audiences dd p {
+  flex-basis: 100%;
+  color: var(--muted);
+  font-size: 0.97rem;
+}
+.vcm .audiences .btn {
+  padding: 10px 18px;
+}
+
+/* verify lookup: the one line for strangers */
+.vcm header.page p.verify-what {
+  font-size: 1rem;
+  margin-top: 14px;
+}
+
 /* footer */
 .vcm footer.bottom {
   border-top: 1px solid var(--line);
@@ -900,8 +1025,10 @@ html:has(.vcm) {
 }
 
 @media (max-width: 900px) {
-  .vcm .choose,
   .vcm .status {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .vcm .points.three {
     grid-template-columns: repeat(2, 1fr);
   }
   .vcm .steps {
@@ -953,10 +1080,19 @@ html:has(.vcm) {
   .vcm .team {
     grid-template-columns: 1fr;
   }
-  .vcm .choose,
   .vcm .steps,
-  .vcm .status {
+  .vcm .status,
+  .vcm .points,
+  .vcm .points.three,
+  .vcm .claims {
     grid-template-columns: 1fr;
+  }
+  .vcm .audiences > div {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  .vcm .pt.span2 {
+    grid-column: auto;
   }
   .vcm .step + .step {
     border-left: none;
@@ -1125,52 +1261,6 @@ html:has(.vcm) {
     font-size: 15px;
   }
 
-  /* where to go: one box with dividers, icon beside the text */
-  .vcm .choose {
-    gap: 0;
-    margin-top: 28px;
-    border: 1px solid var(--line);
-    border-radius: 14px;
-    overflow: hidden;
-  }
-  .vcm .tile {
-    display: grid;
-    grid-template-columns: 26px 1fr;
-    column-gap: 14px;
-    row-gap: 4px;
-    min-height: 0;
-    border: 0;
-    border-radius: 0;
-    padding: 18px;
-  }
-  .vcm .tile + .tile {
-    border-top: 1px solid var(--line);
-  }
-  .vcm .tile > * {
-    grid-column: 2;
-  }
-  .vcm .tile svg.ico {
-    grid-column: 1;
-    grid-row: 1;
-  }
-  .vcm .tile .n {
-    grid-column: 1;
-    grid-row: 2;
-  }
-  .vcm .tile h3 {
-    grid-row: 1;
-    align-self: center;
-  }
-  .vcm .tile:hover {
-    transform: none;
-  }
-  .vcm .tile h3 {
-    font-size: 1.2rem;
-  }
-  .vcm .tile .go {
-    margin-top: 4px;
-  }
-
   /* about */
   .vcm .steps {
     margin-top: 28px;
@@ -1296,7 +1386,6 @@ html:has(.vcm) {
   }
 
   /* type sizes: nothing secondary below 13px, body copy at 15px */
-  .vcm .tile .n,
   .vcm .step .n,
   .vcm .post time,
   .vcm .post .tag,
@@ -1306,12 +1395,15 @@ html:has(.vcm) {
   .vcm .founder .role {
     font-size: 13px;
   }
-  .vcm .tile .go,
   .vcm .post .go,
   .vcm .more {
     font-size: 14px;
   }
-  .vcm .tile p,
+  .vcm .pt p,
+  .vcm .claim-list li,
+  .vcm .claim-notes p,
+  .vcm .faq p,
+  .vcm .audiences dd p,
   .vcm .step p,
   .vcm .isnt li,
   .vcm .demo p,
@@ -1353,6 +1445,75 @@ html:has(.vcm) {
     gap: 2px;
   }
   .vcm .fine a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+
+  /* new sections (5 October): tighter on phones */
+  .vcm section {
+    padding-block: 40px;
+  }
+  .vcm .hero-status {
+    margin-top: 14px;
+  }
+  /* on a phone, the latest update only; the rest are a tap away on GitHub */
+  .vcm .posts .post:nth-child(n + 2) {
+    display: none;
+  }
+  /* status: the big word beside its sentence, not above it */
+  .vcm .stat {
+    display: grid;
+    grid-template-columns: 7.2rem 1fr;
+    gap: 12px;
+    align-items: baseline;
+  }
+  .vcm .stat b {
+    font-size: 1.15rem;
+    line-height: 1.25;
+  }
+  .vcm .step {
+    padding: 14px 16px;
+  }
+  .vcm .points,
+  .vcm .claims {
+    margin-top: 24px;
+  }
+  .vcm .pt {
+    padding: 16px 0 18px;
+  }
+  .vcm .pt h3 {
+    font-size: 1.1rem;
+  }
+  .vcm .claim-list li {
+    padding: 10px 0;
+  }
+  .vcm .claim-notes {
+    padding: 16px 18px 4px;
+  }
+  .vcm .faq,
+  .vcm .audiences {
+    margin-top: 24px;
+  }
+  .vcm .faq summary {
+    font-size: 1.05rem;
+    padding-block: 12px;
+    min-height: 44px;
+    box-sizing: border-box;
+  }
+  .vcm .faq summary::after {
+    top: 11px;
+  }
+  .vcm .audiences > div {
+    padding: 16px 0;
+  }
+  .vcm .audiences .btn {
+    min-height: 44px;
+    box-sizing: border-box;
+    padding: 11px 16px;
+  }
+  .vcm .lede a.inline,
+  .vcm .claim-notes .more {
     display: inline-flex;
     align-items: center;
     min-height: 44px;

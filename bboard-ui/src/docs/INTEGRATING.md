@@ -112,7 +112,7 @@ or inside an existing system — the conformance vectors tell you whether you go
     node conformance/run-cli.mjs "your-command"
 
 Your program reads a job on standard input and writes a result on standard output. There
-are 99 vectors. Three implementations pass them: TypeScript, Python and Rust. All three
+are 100 vectors. Three implementations pass them: TypeScript, Python and Rust. All three
 have the same author, so they show the rules give one answer across languages, not that
 someone else can implement the format from the specification alone. An implementation by
 an unrelated party is the test the format still needs. The Python implementation, in

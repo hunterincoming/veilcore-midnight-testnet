@@ -10,7 +10,7 @@ import React, { useState } from 'react';
 import { Alert, Box, Button, Paper, Stack, Typography } from '@mui/material';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
-import PaidIcon from '@mui/icons-material/PaidOutlined';
+import DoneIcon from '@mui/icons-material/TaskAltOutlined';
 import { ProgressPath } from './ProgressPath';
 import { Step1LogStrain } from './Step1LogStrain';
 import { Step2LabTransfer } from './Step2LabTransfer';
@@ -68,7 +68,7 @@ export const WizardShell: React.FC = () => {
       return (
         <Stack spacing={2.5} sx={{ textAlign: 'center' }}>
           <Box>
-            <PaidIcon sx={{ fontSize: 52, color: TEAL, filter: `drop-shadow(0 0 16px ${TEAL})` }} />
+            <DoneIcon sx={{ fontSize: 52, color: TEAL, filter: `drop-shadow(0 0 16px ${TEAL})` }} />
             <Typography variant="h4" sx={{ mt: 1 }}>
               {license
                 ? type === 'license'
@@ -198,8 +198,7 @@ export const WizardShell: React.FC = () => {
           </Box>
         </Typography>
         <Typography variant="body1" color="text.secondary" sx={{ maxWidth: 640, mx: 'auto' }}>
-          Log it, send it to a lab, pair the report, prove exactly what you choose, then share or license it, with terms
-          attached to the sealed record and its report fingerprint.
+          Seal it, pair your lab report, choose what strangers see, then share or license it.
         </Typography>
       </Box>
 

@@ -109,7 +109,7 @@ export const SiteShell: React.FC<{ children: React.ReactNode }> = ({ children })
                   <Section id="about">{t('m.nav.about')}</Section>
                 </li>
                 <li>
-                  <Section id="demo">{t('m.choose.demo.title')}</Section>
+                  <Section id="demo">{t('m.foot.demo')}</Section>
                 </li>
                 <li>
                   <RouterLink to="/founders">{t('m.nav.team')}</RouterLink>
@@ -130,6 +130,9 @@ export const SiteShell: React.FC<{ children: React.ReactNode }> = ({ children })
                 </li>
                 <li>
                   <RouterLink to="/docs/evidence">{t('footer.evidence')}</RouterLink>
+                </li>
+                <li>
+                  <RouterLink to="/implementations">{t('footer.allImplementations')}</RouterLink>
                 </li>
                 <li>
                   <a href={SDK_REPO} rel="noopener noreferrer" target="_blank">

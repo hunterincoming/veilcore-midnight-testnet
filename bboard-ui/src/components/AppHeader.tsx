@@ -1,4 +1,4 @@
-// AppHeader — shared top bar: wordmark (home), quick "New cultivar", and the demo/network badge.
+// AppHeader — shared top bar: wordmark (to the public home page), your records, quick "New cultivar", and the demo/network badge.
 // SPDX-License-Identifier: Apache-2.0
 
 import React from 'react';
@@ -26,7 +26,8 @@ export const AppHeader: React.FC = () => {
       <Stack direction="row" sx={{ alignItems: 'center', flexWrap: 'wrap', columnGap: 3, rowGap: 1 }}>
         <Stack
           component={RouterLink}
-          to="/records"
+          to="/"
+          aria-label="VeilCore home"
           direction="row"
           spacing={1.25}
           sx={{ alignItems: 'center', textDecoration: 'none', minHeight: { xs: 44, sm: 0 } }}
@@ -36,6 +37,11 @@ export const AppHeader: React.FC = () => {
             VEILCORE
           </Typography>
         </Stack>
+        {loc.pathname !== '/records' && (
+          <Button component={RouterLink} to="/records" size="small" variant="text">
+            {t('footer.yourRecords')}
+          </Button>
+        )}
         {loc.pathname !== '/new' && (
           <Button component={RouterLink} to="/new" size="small" variant="outlined" startIcon={<AddIcon />}>
             {t('nav.newCultivar')}

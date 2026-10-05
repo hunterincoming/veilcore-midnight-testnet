@@ -17,8 +17,16 @@ export const WalletBadge: React.FC<{ network: string; demo: boolean }> = ({ netw
       icon={<ScienceIcon />}
       color={demo ? 'default' : 'primary'}
       variant={demo ? 'outlined' : 'filled'}
-      label={demo ? 'Demo' : isTestNetwork(network) ? 'Test network' : 'Live network'}
+      label={demo ? 'Demo' : isTestNetwork(network) ? 'Testing' : 'Live'}
     />
-    <Chip size="small" icon={<BoltIcon />} variant="outlined" label={network} sx={{ textTransform: 'capitalize' }} />
+    {/* Generic on purpose: this build's network id (e.g. preprod) need not be the network
+        the demo registry anchors on (Preview). Where a record was anchored is shown per
+        record, from what the registry reports. */}
+    <Chip
+      size="small"
+      icon={<BoltIcon />}
+      variant="outlined"
+      label={network === 'mainnet' ? 'Main network' : network === 'undeployed' ? 'Local' : 'Test network'}
+    />
   </Stack>
 );

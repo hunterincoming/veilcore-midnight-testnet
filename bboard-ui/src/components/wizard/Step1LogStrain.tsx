@@ -112,9 +112,9 @@ export const Step1LogStrain: React.FC<{ onDone: (recordId: string) => void }> = 
             <b>{record.strainName}</b> · bred by {record.bredBy}
           </Typography>
           <Typography variant="body2" sx={{ mt: 0.5, color: 'text.secondary' }}>
-            Sealed {fmtStamp(record.loggedAt)}, by this device&apos;s clock. The record gets a date anyone can check
-            when its batch is anchored. Nothing here checks whether anyone else logged it first. Your stated creation
-            date ({record.dateCreated}) is recorded as your own claim.
+            Sealed {fmtStamp(record.loggedAt)}, by this device&apos;s clock. Its public date comes when the next batch
+            is anchored; the record&apos;s verify page will show it. The creation date ({record.dateCreated}) is
+            recorded as your own statement.
           </Typography>
         </Alert>
         <Box>
@@ -139,6 +139,7 @@ export const Step1LogStrain: React.FC<{ onDone: (recordId: string) => void }> = 
 
       <TextField
         label="Cultivar name"
+        required
         placeholder="e.g. Harbour Mist"
         helperText="The name you know it by: the variety or cultivar name."
         value={strainName}
@@ -147,8 +148,9 @@ export const Step1LogStrain: React.FC<{ onDone: (recordId: string) => void }> = 
       />
       <TextField
         label="Bred by"
+        required
         placeholder="Your name or operation"
-        helperText="Who the proof credits — you or your operation."
+        helperText="Who the record credits: you or your operation."
         value={bredBy}
         onChange={(e) => setBredBy(e.target.value)}
         fullWidth
@@ -262,6 +264,11 @@ export const Step1LogStrain: React.FC<{ onDone: (recordId: string) => void }> = 
       )}
 
       <Box>
+        {!canSubmit && !busy && (
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+            Fill in the two required fields (*) to seal it.
+          </Typography>
+        )}
         <Button
           variant="contained"
           size="large"
@@ -269,7 +276,7 @@ export const Step1LogStrain: React.FC<{ onDone: (recordId: string) => void }> = 
           startIcon={busy ? <CircularProgress size={18} color="inherit" /> : undefined}
           onClick={onSubmit}
         >
-          {busy ? 'Sealing locally…' : 'Create my proof'}
+          {busy ? 'Sealing locally…' : 'Seal this record'}
         </Button>
       </Box>
     </Stack>

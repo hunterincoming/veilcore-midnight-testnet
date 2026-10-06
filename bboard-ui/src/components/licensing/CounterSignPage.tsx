@@ -132,7 +132,7 @@ export const CounterSignPage: React.FC = () => {
                     it is. Wiring it to proveLicense means a wallet, a proof server and
                     a deployed contract, which the web app does not have. */}
                 <Alert severity="info" variant="outlined">
-                  Proving a licence without revealing its terms runs the proveLicense circuit, which needs a wallet and
+                  Proving a license without revealing its terms runs the proveLicense circuit, which needs a wallet and
                   a proof server. The CLI in <code>bboard-cli</code> does it against the deployed contract. This page
                   cannot, and will not pretend to.
                 </Alert>

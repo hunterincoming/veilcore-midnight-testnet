@@ -65,7 +65,7 @@ export const ShareLicense: React.FC<{ license: License }> = ({ license }) => {
   return (
     <>
       <Button variant="outlined" startIcon={<ShareIcon />} onClick={() => setOpen(true)}>
-        Share licence
+        Share license
       </Button>
 
       <Dialog open={open} onClose={() => setOpen(false)} maxWidth="sm" fullWidth>
@@ -77,9 +77,9 @@ export const ShareLicense: React.FC<{ license: License }> = ({ license }) => {
                 Always included
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                That this licence exists, its current state, the record it was issued against, and whether it carries an
+                That this license exists, its current state, the record it was issued against, and whether it carries an
                 obligation to declared descendants. Anyone can verify these without your permission — that is what makes
-                the licence checkable rather than a claim.
+                the license checkable rather than a claim.
               </Typography>
             </Box>
 

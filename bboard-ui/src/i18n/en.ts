@@ -136,7 +136,7 @@ export const en = {
   'm.get.1b': 'for a record of what you hold, without showing what it is.',
   'm.get.2a': 'Terms that travel.',
   'm.get.2b':
-    "Licences and lab agreements attach to the record. A licensee can prove they hold a live licence without showing which one. An obligation on a parent, such as a royalty, shows on every offspring both holders confirmed; VeilCore records it and doesn't collect it. Tested on a Midnight test network; simulated in the web demo.",
+    "Licenses and lab agreements attach to the record. A licensee can prove they hold a live license without showing which one. An obligation on a parent, such as a royalty, shows on every offspring both holders confirmed; VeilCore records it and doesn't collect it. Tested on a Midnight test network; simulated in the web demo.",
   'm.get.3a': 'Lineage both sides agreed to.',
   'm.get.3b': 'A parent link counts only when both holders confirm it.',
   'm.stops.title': 'Where it stops, and what covers the rest',
@@ -150,7 +150,7 @@ export const en = {
     'It dates a DNA report you already have, so a later test can be compared with it. A parent link means both holders agreed; DNA is what proves descent.',
   'm.stops.4a': "It can't see what nobody declares.",
   'm.stops.4b':
-    "Quiet propagation isn't detected. But once you revoke a licence, a buyer or lab who checks properly won't accept it as live.",
+    "Quiet propagation isn't detected. But once you revoke a license, a buyer or lab who checks properly won't accept it as live.",
 
   'm.open.label': 'Open format',
   'm.open.title1': 'Built to',
@@ -167,7 +167,7 @@ export const en = {
     "A record shows which key signed it, the name and accreditor registered with that key, and whether we've checked that the key belongs to that name. Whoever checks it decides what that's worth.",
   'm.open.4t': 'Anyone can run a registry.',
   'm.open.4p':
-    "The format lets a lab, certifier or rights body run its own, under its own web domain, with its own field definitions, and anchor without asking us. Our own registry code isn't published yet; we plan to publish it.",
+    "The format lets a lab, certifier or rights body run its own, under its own web domain, with its own field definitions, and anchor without asking us. Our own registry code isn't published.",
   'm.open.5t': 'Checking is free, always.',
   'm.open.5p': 'No account, no payment, for anyone.',
 
@@ -197,7 +197,7 @@ export const en = {
   'm.demo.title1': 'Pick how you',
   'm.demo.title2': 'want to see it.',
   'm.demo.lede':
-    "No sign-up, no wallet. It's a test version, so use made-up details. Records are dated in batches; licences and lab agreements are simulated, and DNA report pairings aren't dated yet.",
+    "No sign-up, no wallet. It's a test version, so use made-up details. Records are dated in batches; licenses and lab agreements are simulated, and DNA report pairings aren't dated yet.",
   'm.demo.privacy': 'What the demo keeps →',
   'm.demo.create.title': 'Create a record',
   'm.demo.create.text': 'Fill in a sample record, generate its fingerprint and download the certificate.',
@@ -205,7 +205,7 @@ export const en = {
   'm.demo.verify.text': "Enter a record's identifier and see what its holder disclosed and whether it is anchored.",
   'm.demo.video.title': 'Watch the walkthrough',
   'm.demo.video.text':
-    'The whole flow in 75 seconds: sealing a record, pairing a lab report, checking it, and licence terms.',
+    'The whole flow in 75 seconds: sealing a record, pairing a lab report, checking it, and license terms.',
   'm.chip.video': 'Video',
   'm.chip.75s': '75 s',
   'm.chip.interactive': 'Interactive',

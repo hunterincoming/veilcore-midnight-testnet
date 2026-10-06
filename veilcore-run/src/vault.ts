@@ -137,6 +137,11 @@ export type ExitState = {
       /** The record a hand-over secret controls; the secret is only in bundle `bundleSha256`. */
       newRecord?: string;
       bundleSha256?: string;
+      /** Every hand-over this exit planned for the record, in order: one may land late. */
+      history?: { readonly newRecord: string; readonly bundleSha256: string }[];
+      /** The recovery commitment from the partner's answer that replaces VeilCore's, and where it derives from. */
+      newRecoveryCommitment?: string;
+      recoveryPool?: { readonly id: string; readonly index: number };
       recoveryReplaced?: boolean;
       status: 'planned' | 'done' | 'failed' | 'taken-back' | 'not-rotatable';
       txIds: string[];

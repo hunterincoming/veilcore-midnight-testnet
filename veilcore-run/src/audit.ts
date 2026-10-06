@@ -178,20 +178,43 @@ export const verifyAnchors = async (
   return { anchors, problems };
 };
 
+/** The log's lines exactly as written (what receipts hash), for the partner's bundle. */
+export const auditLines = async (file: string): Promise<string[]> =>
+  (await exists(file)) ? (await readFile(file, 'utf8')).split('\n').filter((l) => l !== '') : [];
+
+export type Receipt = { readonly seq: number; readonly head: string; readonly txId: string };
+
 /**
- * Check one receipt a partner was given (audit-anchor): line `seq` of the log still hashes
- * to `head`, and the chain timestamped `head` in `txId`. A log cut short or rewritten
- * before that line fails, even if every anchor line was removed from it.
+ * Whether a receipt still holds for these log lines: line `seq` hashes to `head`, and the
+ * chain timestamped `head` in `txId`. A log rewritten or cut short before that line fails,
+ * even if every anchor line was removed from it.
  */
-export const verifyReceipt = async (
-  file: string,
-  receipt: { readonly seq: number; readonly head: string; readonly txId: string },
+export const receiptHolds = async (
+  lines: readonly string[],
+  receipt: Receipt,
   onChain: (txId: string, head: string) => Promise<boolean>,
 ): Promise<boolean> => {
-  if (!(await exists(file))) return false;
-  const lines = (await readFile(file, 'utf8')).split('\n').filter((l) => l !== '');
   const line = lines[receipt.seq - 1];
-  return (
-    line !== undefined && sha(line) === receipt.head && (await onChain(receipt.txId, receipt.head).catch(() => false))
-  );
+  if (line === undefined || sha(line) !== receipt.head) return false;
+  // Every line up to it must also follow the one before: an edit that was not re-chained shows here,
+  // and one that was re-chained changes the receipted line itself.
+  let prev = GENESIS;
+  for (const [i, l] of lines.slice(0, receipt.seq).entries()) {
+    let e: AuditEntry;
+    try {
+      e = JSON.parse(l) as AuditEntry;
+    } catch {
+      return false;
+    }
+    if (e.prev !== prev || e.seq !== i + 1) return false;
+    prev = sha(l);
+  }
+  return onChain(receipt.txId, receipt.head).catch(() => false);
 };
+
+/** receiptHolds, for the log file itself. */
+export const verifyReceipt = async (
+  file: string,
+  receipt: Receipt,
+  onChain: (txId: string, head: string) => Promise<boolean>,
+): Promise<boolean> => receiptHolds(await auditLines(file), receipt, onChain);

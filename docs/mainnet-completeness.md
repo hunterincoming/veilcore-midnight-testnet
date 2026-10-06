@@ -238,8 +238,10 @@ Uses only the partner kit's public exports (a test checks). Independent review 6
 (`review-managed.md`): NOT PASS, 4 high and 7 medium; all addressed the same day (H1 password
 change, H2 fingerprint-confirmed pools and exit answers, H3 bundles sealed to a key from the
 partner's master and the partner's own recovery REQUIRED to finish an exit, H4 status from what
-VeilCore really holds; M1-M7). 41 tests on the kit's chain stand-in, the reviewer's experiments
-among them; not run on a live network.
+VeilCore really holds; M1-M7). Re-check the same day: PASS for every high and medium; its three
+lows fixed (a late-landing hand-over, bundles naming earlier bundles, receipt checking, purge
+anchored, exit-cancel, self exit reconciled with the chain). 47 tests on the kit's chain
+stand-in, the reviewers' experiments among them; not run on a live network.
 
 | # | What | Status |
 |---|---|---|

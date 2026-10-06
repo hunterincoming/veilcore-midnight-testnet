@@ -146,6 +146,13 @@ describe('the operator CLI', () => {
     const copy = path.join(t.root, 'copy.vcb');
     expect((await run(['export', '--partner', 'lab', '--out', copy], [password])).code).toBe(0);
     const opened = await run(['open-bundle', '--file', copy], [masterLine]);
+    // The partner checks the receipt against the log lines their bundle carries.
+    const [, line, head, tx] = /line (\d+), head ([0-9a-f]{64}), transaction ([0-9a-f]{64})/.exec(anchoredLog.text)!;
+    const receiptArgs = ['partner-check-receipt', '--partner', 'lab', '--bundle', copy, '--line', line, '--tx', tx];
+    const holds = await run([...receiptArgs, '--head', head], [masterLine]);
+    expect(holds.code).toBe(0);
+    expect(holds.text).toMatch(/The receipt holds/);
+    expect((await run([...receiptArgs, '--head', 'ab'.repeat(32)], [masterLine])).text).toMatch(/does NOT hold/);
     expect(opened.text).toMatch(/1 records/);
     expect((await run(['open-bundle', '--file', copy], ['00'.repeat(32) + ' (check 0000)'])).code).toBe(1);
 
@@ -185,7 +192,8 @@ describe('the operator CLI', () => {
     expect((await secretsOf('lab', password)).size).toBe(0);
     const audit = await run(['audit', '--partner', 'lab', '--verify']);
     expect(audit.code).toBe(0);
-    expect(audit.text).toMatch(/1 anchors checked on chain; every one matches/);
+    expect(audit.text).toMatch(/2 anchors checked on chain; every one matches/); // the second covers the purge line
+    expect(purged.text).toMatch(/Receipt for the partner \(covers the purge line\)/);
     expect(audit.text).toMatch(/purge/);
   });
 

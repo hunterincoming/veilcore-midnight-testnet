@@ -27,6 +27,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pools and exit answers confirmed by a fingerprint the partner reads out; "can act" status
   from what VeilCore actually holds; audit log anchored on chain with receipts; lock before
   read; `change-password` fixed; obligation terms never on the command line.
+- After the re-check: an exit reconciles with the chain before acting (a hand-over that landed
+  late is done, from the bundle that holds it; a recovery replacement that landed unrecorded is
+  applied, also before a self exit); `exit-cancel` for an exit that sent nothing;
+  `partner-check-receipt`, with the log's raw lines in every bundle; `purge` anchors the log
+  after the purge line; unusable bundle keys refused.
 - `docs/MANAGED.md`; `docs/PARTNERS.md` now lists three options at launch;
   `docs/legal/managed-service-agreement-DRAFT.md` (draft, for a lawyer).
 

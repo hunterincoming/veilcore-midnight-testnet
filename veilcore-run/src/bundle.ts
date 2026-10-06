@@ -44,6 +44,8 @@ export type ExitBundle = {
   /** What to do next, in plain English, with the partner kit calls for a developer. */
   readonly procedure: string;
   readonly audit: readonly AuditEntry[];
+  /** The audit log's lines exactly as written: what the partner's receipts are checked against. */
+  readonly auditLines?: readonly string[];
 };
 
 /**

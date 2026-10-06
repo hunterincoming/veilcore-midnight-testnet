@@ -391,7 +391,8 @@ describe('assisted exit: VeilCore sends the transactions', () => {
     expect(r.complete).toBe(false);
     vi.restoreAllMocks();
     const out = path.join(t.root, 'self.vcb');
-    await exitSelf(lab, { out });
+    await expect(exitSelf(lab, { out })).rejects.toThrow(/needs the chain read first/);
+    await exitSelf(lab, { out, ledger: await kit.readLedger(read()) });
     const b = await readBundle(out, lab.master);
     // acc-1's recovery was replaced with the partner's before the rotation failed.
     await recoverRecords(vc, recordsIn([b]), lab.master, [lab.master]);

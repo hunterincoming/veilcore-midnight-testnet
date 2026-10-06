@@ -24,11 +24,11 @@ import {
   readLedger,
   toHex,
 } from '@veilcore/contracts';
-import { AuditLog, readAudit, AUDIT_FILE, verifyAnchors } from './audit.ts';
+import { AuditLog, readAudit, AUDIT_FILE, auditLines, receiptHolds, verifyAnchors } from './audit.ts';
 import { type ExitBundle, readBundle, bundleRecipient } from './bundle.ts';
 import { sameText } from './box.ts';
 import { type Chain, openChain, settingsFrom } from './chain.ts';
-import { exitAssisted, exitRequest, exitSelf, exportBundle, readJson } from './exit.ts';
+import { cancelExit, exitAssisted, exitRequest, exitSelf, exportBundle, readJson } from './exit.ts';
 import { defaultRoot, partnerDir, writePrivate } from './files.ts';
 import { type Io, describeError, scrub, terminalIo } from './io.ts';
 import * as op from './operator.ts';
@@ -96,13 +96,16 @@ Hand-over and leaving (every bundle is sealed to the partner's own key; nothing 
   exit --mode self --out <bundle>
   exit --mode assisted --answer <file> --out <bundle>    (the partner reads the answer's fingerprint out to you;
                                                run it again to resume an exit that stopped)
+  exit-cancel                                  cancel an assisted exit that has sent nothing (checked on chain)
   exit-check                                   whether the partner has taken every record back (no wallet)
-  purge                                        after exit, once the partner has opened their bundle
+  purge                                        after exit, once the partner has opened their bundle; then anchors the log
 On the PARTNER's computer
   partner-keys --partner <id> --out-dir <dir> [--count N] [--start N] [--request <exit-request.json>]
   open-bundle --file <bundle> [--sheet <file>] [--out <file.json>]
   partner-recover --partner <id> --bundle <bundle> [--bundle ...]     REQUIRED to finish leaving (wallet with DUST)
   partner-check --partner <id> --bundle <bundle> [--bundle ...]       confirms every record is yours (no wallet)
+  partner-check-receipt --partner <id> (--bundle <bundle> | --log <audit.jsonl>) --line N --head <hex> --tx <id>
+                                               checks a receipt VeilCore gave you against the log (no wallet)
   partner-derive --index N [--kind licence]
 `;
 
@@ -127,6 +130,7 @@ const CHAIN_COMMANDS = new Set([
   'obligation-discharge',
   'claim',
   'audit-anchor',
+  'purge',
 ]);
 
 const OPTIONS = {
@@ -173,6 +177,10 @@ const OPTIONS = {
   start: { type: 'string' },
   request: { type: 'string' },
   index: { type: 'string' },
+  line: { type: 'string' },
+  head: { type: 'string' },
+  tx: { type: 'string' },
+  log: { type: 'string' },
   licence: { type: 'string' },
   help: { type: 'boolean' },
 } as const;
@@ -334,6 +342,27 @@ export const main = async (argv: readonly string[], io: Io = terminalIo, deps: M
       }
       return 0;
     }
+    if (command === 'partner-check-receipt') {
+      // On the partner's computer (or anyone's): does a receipt VeilCore gave still hold for the log?
+      let lines: string[];
+      if (o.log !== undefined) lines = await auditLines(o.log);
+      else {
+        const file = o.bundle?.[0];
+        if (file === undefined) throw new Error('partner-check-receipt needs --bundle or --log.');
+        const [b] = await openBundles([file], hidden, known);
+        if (b.auditLines === undefined)
+          throw new Error('That bundle carries no raw audit log; use --log with the log file.');
+        lines = [...b.auditLines];
+      }
+      const receipt = { seq: Number(need('line')), head: need('head').trim().toLowerCase(), txId: need('tx').trim() };
+      const ok = await receiptHolds(lines, receipt, chainCheck(env.VEILCORE_ADDRESS));
+      out(
+        ok
+          ? `The receipt holds: line ${receipt.seq} of this log is the one timestamped on chain in transaction ${receipt.txId}. Nothing up to it was changed.`
+          : `The receipt does NOT hold: line ${receipt.seq} of this log is not what was timestamped (or the transaction is not that timestamp). The log was changed or cut before that line.`,
+      );
+      return ok ? 0 : 1;
+    }
     if (command === 'partner-check' || command === 'partner-recover') {
       const id = need('partner');
       const files = o.bundle ?? [];
@@ -434,7 +463,9 @@ export const main = async (argv: readonly string[], io: Io = terminalIo, deps: M
       (command === 'seal-fields' && o.date === true) ||
       (command === 'exit' && o.mode === 'assisted')
     ) {
-      if (command !== 'audit-anchor') await v.assertActive(); // before starting a wallet for nothing
+      if (command !== 'audit-anchor' && command !== 'purge') await v.assertActive(); // before starting a wallet for nothing
+      if (command === 'purge' && v.retired === undefined)
+        throw new Error(`Partner ${id} has not left (exit) yet. Refused: purge only follows an exit.`);
       chain = await openChainFor(command === 'claim');
     }
     const ctx: op.Ctx = {
@@ -701,7 +732,7 @@ export const main = async (argv: readonly string[], io: Io = terminalIo, deps: M
             `Partner ${id} leaves VeilCore-run (self). Afterwards every operation for them is refused.`,
             id,
           );
-          const r = await exitSelf(ctx, { out: need('out') });
+          const r = await exitSelf(ctx, { out: need('out'), ledger: await ledgerNow() });
           out(
             `Bundle written to ${need('out')} (sha256 ${r.sha256}), sealed to the partner's key. ${id}'s store is retired.`,
           );
@@ -732,6 +763,12 @@ export const main = async (argv: readonly string[], io: Io = terminalIo, deps: M
         );
         return r.complete ? 0 : 1;
       }
+      case 'exit-cancel': {
+        await confirm(`Cancel ${id}'s assisted exit? Only possible if it sent nothing (checked on chain).`, id);
+        await cancelExit(ctx, await ledgerNow());
+        out('Cancelled: nothing had been sent. The partner stays in VeilCore-run; a new exit can start from scratch.');
+        return 0;
+      }
       case 'purge': {
         await confirm(
           `Every secret VeilCore still holds for ${id}, and every bundle file of theirs on this computer, is deleted. The audit log stays.`,
@@ -748,6 +785,9 @@ export const main = async (argv: readonly string[], io: Io = terminalIo, deps: M
         );
         if (r.missing.length > 0)
           out(`Not found (moved or already deleted; find and delete any copies): ${r.missing.join(', ')}.`);
+        // The purge line itself goes under an anchor, so the partner's last receipt covers it.
+        const a = await op.anchorAudit(ctx);
+        out(`Receipt for the partner (covers the purge line): line ${a.seq}, head ${a.head}, transaction ${a.txId}.`);
         out(
           'Deleting a file cannot be guaranteed to erase it from a solid-state disk, nor from backups: see docs/MANAGED.md, Backups.',
         );

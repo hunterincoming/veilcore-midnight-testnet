@@ -18,6 +18,7 @@
 
 import { createHash, createHmac, createPrivateKey, createPublicKey, type KeyObject } from 'node:crypto';
 import { commit, fromHex, newSecret, toHex } from '@veilcore/contracts';
+import { sealTo } from './box.ts';
 
 export const POOL_FORMAT = 'veilcore-run/recovery-pool/1';
 export const ANSWER_FORMAT = 'veilcore-run/exit-answer/1';
@@ -143,6 +144,16 @@ const hasHex = (x: unknown, k: string, label = true): boolean => {
 };
 const isIndex = (x: unknown): boolean => Number.isInteger((x as Record<string, unknown>).index);
 
+/** A bundle key a bundle can actually be sealed to (refuses, e.g., a low-order point), tried before it is accepted. */
+const usableKey = (hex: string): boolean => {
+  try {
+    sealTo(hex, { partner: 'check', network: 'check' }, null);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 /** Check a pool file's shape (it comes from outside). */
 export const parsePool = (v: unknown): RecoveryPool => {
   const p = v as Partial<RecoveryPool>;
@@ -153,6 +164,8 @@ export const parsePool = (v: unknown): RecoveryPool => {
     throw new Error('That recovery pool file is damaged.');
   if (typeof p.bundleKey !== 'string' || !HEX64.test(p.bundleKey))
     throw new Error('That recovery pool file has no bundle key.');
+  if (!usableKey(p.bundleKey))
+    throw new Error('That recovery pool names a bundle key nothing can be sealed to. Refused.');
   const cs: unknown = p.commitments;
   if (!Array.isArray(cs) || !cs.every((c: unknown) => typeof c === 'string' && HEX64.test(c)))
     throw new Error('That recovery pool file is damaged.');
@@ -210,6 +223,8 @@ export const parseAnswer = (v: unknown): ExitAnswer => {
     !lics.every((x) => hasHex(x, 'licenceCommitment') && isIndex(x))
   )
     throw new Error('That exit answer is damaged.');
+  if (!usableKey(a.bundleKey))
+    throw new Error('That exit answer names a bundle key nothing can be sealed to. Refused.');
   return a as ExitAnswer;
 };
 

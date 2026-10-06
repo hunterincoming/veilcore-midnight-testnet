@@ -33,7 +33,8 @@ with you by phone or in person, not only by email, because an email can be forge
 Every action is written in your own audit log: what was done, when, and the transaction id, which
 anyone can look up on the chain. The log holds no secrets. What it can and cannot prove is in Part 3;
 in short, VeilCore regularly timestamps the log on the chain and sends you a short receipt each time,
-and with those receipts you can tell if the log was changed afterwards.
+and with those receipts you can tell if the log was changed afterwards: `partner-check-receipt` checks
+one against the log your bundle carries (no wallet needed).
 
 ### What VeilCore holds for you
 
@@ -242,15 +243,23 @@ Schedule A. Pools and exit answers are confirmed by their fingerprint (below) as
    finds on chain what already landed, and makes a new hand-over secret only for a record VeilCore's own
    secret still controls. A different answer is refused while an exit is under way. If it cannot finish,
    fall back to `exit --mode self`. A record whose 16 rotations are all used is not rotated: its recovery
-   becomes the partner's, and the partner's recovery takes it back. Give the partner **every** bundle.
-4. Self: `exit --partner <id> --mode self --out <bundle>`.
+   becomes the partner's, and the partner's recovery takes it back. Each run first reads the chain for
+   anything an earlier run sent that landed unrecorded, including a hand-over that landed late: it is
+   recorded as done, and the new bundle names the earlier bundle that holds its secret. Give the partner
+   **every** bundle. An assisted exit that has sent nothing yet (the answer turned out unusable, the
+   partner lost the new master, or they changed their mind) can be cancelled: `exit-cancel`, which checks
+   the chain first and refuses once anything landed.
+4. Self: `exit --partner <id> --mode self --out <bundle>`. It reads the chain first, so a recovery
+   replacement or hand-over an assisted run sent is reflected, and no recovery secret the chain has made
+   dead is handed over as if it worked.
 5. Either way the store is retired: every command for that partner is refused.
 6. The partner runs `partner-recover` and `partner-check` (required). `exit-check --partner <id>` shows when
    every record is theirs.
 7. `audit-anchor`, and send the receipt.
 8. When the partner confirms they opened every bundle: `purge --partner <id>` (type `PURGE <id>`). It
-   deletes the secrets in the store and the bundle files VeilCore wrote. Delete the partner's password
-   manager entry. Handle backups as below. Send them the purge line of their audit log.
+   deletes the secrets in the store and the bundle files VeilCore wrote, then anchors the log so the purge
+   line itself is covered (it starts the operator wallet for that), and prints the receipt: send it to the
+   partner. Delete the partner's password manager entry. Handle backups as below.
 
 ### Backups
 
@@ -318,7 +327,9 @@ from some line onward, or cutting its end off: the hashes can simply be recomput
 What does: **anchors**. `audit-anchor` timestamps the hash of the log's latest line on the chain, where
 VeilCore cannot change it, and the partner gets a receipt (line number, hash, transaction). Afterwards,
 any change to that line or any line before it shows (`audit --verify`, or the partner checking their
-receipts), and so does a log cut short before it, even if the anchor lines themselves were removed. What
+receipts, `partner-check-receipt`: the line's hash, every line before it following on, and the
+timestamp on chain), and so does a log cut short before it, even if the anchor lines themselves were
+removed. Bundles carry the log's lines exactly as written, so the partner can check without VeilCore. What
 happened after the latest anchor is covered only by the next one. The log is not encrypted, so the
 operator can read it without the partner's password; it links the partner to their records' public
 fingerprints, which the chain alone does not, so it is kept 0600 like the store.

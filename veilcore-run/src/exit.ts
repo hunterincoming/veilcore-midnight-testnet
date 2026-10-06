@@ -38,11 +38,10 @@ import {
   RecoveryReplacedButUnconfirmedError,
   commit,
   fromHex,
-  isLive,
   newSecret,
   toHex,
 } from '@veilcore/contracts';
-import { readAudit } from './audit.ts';
+import { auditLines, readAudit } from './audit.ts';
 import { type ExitBundle, type RecordHandover, BUNDLE_FORMAT, writeBundle } from './bundle.ts';
 import { type Ctx, anchorAudit, proposeTransferForExit } from './operator.ts';
 import {
@@ -115,6 +114,7 @@ export const exportBundle = async (
     vault: p,
     procedure: procedure(p, kind === 'export' ? 'export' : 'self'),
     audit: await auditOf(ctx),
+    auditLines: await auditLines(ctx.audit.file),
   };
   const sha256 = await writeBundle(o.out, keyFor(p), bundle);
   await ctx.vault.addBundle({ path: o.out, sha256, madeAt: bundle.madeAt, kind });
@@ -135,6 +135,117 @@ export const exitRequest = (p: VaultPayload): ExitRequest => ({
     .map((l) => ({ label: l.label, issuerRecord: l.role === 'licensee' ? l.issuerRecord : '' })),
 });
 
+/** The current head of the identity anchored as `origin` (hex). */
+const headOf = (l: Ledger, origin: string): string => {
+  const o = fromHex(origin);
+  return toHex(l.headOf.member(o) ? l.headOf.lookup(o) : o);
+};
+
+/**
+ * Bring the store up to date with the chain during an exit, for what may have landed
+ * without being recorded (an error after sending, a kill, a power cut):
+ *  - a rotation VeilCore stored the secret for (pendingSecret) that is now the head;
+ *  - a hand-over this exit planned (any run, not only the last) that is now the head;
+ *  - a recovery replacement that landed: VeilCore's recovery secret is no longer current.
+ * Returns what changed, for the audit log and the operator.
+ */
+export const reconcileWithChain = async (ctx: Ctx, ledger: Ledger): Promise<string[]> => {
+  const changed: { label: string; note: string; record?: string }[] = [];
+  await ctx.vault.update((v) => {
+    for (const r of v.records) {
+      if (r.status !== 'anchored' && r.status !== 'handed-over') continue;
+      const head = headOf(ledger, r.origin);
+      if (r.pendingSecret !== undefined && toHex(commit.record(fromHex(r.pendingSecret))) === head) {
+        r.secret = r.pendingSecret;
+        r.current = head;
+        delete r.pendingSecret;
+        changed.push({
+          label: r.label,
+          note: 'a rotation VeilCore stored had landed: its secret is now the one in use',
+          record: head,
+        });
+      }
+      const st = v.exit?.records[r.label];
+      if (st !== undefined && st.status !== 'done') {
+        const hist =
+          st.history ??
+          (st.newRecord !== undefined && st.bundleSha256 !== undefined
+            ? [{ newRecord: st.newRecord, bundleSha256: st.bundleSha256 }]
+            : []);
+        const landed = hist.find((x) => x.newRecord === head);
+        if (landed !== undefined) {
+          const late = landed !== hist.at(-1);
+          st.status = 'done';
+          st.newRecord = landed.newRecord;
+          st.bundleSha256 = landed.bundleSha256;
+          st.note = late
+            ? `found on chain: an earlier run's hand-over landed late (its secret is in bundle ${landed.bundleSha256})`
+            : 'found on chain';
+          delete r.secret;
+          delete r.pendingSecret;
+          r.current = head;
+          r.status = 'handed-over';
+          changed.push({ label: r.label, note: st.note, record: head });
+        }
+      }
+      if (r.recovery.secret !== undefined && ledger.recoveryOf.member(fromHex(r.origin))) {
+        const onChain = toHex(ledger.recoveryOf.lookup(fromHex(r.origin)));
+        if (onChain !== toHex(commit.recovery(fromHex(r.recovery.secret)))) {
+          // VeilCore's recovery secret is dead: never hand it over as if it worked.
+          const planned = st?.newRecoveryCommitment === onChain;
+          r.recovery = {
+            heldBy: 'partner',
+            commitment: onChain,
+            ...(planned && st?.recoveryPool !== undefined ? { pool: st.recoveryPool } : {}),
+          };
+          if (st !== undefined && planned) st.recoveryReplaced = true;
+          changed.push({
+            label: r.label,
+            note: planned
+              ? "the partner's recovery commitment had replaced VeilCore's on chain"
+              : "VeilCore's recovery secret is no longer current, and the chain's is not one VeilCore planned",
+          });
+        }
+      }
+    }
+  });
+  for (const c of changed)
+    await ctx.audit.write({
+      op: 'exit-reconcile',
+      ok: true,
+      label: c.label,
+      ...(c.record === undefined ? {} : { record: c.record }),
+      note: c.note,
+    });
+  return changed.map((c) => `${c.label}: ${c.note}`);
+};
+
+/**
+ * Cancel an assisted exit that has sent nothing (checked against the chain first): for
+ * an answer that turned out unusable, a lost master, or a change of mind. Refused once
+ * anything landed; then the way on is to finish it, or a self exit.
+ */
+export const cancelExit = async (ctx: Ctx, ledger: Ledger): Promise<void> => {
+  await ctx.vault.assertActive();
+  if (ctx.vault.read().exit === undefined) throw new Error('No exit is under way.');
+  await reconcileWithChain(ctx, ledger);
+  const e = ctx.vault.read().exit!;
+  const sent = Object.entries(e.records).filter(
+    ([, st]) => st.txIds.length > 0 || st.recoveryReplaced === true || st.status === 'done',
+  );
+  if (sent.length > 0 || Object.keys(e.licences).length > 0)
+    throw new Error(
+      `Refused: this exit already changed the chain (${[...sent.map(([l]) => l), ...Object.keys(e.licences)].join(', ')}). ` +
+        'Finish it (run it again), or fall back to a self exit.',
+    );
+  await ctx.vault.update((v) => void delete v.exit);
+  await ctx.audit.write({
+    op: 'exit-cancel',
+    ok: true,
+    note: `assisted exit started ${e.startedAt} cancelled: nothing had been sent`,
+  });
+};
+
 /**
  * Leave, the partner sending the transactions: hand over everything (sealed to their key)
  * and retire the store. VeilCore's copies keep working on chain until the partner runs
@@ -142,9 +253,20 @@ export const exitRequest = (p: VaultPayload): ExitRequest => ({
  */
 export const exitSelf = async (
   ctx: Ctx,
-  o: { readonly out: string; readonly contracts?: Contracts },
+  o: {
+    readonly out: string;
+    readonly contracts?: Contracts;
+    /** The ledger now (readLedger, no wallet). Required after an assisted exit was started. */
+    readonly ledger?: Ledger;
+  },
 ): Promise<{ readonly sha256: string }> => {
   await ctx.vault.assertActive();
+  if (ctx.vault.read().exit !== undefined) {
+    // What an assisted run sent may have landed unrecorded: hand over only what is true on chain.
+    if (o.ledger === undefined)
+      throw new Error('An assisted exit was started: a self exit needs the chain read first.');
+    await reconcileWithChain(ctx, o.ledger);
+  }
   const p = ctx.vault.read();
   refuseBlockers(p);
   const key = keyFor(p);
@@ -158,6 +280,7 @@ export const exitSelf = async (
     ...(p.exit === undefined ? {} : { earlierBundles: earlierBundles(p.exit) }),
     procedure: procedure(p, 'self'),
     audit: await auditOf(ctx),
+    auditLines: await auditLines(ctx.audit.file),
   };
   const sha256 = await writeBundle(o.out, key, bundle);
   await ctx.vault.addBundle({ path: o.out, sha256, madeAt: bundle.madeAt, kind: 'exit-self' });
@@ -166,7 +289,7 @@ export const exitSelf = async (
   return { sha256 };
 };
 
-const earlierBundles = (e: ExitState): { sha256: string; labels: string[] }[] => {
+const earlierBundles = (e: Pick<ExitState, 'records'>): { sha256: string; labels: string[] }[] => {
   const by = new Map<string, string[]>();
   for (const [label, st] of Object.entries(e.records))
     if (st.bundleSha256 !== undefined && st.status === 'done')
@@ -240,31 +363,34 @@ export const exitAssisted = async (
 
   // ── Where each record stands, from the chain ──────────────────────────────────────────
   const ledger: Ledger = await vc.ledger();
-  const live = (c: string | undefined): boolean => c !== undefined && isLive(ledger, fromHex(c));
+  await reconcileWithChain(ctx, ledger);
+  p = ctx.vault.read();
   /** Whether `record` is the head of the identity anchored as `origin` (isLive alone is true of any unused commitment). */
-  const isHead = (l: Ledger, origin: string, record: string | undefined): boolean => {
-    if (record === undefined) return false;
-    const o = fromHex(origin);
-    return toHex(l.headOf.member(o) ? l.headOf.lookup(o) : o) === record;
-  };
+  const isHead = (l: Ledger, origin: string, record: string | undefined): boolean =>
+    record !== undefined && headOf(l, origin) === record;
   const fresh = new Map<string, Uint8Array>(); // label → hand-over secret, this run only
   const handover: RecordHandover[] = [];
   const settle: Record<string, ExitState['records'][string]> = {};
   for (const r of p.records.filter((x) => x.status === 'anchored' || x.status === 'handed-over')) {
     const st = p.exit!.records[r.label];
-    if (st?.status === 'done' || st?.status === 'taken-back') continue;
-    if (isHead(ledger, r.origin, st?.newRecord)) {
-      // An earlier run's rotation landed though it reported an error, or the run was cut short.
-      settle[r.label] = { ...st, status: 'done', note: 'found on chain' };
-      continue;
-    }
-    const oldLive = r.secret !== undefined && live(toHex(commit.record(fromHex(r.secret))));
+    if (st?.status === 'done' || st?.status === 'taken-back') continue; // (reconcile found any hand-over that landed)
+    const head = headOf(ledger, r.origin);
+    const oldLive = r.secret !== undefined && toHex(commit.record(fromHex(r.secret))) === head;
     if (!oldLive) {
-      settle[r.label] = {
-        txIds: st?.txIds ?? [],
-        status: 'taken-back',
-        note: 'neither VeilCore nor its hand-over controls it',
-      };
+      // Not VeilCore's stored secret, and not a hand-over this exit planned (reconcile checked):
+      // a secret VeilCore's software made otherwise is still VeilCore-made; anything else is the partner's doing.
+      settle[r.label] = r.made.includes(head)
+        ? {
+            txIds: st?.txIds ?? [],
+            status: 'done',
+            newRecord: head,
+            note: "the head is a secret VeilCore's software made; no bundle of this exit holds it",
+          }
+        : {
+            txIds: st?.txIds ?? [],
+            status: 'taken-back',
+            note: 'neither VeilCore nor any hand-over of this exit controls it',
+          };
       continue;
     }
     const origin = fromHex(r.origin);
@@ -312,9 +438,10 @@ export const exitAssisted = async (
     contracts,
     vault: view,
     handover,
-    earlierBundles: earlierBundles(p.exit!),
+    earlierBundles: earlierBundles({ records: { ...p.exit!.records, ...settle } }),
     procedure: procedure(view, 'assisted', handover),
     audit: await auditOf(ctx),
+    auditLines: await auditLines(ctx.audit.file),
   };
   // The hex copies in `handover` were only needed for the bundle.
   const sha256 = await writeBundle(o.out, p.exit!.bundleKey, bundle);
@@ -324,12 +451,22 @@ export const exitAssisted = async (
     const e = v.exit!;
     Object.assign(e.records, settle);
     for (const h of handover) {
+      const before = e.records[h.label];
+      const ans = a.records.find((x) => x.label === h.label);
       e.records[h.label] = {
         ...(h.newRecord === undefined ? {} : { newRecord: h.newRecord }),
         bundleSha256: sha256,
+        history: [
+          ...(before?.history ?? []),
+          ...(h.newRecord === undefined ? [] : [{ newRecord: h.newRecord, bundleSha256: sha256 }]),
+        ],
+        ...(h.newRecoveryCommitment === undefined ? {} : { newRecoveryCommitment: h.newRecoveryCommitment }),
+        ...(ans === undefined || h.newRecoveryCommitment === undefined
+          ? {}
+          : { recoveryPool: { id: a.poolId, index: ans.index } }),
         status: h.status === 'not-rotatable' ? 'not-rotatable' : 'planned',
-        txIds: e.records[h.label]?.txIds ?? [],
-        ...(e.records[h.label]?.recoveryReplaced ? { recoveryReplaced: true } : {}),
+        txIds: before?.txIds ?? [],
+        ...(before?.recoveryReplaced ? { recoveryReplaced: true } : {}),
       };
       const x = v.records.find((y) => y.label === h.label);
       if (x !== undefined && h.newRecord !== undefined) x.made.push(h.newRecord); // VeilCore's software made it

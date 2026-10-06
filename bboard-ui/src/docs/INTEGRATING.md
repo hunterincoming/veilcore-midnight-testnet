@@ -71,8 +71,9 @@ statement your user made. The difference matters in exactly the situations this 
 **3. Batch before anchoring.** Anchoring commitments individually is expensive and requires
 each user to hold a wallet. Aggregate a day's records into a Merkle tree, publish one root,
 and give each user their inclusion proof. One transaction, any number of records, and your
-users never touch a ledger. VeilCore's own contract is on Midnight's test network today;
-mainnet is not live, and a test-network anchor carries no evidentiary weight.
+users never touch a ledger. Every anchor names its network: an anchor on a test network
+carries no evidentiary weight, so check `network` before relying on a date. VeilCore's own
+anchors made before its launch on Midnight's main network are on test networks.
 
 **4. Hand users their proof.** A proof is a small JSON file: the commitment, the path to the
 root, and the transaction that published it. It verifies with this package and a chain

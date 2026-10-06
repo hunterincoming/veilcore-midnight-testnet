@@ -198,7 +198,7 @@ export const en = {
   'm.demo.title1': 'Pick how you',
   'm.demo.title2': 'want to see it.',
   'm.demo.lede':
-    "No sign-up, no wallet. It's a test version, so use made-up details. Records are dated in batches; licenses and lab agreements are simulated, and DNA report pairings aren't dated yet.",
+    "No sign-up, no wallet. It's a test version, so use made-up details. Records are anchored in batches, by hand for now; licenses and lab agreements are simulated, and DNA report pairings aren't dated yet.",
   'm.demo.privacy': 'What the demo keeps →',
   'm.demo.create.title': 'Create a record',
   'm.demo.create.text': 'Fill in a sample record, generate its fingerprint and download the certificate.',
@@ -262,7 +262,7 @@ export const en = {
   'm.addr.main': 'Main contract',
   'm.addr.claims': 'Claims contract',
   'm.addr.claimsPending': 'Not on the main network yet.',
-  'm.addr.explorer': 'Look them up on the Midnight explorer →',
+  'm.addr.explorer': 'Look them up on midnightexplorer.com (run by TexLabs) →',
   'm.status.keyTitle': 'Who can change the contract.',
   'm.status.keyText':
     "The founders hold a maintenance key for VeilCore's contract on Midnight. It can change how the contract works from then on. It cannot rewrite records already anchored in the network's history. A policy for using it is proposed, not decided.",

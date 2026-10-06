@@ -442,6 +442,7 @@ export const VerifyPage: React.FC = () => {
               <SharedFacts
                 data={{
                   disclosed: sharedOf(result),
+                  anchored: result.anchored,
                   priorPossession: result.priorPossession,
                   anchorNetwork: reportedNetwork,
                   dnaPairedByHolder: result.dnaPairedByHolder,

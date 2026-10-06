@@ -18,13 +18,15 @@ import { ja } from './ja';
 import { de } from './de';
 import { fr } from './fr';
 import { mainnetStrings } from './en-mainnet';
-import { IS_MAINNET, CLAIMS_ON_MAINNET } from '../config/network';
+import { IS_MAINNET, CLAIMS_ON_MAINNET, MAINTENANCE_POLICY_APPROVED } from '../config/network';
 
 /**
  * In a mainnet build, the strings that describe the network (en-mainnet.ts) replace the
  * test-network ones in every language. Empty in every other build.
  */
-const NETWORK_OVERLAY: Strings = IS_MAINNET ? mainnetStrings(CLAIMS_ON_MAINNET) : {};
+const NETWORK_OVERLAY: Strings = IS_MAINNET
+  ? mainnetStrings({ claimsOnMainnet: CLAIMS_ON_MAINNET, policyApproved: MAINTENANCE_POLICY_APPROVED })
+  : {};
 
 export const LANGUAGES = {
   en: { label: 'English', short: 'EN', strings: en as Strings },

@@ -194,7 +194,7 @@ Stated plainly, because a party who overstates will be corrected in front of the
 
 ## 6 - Independence from the registry
 
-**Verification does not require the registry that issued a record, or its continued existence.** A holder with their record, nonce and proof verifies against the public ledger using open-source software. (VeilCore anchors are on test networks today; see section 8.)
+**Verification does not require the registry that issued a record, or its continued existence.** A holder with their record, nonce and proof verifies against the public ledger using open-source software. (The ledger fixes a date only when the anchor is on a production network; an anchor on a test network fixes none. See section 8.)
 
 This matters for rights running twenty-five to thirty years. It also forecloses an argument an opponent would otherwise make - that the evidence depends on a commercial party with an interest in the outcome.
 
@@ -226,7 +226,7 @@ The detailed analysis is written against the United States Federal Rules of Evid
 
 **No VeilCore record has been offered in evidence anywhere.** The system is new. This describes how it is designed to be used, not how a court has treated it.
 
-**VeilCore is not yet anchored on a production network.** Anchors made so far are on test networks, which can be reset and carry no evidentiary weight. A date from a test-network anchor should not be relied on.
+**Check which network an anchor is on.** Every anchor names its network. Anchors VeilCore made before its launch on Midnight's main network are on Midnight test networks, and they keep naming that network. A test network can be reset and carries no evidentiary weight, so a date from a test-network anchor should not be relied on. Whether a registry anchors on a production network, and on which contract, is published by the registry itself and can be confirmed on the chain.
 
 Corrections to hunter@veilcore.org.
 

@@ -15,6 +15,8 @@ declare global {
     /** Mainnet builds only, from api/src/deploy-guard.ts (vite.config.ts). Display only. */
     readonly VITE_MAINNET_CONTRACT_ADDRESS: string;
     readonly VITE_MAINNET_CLAIMS_ADDRESS: string;
+    /** Mainnet builds only: 'true' when docs/maintenance-policy.md says APPROVED (vite.config.ts). */
+    readonly VITE_MAINTENANCE_POLICY_APPROVED: string;
   }
 
   interface ImportMeta {

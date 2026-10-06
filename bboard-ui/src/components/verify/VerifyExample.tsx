@@ -93,7 +93,8 @@ export const VerifyExample: React.FC = () => (
             transaction it names.
           </Fact>
           <Note>
-            That transaction is what dates the record. Look it up on the Midnight explorer before relying on the date.
+            That transaction is what dates the record. Look it up on a Midnight explorer, such as midnightexplorer.com,
+            before relying on the date.
           </Note>
           <Fact ok={false}>
             Signed attestation, signature verified in this browser, from a key not verified by VeilCore.

@@ -3,8 +3,12 @@
 // never presented as the live one.
 //
 // Explorer addresses are the ones Midnight lists in its network documentation
-// (docs.midnight.network/relnotes/network). Midnight does not document a per-transaction
-// URL for them, so the app links to the explorer and shows the full transaction hash.
+// (docs.midnight.network/relnotes/network). They are midnightexplorer.com and its preprod
+// and preview subdomains, which TexLabs runs (the site says "Powered by TexLabs" and calls
+// itself an official partner of the Midnight Network); it is not Midnight's own, so the
+// site names it rather than calling it "the Midnight explorer". Midnight does not document
+// a per-transaction URL for them, so the app links to the explorer and shows the full
+// transaction hash.
 // SPDX-License-Identifier: Apache-2.0
 
 export type NetworkId = 'mainnet' | 'preprod' | 'preview' | 'undeployed';
@@ -69,6 +73,13 @@ export const MAINNET_CLAIMS_ADDRESS: string = import.meta.env.VITE_MAINNET_CLAIM
 
 /** The claims contract is on mainnet (its address is pinned) and this is a mainnet build. */
 export const CLAIMS_ON_MAINNET: boolean = IS_MAINNET && MAINNET_CLAIMS_ADDRESS !== '';
+
+/**
+ * A mainnet build, and docs/maintenance-policy.md's status line says APPROVED (read at
+ * build time, vite.config.ts). Until then the site says the policy is proposed, not decided.
+ */
+export const MAINTENANCE_POLICY_APPROVED: boolean =
+  IS_MAINNET && import.meta.env.VITE_MAINTENANCE_POLICY_APPROVED === 'true';
 
 /**
  * The origin every shared link and QR code points at. Links used to be built from

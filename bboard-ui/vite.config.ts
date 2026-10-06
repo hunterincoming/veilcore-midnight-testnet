@@ -20,6 +20,7 @@ import react from '@vitejs/plugin-react';
 import wasm from 'vite-plugin-wasm';
 import topLevelAwait from 'vite-plugin-top-level-await';
 import { readMainnetPins } from '../scripts/mainnet-pins.mjs';
+import { readPolicyStatus } from '../scripts/maintenance-policy.mjs';
 
 // What the site says about where records are dated depends on the build mode, never on
 // hand-edited strings: `--mode mainnet` describes Midnight's main network, every other
@@ -30,10 +31,17 @@ import { readMainnetPins } from '../scripts/mainnet-pins.mjs';
 // addresses are shown on the site (display only: nothing in this site sends a
 // transaction) and come from that file, not from an environment variable that could say
 // something else.
+//
+// Whether the site may call the maintenance policy decided comes from the policy's own
+// status line (docs/maintenance-policy.md, scripts/maintenance-policy.mjs): only
+// "**Status: APPROVED" turns off "proposed, not decided", and a status line it cannot
+// read stops the build.
 const mainnetBuild = (mode: string, command: string) => {
-  if (mode !== 'mainnet') return { veilcore: '', claims: '' };
+  if (mode !== 'mainnet') return { veilcore: '', claims: '', policyApproved: false };
   const pins = readMainnetPins();
   if (!pins.ok) throw new Error(`\n\nThe mainnet website was not built. ${pins.problem}\n`);
+  const policy = readPolicyStatus();
+  if (!policy.ok) throw new Error(`\n\nThe mainnet website was not built. ${policy.problem}\n`);
   const env = { ...loadEnv(mode, process.cwd(), 'VITE_'), ...process.env };
   if (env.VITE_NETWORK_ID !== 'mainnet') {
     throw new Error(
@@ -45,7 +53,7 @@ const mainnetBuild = (mode: string, command: string) => {
       '\n\nThe mainnet website was not built: VITE_API_BASE (the registry address) is not set. Use npm run deploy:mainnet from the repository folder.\n',
     );
   }
-  return { veilcore: pins.veilcore, claims: pins.claims };
+  return { veilcore: pins.veilcore, claims: pins.claims, policyApproved: policy.approved };
 };
 
 // The page description search engines and link previews show, by mode.
@@ -141,6 +149,7 @@ export default defineConfig(({ mode, command }) => {
     define: {
       'import.meta.env.VITE_MAINNET_CONTRACT_ADDRESS': JSON.stringify(pins.veilcore),
       'import.meta.env.VITE_MAINNET_CLAIMS_ADDRESS': JSON.stringify(pins.claims),
+      'import.meta.env.VITE_MAINTENANCE_POLICY_APPROVED': JSON.stringify(pins.policyApproved ? 'true' : ''),
     },
     checks: {
       importIsUndefined: false,

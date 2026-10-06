@@ -7,7 +7,12 @@
 //   - `vite build --mode mainnet` fails, in plain words, without a pinned address;
 //   - with a made-up 64-hex address it builds, and the public and app pages, driven in
 //     headless Chromium, say "main network" and never "test network", "preprod" or "Preview";
-//   - a preprod build still says "test network" exactly as before.
+//   - a preprod build still says "test network" exactly as before;
+//   - the maintenance-key wording says "decided" only when docs/maintenance-policy.md's
+//     status line says APPROVED, and the claims contract's lack of a key only once pinned;
+//   - deploy:prod refuses once the registry anchors on mainnet;
+//   - on the mainnet site a Preview-anchored record still shows as Preview, with its warning,
+//     though the registry no longer sets priorPossession for it.
 //
 // The builds go to temporary folders; bboard-ui/dist is not touched. The browser part is
 // skipped when Chromium is missing. Run: npx vitest run --maxWorkers=1 src/site-mainnet.test.ts
@@ -24,8 +29,10 @@ import type { AddressInfo } from 'node:net';
 import { fileURLToPath } from 'node:url';
 import { readMainnetPins, normaliseAddress } from '../../scripts/mainnet-pins.mjs';
 import { checkDescriptor } from '../../scripts/site-mainnet-preflight.mjs';
+import { checkTestSiteAllowed } from '../../scripts/site-prod-preflight.mjs';
+import { readPolicyStatus } from '../../scripts/maintenance-policy.mjs';
 import { en } from './i18n/en';
-import { mainnetStrings } from './i18n/en-mainnet';
+import { DATED_POSTS, mainnetStrings } from './i18n/en-mainnet';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const UI = path.resolve(HERE, '..');
@@ -112,20 +119,133 @@ describe("deploy:mainnet's registry check", () => {
   });
 });
 
+describe("deploy:prod's registry check", () => {
+  it('refuses once the registry anchors on mainnet, and says to use deploy:mainnet', () => {
+    const at = (network: string) => ({ anchors: [{ chain: 'midnight', network, contractAddress: DUMMY }] });
+    expect(checkTestSiteAllowed(at('preview'))).toEqual({ ok: true });
+    expect(checkTestSiteAllowed(at('preprod'))).toEqual({ ok: true });
+    expect(checkTestSiteAllowed({ anchors: [] })).toEqual({ ok: true });
+    const refused = checkTestSiteAllowed(at('mainnet'));
+    expect(refused).toMatchObject({ ok: false });
+    expect(!refused.ok && refused.problem).toMatch(/Use npm run deploy:mainnet instead/);
+  });
+
+  // The script itself, as npm run deploy:prod runs it, against a stand-in registry.
+  const runAgainst = async (descriptor: unknown, status = 200) => {
+    const server = http.createServer((req, res) => {
+      res.writeHead(status, { 'content-type': 'application/json' });
+      res.end(req.url === '/.well-known/veilcore-registry' ? JSON.stringify(descriptor) : '{}');
+    });
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', () => r()));
+    const api = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    const { spawn } = await import('node:child_process');
+    const out = await new Promise<{ code: number | null; text: string }>((resolve) => {
+      const p = spawn(process.execPath, [path.resolve(UI, '../scripts/site-prod-preflight.mjs')], {
+        env: { ...cleanEnv(), VITE_API_BASE: api },
+      });
+      let text = '';
+      p.stdout.on('data', (d) => (text += d));
+      p.stderr.on('data', (d) => (text += d));
+      p.on('close', (code) => resolve({ code, text }));
+    });
+    server.close();
+    return out;
+  };
+
+  it('the script stops deploy:prod against a mainnet registry and lets it run against Preview', async () => {
+    const mainnet = await runAgainst({ anchors: [{ chain: 'midnight', network: 'mainnet', contractAddress: DUMMY }] });
+    expect(mainnet.code).toBe(1);
+    expect(mainnet.text).toMatch(/NOT DEPLOYED\. The registry anchors on mainnet now/);
+    expect(mainnet.text).toMatch(/Use npm run deploy:mainnet instead/);
+    const preview = await runAgainst({ anchors: [{ chain: 'midnight', network: 'preview', contractAddress: DUMMY }] });
+    expect(preview.code, preview.text).toBe(0);
+    const down = await runAgainst({}, 500);
+    expect(down.code).toBe(1);
+    expect(down.text).toMatch(/Could not read the registry/);
+  }, 30_000);
+
+  it('runs first in deploy:prod', () => {
+    const pkg = JSON.parse(fs.readFileSync(path.resolve(UI, '../package.json'), 'utf8')) as {
+      scripts: Record<string, string>;
+    };
+    expect(pkg.scripts['deploy:prod']).toMatch(/^VITE_API_BASE=\S+ node scripts\/site-prod-preflight\.mjs && /);
+  });
+});
+
+describe('the maintenance policy status', () => {
+  it('is read from the policy itself, which says PROPOSED today or APPROVED', () => {
+    const now = readPolicyStatus();
+    expect(now.ok, !now.ok ? now.problem : '').toBe(true);
+    const policy = fs.readFileSync(path.resolve(UI, '../docs/maintenance-policy.md'), 'utf8');
+    expect(now.ok && now.approved).toBe(/^\*\*Status: APPROVED/m.test(policy));
+  });
+  it('accepts only PROPOSED or APPROVED, on exactly one status line', () => {
+    expect(readPolicyStatus('# P\n\n**Status: PROPOSED, 3 October 2026.**\n')).toMatchObject({
+      ok: true,
+      approved: false,
+    });
+    expect(readPolicyStatus('# P\n\n**Status: APPROVED, 9 October 2026.**\n')).toMatchObject({
+      ok: true,
+      approved: true,
+    });
+    expect(readPolicyStatus('# P\n\n**Status: DRAFT**\n')).toMatchObject({ ok: false });
+    expect(readPolicyStatus('# P\n\nNo status here.\n')).toMatchObject({ ok: false });
+    expect(readPolicyStatus('**Status: APPROVED**\n**Status: PROPOSED**\n')).toMatchObject({ ok: false });
+    expect(readPolicyStatus('**Status: approved**\n')).toMatchObject({ ok: false });
+  });
+});
+
+/** The English strings with the mainnet overlay, minus the dated posts (history: they name preprod). */
+const mergedNow = (claimsOnMainnet: boolean, policyApproved: boolean) => {
+  const merged: Record<string, string> = { ...en, ...mainnetStrings({ claimsOnMainnet, policyApproved }) };
+  for (const k of DATED_POSTS) delete merged[k];
+  return merged;
+};
+
 describe('the mainnet strings', () => {
   for (const claims of [true, false]) {
-    it(`leave no test-network wording in English (claims contract ${claims ? 'pinned' : 'not pinned'})`, () => {
-      const overlay = mainnetStrings(claims);
-      for (const k of Object.keys(overlay)) expect(Object.prototype.hasOwnProperty.call(en, k), k).toBe(true);
-      const merged: Record<string, string> = { ...en, ...overlay };
-      const left = Object.entries(merged).filter(([, v]) => TEST_WORDING.test(v));
-      expect(left).toEqual([]);
-    });
+    for (const approved of [true, false]) {
+      it(`leave no test-network wording in English outside the dated posts (claims ${claims ? 'pinned' : 'not pinned'}, policy ${approved ? 'approved' : 'proposed'})`, () => {
+        const overlay = mainnetStrings({ claimsOnMainnet: claims, policyApproved: approved });
+        for (const k of Object.keys(overlay)) expect(Object.prototype.hasOwnProperty.call(en, k), k).toBe(true);
+        const left = Object.entries(mergedNow(claims, approved)).filter(([, v]) => TEST_WORDING.test(v));
+        expect(left).toEqual([]);
+      });
+    }
   }
+  it('keep the dated posts on the network they ran on', () => {
+    const overlay = mainnetStrings({ claimsOnMainnet: true, policyApproved: true });
+    for (const k of DATED_POSTS) expect(`${en[k]} ${overlay[k] ?? ''}`, k).toMatch(/test network/);
+    expect(overlay['m.post0.text']).toMatch(/on Midnight's preprod test network/);
+    expect(overlay['m.post2.text']).toMatch(/to Midnight's preprod test network/);
+  });
   it('say the claims contract is not on the main network until it is pinned', () => {
-    expect(mainnetStrings(false)['m.claims.status']).toMatch(/isn't on Midnight's main network yet/);
-    expect(mainnetStrings(true)['m.claims.status']).toMatch(/on Midnight's main network/);
-    expect(mainnetStrings(true)['m.claims.status']).not.toMatch(/isn't on Midnight's main network/);
+    const s = (claimsOnMainnet: boolean) => mainnetStrings({ claimsOnMainnet, policyApproved: false });
+    expect(s(false)['m.claims.status']).toMatch(/isn't on Midnight's main network yet/);
+    expect(s(true)['m.claims.status']).toMatch(/on Midnight's main network/);
+    expect(s(true)['m.claims.status']).not.toMatch(/isn't on Midnight's main network/);
+  });
+  it('call the maintenance policy decided only when it is approved; the claims contract has no key only once pinned', () => {
+    const key = (claimsOnMainnet: boolean, policyApproved: boolean) => {
+      const o = mainnetStrings({ claimsOnMainnet, policyApproved });
+      return `${o['m.status.keyText']} | ${o['m.status.keyLink']}`;
+    };
+    for (const claims of [true, false]) {
+      expect(key(claims, false)).toMatch(/A policy for using it is proposed, not decided\..*Read the proposed policy/);
+      expect(key(claims, false)).not.toMatch(/approved/i);
+      expect(key(claims, true)).toMatch(/Both founders have approved the policy.*Read the maintenance policy/);
+      expect(key(claims, true)).not.toMatch(/proposed/i);
+    }
+    expect(key(true, false)).toMatch(/The claims contract has no maintenance key/);
+    expect(key(false, true)).not.toMatch(/claims contract/i);
+  });
+  it('say records are anchored by hand for now, never that dating simply happens', () => {
+    for (const claims of [true, false]) {
+      const o = mainnetStrings({ claimsOnMainnet: claims, policyApproved: false });
+      for (const k of ['m.hero.status', 'm.demo.lede', 'm.stat2.s', 'm.privacy.test.text'] as const)
+        expect(o[k], k).toMatch(/by hand for now/);
+      expect(Object.values(o).join('\n')).not.toMatch(/dated there, in batches|are dated on Midnight's main network/);
+    }
   });
 });
 
@@ -234,6 +354,19 @@ describe('builds', () => {
     '/records',
     '/licenses',
   ];
+  /** Not in PAGES: this page rightly says "test network" (the record's own anchor). */
+  const PREVIEW_RECORD = '/verify/VEIL-PREVIEW';
+  const PREVIEW_ANSWER = {
+    found: true,
+    id: 'VEIL-PREVIEW',
+    cultivar: 'Old Preview Cross',
+    recordFingerprint: 'ef'.repeat(32),
+    disclosed: ['own'],
+    anchored: true,
+    anchor: { chain: 'midnight', network: 'preview', testNetwork: true, txHash: '12'.repeat(32) },
+    priorPossession: false,
+    unalteredSinceRegistryFirstSeen: true,
+  };
 
   const textOf = async (dir: string, role: string) => {
     const { chromium } = require(PW as string) as { chromium: { launch(o: object): Promise<Browser> } };
@@ -245,14 +378,20 @@ describe('builds', () => {
     await ctx.route(/^https?:\/\/(?!127\.0\.0\.1)/, async (r) => {
       const u = r.request().url();
       if (u.startsWith(API)) {
-        const body = /\/verify\//.test(u) ? { found: false } : /\/api\/(records|licenses)/.test(u) ? [] : {};
+        const body = /\/verify\/VEIL-PREVIEW/.test(u)
+          ? PREVIEW_ANSWER
+          : /\/verify\//.test(u)
+            ? { found: false }
+            : /\/api\/(records|licenses)/.test(u)
+              ? []
+              : {};
         return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
       }
       return r.fulfill({ status: 404, body: '' });
     });
     await ctx.addInitScript((r: string) => localStorage.setItem('veilcore.role.v1', r), role);
     const out: Record<string, string> = {};
-    for (const p of PAGES) {
+    for (const p of [...PAGES, PREVIEW_RECORD]) {
       const pg = await ctx.newPage();
       const errors: string[] = [];
       pg.on('pageerror', (e) => errors.push(e.message));
@@ -279,18 +418,41 @@ describe('builds', () => {
       preprod = await textOf(preDist, 'breeder');
     }, 300_000);
 
-    it('the mainnet site never says test network, preprod or Preview', () => {
-      expect(Object.keys(mainnet)).toEqual(PAGES);
-      for (const p of PAGES) expect(mainnet[p].match(TEST_WORDING)?.[0], p).toBeUndefined();
+    it('the mainnet site never says test network, preprod or Preview, except in the dated posts', () => {
+      expect(Object.keys(mainnet)).toEqual([...PAGES, PREVIEW_RECORD]);
+      const dated = mainnetStrings({ claimsOnMainnet: true, policyApproved: false });
+      for (const p of PAGES) {
+        let text = mainnet[p];
+        for (const k of DATED_POSTS) text = text.split(dated[k] ?? '\u0000').join('');
+        expect(text.match(TEST_WORDING)?.[0], p).toBeUndefined();
+      }
+      // The dated posts are on the home page, as history.
+      expect(mainnet['/']).toContain(dated['m.post0.text']);
+    });
+
+    it('a record anchored on Preview still shows as Preview, with its warning, on the mainnet site', () => {
+      // The registry now answers priorPossession: false for it (only a mainnet anchor
+      // counts), with anchored: true and the anchor's network; the page reads those.
+      expect(mainnet[PREVIEW_RECORD]).toMatch(/anchored on Midnight Preview \(test network\)/);
+      expect(mainnet[PREVIEW_RECORD]).toMatch(/A test network can be reset and its dates carry no evidential weight/);
+      expect(mainnet[PREVIEW_RECORD]).not.toMatch(/Prior possession: not anchored yet/);
     });
 
     it('the mainnet site says main network, with the contract addresses', () => {
-      expect(mainnet['/']).toMatch(/Now on Midnight's main network: records are dated there, in batches\./);
+      expect(mainnet['/']).toMatch(
+        /Now on Midnight's main network: we anchor records there in batches, by hand for now\./,
+      );
+      // Built from the real policy, which says PROPOSED today.
+      expect(mainnet['/']).toMatch(/A policy for using it is proposed, not decided\./);
+      expect(mainnet['/']).toMatch(/The claims contract has no maintenance key/);
       expect(mainnet['/']).toContain(DUMMY);
       expect(mainnet['/']).toContain(DUMMY_CLAIMS);
       expect(mainnet['/']).toMatch(/Main network/);
       expect(mainnet['/']).toMatch(/licenses and lab agreements are simulated/i);
-      for (const p of ['/records', '/licenses', '/new']) expect(mainnet[p], p).toMatch(/Main network/);
+      for (const p of ['/records', '/licenses', '/new']) {
+        expect(mainnet[p], p).toMatch(/Main network/);
+        expect(mainnet[p], p).toMatch(/Web demo/);
+      }
       expect(mainnet['/privacy']).toMatch(/Dated on Midnight's main network/);
       expect(mainnet['/licenses']).toMatch(/Simulated in this web demo/);
       expect(mainnet['/verify/example']).toMatch(/Example: a made-up record\./);

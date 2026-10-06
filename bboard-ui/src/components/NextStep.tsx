@@ -66,8 +66,8 @@ export const NextStep: React.FC<{
     step = {
       title: 'Send a sample to a lab',
       why: record.dnaFingerprint
-        ? 'You’ve paired a lab report, which is your own statement. A lab confirming receipt with its own key adds a second party to the record, which is what someone else can rely on.'
-        : 'Right now this record is your own account of the cultivar. A lab confirming receipt with its own key, and returning a report, is what makes it evidence someone else can rely on.',
+        ? 'You’ve paired a lab report, which is your own statement. A lab confirming receipt with its own key adds a second party to the record, which is stronger evidence than your statement alone.'
+        : 'Right now this record is your own account of the cultivar. A lab confirming receipt with its own key, and returning a report, makes it stronger evidence than your own account.',
       action: 'Send to a lab',
       icon: <VerifiedIcon />,
       onClick: () => {},

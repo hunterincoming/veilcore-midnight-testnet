@@ -4,12 +4,31 @@
 //   2. the registry the site talks to publishes that same contract on mainnet as the
 //      place it anchors batches (its /.well-known/veilcore-registry).
 // If either is not so, nothing is built or deployed, and it says what to do in plain words.
+// It also reads the maintenance policy's status line (scripts/maintenance-policy.mjs) and
+// prints what the site will say about it.
 // SPDX-License-Identifier: Apache-2.0
 
 import { pathToFileURL } from 'node:url';
 import { readMainnetPins, normaliseAddress, TEST_OVERRIDE } from './mainnet-pins.mjs';
+import { readPolicyStatus } from './maintenance-policy.mjs';
 
 export const DEFAULT_API = 'https://veilcore-api-production.up.railway.app';
+
+/** The registry's published descriptor, or a plain reason it could not be read. */
+export const readDescriptor = async (api) => {
+  try {
+    const res = await fetch(`${api}/.well-known/veilcore-registry`, { signal: AbortSignal.timeout(20_000) });
+    if (!res.ok) throw new Error(`it answered ${res.status}`);
+    return { ok: true, descriptor: await res.json() };
+  } catch (e) {
+    return {
+      ok: false,
+      problem:
+        `Could not read the registry at ${api} (${e instanceof Error ? e.message : String(e)}). ` +
+        'Check your internet connection and that the registry is up on Railway, then run this again.',
+    };
+  }
+};
 
 /**
  * Whether a registry descriptor anchors on mainnet at the pinned contract.
@@ -50,22 +69,13 @@ const main = async () => {
     fail(`${TEST_OVERRIDE} is set. It is for tests only; close this Terminal window and open a new one.`);
   const pins = readMainnetPins();
   if (!pins.ok) fail(pins.problem);
+  const policy = readPolicyStatus();
+  if (!policy.ok) fail(policy.problem);
 
   const api = (process.env.VITE_API_BASE || DEFAULT_API).replace(/\/+$/, '');
-  let descriptor;
-  try {
-    const res = await fetch(`${api}/.well-known/veilcore-registry`, {
-      signal: AbortSignal.timeout(20_000),
-    });
-    if (!res.ok) throw new Error(`it answered ${res.status}`);
-    descriptor = await res.json();
-  } catch (e) {
-    fail(
-      `Could not read the registry at ${api} (${e instanceof Error ? e.message : String(e)}). ` +
-        'Check your internet connection and that the registry is up on Railway, then run this again.',
-    );
-  }
-  const verdict = checkDescriptor(descriptor, pins.veilcore);
+  const read = await readDescriptor(api);
+  if (!read.ok) fail(read.problem);
+  const verdict = checkDescriptor(read.descriptor, pins.veilcore);
   if (!verdict.ok) fail(verdict.problem);
 
   console.log(`Main contract pinned: ${pins.veilcore}`);
@@ -73,6 +83,11 @@ const main = async () => {
     pins.claims
       ? `Claims contract pinned: ${pins.claims}`
       : 'Claims contract: not pinned yet. The site will say it is not on the main network yet.',
+  );
+  console.log(
+    policy.approved
+      ? 'Maintenance policy: APPROVED. The site will say both founders have approved it.'
+      : 'Maintenance policy: PROPOSED. The site will say it is proposed, not decided.',
   );
   console.log(`Registry ${api} anchors on mainnet to the same contract. Building the mainnet site.`);
 };

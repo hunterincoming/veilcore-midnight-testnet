@@ -39,6 +39,14 @@ export const Fact: React.FC<{ ok?: boolean; children: React.ReactNode }> = ({ ok
 export type SharedFactsData = {
   /** The shared keys, in the registry's older names: own, dna, lineage, sealed, parents, method. */
   disclosed: readonly string[];
+  /**
+   * The registry reports the record's batch anchored, on any network. The prior-possession
+   * line is drawn from this and the network, not from `priorPossession`: a current registry
+   * sets `priorPossession` only for a mainnet anchor, and a Preview-era anchor must still be
+   * shown, as Preview, with its warning.
+   */
+  anchored?: boolean;
+  /** Only for a registry too old to send `anchored`, where it meant "anchored on any network". */
   priorPossession?: boolean;
   anchorNetwork?: string;
   dnaPairedByHolder?: boolean;
@@ -61,7 +69,7 @@ export const SharedFacts: React.FC<{ data: SharedFactsData; preview?: boolean }>
             Prior possession: shown only once the registry reports this record&apos;s batch anchored, and then as the
             registry&apos;s report.
           </Fact>
-        ) : data.priorPossession ? (
+        ) : (data.anchored ?? data.priorPossession) ? (
           <Fact ok={false}>
             Prior possession: the registry reports this record&apos;s batch anchored on{' '}
             {networkLabel(data.anchorNetwork ?? '')}. This page has not checked the chain.

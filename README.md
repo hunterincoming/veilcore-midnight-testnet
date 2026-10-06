@@ -138,6 +138,11 @@ The script runs the Vercel CLI pinned in `tools/vercel/` (exact version, own loc
 npm run deploy:prod
 ```
 
+`deploy:prod` publishes the test-network site. It first reads the registry's
+`/.well-known/veilcore-registry` and refuses once the registry anchors on mainnet (or if it
+cannot be read), because the test-network wording would then be false. After the mainnet
+launch the site is published with `npm run deploy:mainnet` (`docs/mainnet-day-site.md`).
+
 ## Licence
 
 Apache-2.0. Built on the Midnight Network.

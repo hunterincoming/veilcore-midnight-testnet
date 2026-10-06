@@ -3,9 +3,10 @@
 // per record, from what the registry reports (an old record can sit on a test network
 // even on the mainnet site).
 //
-// Test builds: "Demo" and "Test network". A mainnet build: "Main network" only. The site
-// sends no transactions in either; the screens that simulate something (licenses, lab
-// agreements) say so where it happens.
+// Test builds: "Demo" and "Test network". A mainnet build: "Web demo" and "Main network":
+// the contract is live, but this app is still the web demo (it sends no transactions, and
+// licenses and lab agreements are simulated), and the header should not be the one place
+// that suggests otherwise. The screens that simulate something say so where it happens.
 // SPDX-License-Identifier: Apache-2.0
 
 import React from 'react';
@@ -15,7 +16,7 @@ import ScienceIcon from '@mui/icons-material/ScienceOutlined';
 
 export const WalletBadge: React.FC<{ network: string }> = ({ network }) => (
   <Stack direction="row" spacing={1}>
-    {network !== 'mainnet' && <Chip size="small" icon={<ScienceIcon />} variant="outlined" label="Demo" />}
+    <Chip size="small" icon={<ScienceIcon />} variant="outlined" label={network === 'mainnet' ? 'Web demo' : 'Demo'} />
     <Chip
       size="small"
       icon={<BoltIcon />}

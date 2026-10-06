@@ -196,7 +196,8 @@ export const AttesterSetup: React.FC<{ variant?: 'button' | 'text' }> = ({ varia
               <TextField select label="Scheme" value={scheme} onChange={(e) => setScheme(e.target.value)} fullWidth>
                 <MenuItem value="ISO/IEC 17025">ISO/IEC 17025</MenuItem>
                 <MenuItem value="ISO 9001">ISO 9001</MenuItem>
-                <MenuItem value="State license">State license</MenuItem>
+                {/* The stored value stays "State licence", as profiles saved before the label changed hold it. */}
+                <MenuItem value="State licence">State license</MenuItem>
                 <MenuItem value="Other">Other</MenuItem>
               </TextField>
               <TextField

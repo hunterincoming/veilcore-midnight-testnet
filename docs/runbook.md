@@ -378,7 +378,8 @@ Once Claude has pinned both addresses and the registry anchors on mainnet (Railw
 put veilcore.org into mainnet mode with `npm run deploy:mainnet`. The exact steps, what it
 refuses and why, and what to check on your phone are in **`docs/mainnet-day-site.md`**. It
 will not build until both conditions are true, so it cannot announce mainnet early. After
-this, always publish the site with `deploy:mainnet`, never `deploy:prod`.
+this, always publish the site with `deploy:mainnet`; `deploy:prod` refuses once the registry
+anchors on mainnet.
 
 ### If the deploy stops partway
 

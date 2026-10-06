@@ -255,7 +255,7 @@ Because `fieldSetRoot` is in the JSON, anyone shown the JSON sees which field se
 
 **An opening** of slot *i* is its value, its salt, and the sixteen leaves. A verifier recomputes `leaf_i` from the value and salt, checks it is the *i*-th of the sixteen, and recomputes the root. The other fifteen leaves are salted hashes and disclose nothing about their values.
 
-**Claims** (reference: the VeilCore claims contract, `contract/src/veilcore-claims.compact`, and its design note, `docs/claims-design.md`, in the veilcore-midnight-testnet repository; run end to end on Midnight preprod in October 2026, not yet on mainnet) are proved against the record commitment and published on the ledger:
+**Claims** (reference: the VeilCore claims contract, `contract/src/veilcore-claims.compact`, and its design note, `docs/claims-design.md`, in the veilcore-midnight-testnet repository; run end to end on Midnight preprod on 4 October 2026; not on mainnet as of that date) are proved against the record commitment and published on the ledger:
 
 - **value**: slot *i* holds a stated value. The value is published: this establishes authenticity, never confidentiality.
 - **range**: a `uint` slot is at least, or at most, a bound. The number is not published.

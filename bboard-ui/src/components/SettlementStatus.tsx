@@ -35,8 +35,8 @@ export const SettlementStatus: React.FC<{ record: StrainRecord }> = ({ record })
         </Typography>
         <Typography variant="body2" color="text.secondary">
           Sealed on your device and kept on {OUR_SERVER}. It isn&apos;t in a batch yet, so it isn&apos;t anchored. We
-          anchor records together, in batches, so one transaction covers many and you never need a wallet. Until then
-          its date rests on this registry&apos;s records.
+          anchor records together, in batches (by hand for now, so it can take a while), so one transaction covers many
+          and you never need a wallet. Until then its date rests on this registry&apos;s records.
         </Typography>
       </Stack>
     );

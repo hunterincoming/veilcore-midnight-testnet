@@ -301,14 +301,11 @@ table, which must stay as it is.
     (nothing shows; spaces are fine). If it doesn't match, fix the paper and type it again
     (type `SHOW` to see the key again). Nothing is sent until it matches. The key is
     never written to this Mac: the deploy holds it in memory and drops it when it ends.
-    - **Second copy: PENDING THE FOUNDERS' DECISION.** Only if both founders have adopted
-      the two-copy proposal in `docs/maintenance-policy.md`: while the key is on screen,
+    - **Second copy (Hunter decided 6 Oct; Mako to confirm).** While the key is on screen,
       and **before** typing `WRITTEN`, write it on a second sheet too, and check that sheet
       against the screen, group by group (the CLI checks only the copy you type back). One
       sheet is Hunter's, one is Mako's, kept in different places. Never photograph, scan,
-      email, message or type it anywhere to get it to Mako: how his copy reaches him in
-      Japan is part of the founders' decision. If the proposal is not adopted, write one
-      copy, as above.
+      email, message or type it anywhere to get it to Mako: his copy goes to him by hand.
 19. The deploy runs. First it prints `Contract address: …` on its own line, before
     anything is sent. **Copy that address onto paper now.** The `contractDeployed` line
     comes after the first transaction is confirmed. Then it prints `adding circuit key 1 of 16` (if the first

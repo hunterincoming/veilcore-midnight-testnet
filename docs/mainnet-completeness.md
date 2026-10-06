@@ -212,3 +212,17 @@ once #1605 is resolved.
   separately.
 - No independent security audit yet. The reviews above are AI reviews we directed, not a
   paid audit.
+
+## Partner kit: publishing (decided 6 Oct)
+
+- **npm name:** `@veilcore/contracts`. Hunter creates the free npm organisation `veilcore`
+  (npmjs.com, Add Organization, free plan), which also reserves the name. Then the package's
+  `"private": true` comes off and it is published from the Mac like the SDK.
+- **Proving key files:** a GitHub release tagged `zk-r4` on the public repo
+  `hunterincoming/veilcore-midnight-testnet`. On the Mac: `npm run keys:stage -w @veilcore/contracts`,
+  then upload every file it produces to that release. The kit checks every file against the
+  committed fingerprints, so a wrong file is refused.
+- **Managed option at launch:** dating only (VeilCore anchors partners' fingerprints and batch
+  roots). VeilCore does not hold partners' record or license secrets.
+- **Maintenance key:** one key, two paper copies (Hunter, Mako). Hunter approved 6 Oct;
+  Mako to confirm. The policy stays PROPOSED until he does, and the site says so.

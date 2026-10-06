@@ -245,11 +245,12 @@ Every action that writes to the chain pays a fee in **DUST**. Checking costs not
    On preprod: get test NIGHT from the faucet (`https://midnight-tmnight-preprod.nethermind.dev/`)
    for `await wallet.nightAddress()`, then `await wallet.registerNightForDust()` (test networks
    only; the package refuses it on mainnet).
-2. **VeilCore operates on your behalf (managed).** You send VeilCore commitments; VeilCore's
-   own client and wallet send them. This suits batch roots (`anchorBatch` needs no secret of
-   yours). For anything that acts as a record or a licence, whoever sends it must hold that
-   record's or licence's secret, so managed means VeilCore holds those secrets for you. Say
-   which you want; it is an agreement, not a setting in this package.
+2. **VeilCore dates your records for you (managed dating).** You send VeilCore your records'
+   fingerprints, or a batch root; VeilCore's own wallet anchors them on Midnight. No secret of
+   yours is involved (`anchorBatch` needs none). This is the only managed service at launch.
+   Anything that acts as a record or a licence (proving possession, licenses, lineage,
+   claims) has to be sent by whoever holds that record's or license's secret, so at launch
+   you run those yourself with this package. VeilCore does not hold partners' secrets.
 
 **Not offered yet:** VeilCore paying the fees of transactions you prove and send yourself
 (fee sponsorship). It is built for VeilCore's website demo and not in service.

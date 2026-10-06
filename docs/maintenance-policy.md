@@ -1,7 +1,8 @@
 # Maintenance policy
 
-**Status: PROPOSED, 3 October 2026. Not in force until both founders approve it and it
-is published with deployment record revision 4.**
+**Status: PROPOSED, 3 October 2026. Approved by Hunter Roberts on 6 October 2026; waiting
+for Mako Steiner. Not in force until both founders approve it and it is published with
+deployment record revision 4.**
 
 The VeilCore contract on Midnight mainnet keeps a maintenance authority. This page says
 what that authority can do, why it is kept, who holds it, how it is used, and how

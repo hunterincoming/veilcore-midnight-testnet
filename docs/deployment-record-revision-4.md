@@ -142,7 +142,7 @@ SHA-256 of compiled artefacts (`contract/src/managed/veilcore/`), copied from
 `docs/fingerprints.md`: a prover and a verifier key for each of the 24 circuits, the ZKIR
 of each circuit in two forms, and the compiled contract code (97 rows).
 
-Built from commit `ceb3a16` with compactc 0.31.1 on the founder's machine (fingerprints committed in `e89a387`). A second build with compactc 0.31.1, without key generation, reproduced the 24 `.zkir` files and `contract/index.js` byte for byte. The proving and verifying keys and `.bzkir` files were built once, on the founder's machine.
+Built from commit `ceb3a16` with compactc 0.31.1 on the founder's machine (fingerprints committed in `e89a387`). A second build with compactc 0.31.1, without key generation, reproduced the 24 `.zkir` files and `contract/index.js` byte for byte. They were reproduced again on 6 October 2026 from `a3d1884`, with the compiler download checked against the SHA-256 pinned in CI. The proving and verifying keys and `.bzkir` files were built once, on the founder's machine.
 
 | Artefact | SHA-256 |
 |---|---|
@@ -595,9 +595,10 @@ is read from the environment with no fallback.
 For mainnet the authority will be named at deploy time and held jointly, not by
 one person and not in a file on a laptop.
 
-> **Changed in Revision 4, pending both founders' approval.** The implementation installs
-> one signing key, so the authority is not held jointly at launch. Who holds it is an open
-> founders' decision: see *The maintenance authority* in Revision 4.
+> **Changed in Revision 4. Approved by Hunter Roberts on 6 October 2026; Makoto Steiner to
+> confirm.** The implementation installs one signing key, so the authority is not held
+> jointly at launch. It is held on paper, two copies, one per founder: see *The
+> maintenance authority* in Revision 4.
 
 It will not be relinquished at deployment. Circuits are bound to the proof system
 that compiled them, and an un-upgradable contract cannot be repaired when that
@@ -608,10 +609,10 @@ rewrite its own rules is not the neutral thing this format claims to be, and the
 transaction that gives up that power is worth more as a public act than the power
 is worth holding.
 
-> **Changed in Revision 4, pending both founders' approval.** The proposed maintenance
-> policy (`docs/maintenance-policy.md`) drops relinquishment as the intended end state and
-> sets no retirement date: the end state becomes custody by independent parties under
-> published rules. See *The maintenance authority* in Revision 4.
+> **Changed in Revision 4. Approved by Hunter Roberts on 6 October 2026; Makoto Steiner to
+> confirm.** The maintenance policy (`docs/maintenance-policy.md`) drops relinquishment as
+> the intended end state and sets no retirement date: the end state becomes custody by
+> independent parties under published rules. See *The maintenance authority* in Revision 4.
 
 The reason this is a choice rather than a risk is that anchoring is optional by
 design. Verification is SHA-256 over a canonical serialisation and requires
@@ -706,7 +707,10 @@ correction, up from eight.
 
 ---
 
-## Revision 4 — [filing date: filled in when filed, before any mainnet deployment]
+## Revision 4 — 6 October 2026
+
+Prepared 6 October 2026. Filed when both founders have signed off (*Founder sign-off*,
+at the end of this revision), before any mainnet deployment.
 
 This is the fourth revision the 16 September correction promised. It is filed before the
 deploy key is used and before any mainnet deployment is requested, as that correction
@@ -729,6 +733,10 @@ at the top of this document now describes this contract. What it replaced is kep
   `c75c155` with compactc 0.31.1, with its own 21-row fingerprint table (committed in
   `765cab1`), deployed with **no** maintenance authority (an empty committee). See *The
   claims contract* below.
+
+Neither contract's source has changed since: `veilcore.compact` was last changed in
+`ceb3a16`, `veilcore-claims.compact` and `schnorr.compact` in `cd30c11` and `74e529c`, and
+all three are the same on `main` at `a3d1884` (6 October 2026).
 
 ### The 16 September defect is fixed
 
@@ -1077,8 +1085,12 @@ From `docs/design.md`, *Known limits* and *Trust model*. Each is stated there.
 - **The indexer is trusted for what it reports.** On mainnet that is Blockfrost:
   Midnight's hosted mainnet indexer endpoint was retired on 30 September. For a decision that matters,
   compare a second indexer or your own node.
-- **`verify.ts` does not implement one part of rule 5:** refusing a presentation that
-  landed before its challenge was issued. That needs the presentation's block time.
+- **A licence presentation shows the licence was live when it landed, not later.** A
+  later revocation cannot be tied to it. Since round D, `verify.ts` refuses a presentation
+  that landed before its challenge was issued or more than an hour ago
+  (`acceptPresentationAt`, `MAX_PRESENTATION_AGE_MS`); the CLI's option 27 uses it.
+  Earlier drafts of this revision said `verify.ts` did not check the first of these; it
+  does.
 - **The VeilCore registry service is not the source of truth.** It is out of scope here.
 
 ### Deployment in fragments
@@ -1115,9 +1127,11 @@ revision was filed or approved.
 ### The maintenance authority
 
 **This changes what the 13 September revision said, in two ways. Both changes need the
-approval of both founders before this revision is filed.** That revision said the mainnet
-authority would be "held jointly, not by one person and not in a file on a laptop", and
-that relinquishing it "remains open and is the intended end state".
+approval of both founders before this revision is filed. Hunter Roberts approved both on
+6 October 2026, with the maintenance policy (`docs/maintenance-policy.md`); Makoto
+Steiner's confirmation is marked below.** That revision said the mainnet authority would
+be "held jointly, not by one person and not in a file on a laptop", and that relinquishing
+it "remains open and is the intended end state".
 
 1. **Not held jointly at launch.** The implementation does not hold it jointly.
    `VeilcoreAPI.deploy` installs one signing key as the authority. The midnight-js calls
@@ -1125,7 +1139,7 @@ that relinquishing it "remains open and is the intended end state".
    signer and no threshold. The ledger supports a committee with a threshold
    (`ContractMaintenanceAuthority`); using it needs our own deploy and maintenance code,
    which does not exist yet.
-2. **No retirement date, and a different end state** (proposed; see *How it ends*).
+2. **No retirement date, and a different end state** (see *How it ends*).
 
 How it is handled. The CLI generates the key, or takes one typed in. A typed-in key is
 hidden as it is typed and is not shown again. A generated key is shown on screen only,
@@ -1139,17 +1153,34 @@ finish a deploy that stopped partway, CLI deploy option 4 asks for the key again
 paper, uses it for that run only, and drops it. After the deploy the computer keeps no
 copy. VeilCore's copy is on paper (who holds it: below).
 
-**[DECISION NEEDED (both founders): who holds the main contract's maintenance key.]**
-Proposed on 3 October 2026 (`docs/maintenance-policy.md`): one key at launch, on paper
-only, two copies, one held by Hunter Roberts and one by Makoto Steiner, kept separately;
-then a two-of-three committee with an independent holder, built and tested with the move
-to midnight-js 5 that the ledger v8 to v9 upgrade requires anyway, and installed by one
-published `replaceAuthority` transaction. Two paper copies of one key guard against losing
-it; they do not stop one founder acting alone, because either copy can sign. The
-alternative is real joint control (two signatures required) before launch, which means
-writing, attacking and preprod-testing new deploy and maintenance code first, and so a
-later mainnet date. As built, the deploy writes one paper copy; the runbook adds the
-second copy only if the proposal is adopted (`docs/runbook.md`, step 18).
+**Who holds the main contract's maintenance key.** Proposed on 3 October 2026 and approved
+by Hunter Roberts on 6 October 2026 (`docs/maintenance-policy.md`): one key at launch, on
+paper only, two copies, one held by Hunter Roberts and one by Makoto Steiner, kept
+separately; then a two-of-three committee with an independent holder, built and tested
+with the move to midnight-js 5 that the ledger v8 to v9 upgrade requires anyway, and
+installed by one published `replaceAuthority` transaction. Two paper copies of one key
+guard against losing it; they do not stop one founder acting alone, because either copy can
+sign. The alternative was real joint control (two signatures required) before launch,
+which means writing, attacking and preprod-testing new deploy and maintenance code first,
+and so a later mainnet date. The deploy tool checks one copy, the one typed back; the
+runbook has the operator write the second sheet while the key is on screen and check it
+against the screen group by group, and Makoto Steiner's copy goes to him by hand, never
+photographed, scanned, emailed, messaged or typed anywhere (`docs/runbook.md`, step 18).
+
+**[DECISION (Makoto Steiner to confirm): the two-copy key above, and the maintenance policy
+in `docs/maintenance-policy.md`. Until he confirms, the policy stays PROPOSED and this
+revision is not filed.]**
+
+**VeilCore-run does not touch the authority.** VeilCore also offers a managed service,
+VeilCore-run (`docs/MANAGED.md`), for partners with no developers: VeilCore holds a
+partner's record, licence and claim secrets in a store of that partner's own and sends
+the partner's transactions for them. To the contracts it is one more client. It is built
+only on the partner kit's public exports (`@veilcore/contracts`; every import is checked by
+`veilcore-run/test/surface.test.ts`), which include no deploy, circuit-key or maintenance
+operation, and the wallet it pays fees from is not the maintenance key. It changes nothing
+in either contract, and nothing about who holds the main contract's authority or whether
+the claims contract has one. What a partner hands VeilCore by using it is set out in
+`docs/MANAGED.md`.
 
 What it can do. It can add and remove verifier keys, so it can repair or disable any
 circuit, and a key for a new circuit could rewrite state. Whoever holds it controls the
@@ -1169,8 +1200,9 @@ threshold 1 (`retireMaintenanceAuthorityProvably`, `api/src/maintenance.ts`). No
 can satisfy it, no replacement key is made or stored, and anyone can read it from the
 contract's state. The claims contract is locked the same way at the end of its deploy.
 
-**[DECISION NEEDED (both founders): no retirement date for the main contract.]** Proposed
-on 3 October 2026 (`docs/maintenance-policy.md`): no retirement date. A retired authority
+**No retirement date for the main contract.** Proposed on 3 October 2026 and approved by
+Hunter Roberts on 6 October 2026 (`docs/maintenance-policy.md`). **[DECISION (Makoto
+Steiner to confirm), with the key above.]** A retired authority
 could not make the verifier-key update a ledger upgrade may require. The end state named on
 13 September, relinquishment, changes to custody by independent parties under published
 rules. Retirement remains possible if Midnight stops requiring maintenance across
@@ -1189,11 +1221,13 @@ happens. It does not prevent one.
 
 ### The claims contract
 
-**[DECISION NEEDED (both founders): deploy the claims contract with no maintenance
-authority.]** Recommended. The operator tool already allows nothing else on mainnet
-(`assertClaimsDeployAllowed`); keeping an authority on it would mean changing that code and
-another review first (`docs/mainnet-completeness.md`). Its address and transaction ids are
-filled in after the deploy (*Mainnet deployment* below).
+**No maintenance authority on the claims contract, enforced by the operator tool.** Off a
+test network, mainnet included, the tool refuses any claims deploy that would end with an
+authority (`assertClaimsDeployAllowed`, `api/src/claims-api.ts`): the only deploy it builds
+ends with an empty committee. Keeping an authority would mean changing that code and
+another review first (`docs/mainnet-completeness.md`). **[DECISION (Makoto Steiner to
+confirm).]** Its address and transaction ids are filled in after the deploy (*Mainnet
+deployment* below).
 
 A second contract, deployed separately from the main one, which stays unchanged. A holder
 uses it to prove one fact about a record sealed with `sha256/fields/v1` (SPEC 4.5) without
@@ -1249,8 +1283,8 @@ each circuit in two forms, and the compiled contract code (21 rows).
 Built at `c75c155` with compactc 0.31.1 on the founder's machine (fingerprints committed
 in `765cab1`). A second build with compactc 0.31.1, without key generation (4 October, from
 the same claims source), reproduced the 5 `.zkir` files and `contract/index.js` byte for
-byte. The proving and verifying keys and `.bzkir` files were built once, on the founder's
-machine.
+byte, and so did another on 6 October from `a3d1884`. The proving and verifying keys and
+`.bzkir` files were built once, on the founder's machine.
 
 | Artefact | SHA-256 |
 |---|---|
@@ -1294,27 +1328,34 @@ as an empty committee (check 28) (`docs/preprod-run-5oct.md`).
 ### Mainnet deployment
 
 This revision is filed before either contract is deployed, as the 16 September correction
-promised. The lines below are filled in after the deploy and published in an addendum to
-this revision, together with the commit that pins both addresses in
-`api/src/deploy-guard.ts`. Until then, joining either contract on mainnet is refused.
+promised. **Every line marked [AFTER THE MAINNET DEPLOY] is blank on purpose.** They are
+filled in after the deploy and published in an addendum to this revision, together with the
+commit that pins both addresses in `api/src/deploy-guard.ts`
+(`MAINNET_VEILCORE_ADDRESS` and `MAINNET_CLAIMS_ADDRESS`, both empty in the code today).
+Until then, joining either contract on mainnet is refused.
 
-**Main contract (`veilcore`, build `ceb3a16`):**
+**Main contract (`veilcore`, source `ceb3a16`, fingerprints in `e89a387`):**
 
-- **Contract address:** [address, after the deploy]
-- **Deploy transaction id:** [transaction id, after the deploy]
-- **Circuit keys in the deploy transaction:** [8, or fewer if halved]; the rest added in
-  [n] maintenance transactions; all 24 on chain at [date, time]
-- **Maintenance authority:** one signing key, held as decided under *The maintenance
-  authority*
+- **Contract address:** [AFTER THE MAINNET DEPLOY]
+- **Deploy transaction id:** [AFTER THE MAINNET DEPLOY]
+- **Circuit keys in the deploy transaction:** [AFTER THE MAINNET DEPLOY: 8, or fewer if
+  halved]; the rest added in [AFTER THE MAINNET DEPLOY: n] maintenance transactions; all 24
+  on chain at [AFTER THE MAINNET DEPLOY: date, time]
+- **Maintenance authority:** one signing key, on paper, two copies, as under *The
+  maintenance authority* (subject to Makoto Steiner's confirmation there)
 
-**Claims contract (`veilcore-claims`, build `c75c155`):**
+**Claims contract (`veilcore-claims`, source `cd30c11`, built at `c75c155`, fingerprints in
+`765cab1`):**
 
-- **Contract address:** [address, after the deploy]
-- **Deploy transaction id:** [transaction id, after the deploy]
-- **Retirement (empty committee) transaction:** [transaction id, after the deploy]
-- **Deployed:** [date, time]
-- **Pin commit** (`MAINNET_VEILCORE_ADDRESS` and `MAINNET_CLAIMS_ADDRESS`): [commit, after
-  the deploy]
+- **Contract address:** [AFTER THE MAINNET DEPLOY]
+- **Deploy transaction id:** [AFTER THE MAINNET DEPLOY]
+- **Retirement (empty committee) transaction:** [AFTER THE MAINNET DEPLOY]
+- **Deployed:** [AFTER THE MAINNET DEPLOY: date, time]
+
+**Both:**
+
+- **Pin commit** (`MAINNET_VEILCORE_ADDRESS` and `MAINNET_CLAIMS_ADDRESS` in
+  `api/src/deploy-guard.ts`): [AFTER THE MAINNET DEPLOY]
 
 ### Testing and deployment status
 
@@ -1323,8 +1364,17 @@ this revision, together with the commit that pins both addresses in
   at `ceb3a16` with `FUZZ_RUNS` unset, 1 October 2026). The 9 expected failures are
   attacks that must fail. The suites now include `state-bounds.test.ts`,
   `attack-bounds.test.ts` and `reattack-bounds.test.ts`. The skipped test is the
-  1024-active-licence cap, which runs only with `SLOW_TESTS=1`. The 1024-active-licence
-  test (`SLOW_TESTS=1`) has not been run to completion.
+  1024-active-licence cap (in `attack-bounds.test.ts`), which runs only with
+  `SLOW_TESTS=1`. It has since been run to completion: on 3 October, after a fix to the
+  test simulator's slot search (`docs/self-audit-3oct.md`, section 2), and on 6 October at
+  `a3d1884`, where `SLOW_TESTS=1 npx vitest run src/test/attack-bounds.test.ts` passed 16
+  of 16. (Earlier drafts of this revision said it had not.)
+- **Contract tests on 6 October 2026, both contracts, at `a3d1884`:** `Test Files 32
+  passed (32); Tests 528 passed | 9 expected fail | 1 skipped (538)` (`cd contract &&
+  npm test`, built with the CI-pinned compactc 0.31.1, `FUZZ_RUNS` unset). The extra
+  suites since 1 October are the claims contract's, round D's and the mutation-testing
+  follow-ups. `cd api && npm test` (deploy guard, presentation lookup, the empty-committee
+  retirement on a real ledger-v8 state) also passed.
 - **Smoke test on a local Midnight chain, this build: PASSED 26 of 26** on 1 October
   2026 at 20:56 EDT (node 0.22.3, indexer 4.0.1, proof server 8.0.3; local contract
   `84cca6f12d5035eeda3b9277872b38ce87e3614c9410ba8f86fed04fce7c13a8`). Run again on 2 October 2026 at 05:26 EDT with the final operator tool (`db1cd3e`, which changed the deploy order): PASSED 26 of 26, local contract `0b784aadba3507eeb522fbe27684849927ded8d4412c1a1a6c95ce5bd04cc2ee`. It deploys
@@ -1362,7 +1412,8 @@ this revision, together with the commit that pins both addresses in
   reads the deploy transaction, the claims mainnet gate). Main contract
   `93c062e10863ee8d4d72694a42908aa6c55036645fcc327fafc533bc827dc294`, claims contract
   `29d3ea80e121518f8fd8bd72533d856cf29cdbddbda1b6f322a661aa4f2484b6`
-  (`docs/preprod-run-5oct.md`). Since then only one message line in the smoke test has
+  (`docs/preprod-run-5oct.md`). Since then, up to `a3d1884` (6 October), only one message
+  line in the smoke test and one test file (`bboard-cli/src/claims-mainnet.test.ts`) have
   changed in `bboard-cli`, `api` or `contract`. The smoke test deploys the main contract
   through the API with a key it passes in directly; deploy option 1's paper-key prompts,
   finishing with option 4 from paper, and option 33 on the main contract have not been
@@ -1402,6 +1453,27 @@ this revision, together with the commit that pins both addresses in
 - **Attack round D (4 October)** and the preprod runs of 4 and 5 October were added. The
   maintenance authority section was corrected to match the code after round D: the key is
   never on disk, and retiring installs an empty committee that anyone can see on chain.
-- **Two statements of the 13 September revision change, pending both founders'
-  approval:** the authority is not held jointly at launch, and relinquishment is no longer
-  the intended end state (`docs/maintenance-policy.md`). Notes were added there.
+- **Two statements of the 13 September revision change,** approved by Hunter Roberts on
+  6 October 2026, Makoto Steiner to confirm: the authority is not held jointly at launch,
+  and relinquishment is no longer the intended end state (`docs/maintenance-policy.md`).
+  Notes were added there.
+- **6 October 2026:** the maintenance decisions brought up to date (two paper copies of one
+  key, one per founder; no retirement date; the claims contract with none, as the tool
+  enforces), each left open only for Makoto Steiner's confirmation; VeilCore-run, the
+  managed service, stated to be outside the contracts' authority; the build reproduced
+  again and the contract tests re-run at `a3d1884`; two statements in earlier drafts
+  corrected (the 1,024-active-licence test has run to completion; `verify.ts` does refuse
+  a presentation that landed before its challenge); the mainnet blanks marked. The
+  material an external auditor starts from is in `docs/audit/README.md`.
+
+### Founder sign-off
+
+Both founders read and approve this revision before it is filed upstream
+(`midnightntwrk/midnight-improvement-proposals`, `deployments/veilcore.md`), and it is
+filed before either contract is deployed to mainnet.
+
+- **Hunter Roberts:** approved the maintenance policy on 6 October 2026. Approves this
+  revision: [AT SIGN-OFF: date]
+- **Makoto Steiner:** [DECISION: confirms the maintenance policy, the two-copy key and the
+  claims contract with no authority]. Approves this revision: [AT SIGN-OFF: date]
+- **Filed upstream:** [AT FILING: date and pull request]

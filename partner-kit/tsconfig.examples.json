@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "include": ["examples/**/*.mjs", "scripts/**/*.mjs", "scripts/**/*.ts"],
+  "compilerOptions": {
+    "noEmit": true,
+    "allowJs": true,
+    "checkJs": true,
+    "strict": true,
+    "noImplicitAny": false,
+    "paths": { "@veilcore/contracts": ["./src/index.ts"] }
+  }
+}

@@ -9,7 +9,7 @@
 // (hidden), never taken from the command line or a file. About 10 to 15 minutes on
 // preprod once the wallet is synced: each step is a proved transaction.
 // SPDX-License-Identifier: Apache-2.0
-import { FINGERPRINTS_BUILT } from '@veilcore/contracts';
+import { FINGERPRINTS_BUILT, errorChain } from '@veilcore/contracts';
 import { setup } from './setup.mjs';
 import { labFlow } from './lab.mjs';
 import { licenceFlow } from './breeder-licence.mjs';
@@ -52,13 +52,17 @@ try {
     `\nPARTNER KIT CHECK PASSED: ${n} checks passed on ${ctx.network}. VeilCore ${ctx.vc.address}, claims ${ctx.claims.address}`,
   );
 } catch (e) {
-  const msg = e instanceof Error ? e.message : String(e);
-  console.error(`\n${msg}`);
-  if (e instanceof Error && e.cause instanceof Error) console.error(`cause: ${e.cause.message}`);
-  if (/OutOfDustValidityWindow|[Cc]ustom error:? ?171\b/.test(msg + String(e?.cause?.message ?? '')))
+  // Every cause, outermost first: midnight-js wraps what went wrong two or three levels deep.
+  const chain = errorChain(e).filter((t) => !/^(Error|ContractRuntimeError|CompactError)$/.test(t));
+  console.error('');
+  chain.forEach((t, i) => console.error(i === 0 ? t : `${'  '.repeat(Math.min(i, 6))}cause: ${t}`));
+  const all = chain.join('\n');
+  if (/OutOfDustValidityWindow|[Cc]ustom error:? ?171\b/.test(all))
     console.error(
       'custom error 171: the network refused it because its indexer was behind. Nothing was spent. Wait and run again.',
     );
+  if (/StartingStateUnreachable|Could not check how the contract/.test(all))
+    console.error("Run again with VEILCORE_DEPLOY_TX_ID set to the contract's deploy transaction id.");
   console.error('PARTNER KIT CHECK FAILED. Copy the lines above (they hold no secrets) and send them to Claude.');
 } finally {
   await ctx?.stop();

@@ -14,6 +14,7 @@
 import { computeCommitment, newNonce } from 'veilcore-records';
 import {
   committedJsonDigest,
+  isContractRefusal,
   newLabKey,
   newSecret,
   readClaim,
@@ -25,18 +26,33 @@ import {
 } from '@veilcore/contracts';
 import { isMain, runExample } from './setup.mjs';
 
-/** An example schema: four marker loci (distinct at 2), germination and yield. Test data only. */
+/** @typedef {import('@veilcore/contracts').FieldSchema} FieldSchema */
+
+/**
+ * A marker locus: an allele pair, compared for distinctness.
+ * @param {number} slot
+ * @returns {FieldSchema['slots'][number]}
+ */
+const locus = (slot) => ({
+  slot,
+  path: `fields.loci[${slot}]`,
+  type: 'text',
+  format: 'allele-pair',
+  comparable: true,
+});
+
+/**
+ * An example schema: four marker loci (distinct at 2), germination and yield. Test data only.
+ * @type {FieldSchema}
+ */
 export const EXAMPLE_SCHEMA = {
   id: 'veilcore/fields/partner-kit-example/v1',
   title: 'Partner kit example schema: not for real records',
   slots: [
-    ...[0, 1, 2, 3].map((slot) => ({
-      slot,
-      path: `fields.loci[${slot}]`,
-      type: 'text',
-      format: 'allele-pair',
-      comparable: true,
-    })),
+    locus(0),
+    locus(1),
+    locus(2),
+    locus(3),
     { slot: 4, path: 'fields.germinationPercent', type: 'uint', scale: 100, unit: 'percent' },
     { slot: 5, path: 'fields.yieldKgPerHa', type: 'uint', unit: 'kg/ha' },
   ],
@@ -103,8 +119,8 @@ export const claimsFlow = async ({ claims, network, endpoints }, { check, say })
   let refused = false;
   try {
     await claims.proveRange(sealed.record, EXAMPLE_SCHEMA, 4, 'at least', 9700n);
-  } catch {
-    refused = true;
+  } catch (e) {
+    refused = isContractRefusal(e); // the contract's refusal, and nothing else
   }
   check(refused, 'a bound the sealed number does not meet (at least 97.00 percent) cannot be proved');
 

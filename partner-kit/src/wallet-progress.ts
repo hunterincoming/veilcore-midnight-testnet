@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // The same file, in the same place and format, as the VeilCore CLI's
-// (bboard-cli/src/wallet-state.ts; test/wallet-progress.test.ts checks each reads the
+// (bboard-cli/src/wallet-state.ts; test/wallet.test.ts checks each reads the
 // other's): a wallet the CLI has synced resumes here, and the other way round. The file
 // holds what the wallet learned while syncing (its coins), not the seed. It is encrypted
 // with AES-256-GCM under a key derived (scrypt) from the password, written 0600 under
@@ -25,15 +25,13 @@ export const defaultProgressDir = (): string => path.join(os.homedir(), '.veilco
 
 export class WalletProgressFile {
   readonly path: string;
+  /** An ES private field: never shown by util.inspect or console.log. */
+  readonly #password: string;
   private readonly local: boolean;
   private saving: Promise<void> = Promise.resolve();
 
-  constructor(
-    networkId: string,
-    masterSeed: string,
-    private readonly password: string,
-    directory: string = defaultProgressDir(),
-  ) {
+  constructor(networkId: string, masterSeed: string, password: string, directory: string = defaultProgressDir()) {
+    this.#password = password;
     // The name says which wallet without revealing the seed.
     const id = createHash('sha256').update(`veilcore:wallet-state:${networkId}:${masterSeed}`).digest('hex');
     this.path = path.join(directory, `${networkId}-${id.slice(0, 24)}.bin`);
@@ -41,11 +39,11 @@ export class WalletProgressFile {
   }
 
   get enabled(): boolean {
-    return this.password !== '' && !this.local;
+    return this.#password !== '' && !this.local;
   }
 
   private key(salt: Buffer): Buffer {
-    return scryptSync(this.password, salt, 32, { N: 1 << 15, r: 8, p: 1, maxmem: 64 * 1024 * 1024 });
+    return scryptSync(this.#password, salt, 32, { N: 1 << 15, r: 8, p: 1, maxmem: 64 * 1024 * 1024 });
   }
 
   /** Nothing saved, progress this password opens, or a file it cannot open. */
@@ -88,6 +86,10 @@ export class WalletProgressFile {
   }
 
   /** Save now. Saves run one after another. */
+  [Symbol.for('nodejs.util.inspect.custom')](): string {
+    return `WalletProgressFile { path: '${this.path}' }`;
+  }
+
   save(wallet: SavableWallet): Promise<void> {
     const run = this.saving.then(() => this.saveNow(wallet));
     this.saving = run.catch(() => undefined);

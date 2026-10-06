@@ -14,7 +14,15 @@
 //
 // Run:  node examples/breeder-licence.mjs   (settings: examples/setup.mjs)
 // SPDX-License-Identifier: Apache-2.0
-import { ChallengeBook, checkPresentation, commit, newChallenge, newSecret, toHex } from '@veilcore/contracts';
+import {
+  ChallengeBook,
+  checkPresentation,
+  commit,
+  isContractRefusal,
+  newChallenge,
+  newSecret,
+  toHex,
+} from '@veilcore/contracts';
 import { isMain, runExample } from './setup.mjs';
 
 export const licenceFlow = async ({ vc, network, endpoints }, { check, say }) => {
@@ -66,7 +74,9 @@ export const licenceFlow = async ({ vc, network, endpoints }, { check, say }) =>
   try {
     await vc.proveLicense(licenceSecret, breeder, newChallenge());
   } catch (e) {
-    refused = /No live licence/.test(String(e instanceof Error ? e.message : e));
+    // Only the contract refusing counts: midnight-js wraps it two causes deep, and any other
+    // failure (proof server, indexer, network) must not pass as a refusal.
+    refused = isContractRefusal(e);
   }
   check(refused, 'after revocation the grower cannot present the licence');
   return { breeder, licence };

@@ -57,12 +57,13 @@ const managedExternal = {
   name: 'managed-external',
   setup(b) {
     b.onResolve({ filter: /managed\/(veilcore|veilcore-claims)\/contract\/index(\.js)?$/ }, (args) => {
-      const c = /managed\/(veilcore|veilcore-claims)\/contract/.exec(args.path)[1];
+      const c = /managed\/(veilcore|veilcore-claims)\/contract/.exec(args.path)?.[1];
       return { path: `./managed/${c}/contract/index.js`, external: true };
     });
   },
 };
 
+/** @type {import('esbuild').BuildOptions} */
 const common = {
   bundle: true,
   platform: 'node',
@@ -91,7 +92,7 @@ const declared = new Set(
   Object.keys(JSON.parse(readFileSync(path.join(pkg, 'package.json'), 'utf8')).dependencies ?? {}),
 );
 const imported = new Set();
-for (const out of Object.values(main.metafile.outputs))
+for (const out of Object.values(main.metafile?.outputs ?? {}))
   for (const i of out.imports ?? [])
     if (i.external && !i.path.startsWith('.') && !i.path.startsWith('node:')) {
       const p = i.path.startsWith('@') ? i.path.split('/').slice(0, 2).join('/') : i.path.split('/')[0];

@@ -16,6 +16,13 @@ const { VeilCore } = await import('../src/veilcore');
 const { commit, newChallenge, newSecret, toHex } = await import('../src/commitments');
 const { checkBatchAnchor, checkOwnership, checkPresentation, readLedger } = await import('../src/verify');
 const { RevokedLicenceError } = await import('../../api/src/veilcore-api');
+const { isContractRefusal } = await import('../src/errors');
+/** The promise is refused by the contract, and by nothing else. */
+const refusedByContract = async (p: Promise<unknown>): Promise<boolean> =>
+  p.then(
+    () => false,
+    (e: unknown) => isContractRefusal(e),
+  );
 const { VEILCORE_ADDR, chainLog, fakeChain } = await import('./local-chain');
 
 const same = (a: Uint8Array, b: Uint8Array): boolean => toHex(a) === toHex(b);
@@ -131,12 +138,12 @@ describe('a breeder licenses a grower: issue, countersign, prove, verify, transf
     const lc2 = commit.license(L2, breeder);
     await vc.proposeTransfer(L1, breeder, lc2);
     expect((await vc.approveTransfer(lc1, breeder, lc2)).sealed).toBe(true);
-    await expect(vc.proveLicense(L1, breeder, newChallenge())).rejects.toThrow(/No live licence/);
+    expect(await refusedByContract(vc.proveLicense(L1, breeder, newChallenge()))).toBe(true);
     await vc.proveLicense(L2, breeder, newChallenge());
 
     // Revoke: gone, and never issued again from this client.
     await vc.revokeLicense(lc2, breeder);
-    await expect(vc.proveLicense(L2, breeder, newChallenge())).rejects.toThrow(/No live licence/);
+    expect(await refusedByContract(vc.proveLicense(L2, breeder, newChallenge()))).toBe(true);
     await expect(vc.issueLicense(lc2)).rejects.toBeInstanceOf(RevokedLicenceError);
   });
 });
@@ -162,7 +169,7 @@ describe('lineage, obligations and keys of your own identity', () => {
     await vc.encumberOwnRecord(royalty);
     expect((await vc.checkLineage(grower)).clean).toBe(false);
     await vc.useRecordSecret(growerSecret);
-    await expect(vc.discharge(breeder, royalty)).rejects.toThrow(/failed assert/);
+    expect(await refusedByContract(vc.discharge(breeder, royalty))).toBe(true);
     await vc.useRecordSecret(breederSecret);
     await vc.discharge(breeder, royalty);
     expect((await vc.checkLineage(grower)).clean).toBe(true);

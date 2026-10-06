@@ -25,8 +25,10 @@ Midnight, a public blockchain built for privacy. From then on, anyone you choose
 - one fact about a record, such as "germination at least 95%", without seeing the rest.
 
 **What leaves your building.** Fingerprints, and only when you choose to publish them.
-Sample descriptions, results, client names and genetic data never do. They cannot be
-worked out from a fingerprint.
+They cannot be worked out back into what they fingerprint. Sample descriptions, results,
+client names and genetic data stay with you, except what you choose to prove in a claim:
+proving a value publishes that value; proving a bound publishes the bound (not the number);
+a laboratory's signature claim publishes the laboratory's public key next to the record.
 
 **What it does not prove.** That the genetics are what the record says. The chain proves
 _when_ something was recorded and _who_ could act on it, not that it is true. A parent link
@@ -56,12 +58,23 @@ VeilCore server.
 
 ```sh
 npm install @veilcore/contracts veilcore-records
-npx veilcore-keys fetch --to ./veilcore-keys      # proving keys and circuits, checked (below)
+npx veilcore-keys fetch --to ./veilcore-keys      # proving keys, checked (below); once VeilCore publishes them
 docker run -d -p 127.0.0.1:6300:6300 midnightntwrk/proof-server:8.0.3 midnight-proof-server -v
 ```
 
-Node 24, ES modules. Not yet on npm: until it is, build it from this repository
-(`npm ci && npm run build -w @veilcore/contracts`) and depend on the folder `partner-kit/`.
+Node 24, ES modules. Not yet on npm. Until it is, build it from this repository. The build
+needs the compiled contracts, which are not in git:
+
+1. Install the Compact compiler **0.31.1** exactly (`compact compile --version` prints
+   `0.31.1`; another version gives other contract code, and the build refuses it).
+2. `npm ci`
+3. `cd contract && npm run compact` (the full build, not `--skip-zk`: it also makes the
+   proving keys, so you can use `keys: { dir: '<repo>/contract/src/managed' }`. It needs to
+   download Midnight's proving parameters and takes a while.)
+4. `cd .. && npm run build -w @veilcore/contracts`, then depend on the folder `partner-kit/`.
+5. `npx veilcore-keys check --dir contract/src/managed` (from `partner-kit/`:
+   `node dist/veilcore-keys.js check --dir ../contract/src/managed`) confirms every key
+   matches the deployment record.
 
 ### Quick start
 
@@ -149,8 +162,13 @@ them; `connect` takes any.
 | party to an obligation    | `proposeObligation`, `encumberOwnRecord`, `acceptObligation`, `rejectObligation`, `withdrawObligation`, `discharge` |
 | a verifier                | `checkOwnership`, `checkPresentation`, `ledger`                                                                     |
 
-Every method returns the transaction's `txId` (give it to whoever checks), `txHash` and
-`blockHeight`. Commitments are computed offline with `commit.record`, `commit.recovery`,
+Every method that sends a transaction returns its `txId` (give it to whoever checks),
+`txHash` and `blockHeight`. `revokeLicense` and `approveTransfer` also say whether they
+sealed; `sealRevocations` returns only that (`sealed`, `waiting`, `sealableAt`), and the
+readers (`whoAmI`, `ledger`, `checkLineage`, the checks) send nothing. A call the contract
+refuses is refused before anything is proved or sent; tell it from other failures with
+`isContractRefusal(e)` (midnight-js wraps the refusal a few causes deep; `errorChain(e)`
+lists them all). Commitments are computed offline with `commit.record`, `commit.recovery`,
 `commit.license`, `commit.presentationTag` and `commit.obligation`.
 
 **The claims contract** (`VeilCoreClaims`): `proveValue`, `proveRange`, `proveDistinct`,
@@ -166,9 +184,11 @@ VeilCore's contract, and judges the state recorded for that call (design.md, ver
 5, 7, 8). Keep a `ChallengeBook` (save its `entries()` between runs) so each challenge is
 used once.
 
-**Not in the package, on purpose:** deploying VeilCore's contracts, adding circuit keys and
-the maintenance authority. Those are VeilCore's operator work (`partner-kit/test/surface.test.ts`
-checks none of it is reachable).
+**Not exposed, on purpose:** deploying VeilCore's contracts, adding circuit keys and the
+maintenance authority. That code is bundled inside `dist/index.js` (the clients are built on
+it), but none of it is reachable from the package's exports: the clients hold the operator
+API in private fields (`partner-kit/test/surface.test.ts` checks the sources and the built
+bundle). Without VeilCore's maintenance key it could do nothing privileged anyway.
 
 ### Which contract
 
@@ -215,8 +235,9 @@ Every action that writes to the chain pays a fee in **DUST**. Checking costs not
 1. **Your own wallet holds DUST.** DUST is not bought or sent: a wallet generates it from the
    NIGHT it holds. On mainnet, NIGHT mostly lives on Cardano (as cNIGHT); you register it,
    once, for DUST generation, naming the Midnight wallet that receives the DUST. The
-   registration takes about 12 hours to reach Midnight; after that DUST accrues over time,
-   up to a cap set by how much NIGHT you hold. DUST cannot be transferred and pays only
+   registration is made on Cardano and can take many hours to reach Midnight (see
+   [Midnight's token documentation](https://docs.midnight.network/tokens/overview)); after
+   that DUST accrues over time, up to a cap set by how much NIGHT you hold. DUST cannot be transferred and pays only
    fees. Use your wallet app's registration (Midnight's docs describe it), and **register
    the same NIGHT only once**. Then use that wallet's seed or recovery phrase with
    `seedWallet` (or your own wallet provider): `wallet.dustAddress()` shows the DUST
@@ -233,8 +254,9 @@ Every action that writes to the chain pays a fee in **DUST**. Checking costs not
 **Not offered yet:** VeilCore paying the fees of transactions you prove and send yourself
 (fee sponsorship). It is built for VeilCore's website demo and not in service.
 
-Proving the two heavy claims (`proveDistinct`, `proveUnchanged`) needs about 4 GB of memory
-for the proof server; everything else needs much less.
+Proving the two heavy claims (`proveDistinct`, `proveUnchanged`) takes the most memory: on
+VeilCore's own 16 GB laptop the proof server peaked at 3.7 GB proving every claim back to
+back (docs/preprod-run-4oct.md). Everything else needs much less.
 
 ### Where your secrets live
 

@@ -5,7 +5,7 @@
 //
 // Run after docs/fingerprints.md changes (it should not: both tables are frozen):
 //   npm run fingerprints -w @veilcore/contracts
-// test/fingerprints.test.ts fails if the two ever differ.
+// test/keys.test.ts fails if the two ever differ.
 // SPDX-License-Identifier: Apache-2.0
 import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';

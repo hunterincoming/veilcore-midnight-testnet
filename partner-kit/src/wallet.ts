@@ -41,7 +41,7 @@ import {
 import { type Logger } from 'pino';
 import { firstValueFrom, filter } from 'rxjs';
 import { type Endpoints, type Network, isNetwork } from './network.js';
-import { WalletProgressFile } from './wallet-progress.js';
+import { type SavedWalletState, WalletProgressFile } from './wallet-progress.js';
 
 type Keystore = { getPublicKey(): unknown; signData(payload: Uint8Array): string };
 
@@ -56,7 +56,17 @@ export type SeedWalletOptions = {
    * Save sync progress, encrypted with `password`, so the next start resumes instead of
    * reading the whole chain again (an hour or more on preprod). Same file as the VeilCore CLI.
    */
-  readonly saveProgress?: { readonly password: string; readonly dir?: string };
+  readonly saveProgress?: {
+    readonly password: string;
+    readonly dir?: string;
+    /**
+     * When saved progress exists that this password cannot open: 'stop' (the default) throws
+     * WalletProgressNotOpenedError and changes nothing, since a mistyped password would
+     * otherwise cost a full resync; 'setAside' moves the file aside (never deletes it) and
+     * syncs from the start.
+     */
+    readonly onUnreadable?: 'stop' | 'setAside';
+  };
   readonly logger?: Logger;
 };
 
@@ -109,18 +119,47 @@ const configurationFor = (network: Network, e: Endpoints): Record<string, unknow
  * `synced()` waits until it has caught up with the chain. Pass it as `wallet` to connect().
  */
 export class SeedWallet implements WalletProvider, MidnightProvider {
-  private timer: NodeJS.Timeout | undefined;
-  private started = false;
+  // Every secret, and everything holding one, is an ES private field: invisible to
+  // util.inspect, console.log, JSON.stringify and loggers (a TypeScript `private` is not).
+  readonly #facade: WalletFacade;
+  readonly #zswap: ZswapSecretKeys;
+  readonly #dustKey: DustSecretKey;
+  readonly #keystore: Keystore;
+  readonly #progress: WalletProgressFile | undefined;
+  readonly #logger: Logger | undefined;
+  #timer: NodeJS.Timeout | undefined;
+  #started = false;
 
   private constructor(
     readonly network: Network,
-    readonly facade: WalletFacade,
-    private readonly zswap: ZswapSecretKeys,
-    private readonly dustKey: DustSecretKey,
-    private readonly keystore: Keystore,
-    private readonly progress: WalletProgressFile | undefined,
-    private readonly logger?: Logger,
-  ) {}
+    facade: WalletFacade,
+    zswap: ZswapSecretKeys,
+    dustKey: DustSecretKey,
+    keystore: Keystore,
+    progress: WalletProgressFile | undefined,
+    logger?: Logger,
+  ) {
+    this.#facade = facade;
+    this.#zswap = zswap;
+    this.#dustKey = dustKey;
+    this.#keystore = keystore;
+    this.#progress = progress;
+    this.#logger = logger;
+  }
+
+  /** The underlying wallet SDK facade, for anything this class does not cover. It holds the wallet's keys. */
+  get facade(): WalletFacade {
+    return this.#facade;
+  }
+
+  /** What console.log and util.inspect show: nothing secret. */
+  [Symbol.for('nodejs.util.inspect.custom')](): string {
+    return `SeedWallet { network: '${this.network}', dustAddress: '${this.dustAddress()}' }`;
+  }
+
+  toJSON(): { network: Network; dustAddress: string } {
+    return { network: this.network, dustAddress: this.dustAddress() };
+  }
 
   static async create(o: SeedWalletOptions): Promise<SeedWallet> {
     if (!isNetwork(o.network)) throw new Error(`Unknown network ${String(o.network)}.`);
@@ -128,9 +167,10 @@ export class SeedWallet implements WalletProvider, MidnightProvider {
       throw new Error('Give the wallet a seed or a recovery phrase (one of them).');
     let master: string;
     if (o.seed !== undefined) {
+      // Kept exactly as given, as the VeilCore CLI keeps it: the saved-progress file's name is
+      // derived from this string, so changing its case would miss the CLI's saved sync.
       master = o.seed.trim().replace(/^0x/i, '');
       if (!/^([0-9a-fA-F]{2}){16,64}$/.test(master)) throw new Error('A wallet seed is hex, 32 to 128 characters.');
-      master = master.toLowerCase();
     } else {
       const words = (o.mnemonic ?? '').trim().split(/\s+/).join(' ');
       // The message never repeats the phrase.
@@ -166,7 +206,16 @@ export class SeedWallet implements WalletProvider, MidnightProvider {
       o.saveProgress === undefined
         ? undefined
         : new WalletProgressFile(o.network, master, o.saveProgress.password, o.saveProgress.dir);
-    const saved = progress === undefined ? null : await progress.load((m) => o.logger?.warn(m));
+    let saved: SavedWalletState | null = null;
+    if (progress !== undefined) {
+      if ((o.saveProgress?.onUnreadable ?? 'stop') === 'setAside')
+        saved = await progress.load((m) => o.logger?.warn(m));
+      else {
+        const found = await progress.read();
+        if (found.kind === 'unreadable') throw new WalletProgressNotOpenedError();
+        saved = found.kind === 'ok' ? found.state : null;
+      }
+    }
 
     let facade: WalletFacade | undefined;
     if (saved !== null) {
@@ -217,58 +266,58 @@ export class SeedWallet implements WalletProvider, MidnightProvider {
   }
 
   getCoinPublicKey(): CoinPublicKey {
-    return this.zswap.coinPublicKey;
+    return this.#zswap.coinPublicKey;
   }
 
   getEncryptionPublicKey(): EncPublicKey {
-    return this.zswap.encryptionPublicKey;
+    return this.#zswap.encryptionPublicKey;
   }
 
   async balanceTx(tx: UnboundTransaction, ttl: Date = ttlOneHour()): Promise<FinalizedTransaction> {
-    const recipe = await this.facade.balanceUnboundTransaction(
+    const recipe = await this.#facade.balanceUnboundTransaction(
       tx,
-      { shieldedSecretKeys: this.zswap, dustSecretKey: this.dustKey },
+      { shieldedSecretKeys: this.#zswap, dustSecretKey: this.#dustKey },
       { ttl },
     );
-    const signed = await this.facade.signRecipe(recipe, (payload) => this.keystore.signData(payload));
-    return this.facade.finalizeRecipe(signed);
+    const signed = await this.#facade.signRecipe(recipe, (payload) => this.#keystore.signData(payload));
+    return this.#facade.finalizeRecipe(signed);
   }
 
   submitTx(tx: FinalizedTransaction): Promise<string> {
-    return this.facade.submitTransaction(tx);
+    return this.#facade.submitTransaction(tx);
   }
 
   /** Start syncing with the chain. Progress is saved every two minutes when saveProgress was given. */
   async start(): Promise<void> {
-    await this.facade.start(this.zswap, this.dustKey);
-    this.started = true;
-    if (this.progress?.enabled) {
-      this.timer = setInterval(() => void this.saveProgress(), 120_000);
-      this.timer.unref();
+    await this.#facade.start(this.#zswap, this.#dustKey);
+    this.#started = true;
+    if (this.#progress?.enabled) {
+      this.#timer = setInterval(() => void this.saveProgress(), 120_000);
+      this.#timer.unref();
     }
   }
 
   /** Wait until the wallet has caught up with the chain; returns its balances then. */
   async synced(): Promise<WalletBalances> {
-    const s = await firstValueFrom(this.facade.state().pipe(filter(isSynced)));
+    const s = await firstValueFrom(this.#facade.state().pipe(filter(isSynced)));
     await this.saveProgress();
     return balancesOf(s);
   }
 
   /** Balances as the wallet knows them now (synced or not). */
   async balances(): Promise<WalletBalances> {
-    return balancesOf(await firstValueFrom(this.facade.state()));
+    return balancesOf(await firstValueFrom(this.#facade.state()));
   }
 
   /** The address that receives NIGHT (from a faucet on a test network). Not a secret. */
   async nightAddress(): Promise<string> {
-    const s = await firstValueFrom(this.facade.state());
+    const s = await firstValueFrom(this.#facade.state());
     return UnshieldedAddress.codec.encode(this.network, s.unshielded.address).toString();
   }
 
   /** The DUST address this wallet pays fees from (mn_dust…), as wallet apps show it. Not a secret. */
   dustAddress(): string {
-    return DustAddress.encodePublicKey(this.network, this.dustKey.publicKey);
+    return DustAddress.encodePublicKey(this.network, this.#dustKey.publicKey);
   }
 
   /**
@@ -283,39 +332,50 @@ export class SeedWallet implements WalletProvider, MidnightProvider {
       throw new Error(
         'Not on mainnet: register NIGHT for DUST once, from the wallet app that holds it. Nothing was sent.',
       );
-    const state = await this.facade.waitForSyncedState();
+    const state = await this.#facade.waitForSyncedState();
     const utxos = state.unshielded.availableCoins.filter(
       (c: { meta: { registeredForDustGeneration: boolean } }) => !c.meta.registeredForDustGeneration,
     );
     if (utxos.length === 0) return undefined;
-    const recipe = await this.facade.registerNightUtxosForDustGeneration(
+    const recipe = await this.#facade.registerNightUtxosForDustGeneration(
       utxos,
-      this.keystore.getPublicKey() as never,
-      (payload) => this.keystore.signData(payload),
+      this.#keystore.getPublicKey() as never,
+      (payload) => this.#keystore.signData(payload),
       state.dust.address,
     );
-    const txId = await this.facade.submitTransaction(await this.facade.finalizeRecipe(recipe));
-    await firstValueFrom(this.facade.state().pipe(filter((s) => (s.dust.balance(new Date()) ?? 0n) > 0n)));
+    const txId = await this.#facade.submitTransaction(await this.#facade.finalizeRecipe(recipe));
+    await firstValueFrom(this.#facade.state().pipe(filter((s) => (s.dust.balance(new Date()) ?? 0n) > 0n)));
     return txId;
   }
 
   /** Save sync progress now. Never throws: a failed save only costs a slower restart. */
   async saveProgress(): Promise<void> {
-    if (!this.progress?.enabled) return;
+    if (!this.#progress?.enabled) return;
     try {
-      await this.progress.save(this.facade);
+      await this.#progress.save(this.#facade);
     } catch (e) {
-      this.logger?.warn(`Could not save wallet sync progress: ${e instanceof Error ? e.message : String(e)}`);
+      this.#logger?.warn(`Could not save wallet sync progress: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
 
   /** Save progress and stop. A wallet never started has nothing to stop. */
   async stop(): Promise<void> {
-    if (this.timer !== undefined) clearInterval(this.timer);
-    if (!this.started) return;
-    this.started = false;
+    if (this.#timer !== undefined) clearInterval(this.#timer);
+    if (!this.#started) return;
+    this.#started = false;
     await Promise.race([this.saveProgress(), new Promise((r) => setTimeout(r, 15_000).unref())]);
-    await this.facade.stop();
+    await this.#facade.stop();
+  }
+}
+
+/** Saved wallet progress exists that this password does not open. Nothing was changed. */
+export class WalletProgressNotOpenedError extends Error {
+  constructor() {
+    super(
+      'That password does not open your saved wallet sync progress. Nothing was changed. Check the password ' +
+        '(it is the one you used before with this wallet), or pass onUnreadable: "setAside" to sync from the start.',
+    );
+    this.name = 'WalletProgressNotOpenedError';
   }
 }
 

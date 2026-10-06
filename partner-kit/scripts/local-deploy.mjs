@@ -2,7 +2,6 @@
 // into a scratch file that is removed afterwards.
 // SPDX-License-Identifier: Apache-2.0
 import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { build } from 'esbuild';

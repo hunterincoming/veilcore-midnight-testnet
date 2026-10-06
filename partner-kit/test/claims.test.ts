@@ -17,6 +17,7 @@ vi.mock('@midnight-ntwrk/midnight-js-contracts', async (orig) => {
 const { VeilCoreClaims, sealFields } = await import('../src/claims');
 const { readClaim, readClaimsAuthority } = await import('../src/verify');
 const { toHex } = await import('../src/commitments');
+const { isContractRefusal } = await import('../src/errors');
 const { newAttesterKey, signRecord } = await import('../../contract/src/attest');
 const { verifyClaim } = await import('../../contract/src/verify-claims');
 const { CLAIMS_ADDR, chainLog, fakeChain } = await import('./local-chain');
@@ -100,7 +101,12 @@ describe('a claim, end to end', () => {
   it('refuses before sending: a bound the number does not meet, a signature that does not verify', async () => {
     const cl = await VeilCoreClaims.join(chain.conn, { address: CLAIMS_ADDR });
     const sealed = sealFields(file);
-    await expect(cl.proveRange(sealed.record, schema, 12, 'at least', 9651n)).rejects.toThrow();
+    expect(
+      await cl.proveRange(sealed.record, schema, 12, 'at least', 9651n).then(
+        () => false,
+        (e: unknown) => isContractRefusal(e),
+      ),
+    ).toBe(true);
     const lab = newAttesterKey();
     const other = sealFields({ ...file, fieldSecret: '5a'.repeat(32) });
     await expect(

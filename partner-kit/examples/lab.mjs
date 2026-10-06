@@ -38,9 +38,11 @@ export const labFlow = async ({ vc, network, endpoints }, { check, say }) => {
   const recoverySecret = newSecret();
   const record = commit.record(accessionSecret);
   const recordId = `LAB-${Date.now()}`;
+  /** @type {import('veilcore-records').Envelope} */
   const intake = {
     formatVersion: '0.1',
     recordId,
+    commitment: '', // computed below
     subjectType: 'plant-genetic-material',
     profile: 'veilcore/profile/plant-variety/v1',
     commitmentAlgorithm: 'sha256/canonical-json/v1',

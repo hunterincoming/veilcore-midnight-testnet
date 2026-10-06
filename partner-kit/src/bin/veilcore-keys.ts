@@ -2,7 +2,7 @@
 // contracts against the fingerprints in the deployment record.
 //
 //   veilcore-keys fetch [--url <url>] [--to <dir>]   download every file, check each, keep them in <dir>
-//   veilcore-keys check --dir <dir>                  check a folder (a build's contract/src/managed, or a fetch)
+//   veilcore-keys check --dir <dir> [--quiet]        check a folder (a build's contract/src/managed, or a fetch)
 //
 // SPDX-License-Identifier: Apache-2.0
 
@@ -15,7 +15,7 @@ const USAGE = `Usage:
       Download every key and circuit of both VeilCore contracts, check each against the
       deployment record's fingerprints, and keep them in <dir> (default ${defaultCacheDir()}).
       Then connect with keys: { dir: '<dir>' }.
-  veilcore-keys check --dir <dir>
+  veilcore-keys check --dir <dir> [--quiet]
       Check a folder laid out as contract/src/managed (veilcore/keys, veilcore/zkir, and the
       same under veilcore-claims/).`;
 
@@ -38,7 +38,8 @@ const main = async (argv: string[]): Promise<number> => {
     return cmd === undefined || cmd === '--help' ? 0 : 2;
   }
   try {
-    const n = await checkKeys(source, { onFile: (f) => console.log(`  ok  ${f}`) });
+    const quiet = rest.includes('--quiet');
+    const n = await checkKeys(source, { onFile: (f) => (quiet ? undefined : console.log(`  ok  ${f}`)) });
     console.log(
       `All ${n} files match the deployment record (main contract built at ${FINGERPRINTS_BUILT.veilcore.commit}, ` +
         `claims contract at ${FINGERPRINTS_BUILT['veilcore-claims'].commit}, compiler ${FINGERPRINTS_BUILT.veilcore.compiler}).`,
@@ -46,6 +47,9 @@ const main = async (argv: string[]): Promise<number> => {
     return 0;
   } catch (e) {
     console.error(e instanceof Error ? e.message : String(e));
+    console.error(
+      'Stopped before anything was sent: every key and circuit must be present and be the one the deployment record names.',
+    );
     return 1;
   }
 };

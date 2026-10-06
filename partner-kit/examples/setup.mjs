@@ -11,6 +11,7 @@
 //   VEILCORE_KEYS_URL           or where to download them from (checked against the fingerprints either way)
 //   VEILCORE_PROOF_SERVER       default http://127.0.0.1:6300 (started in Docker if nothing answers there)
 //   VEILCORE_ADDRESS, VEILCORE_CLAIMS_ADDRESS   the contracts (defaults: preprod's; local/addresses.json on undeployed)
+//   VEILCORE_DEPLOY_TX_ID       the main contract's deploy transaction id, only if joining asks for it
 //
 // Never put a seed or a password in a file you commit, or on a command line (it stays in
 // your shell history). Type them at the prompt, or have your secret manager set them.
@@ -32,6 +33,7 @@ import {
   connect,
   encryptedPrivateState,
   endpointsFor,
+  errorChain,
   isLocalUrl,
   isNetwork,
   passwordProblem,
@@ -44,7 +46,11 @@ const managed = path.join(here, '..', '..', 'contract', 'src', 'managed');
 /** The local chain's built-in funded wallet (partner-kit/local/compose.yml). Test chain only. */
 const LOCAL_GENESIS_SEED = '0000000000000000000000000000000000000000000000000000000000000001';
 
-/** Read a line without showing it. Nothing typed here is echoed, logged or kept. */
+/**
+ * Read a line without showing it. Nothing typed here is echoed, logged or kept.
+ * @param {string} question
+ * @returns {Promise<string>}
+ */
 export const askHidden = (question) =>
   new Promise((resolve, reject) => {
     if (!process.stdin.isTTY) {
@@ -67,6 +73,7 @@ export const askHidden = (question) =>
     });
   });
 
+/** @param {string} name @returns {string | undefined} */
 const take = (name) => {
   const v = process.env[name];
   delete process.env[name]; // so nothing this starts (docker) inherits it
@@ -95,7 +102,10 @@ export const settings = () => {
     keys = { dir: managed }; // a build of this repository
   else keys = { url: DEFAULT_KEYS_URL };
   const proofServer = process.env.VEILCORE_PROOF_SERVER ?? DEFAULT_PROOF_SERVER;
-  return { network, addresses, keys, proofServer, endpoints: endpointsFor(network, { proofServer }) };
+  // Only needed if joining stops with StartingStateUnreachableError: the main contract's
+  // deploy transaction id, from whoever deployed it.
+  const deployTxId = process.env.VEILCORE_DEPLOY_TX_ID || undefined;
+  return { network, addresses, keys, proofServer, deployTxId, endpoints: endpointsFor(network, { proofServer }) };
 };
 
 /**
@@ -103,14 +113,23 @@ export const settings = () => {
  * whatever the environment holds. YOURS: in production, read them from your secret manager.
  */
 export const secrets = async (network, { prompt = false } = {}) => {
-  let seed = prompt ? undefined : take('VEILCORE_WALLET_SEED');
-  let password = prompt ? undefined : take('VEILCORE_PRIVATE_STATE_PASSWORD');
-  if (seed === undefined)
-    seed =
-      network === 'undeployed'
-        ? LOCAL_GENESIS_SEED
-        : await askHidden('Wallet seed for the wallet that pays fees (hex; nothing shows as you type or paste): ');
-  if (password === undefined) password = await askHidden('Private-state password (16+ characters; nothing shows): ');
+  const fromEnv = (name) => (prompt ? undefined : take(name));
+  const seed =
+    fromEnv('VEILCORE_WALLET_SEED') ??
+    (network === 'undeployed'
+      ? LOCAL_GENESIS_SEED
+      : await askHidden('Wallet seed for the wallet that pays fees (hex; nothing shows as you type or paste): '));
+  let password = fromEnv('VEILCORE_PRIVATE_STATE_PASSWORD');
+  if (password === undefined) {
+    const typed = await askHidden('Private-state password (16+ characters; nothing shows): ');
+    const problem = passwordProblem(typed);
+    if (problem !== null)
+      throw new Error(`That private-state password will not be accepted: ${problem}. Nothing was started.`);
+    // Twice, as the CLI asks: a typo would otherwise not open the saved wallet progress.
+    if ((await askHidden('The same password again, to check it: ')) !== typed)
+      throw new Error('The two passwords are different. Nothing was started.');
+    password = typed;
+  }
   const problem = passwordProblem(password);
   if (problem !== null) throw new Error(`That private-state password will not be accepted: ${problem}.`);
   return { seed: seed.replace(/^0x/i, ''), password };
@@ -162,6 +181,7 @@ export const proofServer = async (url, say = console.log) => {
 };
 
 /** A logger that prints the wallet's and the contracts' progress lines, and nothing at debug. */
+/** @returns {any} a pino-shaped logger (only the methods the package calls) */
 export const quietLogger = (say = console.log) => {
   const line = (level) => (m) => {
     const text = typeof m === 'string' ? m : JSON.stringify(m, (_k, v) => (typeof v === 'bigint' ? String(v) : v));
@@ -189,9 +209,16 @@ export const setup = async ({ say = console.log, prompt = false } = {}) => {
     say("The proof server is not on this machine: it receives every proof's private inputs.");
   const { seed, password } = await secrets(s.network, { prompt });
   const stops = [];
-  const stop = async () => {
-    for (const f of stops.reverse()) await f();
+  const onInterrupt = () => {
+    say('Stopping (Ctrl+C): stopping the wallet and any proof server started here...');
+    void stop().finally(() => process.exit(130));
   };
+  const stop = async () => {
+    process.off('SIGINT', onInterrupt);
+    for (const f of stops.splice(0).reverse()) await f();
+  };
+  // Ctrl+C mid-run still stops the proof server container this run started.
+  process.once('SIGINT', onInterrupt);
   try {
     const keysFrom = 'dir' in s.keys ? s.keys.dir : s.keys.url;
     say(`Checking proving keys and circuits from ${keysFrom} against the deployment record...`);
@@ -200,11 +227,12 @@ export const setup = async ({ say = console.log, prompt = false } = {}) => {
 
     const logger = quietLogger(say);
     // The wallet: sync progress is saved (encrypted with the same password) so the next run resumes.
+    // A password that does not open saved progress stops here, changing nothing ('stop').
     const wallet = await seedWallet({
       network: s.network,
       endpoints: s.endpoints,
       seed,
-      saveProgress: { password },
+      saveProgress: { password, onUnreadable: 'stop' },
       logger,
     });
     say(`Wallet DUST address: ${wallet.dustAddress()}`);
@@ -212,7 +240,7 @@ export const setup = async ({ say = console.log, prompt = false } = {}) => {
     await wallet.start();
     stops.push(() => wallet.stop());
     let balances = await wallet.synced();
-    if (balances.dust === 0n && balances.night > 0n && s.network !== 'mainnet') {
+    if (balances.dust === 0n && balances.night > 0n) {
       say('The wallet holds NIGHT but no DUST: registering its NIGHT for DUST generation (test network)...');
       await wallet.registerNightForDust();
       balances = await wallet.synced();
@@ -232,7 +260,7 @@ export const setup = async ({ say = console.log, prompt = false } = {}) => {
       dir: path.join(os.homedir(), '.veilcore', s.network, 'partner-examples'),
     });
     const conn = connect({ network: s.network, wallet, privateState, keys: s.keys, endpoints: s.endpoints, logger });
-    const vc = await VeilCore.join(conn, { address: s.addresses.veilcore });
+    const vc = await VeilCore.join(conn, { address: s.addresses.veilcore, deployTxId: s.deployTxId });
     const claims = await VeilCoreClaims.join(conn, { address: s.addresses.claims });
     return { ...s, nKeys, wallet, conn, vc, claims, stop };
   } catch (e) {
@@ -257,7 +285,9 @@ export const runExample = async (title, flow) => {
     await flow(ctx, { check, say: (m) => console.log(`  ${m}`) });
   } catch (e) {
     failed++;
-    console.error(`\nSTOPPED: ${e instanceof Error ? e.message : String(e)}`);
+    // Every cause: midnight-js wraps what went wrong two or three levels deep.
+    const chain = errorChain(e).filter((t) => !/^(Error|ContractRuntimeError|CompactError)$/.test(t));
+    console.error(`\nSTOPPED: ${chain.join('\n  cause: ')}`);
   } finally {
     await ctx?.stop();
   }

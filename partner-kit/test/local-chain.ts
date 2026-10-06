@@ -40,6 +40,23 @@ export const chainLog: Landed[] = [];
 let txCount = 0;
 const nextTxId = (): string => (++txCount).toString(16).padStart(64, '0');
 
+/**
+ * What midnight-js 4.1.1 throws when a circuit fails while the call is built locally
+ * (submitCallTx → scoped transaction → createUnprovenCallTx; test/witness-error.test.ts
+ * checks this against the real code): the circuit's error inside a ContractRuntimeError
+ * naming the circuit, a failed assert's message lifted into a plain Error above that, and
+ * all of it inside "Unexpected error executing scoped transaction". The refusal is never
+ * in the top message.
+ */
+export const asMidnightJsThrows = (circuit: string, e: unknown): Error => {
+  const message = e instanceof Error ? e.message : String(e);
+  const runtime = Object.assign(new Error(`Error executing circuit '${circuit}'`, { cause: e }), {
+    name: 'ContractRuntimeError',
+  });
+  const inner = /^failed assert: /.test(message) ? new Error(message, { cause: runtime }) : runtime;
+  return new Error(`Unexpected error executing scoped transaction '<unnamed>': ${String(inner)}`, { cause: inner });
+};
+
 type Runner = { find: (...a: unknown[]) => Promise<unknown> };
 
 /** One contract on the fake chain: its state, and a callTx that runs the real circuits. */
@@ -66,7 +83,12 @@ const contractOnChain = (
           const fn = (
             contract.impureCircuits as Record<string, (...a: unknown[]) => { context: typeof ctx; result: unknown }>
           )[circuit];
-          const r = fn(ctx, ...args);
+          let r: ReturnType<typeof fn>;
+          try {
+            r = fn(ctx, ...args);
+          } catch (e) {
+            throw asMidnightJsThrows(circuit, e);
+          }
           const next = new ContractState();
           next.data = r.context.currentQueryContext.state;
           for (const op of state.operations()) next.setOperation(op, state.operation(op)!);

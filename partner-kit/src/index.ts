@@ -22,7 +22,14 @@ export {
   type Endpoints,
   type Network,
 } from './network.js';
-export { SeedWallet, isSynced, seedWallet, type SeedWalletOptions, type WalletBalances } from './wallet.js';
+export {
+  SeedWallet,
+  WalletProgressNotOpenedError,
+  isSynced,
+  seedWallet,
+  type SeedWalletOptions,
+  type WalletBalances,
+} from './wallet.js';
 export {
   defaultStateDir,
   encryptedPrivateState,
@@ -63,6 +70,7 @@ export {
   RevokedLicenceError,
 } from '../../api/src/veilcore-api.js';
 export { StartingStateUnreachableError } from '../../api/src/starting-state.js';
+export { errorChain, isContractRefusal } from './errors.js';
 
 // ── secrets and commitments (offline) ────────────────────────────────────────
 export { commit, fromHex, newChallenge, newSecret, toHex } from './commitments.js';

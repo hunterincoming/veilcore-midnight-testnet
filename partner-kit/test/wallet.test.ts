@@ -3,7 +3,8 @@
 // one-call secrets and signing keys off disk, and claims inputs out of any file.
 // SPDX-License-Identifier: Apache-2.0
 /* eslint-disable @typescript-eslint/require-await -- fakes */
-import { mkdtempSync, statSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { inspect } from 'node:util';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -13,7 +14,7 @@ import { DustAddress } from '@midnight-ntwrk/wallet-sdk-address-format';
 import { setNetworkId } from '@midnight-ntwrk/midnight-js-network-id';
 import { levelPrivateStateProvider } from '@midnight-ntwrk/midnight-js-level-private-state-provider';
 import { type Logger } from 'pino';
-import { SeedWallet } from '../src/wallet';
+import { SeedWallet, WalletProgressNotOpenedError } from '../src/wallet';
 import { WalletProgressFile } from '../src/wallet-progress';
 import { encryptedPrivateState, passwordProblem } from '../src/private-state';
 import { endpointsFor } from '../src/network';
@@ -103,6 +104,90 @@ describe('saved sync progress', () => {
       kind: 'unreadable',
     });
     expect(new WalletProgressFile('undeployed', SEED, PASSWORD, dir).enabled).toBe(false);
+  });
+});
+
+describe('a password that does not open saved progress (review M2)', () => {
+  const save = (dir: string, seed: string, password: string) =>
+    new WalletStateFile(silent, 'preprod', seed, dir, password).save({
+      shielded: { serializeState: async () => 's' },
+      unshielded: { serializeState: async () => 'u' },
+      dust: { serializeState: async () => 'd' },
+    });
+
+  it('stops, and changes nothing: the file stays where it is, as it was', async () => {
+    setNetworkId('preprod');
+    const dir = mkdtempSync(path.join(tmpdir(), 'vc-ws-'));
+    await save(dir, SEED, PASSWORD);
+    const [file] = readdirSync(dir);
+    const before = readFileSync(path.join(dir, file));
+    await expect(
+      SeedWallet.create({
+        network: 'preprod',
+        endpoints: endpointsFor('preprod'),
+        seed: SEED,
+        saveProgress: { password: 'A-Different-Pw-417x', dir },
+      }),
+    ).rejects.toBeInstanceOf(WalletProgressNotOpenedError);
+    expect(readdirSync(dir)).toEqual([file]);
+    expect(readFileSync(path.join(dir, file))).toEqual(before);
+  });
+
+  it('moves the file aside only when asked to', async () => {
+    setNetworkId('preprod');
+    const dir = mkdtempSync(path.join(tmpdir(), 'vc-ws-'));
+    await save(dir, SEED, PASSWORD);
+    made.push(
+      await SeedWallet.create({
+        network: 'preprod',
+        endpoints: endpointsFor('preprod'),
+        seed: SEED,
+        saveProgress: { password: 'A-Different-Pw-417x', dir, onUnreadable: 'setAside' },
+        logger: silent,
+      }),
+    );
+    expect(readdirSync(dir).some((f) => f.includes('.unopened-'))).toBe(true);
+  });
+
+  it('finds the CLI’s file for a seed typed with capitals, as the CLI typed it (review L2)', async () => {
+    setNetworkId('preprod');
+    const upper = '5E'.repeat(32);
+    const dir = mkdtempSync(path.join(tmpdir(), 'vc-ws-'));
+    await save(dir, upper, PASSWORD);
+    const opts = { network: 'preprod' as const, endpoints: endpointsFor('preprod') };
+    // Found (so a wrong password stops): the same name as the CLI's.
+    await expect(
+      SeedWallet.create({ ...opts, seed: upper, saveProgress: { password: 'A-Different-Pw-417x', dir } }),
+    ).rejects.toBeInstanceOf(WalletProgressNotOpenedError);
+    // The same wallet either way.
+    const w = await SeedWallet.create({ ...opts, seed: upper });
+    made.push(w);
+    expect(w.dustAddress()).toBe(cliDustAddress(SEED, 'preprod'));
+  });
+});
+
+describe('nothing secret in what a wallet prints (review M3)', () => {
+  it('inspect, console.log and JSON show the network and DUST address only', async () => {
+    setNetworkId('preprod');
+    const dir = mkdtempSync(path.join(tmpdir(), 'vc-ws-'));
+    const w = await SeedWallet.create({
+      network: 'preprod',
+      endpoints: endpointsFor('preprod'),
+      seed: SEED,
+      saveProgress: { password: PASSWORD, dir },
+    });
+    made.push(w);
+    for (const shown of [
+      inspect(w),
+      inspect(w, { showHidden: true, depth: 20 }),
+      JSON.stringify(w),
+      inspect(new WalletProgressFile('preprod', SEED, PASSWORD, dir), { showHidden: true, depth: 20 }),
+    ]) {
+      expect(shown).not.toContain(PASSWORD);
+      expect(shown).not.toContain(SEED);
+    }
+    expect(inspect(w)).toBe(`SeedWallet { network: 'preprod', dustAddress: '${w.dustAddress()}' }`);
+    expect(Object.keys(w)).toEqual(['network']);
   });
 });
 

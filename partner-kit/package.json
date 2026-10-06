@@ -5,6 +5,9 @@
   "author": "VeilCore",
   "license": "Apache-2.0",
   "private": true,
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "engines": {
     "node": ">=24.11.1"
@@ -47,11 +50,11 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "fingerprints": "node scripts/gen-fingerprints.mjs",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
-    "lint": "eslint src test",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.examples.json",
+    "lint": "eslint src test examples scripts",
     "test": "for f in test/*.test.ts; do vitest run --maxWorkers=1 \"$f\" || exit 1; done",
     "ci": "npm run typecheck && npm run lint && npm run build && npm run test",
-    "check:preprod": "npm run build && node --no-deprecation examples/check.mjs",
+    "check:preprod": "npm run build && node dist/veilcore-keys.js check --quiet --dir \"${VEILCORE_KEYS_DIR:-../contract/src/managed}\" && node --no-deprecation examples/check.mjs",
     "local:up": "docker compose -f local/compose.yml up -d --wait",
     "local:down": "docker compose -f local/compose.yml down",
     "local:deploy": "node --no-deprecation scripts/local-deploy.mjs",

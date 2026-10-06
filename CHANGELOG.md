@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Partner integration kit (6 Oct 2026)
+
+- New workspace `partner-kit/`: the package `@veilcore/contracts` (Apache-2.0, ESM, Node 24)
+  for labs, registries, certifiers and vendors to call VeilCore's contracts from their own
+  systems. `connect` (network, endpoints, a wallet and private state they supply, or
+  `seedWallet` and `encryptedPrivateState`), `VeilCore.join` and `VeilCoreClaims.join`
+  (mainnet: the pinned addresses only), every partner operation of both contracts, and
+  checks that need no wallet (`checkPresentation`, `checkOwnership`, `checkBatchAnchor`,
+  `readClaim`). Deploying, circuit keys and the maintenance authority are not exported.
+- Proving keys and circuits are not shipped: they are loaded from a folder or a URL and
+  every file is checked against the deployment record's fingerprints (`veilcore-keys`).
+  The compiled contract code ships byte for byte as fingerprinted.
+- `docs/PARTNERS.md`; three runnable examples (lab, breeder licence, claims); `npm run
+  partner-check` runs all three on preprod through the public package only.
+
 ### Claims contract ready for mainnet (5 Oct 2026)
 
 - `docs/fingerprints.md` has a second table for the claims contract, written by

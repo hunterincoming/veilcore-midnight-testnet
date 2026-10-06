@@ -88,6 +88,11 @@ jobs:
         run: |
           npm run ci
 
+      - name: Partner kit (@veilcore/contracts)
+        working-directory: partner-kit
+        run: |
+          npm run ci
+
       - name: Compile bboard-cli
         working-directory: bboard-cli
         run: |

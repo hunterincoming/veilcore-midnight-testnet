@@ -19,6 +19,8 @@ the evening of 5 October (kept outside the repo).
 - **Website:** round D fixes live since 5 October, about 07:57 (`b274acd`). The copy rewrite
   (`ea4302c` to `149484e`) is being deployed on the evening of 5 October. Still on SDK 0.13.0.
 - **SDK:** 0.15.0 on npm since 5 October, 23:55 UTC, from `veilcore-sdk` `db91cc7`.
+- **Partner kit:** `@veilcore/contracts` built on branch `partner-kit` (6 October), not yet
+  run on a live network (see "Partner integration kit" below).
 - **Neither contract is on mainnet.** Deployment record revision 4 is not filed.
 
 ## Blockers: before the mainnet deploy
@@ -173,6 +175,23 @@ are still open. What changes for the mainnet deploy:
 4. **After:** Claude pins the address (`MAINNET_CLAIMS_ADDRESS` in `api/src/deploy-guard.ts`)
    and puts both in the deployment record (M1, M4); until then joining it on mainnet is
    refused.
+
+## Partner integration kit (added 6 October)
+
+Founder's requirement: when mainnet is announced, a lab, registry, seed certifier or
+software vendor can integrate VeilCore's contracts into their own systems. Built on branch
+`partner-kit`: the package `@veilcore/contracts` (`partner-kit/`), `docs/PARTNERS.md`, and
+three runnable examples (lab, breeder licence, claims).
+
+| # | What | Status |
+|---|---|---|
+| P1 | Package: connect, join (mainnet: pinned addresses only), every partner operation on both contracts, wallet-free checks; no deploy or maintenance reachable | **Built.** 48 unit tests against the compiled contracts (the CLI tests' stand-ins), including the export list, the three examples' flows and an `npm pack` content check. Not yet independently reviewed |
+| P2 | First live run: `npm run partner-check` on preprod (wallet seed 2), 23 checks through the public package only | **Not done.** Hunter, on the Mac |
+| P3 | Keys published: `npm run keys:stage -w @veilcore/contracts` on the Mac that built them, then every file in `partner-kit/zk-release/` uploaded to ONE GitHub release tagged `zk-r4` (the package's default keys URL). Every client checks every file against the fingerprints, so the host need not be trusted | **Not done.** Until then partners must build the keys themselves. **Decision:** host there, or elsewhere (then change `DEFAULT_KEYS_URL`) |
+| P4 | npm: create the `@veilcore` organisation on npmjs.com (the scope does not exist yet; the name `@veilcore/contracts` is free), set `"private": false`, publish from a tagged commit | **Not done.** Decision: scope `@veilcore` (recommended) or unscoped `veilcore-contracts` (also free) |
+| P5 | Mainnet day: the package takes `MAINNET_VEILCORE_ADDRESS` / `MAINNET_CLAIMS_ADDRESS` from `api/src/deploy-guard.ts`, so pinning them (M1) pins the package too; rebuild and publish after M1 | Waits on M1 |
+| P6 | Local chain for partners (`partner-kit/local`, `local:deploy`) | Written; not run here (no Docker in this environment). First run: Hunter or CI |
+| P7 | Fee sponsorship (VeilCore pays a partner's fees) | **Not offered**, said so in PARTNERS.md. v1 is the partner's own DUST, or VeilCore operating on their behalf |
 
 ## Open design question
 

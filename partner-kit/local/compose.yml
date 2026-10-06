@@ -1,0 +1,43 @@
+# A local Midnight chain for trying the partner kit: a node, an indexer and a proof
+# server, on fixed ports of this machine only (endpointsFor('undeployed')). New and empty
+# every time it starts; nothing here is real. The node's built-in funded wallet is the
+# one examples/setup.mjs uses on this network.
+#
+#   npm run local:up      start it (Docker Desktop must be running)
+#   npm run local:deploy  deploy test copies of both VeilCore contracts on it
+#   npm run local:down    stop it and throw it away
+#
+# Same images as the VeilCore CLI's local chain (bboard-cli/compose.yml).
+# SPDX-License-Identifier: Apache-2.0
+name: veilcore-partner-local
+services:
+  proof-server:
+    image: midnightntwrk/proof-server:8.0.3
+    command: ['midnight-proof-server', '-v']
+    ports:
+      - '127.0.0.1:6300:6300'
+  node:
+    image: 'midnightntwrk/midnight-node:0.22.3'
+    ports:
+      - '127.0.0.1:9944:9944'
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:9944/health']
+      interval: 2s
+      timeout: 5s
+      retries: 30
+      start_period: 40s
+    environment:
+      CFG_PRESET: 'dev'
+      SIDECHAIN_BLOCK_BENEFICIARY: '04bcf7ad3be7a5c790460be82a713af570f22e0f801f6659ab8e84a52be6969e'
+  indexer:
+    image: 'midnightntwrk/indexer-standalone:4.0.1'
+    ports:
+      - '127.0.0.1:8088:8088'
+    environment:
+      RUST_LOG: 'indexer=info,chain_indexer=info,indexer_api=info,wallet_indexer=info,indexer_common=info,info'
+      # Only satisfies the standalone indexer's config schema; not a secret.
+      APP__INFRA__SECRET: '303132333435363738393031323334353637383930313233343536373839303132'
+      APP__INFRA__NODE__URL: 'ws://node:9944'
+    depends_on:
+      node:
+        condition: service_healthy

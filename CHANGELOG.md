@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Real transactions from the website, phase 1 merged behind a flag (6 Oct 2026)
+
+- Phase 1 (`demo-real`) merged onto main: anchor, DNA pairing and proof of possession from the
+  visitor's browser on a test network, proofs in a web worker, and `sponsor/` (VeilCore pays the
+  fee). Off unless a build sets `VITE_REAL_CHAIN=1`; veilcore.org is not built with it. A build
+  without the flag is byte for byte main's (preprod and mainnet modes), checked by
+  `npm run real-chain:compare -w bboard-ui` and `bboard-ui/src/real-chain-build.test.ts`.
+- The site's pages carry no real-chain code: a real-chain build adds its panels at named places
+  (`bboard-ui/real-chain/slots.mjs`), typechecked as patched by `npm run typecheck`.
+- Fixed before go-live: the proving worker now starts through a Trusted Types policy
+  (`veilcore-worker`, allowed only in a real-chain deploy's headers); round D's
+  `require-trusted-types-for 'script'` would have blocked it. Proving files are checked against
+  the published fingerprints; the verifier uses the partner kit's `checkOwnership`.
+- `deploy:prod` and `deploy:mainnet` refuse to run while `VITE_REAL_CHAIN` is set.
+- `docs/real-chain-plan.md`: running phase 1 live, and the phase 2 plan.
+
 ### VeilCore-run, managed service v1 (6 Oct 2026)
 
 - New folder `veilcore-run/` and `npm run managed`: VeilCore operates on chain for partners

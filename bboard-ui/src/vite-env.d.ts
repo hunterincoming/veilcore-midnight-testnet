@@ -17,6 +17,15 @@ declare global {
     readonly VITE_MAINNET_CLAIMS_ADDRESS: string;
     /** Mainnet builds only: 'true' when docs/maintenance-policy.md says APPROVED (vite.config.ts). */
     readonly VITE_MAINTENANCE_POLICY_APPROVED: string;
+    /** "1" turns on real transactions (src/veilcore/chain/config.ts, real-chain/slots.mjs). Test networks only. */
+    readonly VITE_REAL_CHAIN?: string;
+    /** Real-chain builds: the demo contract on the test network, 64 hex characters. */
+    readonly VITE_REAL_CHAIN_CONTRACT_ADDRESS?: string;
+    /** Real-chain builds: the sponsor service that pays the network fee. */
+    readonly VITE_SPONSOR_URL?: string;
+    /** Real-chain builds: optional indexer override; the network's public indexer otherwise. */
+    readonly VITE_INDEXER_URL?: string;
+    readonly VITE_INDEXER_WS_URL?: string;
   }
 
   interface ImportMeta {

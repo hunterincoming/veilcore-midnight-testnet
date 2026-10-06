@@ -14,7 +14,8 @@
       "bboard-ui",
       "api",
       "contract",
-      "partner-kit"
+      "partner-kit",
+      "sponsor"
     ]
   },
   "dependencies": {

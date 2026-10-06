@@ -33,7 +33,14 @@ const fail = (problem) => {
   process.exit(1);
 };
 
+export const REAL_CHAIN_REFUSAL =
+  'VITE_REAL_CHAIN is set in this shell. deploy:prod publishes veilcore.org, which sends no transactions; ' +
+  'a real-chain build is deployed to its own preview (docs/real-chain-plan.md). Unset it and run this again.';
+
 const main = async () => {
+  // veilcore.org sends no transactions. A real-chain build (docs/real-chain-plan.md) goes
+  // to its own preview deployment, never here by accident.
+  if (process.env.VITE_REAL_CHAIN) fail(REAL_CHAIN_REFUSAL);
   const api = (process.env.VITE_API_BASE || DEFAULT_API).replace(/\/+$/, '');
   const read = await readDescriptor(api);
   if (!read.ok) fail(read.problem);

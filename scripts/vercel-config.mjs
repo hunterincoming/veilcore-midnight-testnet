@@ -10,6 +10,23 @@ const API_ORIGIN = new URL(
   process.env.VEILCORE_API_ORIGIN || process.env.VITE_API_BASE || 'https://veilcore-api-production.up.railway.app',
 ).origin;
 
+// Real-chain builds (VITE_REAL_CHAIN=1, docs/real-chain-plan.md) also talk to Midnight's
+// indexer (https and wss) and to VeilCore's sponsor service, and start one worker under
+// the Trusted Types policy 'veilcore-worker' (bboard-ui/src/veilcore/chain/prover.ts).
+// Proofs are made in that worker from this site's own /keys, /zkir and /params. A build
+// without the flag gets exactly the policy below and nothing more.
+const REAL_CHAIN = process.env.VITE_REAL_CHAIN === '1';
+const chainOrigins = [];
+if (REAL_CHAIN) {
+  const sponsor = process.env.VITE_SPONSOR_URL;
+  if (!sponsor) throw new Error('VITE_REAL_CHAIN=1 needs VITE_SPONSOR_URL (the sponsor service), or the site cannot reach it.');
+  const network = (process.env.VITE_NETWORK_ID || 'preprod').toLowerCase();
+  if (network === 'mainnet') throw new Error('VITE_REAL_CHAIN=1 is for a test network only.');
+  const indexer = new URL(process.env.VITE_INDEXER_URL || `https://indexer.${network}.midnight.network/api/v4/graphql`);
+  const indexerWs = new URL(process.env.VITE_INDEXER_WS_URL || `wss://indexer.${network}.midnight.network/api/v4/graphql/ws`);
+  chainOrigins.push(new URL(sponsor).origin, indexer.origin, `${indexerWs.protocol}//${indexerWs.host}`);
+}
+
 // The content security policy. Checked against the built site in headless Chromium
 // (every main page, zero violations; bboard-ui/src/hardening-roundD.test.ts) before each
 // tightening:
@@ -35,7 +52,7 @@ const csp = [
   "style-src 'self' 'unsafe-inline'",
   "font-src 'self' data:",
   "img-src 'self' data: blob:",
-  `connect-src 'self' ${API_ORIGIN}`,
+  `connect-src 'self' ${API_ORIGIN}${chainOrigins.length ? ` ${chainOrigins.join(' ')}` : ''}`,
   "worker-src 'self' blob:",
   "frame-ancestors 'none'",
   // 'self', not 'none': html-to-image sets a same-origin <base> while it inlines the
@@ -46,7 +63,7 @@ const csp = [
   "require-trusted-types-for 'script'",
   // veilcore-docs: DocPage's sanitising policy. dompurify: the policy DOMPurify makes for
   // its own parsing, created once when it loads.
-  'trusted-types veilcore-docs dompurify',
+  `trusted-types veilcore-docs dompurify${REAL_CHAIN ? ' veilcore-worker' : ''}`,
   'upgrade-insecure-requests',
 ].join('; ');
 

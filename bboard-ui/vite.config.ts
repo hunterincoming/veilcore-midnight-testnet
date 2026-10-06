@@ -21,6 +21,7 @@ import wasm from 'vite-plugin-wasm';
 import topLevelAwait from 'vite-plugin-top-level-await';
 import { readMainnetPins } from '../scripts/mainnet-pins.mjs';
 import { readPolicyStatus } from '../scripts/maintenance-policy.mjs';
+import { realChainPlugin } from './real-chain/slots.mjs';
 
 // What the site says about where records are dated depends on the build mode, never on
 // hand-edited strings: `--mode mainnet` describes Midnight's main network, every other
@@ -69,8 +70,40 @@ const siteDescription = (mode: string): Plugin => ({
     html.replace('%VEILCORE_DESCRIPTION%', mode === 'mainnet' ? DESCRIPTION.mainnet : DESCRIPTION.test),
 });
 
+// Real transactions from the website (docs/real-chain-plan.md), on a test network only.
+// Off unless the build's environment says VITE_REAL_CHAIN=1. Everything it adds is below,
+// behind `realChain`: without the flag this config is exactly the one veilcore.org is
+// built with, and the output is byte for byte the same (src/real-chain-build.test.ts).
+const realChainBuild = (mode: string): boolean => {
+  const fromFiles = loadEnv(mode, process.cwd(), 'VITE_');
+  // bboard-ui/.env.<mode> is what veilcore.org is built from: the flag may not live there.
+  if (fromFiles.VITE_REAL_CHAIN && process.env.VITE_REAL_CHAIN === undefined) {
+    throw new Error(
+      `\n\nVITE_REAL_CHAIN is set in bboard-ui/.env.${mode}. Those files build veilcore.org; pass the flag in the build's own environment instead.\n`,
+    );
+  }
+  const env = { ...fromFiles, ...process.env };
+  if (env.VITE_REAL_CHAIN !== '1') return false;
+  if (mode === 'mainnet' || env.VITE_NETWORK_ID === 'mainnet') {
+    throw new Error('\n\nVITE_REAL_CHAIN=1 is for a test network only. The mainnet website was not built.\n');
+  }
+  return true;
+};
+
+const realChainConfig = {
+  // The proving worker (src/veilcore/chain/prover.worker.ts) loads Midnight's WebAssembly
+  // prover, so it needs the same WebAssembly handling as the page.
+  worker: {
+    format: 'es' as const,
+    plugins: () => [wasm(), topLevelAwait({ promiseExportName: '__tla', promiseImportName: (i) => `__tla_${i}` })],
+  },
+  // Dev server only: the prover and ledger packages carry WebAssembly and top-level await.
+  optimizeDepsExclude: ['@midnight-ntwrk/zkir-v2', '@midnight-ntwrk/ledger-v8'],
+};
+
 // https://vitejs.dev/config/
 export default defineConfig(({ mode, command }) => {
+  const realChain = realChainBuild(mode);
   const pins = mainnetBuild(mode, command);
   return {
     cacheDir: './.vite',
@@ -96,6 +129,7 @@ export default defineConfig(({ mode, command }) => {
       },
     },
     plugins: [
+      ...(realChain ? [realChainPlugin()] : []),
       siteDescription(mode),
       react(),
       // Configure WASM plugin with more options
@@ -144,8 +178,10 @@ export default defineConfig(({ mode, command }) => {
         '@midnight-ntwrk/onchain-runtime-v3',
         '@midnight-ntwrk/onchain-runtime-v3/midnight_onchain_runtime_wasm_bg.wasm',
         '@midnight-ntwrk/onchain-runtime-v3/midnight_onchain_runtime_wasm.js',
+        ...(realChain ? realChainConfig.optimizeDepsExclude : []),
       ],
     },
+    ...(realChain ? { worker: realChainConfig.worker } : {}),
     define: {
       'import.meta.env.VITE_MAINNET_CONTRACT_ADDRESS': JSON.stringify(pins.veilcore),
       'import.meta.env.VITE_MAINNET_CLAIMS_ADDRESS': JSON.stringify(pins.claims),

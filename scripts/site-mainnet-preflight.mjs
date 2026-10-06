@@ -64,7 +64,13 @@ const fail = (problem) => {
   process.exit(1);
 };
 
+export const REAL_CHAIN_REFUSAL =
+  'VITE_REAL_CHAIN is set in this shell. deploy:mainnet publishes veilcore.org, which sends no transactions; ' +
+  'a real-chain build is deployed to its own preview (docs/real-chain-plan.md). Unset it and run this again.';
+
 const main = async () => {
+  // veilcore.org sends no transactions, and real-chain builds are for a test network only.
+  if (process.env.VITE_REAL_CHAIN) fail(REAL_CHAIN_REFUSAL);
   if (process.env[TEST_OVERRIDE])
     fail(`${TEST_OVERRIDE} is set. It is for tests only; close this Terminal window and open a new one.`);
   const pins = readMainnetPins();

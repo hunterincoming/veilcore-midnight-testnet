@@ -9,3 +9,4 @@ export declare const checkDescriptor: (
   descriptor: unknown,
   pinned: string,
 ) => { ok: true } | { ok: false; problem: string };
+export declare const REAL_CHAIN_REFUSAL: string;

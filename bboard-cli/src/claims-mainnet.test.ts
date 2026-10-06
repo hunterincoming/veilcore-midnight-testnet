@@ -78,8 +78,9 @@ const mainPart = (dir: string): string =>
     '|---|---|',
     ...rowsFor(dir),
   ].join('\n');
-/** The claims part exactly as committed in this repository now: not yet generated. */
-const placeholder = REPO_DOC.slice(REPO_DOC.indexOf(CLAIMS_HEADING)).replace(/\n+$/, '');
+/** The claims part before `npm run fingerprints:claims` has run (fingerprints.mjs writes it). */
+const { claimsPlaceholder } = (await import('../../contract/fingerprints.mjs')) as { claimsPlaceholder: () => string };
+const placeholder: string = claimsPlaceholder();
 const claimsPart = (dir: string): string =>
   [
     `${CLAIMS_HEADING} (\`veilcore-claims\`)`,
@@ -131,10 +132,10 @@ afterEach(() => setNetworkId('undeployed'));
 // ─────────────────────────────────────────────── the committed file
 
 describe('docs/fingerprints.md: one table per contract', () => {
-  it('as committed: the main table is untouched (97 rows) and the claims table is not yet generated', () => {
+  it('as committed: the main table is untouched (97 rows) and the claims table has 21 rows', () => {
     expect(parseFingerprints(REPO_DOC).size).toBe(97);
     expect(parseFingerprints(REPO_DOC, 'main').size).toBe(97);
-    expect(parseFingerprints(REPO_DOC, 'claims').size).toBe(0);
+    expect(parseFingerprints(REPO_DOC, 'claims').size).toBe(21);
     expect(placeholder).toMatch(/^## Claims contract \(`veilcore-claims`\)\n\nNot yet generated\./);
     expect(placeholder).toContain('cd contract && npm run compact && npm run fingerprints:claims');
   });

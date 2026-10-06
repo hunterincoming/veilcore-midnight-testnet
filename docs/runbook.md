@@ -1,9 +1,10 @@
 # Operator runbook
 
-**For running the VeilCore CLI on a Mac · last updated 5 October 2026 (claims contract on mainnet)**
+**For running the VeilCore CLI on a Mac · last updated 5 October 2026, evening (maintenance key wording; claims fingerprints done)**
 
 Four jobs, in this order: a rehearsal on a local chain, the smoke test on preprod, the
-claims contract fingerprints (once), then the mainnet deploy of both contracts. Every step, prompt and menu number below comes from the code in
+claims contract fingerprints (once; done 5 October), then the mainnet deploy of both
+contracts. Every step, prompt and menu number below comes from the code in
 `bboard-cli/src/`. Anything marked **CHECK WITH CLAUDE BEFORE MAINNET** could not be
 confirmed from the code.
 
@@ -25,7 +26,9 @@ confirmed from the code.
    challenges and your private state (your record secret). It cannot be recovered.
 5. **Write the maintenance authority key on paper.** It controls the contract. It is shown
    once and is **never stored on the computer**, not even during the deploy. Whenever the
-   CLI needs it again (finishing a deploy, retiring), you type it from the paper.
+   CLI needs it again (finishing a deploy, retiring), you type it from the paper. As the
+   tool stands, the deploy makes one key and you write one copy; a second copy, one per
+   founder, is proposed and waits on both founders (step 18).
 6. **Main menu option 33 retires the maintenance authority, permanently. Option 32 shows
    your record secret on screen.** Do not mix them up.
 7. When a run is done, close the Terminal window (Cmd+W) so secrets shown on screen do not
@@ -47,7 +50,8 @@ confirmed from the code.
    `cd contract && npm run compact` (compiles both; needs the Compact toolchain; see README.md).
    `docs/fingerprints.md` holds two tables. The main contract's, at the top, was made for
    the state-bounds build (`e89a387`): never regenerate it. The claims contract's, at the
-   bottom, is made once, in section C0 below. On mainnet the CLI checks the local build
+   bottom, was made once, on 5 October (section C0; committed in `765cab1`): do not
+   regenerate it either. On mainnet the CLI checks the local build
    against them (the main contract when you pick 1, 2 or 4; the claims contract when you
    pick 34, 35 or 36) and refuses if they differ. Do not rebuild with a different compiler
    (use 0.31.1).
@@ -163,6 +167,10 @@ Preprod is Midnight's test network. Use the **test wallet only**.
 
 ## C0. Claims contract fingerprints (once, before mainnet)
 
+**Done 5 October 2026.** Built on Hunter's Mac at `c75c155`, committed in `765cab1`.
+Claude's separate build (without keys) matched all 5 ZKIR files and `contract/index.js`.
+Do not run this section again. It is kept as the record of how the table was made.
+
 **Why:** a mainnet deploy only uses keys whose fingerprints are written in
 `docs/fingerprints.md` and committed. The main contract's are there. The claims contract's
 are not yet: making its keys needs files Claude cannot download, so this runs on your Mac.
@@ -216,21 +224,29 @@ table, which must stay as it is.
 
 ### Have ready
 
-- The claims contract fingerprints are committed and pushed (section C0), and
-  `cd contract && npm run fingerprints:check` says both contracts match.
-- The preprod smoke test has passed on this build (section B). The 4 October round D
-  changes are a new build, so run it again: it is the first time the new starting-state
-  check in Join, and the new store location, meet a real chain.
+- The claims contract fingerprints are committed and pushed (section C0; done 5 October,
+  `765cab1`), and `cd contract && npm run fingerprints:check` says both contracts match.
+- The preprod smoke test has passed on this build (section B). Done 5 October: 37 of 37 on
+  `d9d563f`, the round D tool (`docs/preprod-run-5oct.md`). If anything in `bboard-cli`,
+  `api` or `contract` changes after that (other than wording), run it again.
 - `git log -1` shows the latest commit.
 - A zero-spend mainnet rehearsal has been done: steps 1 to 13, then 5 (Exit) at the
-  deploy menu.
+  deploy menu. **Not done yet.**
+- **CHECK WITH CLAUDE BEFORE MAINNET:** both founders have decided the maintenance key
+  question (`docs/maintenance-policy.md`, proposed 3 October). Steps 17 and 18 and the
+  deployment record depend on it.
 - **CHECK WITH CLAUDE BEFORE MAINNET:** deployment record revision 4 is filed and names
-  the fingerprints in `docs/fingerprints.md`. The CLI refuses to deploy until you declare
-  revision 4 (step 6), but it cannot check that the record was really filed.
+  the fingerprints in `docs/fingerprints.md`. The 16 September correction promised it
+  would be filed before any mainnet deployment. The CLI refuses to deploy until you
+  declare revision 4 (step 6), but it cannot check that the record was really filed.
+- **CHECK WITH CLAUDE BEFORE MAINNET:** the fixes made after the round D re-check
+  (`8de6f2a`, `abc1fc9`) and the claims mainnet gate (`5a980b3`) have had one independent
+  review (`docs/mainnet-completeness.md`).
 - The 24-word recovery phrase of the wallet whose NIGHT generates your DUST.
 - That wallet's DUST address (starts `mn_dust1`), from your wallet app.
 - A Blockfrost project id for **Midnight Mainnet** (from blockfrost.io).
-- Paper and pen for the maintenance key and the two contract addresses.
+- Paper and pen for the maintenance key (two sheets if the two-copy proposal is adopted)
+  and the two contract addresses.
 - Time: the wallet sync can take hours.
 
 ### Steps
@@ -274,14 +290,25 @@ table, which must stay as it is.
     see an error instead, nothing was sent. Stop and send the error to Claude.
 16. It checks the deployment record setting. If it says `Refusing to deploy veilcore`,
     step 6 was missed. Nothing was made or sent. Do step 6 and start again from step 7.
-17. `Keep a maintenance authority? (Y/n)`: press **Enter** (keep). design.md says VeilCore
-    keeps it for launch and retires it on a published date. Do not type `n`.
+17. `Keep a maintenance authority? (Y/n)`: press **Enter** (keep). Do not type `n`. Why
+    keep it: Midnight network upgrades can require a verifier-key update that only the
+    authority can make, and it is how a wrong circuit gets fixed. There is no plan to
+    retire it on a date (`docs/maintenance-policy.md`, proposed 3 October and awaiting both
+    founders; `docs/design.md` says the same).
 18. `Signing key (… blank to generate one)`: press **Enter**. The key appears under
     `MAINTENANCE AUTHORITY SIGNING KEY`, in groups of 8. **Write it on paper, all 64
     characters.** Type `WRITTEN` and press Enter, then type the key back from your paper
     (nothing shows; spaces are fine). If it doesn't match, fix the paper and type it again
     (type `SHOW` to see the key again). Nothing is sent until it matches. The key is
     never written to this Mac: the deploy holds it in memory and drops it when it ends.
+    - **Second copy: PENDING THE FOUNDERS' DECISION.** Only if both founders have adopted
+      the two-copy proposal in `docs/maintenance-policy.md`: while the key is on screen,
+      and **before** typing `WRITTEN`, write it on a second sheet too, and check that sheet
+      against the screen, group by group (the CLI checks only the copy you type back). One
+      sheet is Hunter's, one is Mako's, kept in different places. Never photograph, scan,
+      email, message or type it anywhere to get it to Mako: how his copy reaches him in
+      Japan is part of the founders' decision. If the proposal is not adopted, write one
+      copy, as above.
 19. The deploy runs. First it prints `Contract address: …` on its own line, before
     anything is sent. **Copy that address onto paper now.** The `contractDeployed` line
     comes after the first transaction is confirmed. Then it prints `adding circuit key 1 of 16` (if the first
@@ -298,24 +325,25 @@ table, which must stay as it is.
 The claims contract has no maintenance key: the deploy ends by locking it so nobody,
 including us, can ever change it. There is nothing to write on paper except its address.
 
-23. At the main menu, type `34` (Deploy the claims contract).
-24. It checks the claims build (`All 21 build artefacts match the committed claims
-    fingerprints`) and the deployment record setting. If it says `Refusing to deploy the
-    claims contract`, nothing was made or sent: send Claude that line.
-25. It explains what happens and asks `Deploy a claims contract now? Type yes to send it`.
+22. At the main menu, type `34` (Deploy the claims contract).
+23. It checks the deployment record setting and the claims build (`All 21 claims build
+    artefacts match the committed fingerprints (docs/fingerprints.md).`). If it says
+    `Refusing to deploy the claims contract`, nothing was made or sent: send Claude that
+    line.
+24. It explains what happens and asks `Deploy a claims contract now? Type yes to send it`.
     Type `yes`, Enter.
-26. It prints `Contract address: …` before anything is sent. **Copy it onto paper, marked
+25. It prints `Contract address: …` before anything is sent. **Copy it onto paper, marked
     "claims".** It is a different address from the main contract's.
-27. Then `Claims deploy transaction id: …`. Copy that too (it is public).
-28. All 5 claims circuit keys normally fit in the deploy itself, so it goes straight on
+26. Then `Claims deploy transaction id: …`. Copy that too (it is public).
+27. All 5 claims circuit keys normally fit in the deploy itself, so it goes straight on
     (if the network refused that size, it first adds the rest, `adding circuit key 1 of
     …`). Then `retiring the maintenance authority provably`. A few minutes in all.
-29. Done when you see `Claims contract ready at …: all 5 circuit keys on chain,
+28. Done when you see `Claims contract ready at …: all 5 circuit keys on chain,
     maintenance authority an empty committee (nobody can change it).` and `Claims contract
     address: …`. Check the address matches your paper.
-30. A warning follows: joining it on mainnet (35) is refused until its address is pinned in
+29. A warning follows: joining it on mainnet (35) is refused until its address is pinned in
     the code. That is expected.
-31. Type `0` to exit. Close the Terminal window.
+30. Type `0` to exit. Close the Terminal window.
 
 If the claims deploy stops partway: do **not** choose `34` again, and nothing is urgent:
 nobody relies on the claims contract yet. Send Claude the main contract's address and the
@@ -334,7 +362,8 @@ until the claims deploy finishes, and is deleted then.
 - The claims contract address and its deploy transaction id (the `Claims deploy
   transaction id: …` line; both also in the log).
 - The date and time of the deploy.
-- That the maintenance key is on paper, where it is kept, and that no digital copy exists.
+- That the maintenance key is on paper, where each copy is kept (one, or one per founder
+  if the two-copy proposal is adopted), and that no digital copy exists.
 - Send Claude both addresses and both deploy transaction ids. They are public. **Joining
   either contract on mainnet is refused until its address is written into the code**
   (`MAINNET_VEILCORE_ADDRESS` and `MAINNET_CLAIMS_ADDRESS` in `api/src/deploy-guard.ts`,
@@ -387,7 +416,14 @@ minutes).
 
 ### Retiring the maintenance authority later
 
-Only on the date published in the deployment record. Run `npm run mainnet` (steps 1 to
+Not planned, and there is no retirement date. Under `docs/maintenance-policy.md` (proposed
+3 October, awaiting both founders) the main contract keeps its authority, because Midnight
+network upgrades can require verifier-key updates, and a retired authority could not make
+them. Retiring stays possible only if both founders decide it in writing, it has been
+announced as that policy says, and a new revision of the deployment record says so. It
+cannot be undone.
+
+How, if that decision is ever made: run `npm run mainnet` (steps 1 to
 13; step 6 is not needed), choose `2` (Join), paste the contract address (it must be the
 pinned one), then main menu option **33** (not 32). Type `RETIRE`, then type the key from
 your paper (nothing shows). This cannot be undone. The authority is replaced by an empty

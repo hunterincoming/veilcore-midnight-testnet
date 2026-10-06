@@ -595,8 +595,9 @@ is read from the environment with no fallback.
 For mainnet the authority will be named at deploy time and held jointly, not by
 one person and not in a file on a laptop.
 
-> **Changed in Revision 4.** The implementation installs one signing key.
-> [DECISION NEEDED — see *The maintenance authority* in Revision 4]
+> **Changed in Revision 4, pending both founders' approval.** The implementation installs
+> one signing key, so the authority is not held jointly at launch. Who holds it is an open
+> founders' decision: see *The maintenance authority* in Revision 4.
 
 It will not be relinquished at deployment. Circuits are bound to the proof system
 that compiled them, and an un-upgradable contract cannot be repaired when that
@@ -606,6 +607,11 @@ has settled, remains open and is the intended end state: a registry able to
 rewrite its own rules is not the neutral thing this format claims to be, and the
 transaction that gives up that power is worth more as a public act than the power
 is worth holding.
+
+> **Changed in Revision 4, pending both founders' approval.** The proposed maintenance
+> policy (`docs/maintenance-policy.md`) drops relinquishment as the intended end state and
+> sets no retirement date: the end state becomes custody by independent parties under
+> published rules. See *The maintenance authority* in Revision 4.
 
 The reason this is a choice rather than a risk is that anchoring is optional by
 design. Verification is SHA-256 over a canonical serialisation and requires
@@ -700,7 +706,7 @@ correction, up from eight.
 
 ---
 
-## Revision 4 — [filing date: 2 October 2026 or later]
+## Revision 4 — [filing date: filled in when filed, before any mainnet deployment]
 
 This is the fourth revision the 16 September correction promised. It is filed before the
 deploy key is used and before any mainnet deployment is requested, as that correction
@@ -719,9 +725,10 @@ at the top of this document now describes this contract. What it replaced is kep
   `contract/index.js`.
 - Deployed in fragments, as described below, with a maintenance authority kept at
   launch.
-- A second contract, `contract/src/veilcore-claims.compact` (5 circuits), with its own
-  fingerprint table, deployed with **no** maintenance authority (an empty committee). See
-  *The claims contract* below.
+- A second contract, `contract/src/veilcore-claims.compact` (5 circuits), built at
+  `c75c155` with compactc 0.31.1, with its own 21-row fingerprint table (committed in
+  `765cab1`), deployed with **no** maintenance authority (an empty committee). See *The
+  claims contract* below.
 
 ### The 16 September defect is fixed
 
@@ -960,6 +967,10 @@ Contract findings, as rated there:
   local store after deploy. "Deploy with no maintenance authority" deployed one with a
   random key. All fixed.
 
+  > **Round D (4 October).** The key "removed" from the local store after deploy was still
+  > readable in the store's files (LevelDB keeps deleted values until compaction). Since
+  > round D it is never written there. See *Attack round D* below.
+
 In rounds 10 and 11 the contract held: no HIGH or MEDIUM finding on chain, and the
 contract did not change. It then changed once more, for the state bounds (see *State*).
 
@@ -988,6 +999,41 @@ now gets 16 more places per recovery (at most 272). R2: a thief could transfer a
 to a commitment no event cell showed; `approveTransfer` now publishes the new commitment
 (`lastTransferredLicense`). P2: a proposal publishes the obligation commitment even if
 rejected, harmless when salted, as the CLI does.
+
+**Attack round D, 4 October 2026** (`docs/security-pass-4oct-roundD.md`). Six independent
+reviews: the website, the fee-paying demo service, the SDK (TypeScript, Python, Rust), the
+registry, this contract with its operator tool and client API, and the supply chain.
+
+- **This contract:** no Critical, High or Medium finding in `veilcore.compact`. It did not
+  change: the source is still `ceb3a16` and the fingerprints are still those in `e89a387`.
+- **Operator tool and client API: three Mediums and six Lows, all fixed.** The ones that
+  change how this contract is deployed and joined:
+  - The maintenance key is never written to the deploying computer. It was "removed"
+    from the local store after deploy, but the store's files kept it. Signing keys are now
+    held in memory only (`api/src/memory-overlays.ts`), and finishing a deploy asks for the
+    key from paper.
+  - A contract with this build's circuits but a forged starting state passed `join`.
+    `join` now reads the contract's deploy transaction and compares its starting state with
+    this build's constructor (`api/src/starting-state.ts`). On mainnet, `join` accepts only
+    the address pinned in the code (`MAINNET_VEILCORE_ADDRESS`, `api/src/deploy-guard.ts`),
+    which is empty until the deploy and is then set to the address recorded here. The
+    deploy prints its transaction id, recorded under *Mainnet deployment* below.
+  - A recovery-secret replacement could land while reported as failed. It is now
+    confirmed by two reads 30 seconds apart, as rotation and recovery are.
+  - Retiring the authority now installs an empty committee, which anyone can read on
+    chain, instead of a key nobody keeps (see *The maintenance authority*).
+- **Re-check.** A seventh reviewer checked the first fixes by removing each guard and
+  confirming a test fails. It found one new Medium here: the first version of the
+  starting-state check could refuse the genuine contract after any key change, because
+  midnight-js returns the current state, not the deploy state, when the latest action is a
+  maintenance update. Fixed in `8de6f2a` by reading the deploy transaction itself.
+- **Not yet independently reviewed:** that fix (`8de6f2a`), and the claims contract's
+  mainnet gate (`5a980b3`: deploy guard, address pin, fingerprint check). The branches that
+  only run on mainnet (fingerprint refusals, empty-pin refusals, joining at the pin) cannot
+  run on preprod and are covered by unit tests only.
+
+These were adversarial reviews by AI reviewers in separate sessions, directed by the
+founders, not a formal security audit.
 
 ### Known and not fixed
 
@@ -1068,66 +1114,86 @@ revision was filed or approved.
 
 ### The maintenance authority
 
-**This changes what the 13 September revision said.** That revision said the mainnet
-authority would be "held jointly, not by one person and not in a file on a laptop". The
-implementation does not hold it jointly. `VeilcoreAPI.deploy` installs one signing key
-as the authority. The midnight-js calls it uses, `deployContract` and
-`replaceAuthority`, take a single key. There is no second signer and no threshold. The
-ledger supports a committee with a threshold (`ContractMaintenanceAuthority`); using it
-needs our own deploy and maintenance code.
+**This changes what the 13 September revision said, in two ways. Both changes need the
+approval of both founders before this revision is filed.** That revision said the mainnet
+authority would be "held jointly, not by one person and not in a file on a laptop", and
+that relinquishing it "remains open and is the intended end state".
+
+1. **Not held jointly at launch.** The implementation does not hold it jointly.
+   `VeilcoreAPI.deploy` installs one signing key as the authority. The midnight-js calls
+   it uses, `deployContract` and `replaceAuthority`, take a single key. There is no second
+   signer and no threshold. The ledger supports a committee with a threshold
+   (`ContractMaintenanceAuthority`); using it needs our own deploy and maintenance code,
+   which does not exist yet.
+2. **No retirement date, and a different end state** (proposed; see *How it ends*).
 
 How it is handled. The CLI generates the key, or takes one typed in. A typed-in key is
 hidden as it is typed and is not shown again. A generated key is shown on screen only,
 in groups of eight characters; nothing is sent until the operator types WRITTEN and then
-types the key back from paper, hidden, and it matches.
-The deploy transaction is built first; the contract address is logged and the key and
-private state are stored before it is sent, so an interrupted deploy can always be
-finished (CLI option 4, which also accepts the key typed back from paper). The key sits
-in the encrypted local private-state store while the remaining circuit keys are added,
-and is removed when the deploy finishes. If a deploy stops partway, it stays
-there until option 4 finishes it. After that the client keeps no copy; VeilCore's copy is
-on paper, held by [name].
+types the key back from paper, hidden, and it matches. **The key is never written to the
+deploying computer's disk.** The CLI holds signing keys in memory only
+(`api/src/memory-overlays.ts`, since round D on 4 October 2026; before that, a key
+"removed" after the deploy could still be read from the local store's files). The deploy
+transaction is built first and the contract address is logged before it is sent. To
+finish a deploy that stopped partway, CLI deploy option 4 asks for the key again from
+paper, uses it for that run only, and drops it. After the deploy the computer keeps no
+copy. VeilCore's copy is on paper (who holds it: below).
 
-**[DECISION NEEDED — PROPOSED, 3 October 2026, awaiting both founders:]** one key at
-launch, on paper only, two copies held separately by Hunter Roberts and Makoto Steiner;
+**[DECISION NEEDED (both founders): who holds the main contract's maintenance key.]**
+Proposed on 3 October 2026 (`docs/maintenance-policy.md`): one key at launch, on paper
+only, two copies, one held by Hunter Roberts and one by Makoto Steiner, kept separately;
 then a two-of-three committee with an independent holder, built and tested with the move
 to midnight-js 5 that the ledger v8 to v9 upgrade requires anyway, and installed by one
-published `replaceAuthority` transaction. Full terms: `docs/maintenance-policy.md`.
-This changes the 13 September statement that the authority would be "held jointly" at
-deployment: midnight-js 4.x supports one key only, and building committee signing on a
-toolchain about to be replaced was judged the larger risk.
+published `replaceAuthority` transaction. Two paper copies of one key guard against losing
+it; they do not stop one founder acting alone, because either copy can sign. The
+alternative is real joint control (two signatures required) before launch, which means
+writing, attacking and preprod-testing new deploy and maintenance code first, and so a
+later mainnet date. As built, the deploy writes one paper copy; the runbook adds the
+second copy only if the proposal is adopted (`docs/runbook.md`, step 18).
 
 What it can do. It can add and remove verifier keys, so it can repair or disable any
 circuit, and a key for a new circuit could rewrite state. Whoever holds it controls the
-contract. Until it is retired, holders should treat the circuit set as changeable by
-VeilCore.
+contract. It cannot change the ledger layout; that needs a new contract. Until it is
+retired, holders should treat the circuit set as changeable by VeilCore.
 
 Why it is kept at launch. The reason given on 13 September stands: circuits are bound
 to the proof system that compiled them, and a contract nobody can maintain can only be
-replaced.
+replaced. Midnight's maintainers state that circuits which compile differently after a
+ledger upgrade need "a maintenance verifier-key update" (midnight-node #1969). It is also
+how a wrong circuit is fixed or switched off without abandoning every record anchored on
+the contract.
 
-How it ends. `retireMaintenanceAuthority` (`api/src/maintenance.ts`; CLI main menu
-option 33) replaces it with a freshly sampled key, which midnight-js writes to the local
-store and the function deletes straight after; nobody is given a copy. `docs/design.md` says the date will be published in this record.
-**[DECISION NEEDED — PROPOSED, 3 October 2026, awaiting both founders:]** no retirement
-date. Midnight's maintainers state that circuits which compile differently after a
-ledger upgrade need "a maintenance verifier-key update" (midnight-node #1969); a retired
-authority could not make one. The end state named on 13 September, relinquishment,
-changes to custody by independent parties under published rules
-(`docs/maintenance-policy.md`). Retirement remains possible if Midnight stops requiring
-maintenance across upgrades.
+How it ends. `retireMaintenanceAuthority` (`api/src/veilcore-api.ts`; CLI main menu option
+33, which asks for the key from paper) replaces the authority with an empty committee and
+threshold 1 (`retireMaintenanceAuthorityProvably`, `api/src/maintenance.ts`). No signature
+can satisfy it, no replacement key is made or stored, and anyone can read it from the
+contract's state. The claims contract is locked the same way at the end of its deploy.
 
-**A retired authority looks the same on chain as a live one.** Retiring replaces the key
-with one nobody stores. The chain cannot show that nobody kept it, so outsiders take the
-deployer's word. What they can check: the retirement is a maintenance transaction, so its
-date is public. And anyone can compare the circuits and keys on chain with a build of
-`ceb3a16`, as `join` does, to see whether the circuit set has changed since. That
-detects a change after it happens. It does not prevent one.
+**[DECISION NEEDED (both founders): no retirement date for the main contract.]** Proposed
+on 3 October 2026 (`docs/maintenance-policy.md`): no retirement date. A retired authority
+could not make the verifier-key update a ledger upgrade may require. The end state named on
+13 September, relinquishment, changes to custody by independent parties under published
+rules. Retirement remains possible if Midnight stops requiring maintenance across
+upgrades. Every use of the authority is limited to a network upgrade, a security fix, a
+correctness fix, or a change both founders approved in writing; announced at least 14
+days ahead (an urgent security fix within 72 hours after); and published in a new
+revision of this record.
+
+**A retirement is visible on chain; a live authority's custody is not.** A retired
+authority is an empty committee, which anyone can read from the contract state. While the
+authority is live, the chain cannot show who holds its key or how many copies exist;
+outsiders rely on this record and the maintenance policy. Any use is public: maintenance
+transactions and the authority's counter are on chain, and anyone can compare the circuits
+and keys on chain with a build of `ceb3a16`, as `join` does. That detects a change after it
+happens. It does not prevent one.
 
 ### The claims contract
 
-**[DRAFT, 5 October 2026: fingerprints, address and transaction ids to be filled in. The
-no-authority deployment is recommended and awaits both founders (`docs/mainnet-completeness.md`, item 5).]**
+**[DECISION NEEDED (both founders): deploy the claims contract with no maintenance
+authority.]** Recommended. The operator tool already allows nothing else on mainnet
+(`assertClaimsDeployAllowed`); keeping an authority on it would mean changing that code and
+another review first (`docs/mainnet-completeness.md`). Its address and transaction ids are
+filled in after the deploy (*Mainnet deployment* below).
 
 A second contract, deployed separately from the main one, which stays unchanged. A holder
 uses it to prove one fact about a record sealed with `sha256/fields/v1` (SPEC 4.5) without
@@ -1157,12 +1223,20 @@ showing the rest. Design, limits and measurements: `docs/claims-design.md`.
 authority with an empty committee and threshold 1 (`api/src/maintenance.ts`,
 `retireMaintenanceAuthorityProvably`), which no signature can satisfy and which anyone can
 read from the contract's state. On mainnet the operator tool refuses any claims deploy that
-would end otherwise (`assertClaimsDeployAllowed`, `api/src/claims-api.ts`). An upgrade is a
-new deployment at a new address; claims made on the old one stay in the chain's history.
+would end otherwise (`assertClaimsDeployAllowed`, `api/src/claims-api.ts`). Until that last
+step lands, the authority is a temporary single key that the deploy generated and never
+shows to anyone. The CLI keeps it in the deploying computer's encrypted private-state store (unlike
+the main contract's key, which is held in memory only), so that an interrupted claims
+deploy can be finished (CLI option 36), and deletes it once the empty committee is
+confirmed on chain; from then on it controls nothing. A change, including one forced by a
+Midnight network upgrade, is a new deployment at a new address, with a new pin in the code
+and a new revision of this record; verifiers have to be told. Claims made on the old one
+stay in the chain's history; reading them depends on the indexer decoding old transactions
+(see *Open design question* in `docs/mainnet-completeness.md`).
 
-**Source and build.** `contract/src/veilcore-claims.compact` (with `schnorr.compact`) at
-`[commit]`, compactc 0.31.1, built by `cd contract && npm run compact`, which compiles both
-contracts. Fingerprints: `npm run fingerprints:claims` writes the claims table of
+**Source and build.** `contract/src/veilcore-claims.compact` (with `schnorr.compact`), last
+changed in `cd30c11` and unchanged since, built at `c75c155` with compactc 0.31.1 by
+`cd contract && npm run compact`, which compiles both contracts. Fingerprints: `npm run fingerprints:claims` writes the claims table of
 `docs/fingerprints.md` (it refuses unless the same build of the main contract still matches
 the main table above). On mainnet the CLI refuses to deploy, join or finish the claims
 contract unless the local build matches that table as committed
@@ -1172,30 +1246,75 @@ SHA-256 of compiled artefacts (`contract/src/managed/veilcore-claims/`), copied 
 `docs/fingerprints.md`: a prover and a verifier key for each of the 5 circuits, the ZKIR of
 each circuit in two forms, and the compiled contract code (21 rows).
 
-**[NOT YET GENERATED: the founder runs `npm run fingerprints:claims` on his Mac (runbook
-C0); the table is copied here from `docs/fingerprints.md` once committed, with the commit
-that carries it.]** A second build with compactc 0.31.1, without key generation, is to be
-compared against the 5 `.zkir` files and `contract/index.js`.
+Built at `c75c155` with compactc 0.31.1 on the founder's machine (fingerprints committed
+in `765cab1`). A second build with compactc 0.31.1, without key generation (4 October, from
+the same claims source), reproduced the 5 `.zkir` files and `contract/index.js` byte for
+byte. The proving and verifying keys and `.bzkir` files were built once, on the founder's
+machine.
 
 | Artefact | SHA-256 |
 |---|---|
-| `keys/proveAttested.prover` … `contract/index.js` (21 rows) | [from `docs/fingerprints.md`] |
+| `keys/proveAttested.prover` | `2abb918cd2a749716e61346e82d69550ff3015e5892a540c69d2b2512310e451` |
+| `keys/proveAttested.verifier` | `3a26f2f34082eccb6a1c96fc9ec20243247d2c723666f218bd61a479432d9f38` |
+| `keys/proveDistinct.prover` | `79c10171a6438316f79fb9d3c0c0b262c82514d51009b0696cfde6867a156ae1` |
+| `keys/proveDistinct.verifier` | `6d1b1166d5ca9e8e3e2e2dcfb83079bfa192f8fdd8a617a74bb15166e921cf24` |
+| `keys/proveRange.prover` | `f13517970ac4f81537d766f1d48e3567c5d3525420e9071df5c01096f2119397` |
+| `keys/proveRange.verifier` | `54c8245f19f8296a60dc1110fade6e1b52ba6a3e72ba5be832206c86c145c1ae` |
+| `keys/proveUnchanged.prover` | `f01607396d5d01a3fb3756dea3fddcb98f35ab730fab316fd6629b40ff432fb2` |
+| `keys/proveUnchanged.verifier` | `cb7d9e9cdbaa82f7b9cc9046405174b40b5b070037d8e79d4d54859b4150b103` |
+| `keys/proveValue.prover` | `e1f159dbaa4649f8d5622f8d2703770125bc16f54c0bc92a78b8af1002423ab7` |
+| `keys/proveValue.verifier` | `af639a1af8e84cde7bf44c4df401db73ecd8ec46074e34e2d9e8a4679834c2ef` |
+| `zkir/proveAttested.bzkir` | `ed892e54325bce35ff5d3e17e843b413f3d813e4b7dc4639a74931f37008d762` |
+| `zkir/proveAttested.zkir` | `b932d410ae925ba8f951d680d8e8aaf821733f27d6e1b7940fce40c99d881c70` |
+| `zkir/proveDistinct.bzkir` | `5dcf734ae7015016b77e3faf7ea4e06d9426cef9dd63d500f51a4320a64d1605` |
+| `zkir/proveDistinct.zkir` | `3894b23a38800483eb7aa6e926e654caee836a0e5299def9a5211c6c5b3e558d` |
+| `zkir/proveRange.bzkir` | `cb4cacefd457dfb627338733fd449998b33a5580ef14c103b26dc30289947206` |
+| `zkir/proveRange.zkir` | `60db0e31b6f4b52d9ce040b073a05904665718786ff9e5b6c2c648c517b11c56` |
+| `zkir/proveUnchanged.bzkir` | `3cd33cbcfd6e3797f96f4919428bcec2d12d8b5ca40f99888249d228aaf24175` |
+| `zkir/proveUnchanged.zkir` | `74b4bb9c579dc31adbbdb639db11a2115bae29ec18edf9296537c0fcc18bd622` |
+| `zkir/proveValue.bzkir` | `efb54476e612e61d0bda9cba3517da16eae508366f33f32b207f0fd2c1e334e1` |
+| `zkir/proveValue.zkir` | `d7e2e4309c0e79fc39a09f6c35350ae0d30c98f5d62b872eb40de3f7505dc34a` |
+| `contract/index.js` | `b549c631fa3e3f2e4adf554434519e447844d7f83748cec44f8145ae1f6ecd65` |
 
 **Deployment on mainnet.** Deployed on deploy day right after the main contract, from the
 same operator run (CLI main menu option 34). Joining it on mainnet accepts only the
 address pinned in the code (`MAINNET_CLAIMS_ADDRESS`, `api/src/deploy-guard.ts`), the one
-recorded here.
-
-- **Claims contract address:** [address]
-- **Deploy transaction id:** [transaction id]
-- **Retirement (empty committee) transaction:** [transaction id]
-- **Deployed:** [date, time]
+recorded under *Mainnet deployment* below.
 
 **Preprod.** 4 October 2026, smoke test with the claims phase, PASSED 37 of 37 on the
 founder's MacBook Air (16 GB): claims contract
 `175f23573c3d9c9dd20d8bee159df07fc3b739e6a2a895f14ae4d20de5d2a4af`, its authority read
 back from the chain as an empty committee (check 28), then every claim kind proved on the
-laptop and landed (`docs/preprod-run-4oct.md`).
+laptop and landed (`docs/preprod-run-4oct.md`). 5 October 2026, on the operator tool after
+round D (`d9d563f`), PASSED 37 of 37 again: claims contract
+`29d3ea80e121518f8fd8bd72533d856cf29cdbddbda1b6f322a661aa4f2484b6`, deploy transaction
+`0060fbb06e1483161bf0bee8204491ca09b698be70f59e9cc0e18e635cc8fbedcc`, authority read back
+as an empty committee (check 28) (`docs/preprod-run-5oct.md`).
+
+### Mainnet deployment
+
+This revision is filed before either contract is deployed, as the 16 September correction
+promised. The lines below are filled in after the deploy and published in an addendum to
+this revision, together with the commit that pins both addresses in
+`api/src/deploy-guard.ts`. Until then, joining either contract on mainnet is refused.
+
+**Main contract (`veilcore`, build `ceb3a16`):**
+
+- **Contract address:** [address, after the deploy]
+- **Deploy transaction id:** [transaction id, after the deploy]
+- **Circuit keys in the deploy transaction:** [8, or fewer if halved]; the rest added in
+  [n] maintenance transactions; all 24 on chain at [date, time]
+- **Maintenance authority:** one signing key, held as decided under *The maintenance
+  authority*
+
+**Claims contract (`veilcore-claims`, build `c75c155`):**
+
+- **Contract address:** [address, after the deploy]
+- **Deploy transaction id:** [transaction id, after the deploy]
+- **Retirement (empty committee) transaction:** [transaction id, after the deploy]
+- **Deployed:** [date, time]
+- **Pin commit** (`MAINNET_VEILCORE_ADDRESS` and `MAINNET_CLAIMS_ADDRESS`): [commit, after
+  the deploy]
 
 ### Testing and deployment status
 
@@ -1231,6 +1350,23 @@ laptop and landed (`docs/preprod-run-4oct.md`).
   local contract `88ef3d861c043f4d48be4d2aacd63d1118266ccfed32be5ac160ee7f0563d428`.
   The operator runbook makes a passed preprod run a precondition of the mainnet deploy.
   The code does not check it.
+- **Smoke test on preprod with the claims phase: PASSED 37 of 37** on 4 October 2026, on
+  the `claims-contract` branch (this contract's source unchanged), on the founder's MacBook
+  Air (16 GB): main contract
+  `f239e680f1f60c38990b7066c59c9538a42c2ae414e584e21155350a7e93306a`, claims contract
+  `175f23573c3d9c9dd20d8bee159df07fc3b739e6a2a895f14ae4d20de5d2a4af`
+  (`docs/preprod-run-4oct.md`). This was before the round D changes to the operator tool.
+- **Smoke test on preprod after round D: PASSED 37 of 37** on 5 October 2026, 19:01 to
+  19:13 EDT, on `main` at `d9d563f` (the operator tool with the round D fixes: private
+  state in `~/.veilcore/preprod/`, maintenance key in memory only, the join check that
+  reads the deploy transaction, the claims mainnet gate). Main contract
+  `93c062e10863ee8d4d72694a42908aa6c55036645fcc327fafc533bc827dc294`, claims contract
+  `29d3ea80e121518f8fd8bd72533d856cf29cdbddbda1b6f322a661aa4f2484b6`
+  (`docs/preprod-run-5oct.md`). Since then only one message line in the smoke test has
+  changed in `bboard-cli`, `api` or `contract`. The smoke test deploys the main contract
+  through the API with a key it passes in directly; deploy option 1's paper-key prompts,
+  finishing with option 4 from paper, and option 33 on the main contract have not been
+  run on a live network.
 - **Earlier deployments, none of them this build:** V1 on Preview at
   `4a457e6d046928e0faa971d80701b8cd48c3a1283713039444b47fedd0a1f3c7` (22 July); V2 on
   Preview at `dc18e54d2f8031dda0eca1970bb1b1639c1686a14303fe057bb46f07bd0a233b` (10
@@ -1240,7 +1376,8 @@ laptop and landed (`docs/preprod-run-4oct.md`).
   `f75d42dc1e4ec5a2cdcc50509f2d432ad60fb5c64b5da921a0ec22a0e287f939` (27 September,
   before the merge).
 - **Nothing is deployed to mainnet. The deploy key issued on 8 September has not been
-  used.** Neither contract is on mainnet.
+  used.** Neither contract is on mainnet. A zero-spend rehearsal on mainnet (wallet sync
+  and DUST check, then exit) has not been done yet.
 
 ### What this revision changes in this document
 
@@ -1262,3 +1399,9 @@ laptop and landed (`docs/preprod-run-4oct.md`).
   documented. The change
   invalidated the earlier fingerprints, commit references and test results; this
   revision carries the new ones (build `ceb3a16`, fingerprints `e89a387`).
+- **Attack round D (4 October)** and the preprod runs of 4 and 5 October were added. The
+  maintenance authority section was corrected to match the code after round D: the key is
+  never on disk, and retiring installs an empty committee that anyone can see on chain.
+- **Two statements of the 13 September revision change, pending both founders'
+  approval:** the authority is not held jointly at launch, and relinquishment is no longer
+  the intended end state (`docs/maintenance-policy.md`). Notes were added there.

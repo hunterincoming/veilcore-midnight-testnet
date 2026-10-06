@@ -3,23 +3,70 @@
 Six independent reviews, each told to assume the code is broken: the fee-paying demo
 service, the website, the SDK (TypeScript, Python `verify.py`, Rust), the registry, the
 main contract with its operator tool and client API, and the supply chain (dependencies,
-CI, publishing, deploy). Every fix was then checked by a seventh reviewer who had not
-written it, by removing each guard and confirming a test fails (32 of 36 guards had a
-test; the other four are covered by another layer or noted below).
+CI, publishing, deploy). The claims contract was not part of this round; it was attacked
+in rounds A to C (3 and 4 October). The first set of fixes was then checked by a seventh
+reviewer who had not written them, by removing each guard and confirming a test fails (32
+of 36 guards had a test; the other four are covered by another layer or noted below). That
+re-check (4 October, evening) also found new problems. They were fixed afterwards, and
+those later fixes have **not** been checked by anyone who did not write them (see *Status,
+5 October*).
 
 Full per-finding write-ups with the original test cases are kept outside the repo.
 This file is the record of what was found and what was done.
+
+## Status, 5 October 2026
+
+- **Registry:** the round D fixes are live. Railway runs `veilcore-api` `main` at
+  `a9a9611` since about 07:30 on 5 October. It still uses SDK `veilcore-records` 0.13.0.
+  Its `/.well-known` (as read on 5 October) still names the test network `preview` and
+  contract `f75d42dc…` (deployed 27 September, before the merge), not mainnet.
+- **Website:** the round D fixes are live since about 07:57 on 5 October (`b274acd`). The
+  new site copy written on 5 October (`ea4302c` to `149484e`) is not part of round D and
+  has not been attacked; it is being deployed on the evening of 5 October. The site still
+  uses SDK 0.13.0.
+- **SDK:** 0.15.0, with the round D SDK fixes, was published to npm on 5 October at 23:55
+  UTC from `veilcore-sdk` `db91cc7`. The published package was rebuilt from that commit and
+  came out byte-identical. There is no `v0.15.0` git tag and no npm provenance. The site
+  and the registry have not moved to it yet.
+- **Operator tool:** passed the preprod smoke test 37 of 37 on 5 October (main at
+  `d9d563f`, `docs/preprod-run-5oct.md`), both contracts. Since then only one message line
+  in `bboard-cli/src/smoke.ts` has changed in `bboard-cli`, `api` or `contract`.
+- **Fee-paying demo service:** fixed on branch `demo-real` (`762cd6f`), which is not merged
+  into `main` and not deployed. The website demo stays simulated.
+
+**Not independently re-checked.** These came after the re-check and have been reviewed only
+by whoever wrote them (plus automated tests and, for some, the 5 October Semgrep and CodeQL
+scan):
+
+- `8de6f2a`: `join` reads the real deploy transaction to check the starting state (fixes
+  the re-check's Medium: the genuine contract could be refused after a key change); the
+  flaky test; the interrupted-MOVE scratch copy.
+- `abc1fc9`: verify links carry the record's fingerprint (`?fp=`); no ticks on the
+  registry's word (fixes the re-check's Medium on the verify page).
+- `2d79192` (branch `demo-real`): the demo service's two Lows from the re-check.
+- `e6a1b6a`: the pinned Vercel CLI installs even when `NODE_ENV=production`.
+- `5a980b3`: the claims contract's mainnet gate (deploy guard, address pin, fingerprint
+  check). Not part of round D.
+- Also after the re-check: registry `a9a9611` (batches only lowercase 64-hex
+  fingerprints), and `b274acd` (scan follow-ups: encrypted-file GCM tag and minimum length;
+  workflow token only where used).
+
+The parts of these that run only on mainnet (fingerprint refusals, empty-pin refusals,
+refusing a claims deploy that keeps an authority, joining at the pin without re-checking
+the starting state) cannot run on preprod and are covered only by unit tests from the same
+author. `docs/release-checklist.md` section 3 asks for a re-check of the fixes themselves;
+one focused review of these commits is still to do before mainnet.
 
 ## Summary
 
 | Area | Worst finding | Status |
 |---|---|---|
 | Main contract (`veilcore.compact`) | Nothing at Medium or above | Unchanged, still frozen |
-| Fee-paying demo service (`sponsor/`, branch `demo-real`) | **Critical**: concurrent requests passed the limits before any were counted | Fixed |
-| Website | **High** ×3: shown as anchored / lab-signed / private without checking | Fixed |
-| Operator tool and client API | Medium ×3, Low ×6 | Fixed (tool reopened: these were deploy blockers) |
-| Registry (veilcore-api, branch `ots`) | Medium; plus a live bug (below) | Fixed on `ots`, not live |
-| SDK and Rust port | Wrong "valid" on malformed input in several verifiers | Fixed; no hash output changed |
+| Fee-paying demo service (`sponsor/`, branch `demo-real`) | **Critical**: concurrent requests passed the limits before any were counted | Fixed on `demo-real`; not merged, not deployed |
+| Website | **High** ×3: shown as anchored / lab-signed / private without checking | Fixed; live since 5 Oct (`b274acd`) |
+| Operator tool and client API | Medium ×3, Low ×6 | Fixed (tool reopened: these were deploy blockers); preprod 37/37 on 5 Oct |
+| Registry (veilcore-api) | Medium; plus a live bug (below) | Fixed; live since 5 Oct (`main` `a9a9611`); two Lows open (below) |
+| SDK and Rust port | Wrong "valid" on malformed input in several verifiers | Fixed; no hash output changed. On npm as 0.15.0 since 5 Oct; site and registry still on 0.13.0 |
 | Supply chain | **High**: demo service staged unreviewed package versions | Fixed |
 
 ## Findings
@@ -111,19 +158,30 @@ npm pinned; audit step in CI; Vercel CLI pinned; CODEOWNERS.
 
 ### Live bug found along the way
 Since 3 October the site seals records with `profile` (and `taxon`) in the committed
-fields; the registry recomputed without them and refused those records. Fixed on `ots`
-(`d2db3aa`). Goes live with the registry merge.
+fields; the registry recomputed without them and refused those records. Fixed in
+`d2db3aa`, live with the registry deploy of 5 October.
 
 ## What held
 Main contract circuits; registry SQL, holder scoping and operator gating; sponsor policy
 (only VeilCore's own circuits, one call, no token moves); PoW tickets; no script execution
 on the site from any payload; no secrets in any repository's history; CI actions pinned to
-commit SHAs; the published SDK rebuilds byte-for-byte.
+commit SHAs; the published SDK rebuilds byte-for-byte (0.13.0 then; 0.15.0 checked the same
+way on 5 October).
 
 ## Still open
+- **Independent re-check** of the fixes made after the re-check, and of `5a980b3` (see
+  *Status, 5 October*). Needed before mainnet.
+- **Site and registry move to SDK 0.15.0.** It is published; neither has moved. Until they
+  do, both use 0.13.0, which accepts small-order Ed25519 keys (SDK finding 1, High in the
+  SDK), and the site's built-in `/docs/spec` is the 0.13.0 SPEC.
+- **Registry Low: small-order Ed25519 keys accepted at attester registration**
+  (`lineage/attesters.mjs:71`, raw `importKey` with no small-order check). Found by the
+  re-check; not fixed.
+- **Registry Low: an uppercase `subjectCommitment` is accepted** (`lineage/attesters.mjs:206`,
+  `/^[0-9a-fA-F]{64}$/`). SDK 0.15 refuses it and the site never matches it; make it
+  lowercase-only. Found by the re-check; not fixed.
 - Shared spec gaps (nesting depth limit, null attestation fields, challenge `state` not
   signed), to fix in all implementations together with new vectors.
-- Site and registry move to SDK 0.15.0 once published.
 - Counter-signing by the other party of a licence needs a registry endpoint.
 - Per-recipient disclosure (different links showing different fields) not built.
 - Attester private key unencrypted in the browser.

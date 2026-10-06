@@ -3,8 +3,6 @@
 import type { Strings } from './en';
 export const ja: Strings = {
   // Header and footer
-  'nav.newCultivar': '新しい品種',
-  'nav.licenses': 'ライセンス',
   'nav.language': '言語',
   'footer.documents': '文書',
   'footer.spec': '仕様書',

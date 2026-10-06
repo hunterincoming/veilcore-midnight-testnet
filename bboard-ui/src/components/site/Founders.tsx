@@ -178,6 +178,9 @@ export const VerifyLookup: React.FC = () => {
             {t('m.verify.go')}
           </button>
         </form>
+        <p className="verify-what">
+          <RouterLink to="/verify/example">{t('m.verify.example')}</RouterLink>
+        </p>
       </header>
     </SiteShell>
   );

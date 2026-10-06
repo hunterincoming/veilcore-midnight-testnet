@@ -336,7 +336,7 @@ export const veilcoreFee = (dealValue: number): number => (dealValue * VEILCORE_
 export const dealValueOf = (l: License, input: number): number =>
   l.terms.royaltyType === 'percent' ? input : input * (Number(l.terms.royaltyAmount) || 0);
 
-export const FEE_NOTE = `VeilCore fee (${VEILCORE_FEE_PCT}% of deal value) — calculated, not collected.`;
+export const FEE_NOTE = `VeilCore fee (${VEILCORE_FEE_PCT}% of deal value): calculated, not collected.`;
 
 // display helpers
 export const RIGHTS_LABEL: Record<Rights, string> = {
@@ -346,7 +346,7 @@ export const RIGHTS_LABEL: Record<Rights, string> = {
 };
 export const STATE_LABEL: Record<LicenseState, string> = {
   draft: 'Draft',
-  sent: 'Sent — awaiting counter-signature',
+  sent: 'Sent, waiting for counter-signature',
   active: 'Marked active',
   expired: 'Expired',
   revoked: 'Revoked',
@@ -391,7 +391,7 @@ export const AGREEMENT_ACTION: Record<AgreementType, string> = {
 };
 
 export const AGREEMENT_TAGLINE: Record<AgreementType, string> = {
-  license: 'A commercial licensing deal — rights, territory, royalty, and exclusivity, attached to the record.',
+  license: 'A commercial license: rights, territory, royalty and exclusivity, attached to the record.',
   'lab-transfer':
     'Sending your genetics to a lab? Attach the terms to the record and its report fingerprint before it leaves your hands.',
   'breeder-share':

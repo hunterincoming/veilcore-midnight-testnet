@@ -8,7 +8,14 @@ import CheckIcon from '@mui/icons-material/Check';
 import RemoveIcon from '@mui/icons-material/Remove';
 import { TEAL } from '../../config/theme';
 
-export const STEP_LABELS = ['Log cultivar', 'Send to a lab', 'Pair DNA', 'Evidence', 'Disclose', 'Share / license'];
+export const STEP_LABELS = [
+  'Seal it',
+  'Send to a lab',
+  'Pair report',
+  'Certificate',
+  'What others see',
+  'Share or license',
+];
 
 // On a phone six labels under six circles come out at 10px in 48px columns; there the
 // circles stand alone and the current step is named once, underneath, at reading size.

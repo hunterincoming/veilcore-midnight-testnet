@@ -78,8 +78,8 @@ export const ShareLicense: React.FC<{ license: License }> = ({ license }) => {
               </Typography>
               <Typography variant="body2" color="text.secondary">
                 That this license exists, its current state, the record it was issued against, and whether it carries an
-                obligation to declared descendants. Anyone can verify these without your permission — that is what makes
-                the license checkable rather than a claim.
+                obligation on declared offspring: the license&apos;s public side. In this web demo the license itself is
+                simulated, so this file is for trying the format.
               </Typography>
             </Box>
 
@@ -107,8 +107,8 @@ export const ShareLicense: React.FC<{ license: License }> = ({ license }) => {
             </Box>
 
             <Alert severity="info" variant="outlined">
-              What you leave unchecked is not in the file at all — not hidden, absent. They cannot read it however they
-              open it.
+              What you leave unchecked isn&apos;t in the file at all: not hidden, absent. They can&apos;t read it
+              however they open it.
             </Alert>
           </Stack>
         </DialogContent>

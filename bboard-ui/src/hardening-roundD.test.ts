@@ -1006,7 +1006,7 @@ describe.skipIf(!haveBrowser)('browser: built site under the production headers'
     await pg.goto(`${origin}/verify/VEIL-X?show=existence,parent-names,breeding-method`, { waitUntil: 'networkidle' });
     await pg.waitForSelector('text=Not shared by the holder', { timeout: 15_000 });
     const text = await pg.evaluate(() => document.body.innerText);
-    expect(text).toMatch(/Not shared by the holder: Whether you paired a DNA report/);
+    expect(text).toMatch(/Not shared by the holder: Whether a DNA report is paired/);
     expect(text).not.toMatch(/not (yet )?paired/i);
     expect(text).toMatch(
       /This link asked for Parent cultivar names; Breeding method, which the holder has not chosen to share/,
@@ -1267,7 +1267,7 @@ describe.skipIf(!haveBrowser)('browser: built site under the production headers'
       });
     });
     await pg.goto(`${origin}/record/VEIL-C`, { waitUntil: 'networkidle' });
-    await pg.getByRole('button', { name: 'Evidence package' }).click();
+    await pg.getByRole('button', { name: 'Certificate' }).click();
     await pg.waitForSelector('text=Second-party confirmation', { timeout: 15_000 });
     await pg.waitForTimeout(500);
     const text = await pg.evaluate(() => document.body.innerText);
@@ -1332,9 +1332,9 @@ describe.skipIf(!haveBrowser)('browser: built site under the production headers'
     await pg.goto(`${origin}/records`, { waitUntil: 'networkidle' });
     await pg.evaluate((p: string) => localStorage.setItem('veilcore.attester.v1', p), profile);
     await pg.goto(`${origin}/records`, { waitUntil: 'networkidle' });
-    await pg.getByRole('button', { name: 'Receive a cultivar' }).click();
+    await pg.getByRole('button', { name: 'Receive material' }).click();
     await pg.getByLabel('Transfer code').fill('TR-1.abc');
-    await pg.getByRole('button', { name: 'Claim transfer' }).click();
+    await pg.getByRole('button', { name: 'Receive it' }).click();
     await pg.waitForSelector('text=Sign what you received?', { timeout: 15_000 });
     const text = await pg.evaluate(() => document.body.innerText);
     expect(text).toContain(B);

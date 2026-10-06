@@ -40,11 +40,11 @@ const ORDER: AttentionState[] = ['blocked', 'needs-dna', 'needs-attester', 'in-t
 const META: Record<AttentionState, { label: string; why: string }> = {
   blocked: {
     label: 'Blocked',
-    why: 'An unmet obligation upstream. These cannot prove clean descent until it is discharged.',
+    why: 'An unpaid obligation in its declared ancestry. It can’t show a clear ancestry until the obligation is ended.',
   },
   'needs-dna': {
-    label: 'No DNA report',
-    why: 'Without one the record is a name you typed. Pairing a report ties it to the actual genetics.',
+    label: 'No report paired',
+    why: 'Without one the record is only what you typed. A paired report lets a later test be compared with it.',
   },
   'needs-attester': {
     label: 'Awaiting a second party',
@@ -52,7 +52,7 @@ const META: Record<AttentionState, { label: string; why: string }> = {
   },
   'in-transit': {
     label: 'Out on transfer',
-    why: 'Sent but not yet claimed. The recipient holds material with no record of it.',
+    why: 'Sent, but the recipient hasn’t entered the transfer code yet.',
   },
   complete: {
     label: 'Complete',

@@ -18,6 +18,7 @@ import LinkIcon from '@mui/icons-material/LaunchOutlined';
 import { proofFor, downloadProof, type ProofState } from '../veilcore/proofs';
 import type { StrainRecord } from '../veilcore/records';
 import { NETWORK, explorerFor, isTestNetwork, networkLabel } from '../config/network';
+import { OUR_SERVER } from '../config/copy';
 
 export const SettlementStatus: React.FC<{ record: StrainRecord }> = ({ record }) => {
   const [state, setState] = useState<ProofState>({ status: 'none' });
@@ -30,12 +31,12 @@ export const SettlementStatus: React.FC<{ record: StrainRecord }> = ({ record })
     return (
       <Stack spacing={1}>
         <Typography variant="overline" sx={{ display: 'block' }}>
-          Settlement
+          Date on Midnight
         </Typography>
         <Typography variant="body2" color="text.secondary">
-          Sealed on your device and held on VeilCore&apos;s test server. No batch proof was found for it yet, so it is
-          not anchored. Records are anchored together, in batches, by our operator, so one transaction covers many and
-          you never need a wallet. Until then its date rests on this registry&apos;s records.
+          Sealed on your device and kept on {OUR_SERVER}. It isn&apos;t in a batch yet, so it isn&apos;t anchored. We
+          anchor records together, in batches, so one transaction covers many and you never need a wallet. Until then
+          its date rests on this registry&apos;s records.
         </Typography>
       </Stack>
     );
@@ -49,8 +50,8 @@ export const SettlementStatus: React.FC<{ record: StrainRecord }> = ({ record })
 
   return (
     <Stack spacing={1.5}>
-      <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
-        <Typography variant="overline">Settlement</Typography>
+      <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
+        <Typography variant="overline">Date on Midnight</Typography>
         {/* Never "Anchored": this page checks that the record is in the batch, not that
             the batch root is on a chain (attack round D). */}
         <Chip
@@ -76,7 +77,7 @@ export const SettlementStatus: React.FC<{ record: StrainRecord }> = ({ record })
         )}
       </Box>
 
-      <Stack direction="row" spacing={1}>
+      <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1 }}>
         <Button
           size="small"
           variant="outlined"
@@ -87,7 +88,7 @@ export const SettlementStatus: React.FC<{ record: StrainRecord }> = ({ record })
         </Button>
         {reported && proof.anchor?.txHash && explorer && (
           <Button size="small" variant="text" startIcon={<LinkIcon />} href={explorer} target="_blank" rel="noopener">
-            Look it up on the {network} explorer
+            Open the {networkLabel(network)} explorer
           </Button>
         )}
       </Stack>

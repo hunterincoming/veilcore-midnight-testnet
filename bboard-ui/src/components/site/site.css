@@ -1172,6 +1172,46 @@ html:has(.vcm) {
   }
 }
 
+/* status: the contract addresses (mainnet builds only) */
+.vcm .contracts {
+  margin-top: 18px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 20px;
+  background: var(--surface);
+}
+.vcm .contracts h4 {
+  margin: 0 0 12px;
+  font-family: var(--display);
+  font-size: 1rem;
+  font-weight: 600;
+}
+.vcm .contracts dl {
+  margin: 0 0 12px;
+  display: grid;
+  gap: 10px;
+}
+.vcm .contracts dt {
+  font-size: 0.8rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.vcm .contracts dd {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+.vcm .contracts code {
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.vcm .contracts .more {
+  margin: 0;
+}
+
 /* status: who can change the contract */
 .vcm .status-key {
   margin-top: 18px;

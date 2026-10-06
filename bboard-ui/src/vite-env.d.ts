@@ -12,6 +12,9 @@ declare global {
     readonly VITE_API_BASE: string;
     /** Midnight network the UI talks to. */
     readonly VITE_NETWORK_ID: string;
+    /** Mainnet builds only, from api/src/deploy-guard.ts (vite.config.ts). Display only. */
+    readonly VITE_MAINNET_CONTRACT_ADDRESS: string;
+    readonly VITE_MAINNET_CLAIMS_ADDRESS: string;
   }
 
   interface ImportMeta {

@@ -405,7 +405,7 @@ export const VerifyPage: React.FC = () => {
                           : ''}
                       </Fact>
                     ) : (
-                      <Fact ok={false}>The batch has not been anchored on a ledger yet.</Fact>
+                      <Fact ok={false}>The batch has not been anchored on Midnight yet.</Fact>
                     )}
                   </>
                 ))}

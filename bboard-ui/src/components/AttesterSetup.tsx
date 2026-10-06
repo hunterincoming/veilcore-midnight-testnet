@@ -9,11 +9,12 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Alert,
   Box,
   Button,
+  Link,
   Dialog,
   DialogActions,
   DialogContent,
@@ -26,9 +27,21 @@ import {
 import BadgeIcon from '@mui/icons-material/VerifiedUserOutlined';
 import DownloadIcon from '@mui/icons-material/FileDownloadOutlined';
 import { createAttester, publishAttester, loadAttester, type AttesterProfile } from '../veilcore/attester-keys';
+import { Link as RouterLink } from 'react-router-dom';
 import { TEAL } from '../config/theme';
 
-export const AttesterSetup: React.FC = () => {
+const ROLE_LABEL: Record<string, string> = {
+  laboratory: 'Laboratory',
+  inspector: 'Inspector',
+  registry: 'Registry',
+  breeder: 'Breeder',
+  other: 'Other',
+};
+
+/** Opens the header's signing-key dialog from elsewhere on the page (a lab's first screen). */
+export const OPEN_SIGNING_KEY_EVENT = 'veilcore:open-signing-key';
+
+export const AttesterSetup: React.FC<{ variant?: 'button' | 'text' }> = ({ variant = 'text' }) => {
   const [open, setOpen] = useState(false);
   const [profile, setProfile] = useState<AttesterProfile | null>(loadAttester());
   const [name, setName] = useState('');
@@ -38,6 +51,12 @@ export const AttesterSetup: React.FC = () => {
   const [accreditor, setAccreditor] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const show = () => setOpen(true);
+    window.addEventListener(OPEN_SIGNING_KEY_EVENT, show);
+    return () => window.removeEventListener(OPEN_SIGNING_KEY_EVENT, show);
+  }, []);
 
   const setup = async () => {
     if (!name.trim()) return;
@@ -87,21 +106,25 @@ export const AttesterSetup: React.FC = () => {
 
   return (
     <>
-      <Button variant="text" startIcon={<BadgeIcon />} onClick={() => setOpen(true)}>
-        {profile ? 'Attester identity' : 'Set up as an attester'}
+      <Button
+        variant={variant === 'button' ? 'outlined' : 'text'}
+        startIcon={<BadgeIcon />}
+        onClick={() => setOpen(true)}
+      >
+        {profile ? 'Your signing key' : 'Set up your signing key'}
       </Button>
 
       <Dialog open={open} onClose={() => setOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>{profile ? 'Your attester identity' : 'Set up as an attester'}</DialogTitle>
+        <DialogTitle>{profile ? 'Your signing key' : 'Set up your signing key'}</DialogTitle>
         <DialogContent>
           {profile ? (
             <Stack spacing={2} sx={{ pt: 1 }}>
               <Alert severity={profile.registeredAt ? 'success' : 'warning'} variant="outlined">
-                {profile.displayName} — {profile.role}
+                {profile.displayName} · {(profile.role && ROLE_LABEL[profile.role]) ?? profile.role ?? 'Other'}
                 {profile.accreditation && ` · ${profile.accreditation.scheme} ${profile.accreditation.identifier}`}
                 {profile.registeredAt
                   ? ''
-                  : ' · not published yet: nobody can resolve your signatures to this name until it is.'}
+                  : ' · not published yet: until it is, nobody can match your signatures to this name.'}
               </Alert>
               {!profile.registeredAt && (
                 <Button variant="contained" onClick={() => void publish(profile)} disabled={busy}>
@@ -123,9 +146,13 @@ export const AttesterSetup: React.FC = () => {
               </Box>
               <Alert severity="warning" variant="outlined">
                 Your private key is stored in this browser&apos;s storage, unencrypted, and nowhere else. Anything that
-                can run in this site, or a browser extension with access to it, could read it. If you lose it you cannot
-                sign new attestations — past ones stay valid and can still be retracted through the registry. Back it up
-                somewhere safe.
+                can run in this site, or a browser extension with access to it, could read it. If you lose it you
+                can&apos;t sign anything new; what you signed before stays valid. Back it up somewhere safe. That&apos;s
+                fine for trying it out. A lab using it for real would sign inside its own systems: see the{' '}
+                <Link component={RouterLink} to="/docs/integrate">
+                  integration guide
+                </Link>
+                .
               </Alert>
               <Button variant="outlined" startIcon={<DownloadIcon />} onClick={backup}>
                 Download key backup
@@ -134,15 +161,16 @@ export const AttesterSetup: React.FC = () => {
           ) : (
             <Stack spacing={2} sx={{ pt: 1 }}>
               <Typography variant="body2" color="text.secondary">
-                When you confirm you received material, that confirmation is signed with a key only you hold. It becomes
-                your statement rather than something we recorded on your behalf — which is what makes it evidence.
+                When you confirm you received material, or sign a report, it is signed with a key only you hold. It
+                becomes your statement, not something we recorded on your behalf. The key is made in this browser; only
+                its public half, your name and any accreditation you enter are published.
               </Typography>
               <TextField
                 label="Name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 fullWidth
-                helperText="How you'll appear to anyone verifying a record you attested to."
+                helperText="How you appear to anyone checking a record you signed."
               />
               <TextField
                 select
@@ -162,13 +190,13 @@ export const AttesterSetup: React.FC = () => {
                 Accreditation (optional)
               </Typography>
               <Typography variant="caption" color="text.secondary" sx={{ mt: -1 }}>
-                We record this and never verify it. Whoever checks your attestation can confirm it with the accreditor
-                directly — that&apos;s the point of naming them.
+                We record this and never verify it. Whoever checks your signature can confirm it with the accreditor
+                directly; that&apos;s why you name them.
               </Typography>
               <TextField select label="Scheme" value={scheme} onChange={(e) => setScheme(e.target.value)} fullWidth>
                 <MenuItem value="ISO/IEC 17025">ISO/IEC 17025</MenuItem>
                 <MenuItem value="ISO 9001">ISO 9001</MenuItem>
-                <MenuItem value="State licence">State licence</MenuItem>
+                <MenuItem value="State license">State license</MenuItem>
                 <MenuItem value="Other">Other</MenuItem>
               </TextField>
               <TextField
@@ -197,7 +225,7 @@ export const AttesterSetup: React.FC = () => {
           <Button onClick={() => setOpen(false)}>{profile ? 'Done' : 'Cancel'}</Button>
           {!profile && (
             <Button variant="contained" onClick={setup} disabled={busy || !name.trim()}>
-              Create identity
+              Create my key
             </Button>
           )}
         </DialogActions>

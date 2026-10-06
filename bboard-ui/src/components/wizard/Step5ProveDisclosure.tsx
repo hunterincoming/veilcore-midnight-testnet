@@ -43,6 +43,7 @@ import {
   type DisclosureKey,
 } from '../../veilcore/disclosure';
 import { canonicalUrl } from '../../config/network';
+import { CLAIMS_WHERE } from '../../config/copy';
 import { verifyPath } from '../../veilcore/verify-link';
 import { DisclosedFacts } from '../verify/DisclosedFacts';
 
@@ -193,8 +194,8 @@ export const Step5ProveDisclosure: React.FC<{ recordId: string; onDone: () => vo
             Anyone who opens this link, or has this record&apos;s id any other way, sees the facts on the right and
             nothing else; the registry does not send the rest, and editing the link cannot add to it. The genetics are
             never disclosed. This choice controls what the verify page shows. Proving one hidden value (a marker, a
-            range, or that two varieties differ) without showing the rest is done by VeilCore&apos;s claims contract.
-            It&apos;s tested on Midnight&apos;s preprod test network but isn&apos;t in this demo yet.
+            range, or that two varieties differ) without showing the rest is done by VeilCore&apos;s claims contract.{' '}
+            {CLAIMS_WHERE}
           </Typography>
           <TextField
             value={result.absolute}
@@ -239,7 +240,7 @@ export const Step5ProveDisclosure: React.FC<{ recordId: string; onDone: () => vo
           Back
         </Button>
         <Button variant="contained" onClick={onDone}>
-          Continue — share or license
+          Continue: share or license
         </Button>
       </Stack>
     </Stack>

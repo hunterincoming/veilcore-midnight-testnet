@@ -9,11 +9,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Box, Button, Container, Stack, Typography } from '@mui/material';
+import { Alert, Box, Button, Container, Stack, Typography } from '@mui/material';
 import { Link as RouterLink, useParams } from 'react-router-dom';
 import ArrowBackIcon from '@mui/icons-material/ArrowBackOutlined';
 import CodeIcon from '@mui/icons-material/CodeOutlined';
 import { TEAL } from '../config/theme';
+import { IS_MAINNET } from '../config/network';
 import { DOCS, DOCS_COMMIT, DOCS_VERSION, REPO_VIEW, docHtml } from '../veilcore/docs';
 
 /** Phones only. Desktop styles are the ones above, unchanged. */
@@ -68,6 +69,16 @@ export const DocPage: React.FC = () => {
       <Typography variant="body1" color="text.secondary" sx={{ mb: 3, maxWidth: 640 }}>
         {meta.blurb}
       </Typography>
+      {/* The documents are vendored byte for byte from one SDK commit, written before the
+          mainnet launch. On the mainnet site, a document that still says VeilCore is on test
+          networks only gets a note above it rather than an edit to the vendored text. */}
+      {IS_MAINNET && /test network|preprod|not yet on mainnet|production network/i.test(meta.md) && (
+        <Alert severity="info" variant="outlined" sx={{ mb: 3, maxWidth: 720 }}>
+          Written before VeilCore&apos;s launch on Midnight&apos;s main network. Where it says VeilCore is on test
+          networks only, that has changed: records are now dated on Midnight&apos;s main network. The rest stands. An
+          updated copy will follow.
+        </Alert>
+      )}
 
       <Stack direction="row" spacing={1.5} sx={{ mb: { xs: 3, sm: 5 }, flexWrap: 'wrap', gap: 1.5 }}>
         <Button

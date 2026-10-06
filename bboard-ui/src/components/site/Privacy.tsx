@@ -1,6 +1,7 @@
 // /privacy — a short privacy note for the demo. It states only what is true of the demo
-// today: what the app sends to VeilCore's test registry, what never leaves the browser,
-// that it runs on a test network, and how to export and delete.
+// today: what the app sends to VeilCore's registry, what never leaves the browser, which
+// network records are dated on (a test network, or the main network in a mainnet build:
+// i18n/en-mainnet.ts), and how to export and delete.
 //
 // Kept deliberately narrow. Export from the registry in one download (GET /api/export)
 // exists only on a branch of veilcore-api, so the page says it is coming rather than that

@@ -1,6 +1,6 @@
 // Wizard step 6 — Share or license. The breeder picks who's receiving the genetics: a
-// company (a commercial license, 3% VeilCore fee) or another breeder (a breeder share, no
-// fee but offspring-royalty + attribution + the lineage-traceability guarantee). Then the
+// company (a commercial license) or another breeder (a breeder share: breeding and selling
+// rights, credit, a royalty on declared offspring). Simulated in the web demo, and says so. Then the
 // matching terms builder, issue, counter-sign, and the active agreement — reusing the same
 // instrument as everywhere else.
 // SPDX-License-Identifier: Apache-2.0
@@ -33,6 +33,20 @@ import { canonicalUrl } from '../../config/network';
 import { AgreementTermsFields, emptyTermsFor, type SetTerm } from '../licensing/LicenseTermsFields';
 import { LicenseStateChip } from '../licensing/LicenseStateChip';
 import { TEAL } from '../../config/theme';
+import { AGREEMENTS_SIMULATED } from '../../config/copy';
+
+/** The two choice cards: real buttons, so a keyboard reaches them. */
+const CHOICE = {
+  flex: 1,
+  p: 2.5,
+  cursor: 'pointer',
+  textAlign: 'left',
+  font: 'inherit',
+  color: 'inherit',
+  border: '1px solid',
+  borderColor: 'divider',
+  '&:hover, &:focus-visible': { borderColor: 'primary.main', outline: 'none' },
+} as const;
 
 const MBox = motion(Box);
 
@@ -117,7 +131,7 @@ export const Step6ShareOrLicense: React.FC<{
         >
           <AgreedIcon sx={{ fontSize: 52, color: TEAL, filter: `drop-shadow(0 0 18px ${TEAL})`, mb: 1 }} />
           <Typography variant="h4" sx={{ color: TEAL }}>
-            {type === 'license' ? 'Agreement recorded.' : 'Shared — on your terms.'}
+            {type === 'license' ? 'Agreement recorded.' : 'Shared, on your terms.'}
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 480, mx: 'auto', mt: 1 }}>
             Marked active from your browser. Your counterparty has not signed anything in VeilCore: counter-signing by
@@ -184,7 +198,7 @@ export const Step6ShareOrLicense: React.FC<{
           <Button variant="contained" onClick={() => void onCountersign()}>
             Mark active myself (demo)
           </Button>
-          <Chip size="small" variant="outlined" label="Demo — settlement simulated" />
+          <Chip size="small" variant="outlined" label="Simulated in this web demo" />
         </Stack>
         <Typography variant="caption" color="text.secondary">
           The link opens only in your own browser for now: the other party cannot load or sign it from theirs yet.
@@ -201,7 +215,8 @@ export const Step6ShareOrLicense: React.FC<{
         <Box>
           <Typography variant="h5">{AGREEMENT_LABEL[type]}</Typography>
           <Typography variant="body2" color="text.secondary">
-            Terms attached to {record.strainName}&apos;s sealed record — not just a signature page.
+            Terms attached to {record.strainName}&apos;s sealed record, not just a signature page.{' '}
+            {AGREEMENTS_SIMULATED}
           </Typography>
         </Box>
 
@@ -237,35 +252,29 @@ export const Step6ShareOrLicense: React.FC<{
           Share or license
         </Typography>
         <Typography variant="body2" color="text.secondary">
-          Who&apos;s receiving {record.strainName}? Pick the relationship and we&apos;ll build the right terms, attached
-          to the record either way.
+          Who&apos;s receiving {record.strainName}? Pick the relationship and we&apos;ll set out the right terms,
+          attached to the record either way. {AGREEMENTS_SIMULATED}
         </Typography>
       </Box>
 
       <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-        <Paper
-          onClick={() => pick('license')}
-          sx={{ flex: 1, p: 2.5, cursor: 'pointer', '&:hover': { borderColor: 'primary.main' } }}
-        >
+        <Paper component="button" type="button" onClick={() => pick('license')} sx={CHOICE}>
           <Stack spacing={1}>
             <GavelIcon sx={{ color: TEAL }} />
             <Typography variant="h6">A company</Typography>
             <Typography variant="body2" color="text.secondary">
-              License agreement — rights, territory, royalty, exclusivity.
+              License agreement: rights, territory, royalty, exclusivity.
               {SHOW_VEILCORE_FEE ? ' Carries the VeilCore 3% fee.' : ''}
             </Typography>
           </Stack>
         </Paper>
-        <Paper
-          onClick={() => pick('breeder-share')}
-          sx={{ flex: 1, p: 2.5, cursor: 'pointer', '&:hover': { borderColor: 'primary.main' } }}
-        >
+        <Paper component="button" type="button" onClick={() => pick('breeder-share')} sx={CHOICE}>
           <Stack spacing={1}>
             <ShareIcon sx={{ color: TEAL }} />
             <Typography variant="h6">Another breeder</Typography>
             <Typography variant="body2" color="text.secondary">
-              Breeder share — breeding/distribution rights, attribution, offspring royalty. No fee; declared descendants
-              stay linked through lineage.
+              Breeder share: whether they may breed with it or sell it, credit, and a royalty on offspring. Offspring
+              they declare from it stay linked to this record.
             </Typography>
           </Stack>
         </Paper>
@@ -277,7 +286,7 @@ export const Step6ShareOrLicense: React.FC<{
           Back
         </Button>
         <Button variant="text" color="inherit" onClick={() => onDone(undefined)}>
-          Not sharing it yet — finish
+          Not sharing it yet: finish
         </Button>
       </Stack>
     </Stack>

@@ -24,6 +24,7 @@ import {
 import { AppHeader } from '../AppHeader';
 import { AgreementTermsFields, emptyTermsFor, type SetTerm } from './LicenseTermsFields';
 import { AgreementTypeChip } from './AgreementTypeChip';
+import { AGREEMENTS_SIMULATED } from '../../config/copy';
 
 const isType = (v: string | null): v is AgreementType =>
   v === 'license' || v === 'lab-transfer' || v === 'breeder-share';
@@ -49,7 +50,12 @@ export const TermsBuilder: React.FC = () => {
     return (
       <Box>
         <AppHeader />
-        <Typography>Record not found.</Typography>
+        <Typography sx={{ mb: 1 }}>
+          This record isn&apos;t in this browser, so no agreement can be attached to it here.
+        </Typography>
+        <Button component={RouterLink} to="/records" startIcon={<ArrowBackIcon />}>
+          Your records
+        </Button>
       </Box>
     );
   }
@@ -80,8 +86,8 @@ export const TermsBuilder: React.FC = () => {
     }
   };
 
-  const heading = supersedeId ? `Renew / amend — ${AGREEMENT_LABEL[type]}` : AGREEMENT_LABEL[type];
-  const saveLabel = busy ? 'Sealing agreement…' : supersedeId ? 'Save amended agreement' : `Create agreement (Draft)`;
+  const heading = supersedeId ? `Renew or amend: ${AGREEMENT_LABEL[type]}` : AGREEMENT_LABEL[type];
+  const saveLabel = busy ? 'Saving…' : supersedeId ? 'Save the amended agreement' : 'Save as a draft';
 
   return (
     <Box>
@@ -103,8 +109,8 @@ export const TermsBuilder: React.FC = () => {
         {AGREEMENT_TAGLINE[type]}
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-        Set the terms in plain language. When you save, the agreement is sealed and attached to {record.strainName} and
-        its report fingerprint.
+        Set the terms in plain language. When you save, the agreement is sealed and attached to {record.strainName}
+        &apos;s record. {AGREEMENTS_SIMULATED}
       </Typography>
 
       <AgreementTermsFields type={type} terms={t} set={set} />

@@ -1,6 +1,6 @@
 # Operator runbook
 
-**For running the VeilCore CLI on a Mac · last updated 5 October 2026, evening (maintenance key wording; claims fingerprints done)**
+**For running the VeilCore CLI on a Mac · last updated 6 October 2026 (website step on mainnet day: docs/mainnet-day-site.md)**
 
 Four jobs, in this order: a rehearsal on a local chain, the smoke test on preprod, the
 claims contract fingerprints (once; done 5 October), then the mainnet deploy of both
@@ -370,6 +370,15 @@ until the claims deploy finishes, and is deleted then.
   committed, and the same addresses in the deployment record). Claude makes that change
   from what you send; `git pull` before the next mainnet run. The CLI says this at the
   end of each deploy.
+
+### Then the website
+
+Once Claude has pinned both addresses and the registry anchors on mainnet (Railway:
+`VEILCORE_ANCHOR_NETWORK=mainnet`, `VEILCORE_ANCHOR_CONTRACT` = the main contract address),
+put veilcore.org into mainnet mode with `npm run deploy:mainnet`. The exact steps, what it
+refuses and why, and what to check on your phone are in **`docs/mainnet-day-site.md`**. It
+will not build until both conditions are true, so it cannot announce mainnet early. After
+this, always publish the site with `deploy:mainnet`, never `deploy:prod`.
 
 ### If the deploy stops partway
 

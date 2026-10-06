@@ -14,7 +14,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Alert,
   Box,
@@ -41,6 +41,9 @@ import {
 import { hydrate, sealReceived } from '../veilcore/records';
 import { loadAttester, attestRecord, type AttesterProfile } from '../veilcore/attester-keys';
 
+/** Opens the header's receive dialog from elsewhere on the page (a lab's first screen). */
+export const OPEN_RECEIVE_EVENT = 'veilcore:open-receive';
+
 type Stage =
   | { step: 'code' }
   | { step: 'sign'; subject: CustodySubject; attester: AttesterProfile }
@@ -54,6 +57,14 @@ export const ClaimTransfer: React.FC<{ variant?: 'button' | 'text' }> = ({ varia
   const [stage, setStage] = useState<Stage>({ step: 'code' });
   const [received, setReceived] = useState(false);
   const navigate = useNavigate();
+
+  // One dialog, in the header, which stays mounted while the page under it changes (a
+  // lab's first screen gives way to its records list the moment a transfer is claimed).
+  useEffect(() => {
+    const show = () => setOpen(true);
+    window.addEventListener(OPEN_RECEIVE_EVENT, show);
+    return () => window.removeEventListener(OPEN_RECEIVE_EVENT, show);
+  }, []);
 
   const close = () => {
     setOpen(false);
@@ -132,18 +143,18 @@ export const ClaimTransfer: React.FC<{ variant?: 'button' | 'text' }> = ({ varia
         startIcon={<InboxIcon />}
         onClick={() => setOpen(true)}
       >
-        Receive a cultivar
+        Receive material
       </Button>
 
       <Dialog open={open} onClose={close} maxWidth="sm" fullWidth>
-        <DialogTitle>{stage.step === 'sign' ? 'Sign what you received?' : 'Receive a cultivar'}</DialogTitle>
+        <DialogTitle>{stage.step === 'sign' ? 'Sign what you received?' : 'Receive material'}</DialogTitle>
         <DialogContent>
           {stage.step === 'code' && (
             <Stack spacing={2} sx={{ pt: 1 }}>
               <Typography variant="body2" color="text.secondary">
-                Enter the transfer code the sender gave you. You&apos;ll get a record descended from theirs, and the
-                registry records that someone holding this code took delivery. If you have an attester key you will be
-                shown exactly what you would sign before anything is signed.
+                Enter the transfer code the sender gave you. You get your own record of what you received, linked to
+                theirs, and the registry records that someone holding this code took delivery. If you have a signing
+                key, you see exactly what you would sign before anything is signed.
               </Typography>
               <TextField
                 label="Transfer code"
@@ -162,8 +173,7 @@ export const ClaimTransfer: React.FC<{ variant?: 'button' | 'text' }> = ({ varia
           {stage.step === 'sign' && (
             <Stack spacing={1.5} sx={{ pt: 1 }}>
               <Typography variant="body2" color="text.secondary">
-                The transfer is claimed. Your key can now sign a chain-of-custody confirmation. This is exactly what it
-                says:
+                The transfer is claimed. Your key can now sign a receipt for it. This is exactly what the receipt says:
               </Typography>
               <Box sx={{ p: 1.5, borderRadius: 1, background: 'rgba(255,255,255,0.04)', fontSize: 13 }}>
                 <Typography variant="body2">
@@ -222,7 +232,7 @@ export const ClaimTransfer: React.FC<{ variant?: 'button' | 'text' }> = ({ varia
             <>
               <Button onClick={close}>Cancel</Button>
               <Button variant="contained" onClick={() => void claim()} disabled={busy || !code.trim()}>
-                Claim transfer
+                Receive it
               </Button>
             </>
           )}

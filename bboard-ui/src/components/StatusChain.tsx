@@ -1,4 +1,4 @@
-// StatusChain — a cultivar's progress at a glance: Logged → DNA paired → Receipt confirmed → Licensed.
+// StatusChain — a record's progress at a glance: Sealed → Report paired → Receipt confirmed → Licensed.
 // SPDX-License-Identifier: Apache-2.0
 
 import React from 'react';
@@ -11,8 +11,8 @@ import type { StrainRecord } from '../veilcore/records';
 type Seg = { label: string; done: boolean };
 
 export const chainOf = (r: StrainRecord, licenseCount = 0): Seg[] => [
-  { label: 'Logged', done: true },
-  { label: 'DNA paired', done: !!r.dnaFingerprint },
+  { label: 'Sealed', done: true },
+  { label: 'Report paired', done: !!r.dnaFingerprint },
   // Lit by a transfer claim, which shows that someone holding the sender's code took
   // delivery — not that a lab, or anyone identified, confirmed anything.
   { label: 'Receipt confirmed', done: !!r.attestation },

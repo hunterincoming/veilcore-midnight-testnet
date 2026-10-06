@@ -1,7 +1,7 @@
 // WizardShell — the persistent frame: brand hook, the always-visible 6-step progress path,
 // and one animated step on screen at a time. The order follows how a breeder actually
-// operates: log it → (send it to a lab) → (the report comes back) → evidence → prove exactly
-// what you choose → share or license. The lab and DNA steps are skippable; a completion recap
+// operates: seal it → (send it to a lab) → (the report comes back) → certificate → choose
+// what strangers see → share or license. The lab and DNA steps are skippable; a completion recap
 // closes it out. This is the primary guided path — the dashboard/record page stay the fast
 // path for returning users.
 // SPDX-License-Identifier: Apache-2.0
@@ -74,14 +74,14 @@ export const WizardShell: React.FC = () => {
                 ? type === 'license'
                   ? 'Agreement recorded.'
                   : 'Shared on your terms.'
-                : 'Your cultivar is logged and sealed.'}
+                : 'Your record is sealed.'}
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 520, mx: 'auto', mt: 1 }}>
-              {record ? <b>{record.strainName}</b> : 'Your cultivar'} is logged and sealed. Lab and DNA files stayed on
-              your device
+              {record ? <b>{record.strainName}</b> : 'Your record'} is sealed, and its lab and DNA files stayed on your
+              device
               {license
-                ? '. The agreement is recorded against this record (in this demo, signing is simulated). VeilCore records what is owed; payment happens between you.'
-                : '.'}
+                ? '. The agreement is attached to the record; in this web demo, signing is simulated. VeilCore records what is owed; payment happens between you.'
+                : '. It is dated when its batch is anchored; its verify page shows when that has happened.'}
             </Typography>
           </Box>
 
@@ -99,8 +99,8 @@ export const WizardShell: React.FC = () => {
           ) : (
             recordId && (
               <Alert severity="info" variant="outlined" sx={{ textAlign: 'left' }}>
-                You didn’t share or license it yet. When you’re ready, open the cultivar and choose License, Send to a
-                lab, or Share with a breeder. The terms are attached to the record and its report fingerprint.
+                You haven’t shared or licensed it yet. When you’re ready, open the record and choose License, Send to a
+                lab, or Share with a breeder. The terms are attached to the record.
               </Alert>
             )
           )}
@@ -113,15 +113,15 @@ export const WizardShell: React.FC = () => {
             ) : (
               recordId && (
                 <Button variant="contained" onClick={() => navigate(`/record/${recordId}`)}>
-                  Open cultivar
+                  Open the record
                 </Button>
               )
             )}
             <Button variant={license ? 'contained' : 'outlined'} onClick={() => navigate('/records')}>
-              All cultivars
+              All records
             </Button>
             <Button variant="text" onClick={restart}>
-              Log another cultivar
+              Seal another record
             </Button>
           </Stack>
         </Stack>
@@ -222,7 +222,7 @@ export const WizardShell: React.FC = () => {
 
       <Box sx={{ textAlign: 'center', mt: 2 }}>
         <Button component={RouterLink} to="/records" size="small" variant="text" color="inherit">
-          Save &amp; exit to dashboard
+          Go to your records (everything is saved)
         </Button>
       </Box>
     </Box>

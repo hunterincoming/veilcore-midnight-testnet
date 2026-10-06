@@ -4,8 +4,6 @@ import type { Strings } from './en';
 
 export const es: Strings = {
   // Header and footer
-  'nav.newCultivar': 'Nuevo cultivar',
-  'nav.licenses': 'Licencias',
   'nav.language': 'Idioma',
   'footer.documents': 'Documentos',
   'footer.spec': 'Especificación',

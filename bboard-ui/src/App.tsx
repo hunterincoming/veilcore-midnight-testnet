@@ -1,4 +1,4 @@
-// VeilCore — records, licences and verification for plant genetics. Routed app: public
+// VeilCore — records, licenses and verification for plant and animal genetics. Routed app: public
 // pages, records dashboard, guided wizard, per-cultivar detail, licensing, and public
 // verification.
 // SPDX-License-Identifier: Apache-2.0
@@ -17,6 +17,7 @@ import { Dashboard } from './components/Dashboard';
 import { WizardShell } from './components/wizard/WizardShell';
 import { RecordDetail } from './components/RecordDetail';
 import { VerifyPage } from './pages/VerifyPage';
+import { VerifyExample } from './components/verify/VerifyExample';
 import { TermsBuilder } from './components/licensing/TermsBuilder';
 import { LicenseDetail } from './components/licensing/LicenseDetail';
 import { CounterSignPage } from './components/licensing/CounterSignPage';
@@ -54,7 +55,7 @@ const AppLayout: React.FC<React.PropsWithChildren> = ({ children }) => {
     >
       {/* Asked once, on first use. Without it the app has to guess who is reading,
         which is how a lab was told to send its own sample to a lab. */}
-      {askRole && <RolePicker />}
+      <RolePicker ask={askRole} />
       <Container maxWidth="md" sx={{ py: { xs: 3, md: 6 } }}>
         <SaveProblemBar />
         {children}
@@ -86,6 +87,8 @@ const App: React.FC = () => (
     <Route path="/licenses" element={withLayout(<LicensingHub />)} />
     <Route path="/license/:id" element={withLayout(<LicenseDetail />)} />
     <Route path="/license/:id/sign" element={<CounterSignPage />} />
+    {/* A made-up record, labelled as one, for a visitor with no record id yet. */}
+    <Route path="/verify/example" element={<VerifyExample />} />
     <Route path="/verify/:id" element={<VerifyPage />} />
   </Routes>
 );

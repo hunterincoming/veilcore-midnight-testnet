@@ -58,8 +58,9 @@ export const Step2LabTransfer: React.FC<{
       </Box>
 
       <Alert icon={<ScienceIcon />} severity="info" variant="outlined">
-        This puts the transfer terms on the record before the material leaves your hands. It&apos;s custody, not a sale:
-        no royalty, no fee. In this demo, agreements are simulated: nothing is sent to the network.
+        This puts the terms on the record before the material leaves your hands. It&apos;s custody, not a sale: no
+        royalty, no fee. In this web demo, agreements are simulated: the lab doesn&apos;t sign anything here, and
+        nothing is sent to Midnight.
       </Alert>
 
       <AgreementTermsFields type="lab-transfer" terms={t} set={set} />
@@ -70,10 +71,10 @@ export const Step2LabTransfer: React.FC<{
           Back
         </Button>
         <Button variant="contained" size="large" disabled={busy || !canSeal} onClick={onSeal}>
-          {busy ? 'Sealing transfer…' : 'Seal transfer & continue'}
+          {busy ? 'Saving…' : 'Attach these terms and continue'}
         </Button>
         <Button variant="text" color="inherit" onClick={onSkip}>
-          Not sending it anywhere yet — skip
+          Not sending it anywhere yet: skip
         </Button>
       </Stack>
     </Stack>

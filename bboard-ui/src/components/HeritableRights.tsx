@@ -51,14 +51,14 @@ export const HeritableRights: React.FC<{ record: StrainRecord }> = ({ record }) 
       <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
         <GavelIcon sx={{ color: TEAL, fontSize: 20 }} />
         <Typography variant="overline" sx={{ color: TEAL }}>
-          Heritable rights
+          Obligations on offspring
         </Typography>
       </Stack>
 
       <Typography variant="body2" color="text.secondary">
-        An offspring royalty applies to descendants declared from this cultivar: those logged with it as a parent, with
-        both holders confirming the link. Those descendants cannot show clean descent until it is discharged. Undeclared
-        propagation is not detected.
+        An offspring royalty applies to offspring declared from this cultivar: records sealed with it as a parent, with
+        both holders confirming the link. Until the obligation is ended, those offspring can&apos;t show an ancestry
+        free of unpaid obligations. Propagation nobody declares isn&apos;t detected.
       </Typography>
 
       {heritable.length > 0 ? (
@@ -73,25 +73,25 @@ export const HeritableRights: React.FC<{ record: StrainRecord }> = ({ record }) 
             </Stack>
           ))}
           <Typography variant="caption" color="text.secondary">
-            Discharged by revoking the agreement. The terms are never sent — only their fingerprint.
+            Ended by revoking the agreement. The terms are never sent, only their fingerprint.
           </Typography>
         </Stack>
       ) : (
         <Typography variant="body2" color="text.secondary">
-          No heritable obligation on this cultivar. An agreement with an offspring royalty creates one when it is
-          counter-signed.
+          No obligation on this cultivar&apos;s offspring. An agreement with an offspring royalty creates one when it
+          becomes active.
         </Typography>
       )}
 
       <Box>
         <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
           <Button size="small" variant="outlined" onClick={check} disabled={busy}>
-            Check clean descent
+            Check its ancestry
           </Button>
           <Typography variant="caption" color="text.secondary">
             {parentFingerprints.length > 0
               ? `${parentFingerprints.length} declared ancestor${parentFingerprints.length === 1 ? '' : 's'}`
-              : 'no declared ancestry'}
+              : 'no declared ancestors'}
           </Typography>
         </Stack>
       </Box>
@@ -103,14 +103,14 @@ export const HeritableRights: React.FC<{ record: StrainRecord }> = ({ record }) 
           variant="outlined"
         >
           {verdict.ok
-            ? `Clean descent — ${verdict.generationsChecked ?? 0} generation${verdict.generationsChecked === 1 ? '' : 's'} checked.`
+            ? `No unpaid obligations found in its declared ancestry (${verdict.generationsChecked ?? 0} generation${verdict.generationsChecked === 1 ? '' : 's'} checked, as the registry reports).`
             : verdict.reason}
         </Alert>
       )}
 
       {root && (
         <Typography variant="caption" color="text.secondary">
-          Registry root {root.slice(0, 16)}… — one 32-byte value covering every obligation on record.
+          Fingerprint of every obligation the registry holds: {root.slice(0, 16)}…
         </Typography>
       )}
     </Stack>

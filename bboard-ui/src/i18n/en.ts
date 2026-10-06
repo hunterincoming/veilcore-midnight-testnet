@@ -4,8 +4,8 @@
 
 export const en = {
   // Header and footer
-  'nav.newCultivar': 'New cultivar',
-  'nav.licenses': 'Licenses',
+  'nav.newCultivar': 'New record',
+  'nav.licenses': 'Agreements',
   'nav.language': 'Language',
   'footer.about':
     "An open record format for plant and animal genetics. Recomputing a record's fingerprint needs only SHA-256 and the open specification; checking its date also needs a read of the Midnight network. Both are free and need no account. Looking a record up by its identifier on this site uses our server.",
@@ -28,9 +28,10 @@ export const en = {
 
   // Public pages (home and founders), laid out from Mako's 25 September templates.
   //
-  // MAINNET DAY: the strings that must change the day the contracts are live on Midnight's
-  // main network are grouped here, together. Also index.html (meta description) and the
-  // vendored INTEGRATING.md, which come from the SDK.
+  // Network wording. These describe a test network. A mainnet build (`--mode mainnet`)
+  // replaces them, and every other test-network sentence on the public pages, with the
+  // strings in en-mainnet.ts; nothing here is edited by hand on mainnet day. The page
+  // description in index.html is set by the build mode too (vite.config.ts).
   'm.hero.status':
     "Launching on Midnight's main network. Today records are dated on a Midnight test network, which isn't evidence of anything yet.",
   'm.claims.status':
@@ -43,7 +44,7 @@ export const en = {
     'An evidentiary record format for plant and animal genetics. Designed to anchor on Midnight; testing on a Midnight test network.',
   'm.for.2p':
     "Breeders want to use their markers to show a variety is distinct, and treat those markers as trade secrets. A VeilCore claim proves one fact about them without showing the rest. No examining office or certifier accepts it yet; we've written to some to ask what they would need.",
-  // End of MAINNET DAY strings.
+  // End of the network wording.
 
   'm.nav.about': 'About',
   'm.nav.team': 'Team',
@@ -256,6 +257,12 @@ export const en = {
   'm.stat3.s': 'No independent security audit yet. Our own reviews are public.',
   'm.stat4.b': 'First users wanted',
   'm.stat4.s': "Nobody uses it for real records yet. We're looking for the first breeders and labs.",
+  // Mainnet builds only: the contract addresses under the status tiles.
+  'm.addr.title': 'The contracts, for anyone who wants to check them.',
+  'm.addr.main': 'Main contract',
+  'm.addr.claims': 'Claims contract',
+  'm.addr.claimsPending': 'Not on the main network yet.',
+  'm.addr.explorer': 'Look them up on the Midnight explorer →',
   'm.status.keyTitle': 'Who can change the contract.',
   'm.status.keyText':
     "The founders hold a maintenance key for VeilCore's contract on Midnight. It can change how the contract works from then on. It cannot rewrite records already anchored in the network's history. A policy for using it is proposed, not decided.",
@@ -293,6 +300,7 @@ export const en = {
   'm.verify.home': 'What is VeilCore? →',
   'm.verify.field': 'Record identifier',
   'm.verify.go': 'Check it',
+  'm.verify.example': 'Not sure what you will see? Look at an example first →',
 
   'm.founders.label': 'Founders',
   'm.founders.lede':

@@ -75,8 +75,8 @@ export const SendToLab: React.FC<{ record: StrainRecord }> = ({ record }) => {
           {transferId ? (
             <Stack spacing={2} sx={{ pt: 1 }}>
               <Alert severity="success" variant="outlined">
-                Give this code to {handle}. When they claim it, they confirm receipt — and that confirmation becomes the
-                attestation on your record.
+                Give this code to {handle}. When they enter it, they confirm they received the material, and that
+                confirmation is added to your record.
               </Alert>
               <Box
                 sx={{
@@ -96,19 +96,19 @@ export const SendToLab: React.FC<{ record: StrainRecord }> = ({ record }) => {
                 {copied ? 'Copied' : 'Copy code'}
               </Button>
               <Typography variant="caption" color="text.secondary">
-                Nothing has moved yet. The transfer completes when they claim it, and until then your record is
+                Nothing has changed yet. The transfer completes when they enter the code; until then your record is
                 unchanged. The code includes a secret part: send it only to them, the same way you agreed the transfer.
               </Typography>
             </Stack>
           ) : (
             <Stack spacing={2} sx={{ pt: 1 }}>
               <Typography variant="body2" color="text.secondary">
-                They receive a record descended from yours — not a copy. When they confirm receipt, the attestation is
-                recorded against their key, which is the only way to get one.
+                They get their own record of what they received, linked to yours. When they confirm receipt, it is
+                recorded under their key, not yours: a second party on your record.
               </Typography>
               <TextField
-                label="Who are you sending it to"
-                helperText="Their handle. They'll need this to find the transfer."
+                label="Who are you sending it to?"
+                helperText="A name or handle for them, so you both know which transfer this is."
                 value={handle}
                 onChange={(e) => setHandle(e.target.value)}
                 fullWidth

@@ -23,6 +23,7 @@ import {
 } from '../../veilcore/licenses';
 import { TEAL } from '../../config/theme';
 import { startRecordSync } from '../../veilcore/records';
+import { AGREEMENTS_SIMULATED, LICENSE_PROOF_NOTE } from '../../config/copy';
 
 const Line: React.FC<{ k: string; v: string }> = ({ k, v }) => (
   <Stack direction="row" spacing={2} sx={{ justifyContent: 'space-between' }}>
@@ -60,10 +61,10 @@ export const CounterSignPage: React.FC = () => {
 
         {!license ? (
           <Paper sx={{ p: 4, textAlign: 'center' }}>
-            <Typography sx={{ mb: 1 }}>No agreement found for this link in this browser.</Typography>
+            <Typography sx={{ mb: 1 }}>This agreement can&apos;t be opened in this browser.</Typography>
             <Typography variant="body2" color="text.secondary">
-              Agreements can be opened only from the browser that holds them for now. Counter-signing from the other
-              party&apos;s own browser is not built yet.
+              For now an agreement opens only in the browser that made it: counter-signing from the other party&apos;s
+              own browser isn&apos;t built yet. If someone sent you this link, ask them for the terms directly.
             </Typography>
           </Paper>
         ) : (
@@ -73,7 +74,7 @@ export const CounterSignPage: React.FC = () => {
               <Chip size="small" variant="outlined" label={AGREEMENT_LABEL[agreementType(license)]} />
             </Stack>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2.5 }}>
-              Read the terms below. It becomes active in this demo when you counter-sign.
+              Read the terms below. In this web demo it becomes active when it is counter-signed here.
             </Typography>
 
             <Stack spacing={1}>
@@ -112,7 +113,7 @@ export const CounterSignPage: React.FC = () => {
 
             {effectiveState(license) === 'draft' && (
               <Alert severity="info" variant="outlined">
-                This license hasn&apos;t been issued yet — ask the breeder to issue it.
+                This license hasn&apos;t been issued yet. Ask the breeder to issue it.
               </Alert>
             )}
 
@@ -132,9 +133,7 @@ export const CounterSignPage: React.FC = () => {
                     it is. Wiring it to proveLicense means a wallet, a proof server and
                     a deployed contract, which the web app does not have. */}
                 <Alert severity="info" variant="outlined">
-                  Proving a license without revealing its terms runs the proveLicense circuit, which needs a wallet and
-                  a proof server. The CLI in <code>bboard-cli</code> does it against the deployed contract. This page
-                  cannot, and will not pretend to.
+                  {LICENSE_PROOF_NOTE}
                 </Alert>
               </Stack>
             )}
@@ -146,12 +145,12 @@ export const CounterSignPage: React.FC = () => {
             )}
             {effectiveState(license) === 'revoked' && (
               <Alert severity="error" variant="outlined">
-                This license was revoked — {license.revokedReason}.
+                This license was revoked: {license.revokedReason}.
               </Alert>
             )}
 
             <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 2.5 }}>
-              Demo — signing and settlement are simulated locally.
+              {AGREEMENTS_SIMULATED}
             </Typography>
           </Paper>
         )}

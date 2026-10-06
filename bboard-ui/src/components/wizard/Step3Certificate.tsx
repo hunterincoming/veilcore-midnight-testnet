@@ -61,7 +61,7 @@ export const Step3Certificate: React.FC<{ recordId: string; onDone: () => void; 
   const integrityText: Record<IntegrityCheck | 'checking', string> = {
     checking: 'checking…',
     match: '✓ fingerprint recomputed from the stored fields: it matches',
-    mismatch: '✗ fingerprint recomputed from the stored fields: it does NOT match',
+    mismatch: '✗ fingerprint recomputed from the stored fields: it does NOT match, so the details have changed',
     unsealed: 'not sealed yet',
     'no-nonce': 'cannot be recomputed (this record predates stored nonces)',
   };
@@ -76,7 +76,7 @@ export const Step3Certificate: React.FC<{ recordId: string; onDone: () => void; 
       : anchor.status === 'anchor-reported'
         ? `Not confirmed. In batch ${anchor.proof.batchId} (inclusion checked); the registry reports the root on ${networkLabel(anchor.proof.anchor?.network ?? NETWORK)}, tx ${anchor.proof.anchor?.txHash ?? ''}. Look it up before relying on the date.`
         : anchor.status === 'pending'
-          ? 'Not yet: in a batch awaiting anchoring. Until then, its date rests on this registry’s records.'
+          ? 'Not yet: in a batch waiting to be anchored. Until then, its date rests on this registry’s records.'
           : 'Not yet. Until it is anchored, its date rests on this registry’s records.';
 
   // The link and QR code name the record's fingerprint: the verify page checks the
@@ -135,12 +135,12 @@ export const Step3Certificate: React.FC<{ recordId: string; onDone: () => void; 
     <Stack spacing={2.5}>
       <Box>
         <Typography variant="h5" sx={{ mb: 0.5 }}>
-          Your record summary
+          Certificate
         </Typography>
         <Typography variant="body2" color="text.secondary">
-          A summary for your records and your lawyer: the sealed record, a fresh integrity check, whether it is
-          anchored, the report pairing, any delivery confirmation and active licenses. It contains the record details
-          but no genetic data or lab files.
+          For your files and your lawyer: the sealed record, a fresh check that it hasn&apos;t changed, whether it is
+          anchored, the report pairing, any delivery confirmation and active licenses. It carries the record details but
+          no genetic data or lab files. The QR code opens the record&apos;s public check page.
         </Typography>
       </Box>
 
@@ -205,7 +205,7 @@ export const Step3Certificate: React.FC<{ recordId: string; onDone: () => void; 
                 'not paired'
               )}
             </Field>
-            <Field label="Integrity">
+            <Field label="Unchanged since sealing">
               <Box
                 component="span"
                 sx={{
@@ -256,7 +256,7 @@ export const Step3Certificate: React.FC<{ recordId: string; onDone: () => void; 
           Download data (JSON)
         </Button>
         <Button variant="contained" onClick={onDone}>
-          Continue — choose what strangers see
+          Continue: choose what strangers see
         </Button>
       </Stack>
 

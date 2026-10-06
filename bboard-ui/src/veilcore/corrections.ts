@@ -25,13 +25,13 @@ export type CorrectionPreview = {
 
 const CONSEQUENCE: Record<string, string> = {
   'cosmetic|cosmetic':
-    'Nothing downstream is affected. Descendants keep their clean-descent proofs and any agreements stand.',
+    'Nothing downstream is affected. Offspring keep their ancestry checks, and any agreements stand.',
   'cosmetic|material':
-    'Descendants are unaffected — the material did not change. But anyone holding an agreement against this record needs to know, because the terms may refer to what you changed.',
+    'Offspring are unaffected: the material did not change. But anyone with an agreement on this record needs to know, because the terms may refer to what you changed.',
   'material|cosmetic':
-    'Anyone relying on descent from this record needs to re-check. Existing agreements are unaffected.',
+    'Anyone relying on descent from this record needs to check again. Existing agreements are unaffected.',
   'material|material':
-    'Both descent and existing agreements are affected. Descendants will need to re-establish clean descent, and counterparties need to be told.',
+    'Both descent and existing agreements are affected. Offspring will need their ancestry checked again, and the other parties to your agreements need to be told.',
 };
 
 /**

@@ -28,11 +28,11 @@ export const AttestationPanel: React.FC<{ record: StrainRecord }> = ({ record })
     return (
       <Stack spacing={1}>
         <Typography variant="overline" sx={{ display: 'block' }}>
-          Attestations
+          Confirmed by others
         </Typography>
         <Typography variant="body2" color="text.secondary">
-          Nobody else has confirmed this record yet. A record you signed alone is weaker evidence than one a second
-          party confirms — send the cultivar to a lab and their confirmation is recorded against their key, not yours.
+          Nobody else has confirmed this record yet. A record only you stand behind is weaker evidence than one a second
+          party confirms. Send the material to a lab: their confirmation is recorded under their key, not yours.
         </Typography>
       </Stack>
     );
@@ -41,7 +41,7 @@ export const AttestationPanel: React.FC<{ record: StrainRecord }> = ({ record })
   return (
     <Stack spacing={2}>
       <Typography variant="overline" sx={{ display: 'block' }}>
-        Attestations
+        Confirmed by others
       </Typography>
 
       {legacy && items.length === 0 && (

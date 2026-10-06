@@ -3,8 +3,6 @@
 import type { Strings } from './en';
 export const de: Strings = {
   // Header and footer
-  'nav.newCultivar': 'Neue Sorte',
-  'nav.licenses': 'Lizenzen',
   'nav.language': 'Sprache',
   'footer.documents': 'Dokumente',
   'footer.spec': 'Spezifikation',

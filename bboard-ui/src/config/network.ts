@@ -47,8 +47,28 @@ export const explorerFor = (n: string = NETWORK): string | undefined => {
   }
 };
 
-/** Demo mode: no contract address configured, so nothing in the app writes to a chain. */
-export const DEMO_MODE = !(import.meta.env.VITE_VEILCORE_CONTRACT_ADDRESS as string | undefined);
+/**
+ * Which network the site DESCRIBES: Midnight's main network in a `--mode mainnet` build,
+ * a test network in every other build. It decides wording, labels and the explorer the
+ * site links to. It switches on nothing else: the site never sends a transaction in any
+ * build (records are dated by the registry's operator, in batches; licenses and lab
+ * agreements in the web demo are simulated). There is deliberately no switch here that
+ * turns on chain-writing code.
+ */
+export const IS_MAINNET: boolean = NETWORK === 'mainnet';
+
+/**
+ * The main contract's address on mainnet, for display. Set only in a mainnet build, from
+ * MAINNET_VEILCORE_ADDRESS in api/src/deploy-guard.ts (vite.config.ts; a mainnet build
+ * refuses to start without it). Empty in every other build.
+ */
+export const MAINNET_CONTRACT_ADDRESS: string = import.meta.env.VITE_MAINNET_CONTRACT_ADDRESS ?? '';
+
+/** The claims contract's address on mainnet, for display; empty until it is pinned. */
+export const MAINNET_CLAIMS_ADDRESS: string = import.meta.env.VITE_MAINNET_CLAIMS_ADDRESS ?? '';
+
+/** The claims contract is on mainnet (its address is pinned) and this is a mainnet build. */
+export const CLAIMS_ON_MAINNET: boolean = IS_MAINNET && MAINNET_CLAIMS_ADDRESS !== '';
 
 /**
  * The origin every shared link and QR code points at. Links used to be built from

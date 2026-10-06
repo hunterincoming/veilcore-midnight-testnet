@@ -39,11 +39,13 @@ export type Disclosure = Record<DisclosureKey, boolean>;
  * answers them.
  */
 export const DISCLOSURE_FIELDS: { key: DisclosureKey; label: string; def: boolean }[] = [
-  // Labels say what the recipient is actually shown, not the best case.
+  // Labels say what the recipient is actually shown, not the best case. They are read by
+  // the holder choosing and by the stranger on the verify page, so they say neither "you"
+  // nor "the holder".
   { key: 'existence', label: 'Prior possession (shown only once anchored)', def: true },
-  { key: 'attestation-status', label: 'Whether you paired a DNA report', def: true },
-  { key: 'descent-clean', label: 'Lineage check status', def: true },
-  { key: 'sealed-at', label: 'Date you stated', def: true },
+  { key: 'attestation-status', label: 'Whether a DNA report is paired', def: true },
+  { key: 'descent-clean', label: 'Lineage status, as the registry reports it', def: true },
+  { key: 'sealed-at', label: 'When it was sealed (the holder’s device clock)', def: true },
   { key: 'parent-names', label: 'Parent cultivar names', def: false },
   { key: 'breeding-method', label: 'Breeding method', def: false },
 ];

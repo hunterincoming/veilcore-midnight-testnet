@@ -1,6 +1,6 @@
-// Step 1 — Log a cultivar. The record is sealed in the browser: its fingerprint is
+// Step 1 — Seal a record. The record is sealed in the browser: its fingerprint is
 // computed here, photos and DNA files are hashed here and never uploaded. The details
-// typed in (name, breeder, dates, notes, parents) are saved to VeilCore's test server so
+// typed in (name, breeder, dates, notes, parents) are saved to VeilCore's server so
 // the holder can come back to them. The time comes from this device's clock until the
 // record's batch is anchored. Nothing here checks whether anyone logged it before.
 // New records are sealed under the plant-variety profile; the taxon is what the holder
@@ -29,6 +29,7 @@ import { createRecord, allRecords, type StrainRecord, type ParentRef } from '../
 import { PLANT_VARIETY_PROFILE } from '../../veilcore/envelope';
 import { FingerprintReveal } from './FingerprintReveal';
 import { TEAL } from '../../config/theme';
+import { OUR_SERVER } from '../../config/copy';
 
 const MBox = motion(Box);
 const today = () => new Date().toISOString().slice(0, 10);
@@ -104,7 +105,7 @@ export const Step1LogStrain: React.FC<{ onDone: (recordId: string) => void }> = 
         <FingerprintReveal
           fingerprint={record.recordFingerprint}
           headline="Sealed in your browser."
-          sub="Photos and lab or DNA files stay on this device; only their fingerprints are kept. The details you typed are saved on VeilCore's test server so you can come back to them."
+          sub={`Photos and lab or DNA files stay on this device; only their fingerprints are kept. The details you typed are saved on ${OUR_SERVER} so you can come back to them.`}
         />
         <Alert icon={<ShieldIcon />} severity="success" variant="outlined">
           <Typography variant="subtitle2">Record sealed.</Typography>
@@ -119,7 +120,7 @@ export const Step1LogStrain: React.FC<{ onDone: (recordId: string) => void }> = 
         </Alert>
         <Box>
           <Button variant="contained" size="large" onClick={() => onDone(record.id)}>
-            Continue — send it to a lab
+            Continue: send it to a lab
           </Button>
         </Box>
       </Stack>
@@ -130,10 +131,10 @@ export const Step1LogStrain: React.FC<{ onDone: (recordId: string) => void }> = 
     <Stack spacing={2.5}>
       <Box>
         <Typography variant="h5" sx={{ mb: 0.5 }}>
-          Log your cultivar — a sealed record of what you hold, and when
+          Seal a record of what you hold
         </Typography>
         <Typography variant="body2" color="text.secondary">
-          A tamper-evident record of what you hold. Once its batch is anchored, anyone can check its date.
+          Any later change to it would show. Once its batch is anchored, anyone can check its date.
         </Typography>
       </Box>
 
@@ -175,8 +176,8 @@ export const Step1LogStrain: React.FC<{ onDone: (recordId: string) => void }> = 
         renderInput={(params) => (
           <TextField
             {...params}
-            label="Parent cultivars / lineage"
-            helperText="What did you cross to make this? Pick from cultivars you've already logged, or type them in."
+            label="Parents"
+            helperText="What did you cross to make this? Pick from records you've already sealed, or type a name and press Enter."
           />
         )}
       />
@@ -184,7 +185,7 @@ export const Step1LogStrain: React.FC<{ onDone: (recordId: string) => void }> = 
       <TextField
         select
         label="Breeding method"
-        helperText="How this cultivar was produced."
+        helperText="How this cultivar was produced (optional)."
         value={breedingMethod}
         onChange={(e) => setBreedingMethod(e.target.value)}
         fullWidth
@@ -237,7 +238,7 @@ export const Step1LogStrain: React.FC<{ onDone: (recordId: string) => void }> = 
       <TextField
         label="Notes (optional)"
         placeholder="The cross, the selection, the story…"
-        helperText="Saved on VeilCore's test server with the rest of the record. Shown only to whoever holds your holder key."
+        helperText={`Saved on ${OUR_SERVER} with the rest of the record. Shown only to whoever holds your holder key.`}
         value={notes}
         onChange={(e) => setNotes(e.target.value)}
         multiline
@@ -253,7 +254,7 @@ export const Step1LogStrain: React.FC<{ onDone: (recordId: string) => void }> = 
       >
         <ShieldIcon fontSize="small" />
         <Typography variant="body2" sx={{ color: TEAL }}>
-          Photos and DNA files stay on your device. The details you type here are saved on VeilCore&apos;s test server.
+          Photos and DNA files stay on your device. The details you type here are saved on {OUR_SERVER}.
         </Typography>
       </MBox>
 

@@ -58,8 +58,8 @@ export const SharedFacts: React.FC<{ data: SharedFactsData; preview?: boolean }>
       {shared.has('own') &&
         (preview ? (
           <Fact ok={false}>
-            Prior possession: shown only once the registry reports this record&apos;s batch anchored on a ledger, and
-            then as the registry&apos;s report.
+            Prior possession: shown only once the registry reports this record&apos;s batch anchored, and then as the
+            registry&apos;s report.
           </Fact>
         ) : data.priorPossession ? (
           <Fact ok={false}>
@@ -70,9 +70,7 @@ export const SharedFacts: React.FC<{ data: SharedFactsData; preview?: boolean }>
               : ''}
           </Fact>
         ) : (
-          <Fact ok={false}>
-            Prior possession: not yet anchored on a ledger, so its date rests on this registry&apos;s records.
-          </Fact>
+          <Fact ok={false}>Prior possession: not anchored yet, so its date rests on this registry&apos;s records.</Fact>
         ))}
       {shared.has('dna') && (
         <Fact ok={false}>
@@ -96,7 +94,7 @@ export const SharedFacts: React.FC<{ data: SharedFactsData; preview?: boolean }>
         ))}
       {shared.has('sealed') && data.sealedAt !== undefined && (
         <Fact ok={false}>
-          Date stated by the holder: {fmt(data.sealedAt)}. This is the holder&apos;s own statement.
+          Sealed, by the holder&apos;s device clock: {fmt(data.sealedAt)}. This is the holder&apos;s own statement.
           {data.registryFirstSeen ? ` First stored by this registry: ${fmt(data.registryFirstSeen)}.` : ''}
         </Fact>
       )}

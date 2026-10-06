@@ -21,6 +21,7 @@ import { computeCommitment, newNonce } from 'veilcore-records';
 import { useI18n } from '../../i18n';
 import { FOUNDERS_MAIL, SDK_REPO, SiteShell, X_HANDLE } from './SiteShell';
 import { FoldGroup, FoldItem, FoldPoint } from './Fold';
+import { IS_MAINNET, MAINNET_CLAIMS_ADDRESS, MAINNET_CONTRACT_ADDRESS, explorerFor } from '../../config/network';
 
 const TESTNET_REPO = 'https://github.com/hunterincoming/veilcore-midnight-testnet';
 
@@ -91,6 +92,31 @@ const Fingerprint: React.FC = () => {
         <span className="note-long">{t('m.hero.note')}</span>
         <span className="note-short">{t('m.hero.noteShort')}</span>
       </p>
+    </div>
+  );
+};
+
+/** Mainnet builds: the two contract addresses, in full, so anyone can look them up. */
+const Contracts: React.FC = () => {
+  const { t } = useI18n();
+  return (
+    <div className="contracts">
+      <h4>{t('m.addr.title')}</h4>
+      <dl>
+        <div>
+          <dt>{t('m.addr.main')}</dt>
+          <dd>
+            <code>{MAINNET_CONTRACT_ADDRESS}</code>
+          </dd>
+        </div>
+        <div>
+          <dt>{t('m.addr.claims')}</dt>
+          <dd>{MAINNET_CLAIMS_ADDRESS ? <code>{MAINNET_CLAIMS_ADDRESS}</code> : t('m.addr.claimsPending')}</dd>
+        </div>
+      </dl>
+      <a className="more" href={explorerFor('mainnet')} rel="noopener noreferrer" target="_blank">
+        {t('m.addr.explorer')}
+      </a>
     </div>
   );
 };
@@ -505,6 +531,7 @@ export const Home: React.FC = () => {
               <span>{t('m.stat4.s')}</span>
             </div>
           </div>
+          {IS_MAINNET && <Contracts />}
           <FoldItem tag="div" className="status-key" lead={t('m.status.keyTitle')}>
             {t('m.status.keyText')}{' '}
             <a href={`${TESTNET_REPO}/blob/main/docs/maintenance-policy.md`} rel="noopener noreferrer" target="_blank">

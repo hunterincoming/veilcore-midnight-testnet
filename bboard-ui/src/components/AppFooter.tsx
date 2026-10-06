@@ -11,6 +11,7 @@ import React from 'react';
 import { Box, Container, Link, Stack, Typography } from '@mui/material';
 import { Link as RouterLink } from 'react-router-dom';
 import { useI18n } from '../i18n';
+import { requestRoleChange, useRole, ROLE_VIEW } from '../veilcore/role';
 
 const Item: React.FC<{ to: string; children: React.ReactNode; external?: boolean }> = ({ to, children, external }) => (
   <Link
@@ -26,6 +27,7 @@ const Item: React.FC<{ to: string; children: React.ReactNode; external?: boolean
 
 export const AppFooter: React.FC = () => {
   const { t } = useI18n();
+  const role = useRole();
   return (
     <Box
       component="footer"
@@ -82,6 +84,21 @@ export const AppFooter: React.FC = () => {
               <Item to="/records">{t('footer.yourRecords')}</Item>
               <Item to="/licenses">{t('footer.agreements')}</Item>
               <Item to="/privacy">{t('footer.privacy')}</Item>
+              <Link
+                component="button"
+                type="button"
+                onClick={requestRoleChange}
+                underline="hover"
+                color="text.secondary"
+                sx={{
+                  fontSize: { xs: 15, sm: 14 },
+                  py: { xs: 1.25, sm: 0 },
+                  display: { xs: 'block', sm: 'inline' },
+                  textAlign: 'left',
+                }}
+              >
+                {role ? `${ROLE_VIEW[role]} · change` : 'Breeder or lab? Choose your view'}
+              </Link>
             </Stack>
           </Stack>
         </Stack>

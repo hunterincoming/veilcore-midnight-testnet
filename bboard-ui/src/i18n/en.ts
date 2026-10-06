@@ -251,7 +251,7 @@ export const en = {
   'm.status.lede': "We'd rather say this now than have it come out later.",
   'm.stat1.b': '100 / 100',
   'm.stat1.s':
-    'shared test vectors passed in TypeScript, Python and Rust on GitHub (one author wrote all three; the npm release is next)',
+    'shared test vectors passed in TypeScript, Python and Rust on GitHub (one author wrote all three; TypeScript is on npm as 0.15.0)',
   'm.stat3.b': 'No audit',
   'm.stat3.s': 'No independent security audit yet. Our own reviews are public.',
   'm.stat4.b': 'First users wanted',

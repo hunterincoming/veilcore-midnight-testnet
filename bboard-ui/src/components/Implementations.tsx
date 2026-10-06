@@ -89,7 +89,7 @@ export const Implementations: React.FC = () => (
         lang="TypeScript"
         who="the authors of the specification"
         deps="none"
-        note="The reference implementation. Commitments, canonical serialisation, batch inclusion proofs, attester signatures, corrections, challenges and registry resolution. Runs in a browser and in Node with separate entry points, so a frontend build pulls in nothing it cannot use. The version on npm (0.13.0) predates the 3 October number rules; use the repository until a newer version is published."
+        note="The reference implementation. Commitments, canonical serialisation, batch inclusion proofs, attester signatures, corrections, challenges and registry resolution. Runs in a browser and in Node with separate entry points, so a frontend build pulls in nothing it cannot use. Version 0.15.0 on npm passes all 100 shared vectors."
         href="https://github.com/hunterincoming/veilcore-sdk"
         hrefLabel="View the repository"
       />

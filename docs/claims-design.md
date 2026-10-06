@@ -198,3 +198,12 @@ An independent implementation of this shape, by another Midnight builder, was ex
 against VeilCore records in August 2026 and is what SPEC section 12 refers to.
 This design is VeilCore's own, written from the specification; credit for showing the
 shape works, and for the repeated-comparison warning, belongs to that work.
+
+## Note for the next compiler migration (6 Oct 2026)
+
+`contract/src/schnorr.compact` says the standard library's `jubjubSchnorrVerify` gains the
+identity-key check in Compact 0.34. It landed in **0.35.0**
+(https://docs.midnight.network/relnotes/compact/toolchain-0.35.0); pointed out by Guvenkaya
+while scoping their review. When migrating (ledger 9), go straight to 0.35 or later before
+replacing the custom Schnorr check. The comment in the `.compact` file is left as it is for
+now, because that file is frozen and fingerprinted for the mainnet deploy.

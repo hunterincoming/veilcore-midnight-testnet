@@ -13,7 +13,8 @@
 //   audit.jsonl     what was done, when, transaction ids: no secrets (audit.ts)
 //   .lock           while a command runs
 
-import { open, readFile, rm } from 'node:fs/promises';
+import { randomBytes } from 'node:crypto';
+import { open, readFile, readdir, rename, rm, stat } from 'node:fs/promises';
 import * as path from 'node:path';
 import { inspect } from 'node:util';
 import { type FieldSetFile, passwordProblem } from '@veilcore/contracts';
@@ -46,6 +47,10 @@ export type RecordEntry = {
   };
   status: 'new' | 'anchored' | 'handed-over';
   readonly createdAt: string;
+  /** Every record commitment VeilCore's software made for this identity (public): its origin, rotations, hand-overs. */
+  made: string[];
+  /** Every recovery commitment whose secret VeilCore has held (public). */
+  heldRecoveries: string[];
 };
 
 export type IssuedLicence = {
@@ -55,7 +60,8 @@ export type IssuedLicence = {
   /** The record commitment the licence was issued under (its key on chain). */
   readonly issuedUnder: string;
   readonly commitment: string;
-  status: 'issued' | 'revoked';
+  /** 'issuing': stored before the transaction, so a landed issue is never lost from here. */
+  status: 'issuing' | 'issued' | 'revoked';
 };
 
 export type HeldLicence = {
@@ -105,6 +111,41 @@ export type LabKeyEntry = {
 
 export type ExitMode = 'self' | 'assisted';
 
+/** A bundle written for the partner (sealed to their key). purge deletes the file. */
+export type BundleRef = {
+  readonly path: string;
+  readonly sha256: string;
+  readonly madeAt: string;
+  readonly kind: string;
+};
+
+/**
+ * An exit under way: written BEFORE anything is sent, so a re-run (after a crash, a
+ * kill, a power cut) resumes it instead of starting another. Public values only: the
+ * new record commitments VeilCore planned, never the secrets behind them.
+ */
+export type ExitState = {
+  readonly mode: ExitMode;
+  readonly startedAt: string;
+  /** The partner's key every bundle of this exit is sealed to. */
+  readonly bundleKey: string;
+  /** The fingerprint of the exit answer the partner confirmed (assisted). */
+  readonly answerFingerprint?: string;
+  records: Record<
+    string,
+    {
+      /** The record a hand-over secret controls; the secret is only in bundle `bundleSha256`. */
+      newRecord?: string;
+      bundleSha256?: string;
+      recoveryReplaced?: boolean;
+      status: 'planned' | 'done' | 'failed' | 'taken-back' | 'not-rotatable';
+      txIds: string[];
+      note?: string;
+    }
+  >;
+  licences: Record<string, 'proposed'>;
+};
+
 /** Recovery commitments a partner made from their master (public); each record takes the next unused one. */
 export type StoredPool = {
   readonly poolId: string;
@@ -129,6 +170,10 @@ export type VaultPayload = {
   fieldSets: FieldSetEntry[];
   labKeys: LabKeyEntry[];
   recoveryPools: StoredPool[];
+  /** The partner's public bundle key (from their master), confirmed by fingerprint. */
+  partnerKey?: { readonly bundleKey: string; readonly poolId: string; readonly at: string };
+  bundles: BundleRef[];
+  exit?: ExitState;
   retired?: { readonly at: string; readonly mode: ExitMode; readonly bundleSha256: string };
   purgedAt?: string;
 };
@@ -190,9 +235,18 @@ const lock = async (dir: string): Promise<() => Promise<void>> => {
       return () => rm(file, { force: true });
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
-      const pid = Number((await readFile(file, 'utf8').catch(() => '')).trim());
+      const text = (await readFile(file, 'utf8').catch(() => '')).trim();
+      const pid = Number(text);
       let alive = false;
-      if (Number.isInteger(pid) && pid > 0) {
+      if (text === '') {
+        // Being written this moment by a command that just took it.
+        alive =
+          Date.now() -
+            (await stat(file)
+              .then((st) => st.mtimeMs)
+              .catch(() => 0)) <
+          10_000;
+      } else if (Number.isInteger(pid) && pid > 0) {
         try {
           process.kill(pid, 0);
           alive = true;
@@ -200,8 +254,28 @@ const lock = async (dir: string): Promise<() => Promise<void>> => {
           alive = (k as NodeJS.ErrnoException).code === 'EPERM';
         }
       }
-      if (alive) throw new Error(`Another command (process ${pid}) is working on this partner. Wait for it to end.`);
-      await rm(file, { force: true }); // left by a command that was killed
+      const busy = (): Error =>
+        new Error(
+          `Another command (process ${text || '?'}) is working on this partner. Wait for it to end. ` +
+            `If no such command is running (a reused process number), remove ${file} by hand.`,
+        );
+      if (alive) throw busy();
+      // Left by a command that was killed. Moved aside, then checked: if what was moved is
+      // not the stale lock that was read (another command took the lock in between), it is
+      // put back and this command stops.
+      const stale = `${file}.stale-${randomBytes(6).toString('hex')}`;
+      if (
+        await rename(file, stale).then(
+          () => true,
+          () => false,
+        )
+      ) {
+        if ((await readFile(stale, 'utf8').catch(() => '')).trim() !== text) {
+          await rename(stale, file).catch(() => undefined);
+          throw busy();
+        }
+        await rm(stale, { force: true });
+      }
     }
   }
   throw new Error('Could not take the partner folder lock.');
@@ -254,6 +328,7 @@ export class PartnerVault {
         fieldSets: [],
         labKeys: [],
         recoveryPools: [],
+        bundles: [],
       };
       const v = new PartnerVault(dir, await BoxKey.fresh(o.password), payload, release);
       await v.#write(true);
@@ -275,11 +350,14 @@ export class PartnerVault {
     const file = path.join(dir, VAULT_FILE);
     if (!(await exists(file))) throw new Error(`No partner ${o.id} on ${o.network} (no ${file}).`);
     await assertOwnerOnly(dir);
-    const box: BoxFile = parseBox(await readPrivate(file), { kind: 'custody-vault' });
-    if (box.partner !== o.id || box.network !== o.network)
-      throw new Error(`That vault belongs to ${box.partner} on ${box.network}, not ${o.id} on ${o.network}. Refused.`);
+    // The lock first, then the read: what is read is what no other command can change.
     const release = await lock(dir);
     try {
+      const box: BoxFile = parseBox(await readPrivate(file), { kind: 'custody-vault' });
+      if (box.partner !== o.id || box.network !== o.network)
+        throw new Error(
+          `That vault belongs to ${box.partner} on ${box.network}, not ${o.id} on ${o.network}. Refused.`,
+        );
       const key = await BoxKey.forHeader(o.password, box);
       let payload: VaultPayload;
       try {
@@ -290,6 +368,7 @@ export class PartnerVault {
       }
       if (payload.version !== 1 || payload.partner.id !== o.id || payload.partner.network !== o.network)
         throw new Error('That vault does not match its folder. Refused.');
+      payload.bundles ??= [];
       return new PartnerVault(dir, key, payload, release);
     } catch (e) {
       await release();
@@ -368,13 +447,31 @@ export class PartnerVault {
     });
   }
 
+  /** Remember a bundle written for the partner, so purge deletes it. */
+  async addBundle(b: BundleRef): Promise<void> {
+    await this.update((p) => void p.bundles.push(b));
+  }
+
   /**
    * After a partner has confirmed they hold their bundle: rewrite the vault with every
    * secret removed. Labels and public commitments stay, so the audit log still makes sense.
    */
-  async purge(): Promise<void> {
+  async purge(): Promise<{ readonly deleted: string[]; readonly missing: string[] }> {
     if (this.#payload.retired === undefined)
       throw new Error(`Partner ${this.id} has not left (exit) yet. Refused: purge only follows an exit.`);
+    // The bundle files on this computer first (sealed to the partner's key, but still theirs
+    // to hold, not VeilCore's). Deleting a file does not reach its blocks on an SSD, nor backups.
+    const deleted: string[] = [];
+    const missing: string[] = [];
+    for (const b of this.#payload.bundles) {
+      if (await exists(b.path)) {
+        await rm(b.path, { force: true });
+        deleted.push(b.path);
+      } else missing.push(b.path);
+    }
+    // Stale lock copies hold no secret, but leave nothing behind.
+    for (const f of await readdir(this.#dir).catch(() => [] as string[]))
+      if (f.startsWith('.lock.stale-')) await rm(path.join(this.#dir, f), { force: true });
     await this.update((p) => {
       for (const r of p.records) {
         delete r.secret;
@@ -390,6 +487,7 @@ export class PartnerVault {
       for (const k of p.labKeys) delete k.secret;
       p.purgedAt = now();
     });
+    return { deleted, missing };
   }
 
   /** Forget the key and let another command open this partner. */
@@ -431,5 +529,5 @@ export class PartnerVault {
 export const readStatus = async (dir: string): Promise<PartnerStatus | null> => {
   const file = path.join(dir, STATUS_FILE);
   if (!(await exists(file))) return null;
-  return JSON.parse(await readFile(file, 'utf8')) as PartnerStatus;
+  return JSON.parse(await readPrivate(file)) as PartnerStatus;
 };

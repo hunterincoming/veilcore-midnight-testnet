@@ -32,6 +32,8 @@ const withRecord = async (v: PartnerVault): Promise<void> =>
       recovery: { heldBy: 'custody', commitment: 'dd'.repeat(32), secret: RECOVERY },
       status: 'anchored',
       createdAt: new Date().toISOString(),
+      made: ['cc'.repeat(32)],
+      heldRecoveries: ['dd'.repeat(32)],
     });
   });
 
@@ -130,7 +132,9 @@ describe('encryption', () => {
     expect(() => parseBox(JSON.stringify({ ...box, kdf: { ...box.kdf, N: 1024 } }), { kind: 'custody-vault' })).toThrow(
       /key-derivation setting/,
     );
-    expect(() => parseBox(JSON.stringify(box), { kind: 'exit-bundle' })).toThrow(/not a exit-bundle/);
+    expect(() => parseBox(JSON.stringify({ ...box, kind: 'exit-bundle' }), { kind: 'custody-vault' })).toThrow(
+      /not a custody-vault/,
+    );
     expect(inspect(key)).toBe('BoxKey [redacted]');
   });
 });
@@ -170,6 +174,25 @@ describe('one store per partner', () => {
     await expect(
       PartnerVault.create({ root: t.root, id: '../escape', displayName: 'x', network: NETWORK, password: PW }),
     ).rejects.toThrow(/partner id/);
+  });
+
+  it('takes over a lock left by a command that was killed, and only that', async () => {
+    const v = await PartnerVault.create({
+      root: t.root,
+      id: 'lab-one',
+      displayName: 'Lab One',
+      network: NETWORK,
+      password: PW,
+    });
+    await v.close();
+    const lockFile = path.join(partnerDir(t.root, 'lab-one'), '.lock');
+    await writeFile(lockFile, '2147483646', { mode: 0o600 }); // no such process
+    const again = await PartnerVault.open({ root: t.root, id: 'lab-one', network: NETWORK, password: PW });
+    await again.close();
+    await writeFile(lockFile, String(process.pid), { mode: 0o600 }); // a live one
+    await expect(PartnerVault.open({ root: t.root, id: 'lab-one', network: NETWORK, password: PW })).rejects.toThrow(
+      /Another command/,
+    );
   });
 
   it('lets one command at a time work on a partner', async () => {

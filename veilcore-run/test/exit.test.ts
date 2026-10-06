@@ -1,10 +1,11 @@
 // Handing a partner their secrets, and leaving ("rotate us out"), against the partner
-// kit's chain stand-in: the bundle round trip, the printable sheet, a self exit the
-// partner finishes with the kit, an assisted exit after which VeilCore's copies control
-// nothing (and the new secrets were never in VeilCore's vault), an interrupted assisted
-// exit finished later, and a retired partner refused everything.
+// kit's chain stand-in: bundles sealed to the partner's key (never openable on VeilCore's
+// side), a self exit and an assisted exit each FINISHED by the partner's own recovery,
+// exit-check from what VeilCore really holds, resuming an exit after errors and kills, the
+// cases an exit cannot simply rotate, and purge removing the bundle files.
 // SPDX-License-Identifier: Apache-2.0
 import { readFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setNetworkId } from '@midnight-ntwrk/midnight-js-network-id';
@@ -19,13 +20,13 @@ vi.mock('@midnight-ntwrk/midnight-js-contracts', async (orig) => {
 const kit = await import('@veilcore/contracts');
 const { VEILCORE_ADDR, CLAIMS_ADDR, chainLog, fakeChain } = await import('../../partner-kit/test/local-chain.ts');
 const op = await import('../src/operator.ts');
-const { exitAssisted, exitRequest, exitSelf, exportBundle } = await import('../src/exit.ts');
+const { exitAssisted, exitBlockers, exitRequest, exitSelf, exportBundle } = await import('../src/exit.ts');
 const { readBundle } = await import('../src/bundle.ts');
-const { answerExit, licenceSecretAt, makePool, newMaster, recoverySecretAt } = await import('../src/partner-keys.ts');
-const { fromPaper, forPaper } = await import('../src/sheet.ts');
+const { answerExit, fingerprintOf, licenceSecretAt, newMaster, recoverySecretAt } =
+  await import('../src/partner-keys.ts');
+const { checkRecords, recordsIn, recoverRecords } = await import('../src/partner-side.ts');
 const { RetiredPartnerError } = await import('../src/vault.ts');
-const { WrongPasswordError } = await import('../src/box.ts');
-const { NETWORK, PASSPHRASE, PW2, allText, leaked, newPartner, tempRoot } = await import('./helpers.ts');
+const { PW2, allText, leaked, newPartner, tempRoot } = await import('./helpers.ts');
 
 const VECTORS = JSON.parse(
   (await import('node:fs')).readFileSync(new URL('../../contract/vectors/fields-v1.json', import.meta.url), 'utf8'),
@@ -49,6 +50,8 @@ afterEach(async () => {
   await t.done();
 });
 const read = () => ({ network: 'undeployed' as const, indexer: chain.endpoints.indexer, address: VEILCORE_ADDR });
+const power = async (lab: Awaited<ReturnType<typeof setUp>>['lab']) =>
+  op.listPartner(lab.vault.read(), await kit.readLedger(read())).records.map((r) => ({ label: r.label, ...r.chain! }));
 
 /** A lab with two custody records, a licence it holds from a breeder, a field set and a lab key. */
 const setUp = async () => {
@@ -78,102 +81,146 @@ const allRefused = async (lab: Awaited<ReturnType<typeof setUp>>['lab']): Promis
     op.makeClaim(lab, { kind: 'attested', fields: 'lot-1', labKey: 'k' }),
     op.obligationEncumber(lab, { record: 'acc-1', terms: 'x', label: 'o' }),
     op.labKeyNew(lab, { label: 'k2' }),
-    exitSelf(lab, { passphrase: PASSPHRASE, out: path.join(t.root, 'again.vcb') }),
+    exitSelf(lab, { out: path.join(t.root, 'again.vcb') }),
   ];
   for (const a of attempts) await expect(a).rejects.toBeInstanceOf(RetiredPartnerError);
   expect(chainLog.length).toBe(n);
 };
 
-describe('export: a copy for the partner, who stays in', () => {
-  it('round-trips under the partner’s passphrase, refuses any other, and prints a sheet that reads back', async () => {
+describe('bundles are sealed to the partner’s key', () => {
+  it('opens with the partner’s master only; holds no secret in clear; needs no passphrase; is recorded for purge', async () => {
     const { lab, breeder } = await setUp();
     const out = path.join(t.root, 'lab-copy.vcb');
-    const sheet = path.join(t.root, 'lab-sheet.txt');
-    await expect(exportBundle(lab, { passphrase: 'weak', out })).rejects.toThrow(/16 or more/);
-    await exportBundle(lab, { passphrase: PASSPHRASE, out, sheet });
-    const b = await readBundle(out, PASSPHRASE);
-    expect(b.vault).toEqual(lab.vault.read());
+    await exportBundle(lab, { out });
+    const b = await readBundle(out, lab.master);
+    expect(b.vault.records).toEqual(lab.vault.read().records);
     expect(b.kind).toBe('export');
-    expect(b.audit.length).toBeGreaterThan(0);
-    await expect(readBundle(out, PW2)).rejects.toBeInstanceOf(WrongPasswordError);
+    await expect(readBundle(out, newMaster())).rejects.toThrow(/different master/);
     expect(leaked(await readFile(out, 'utf8'), lab.vault.secrets())).toEqual([]);
-
-    const text = await readFile(sheet, 'utf8');
-    const rec = lab.vault.read().records[0];
-    expect(text).toContain(forPaper(rec.secret!));
-    const line = text.split('\n').find((l) => l.includes('record secret:'))!;
-    expect(kit.toHex(fromPaper(line.split('record secret:')[1]))).toBe(rec.secret);
-    expect(() => fromPaper(line.split('record secret:')[1].replace(/check (....)/, 'check 0000'))).toThrow(
-      /check does not match/,
-    );
-    await expect(exportBundle(lab, { passphrase: PASSPHRASE, out })).rejects.toThrow(/already exists/);
+    expect(lab.vault.read().bundles.map((x) => x.path)).toEqual([out]);
+    await expect(exportBundle(lab, { out })).rejects.toThrow(/already exists/);
     await lab.vault.assertActive(); // still in
+
+    // A partner who never gave a bundle key gets no bundle.
+    const noKey = await newPartner(t.root, 'nokey', { vc, claims }, { noKey: true });
+    await expect(exportBundle(noKey, { out: path.join(t.root, 'n.vcb') })).rejects.toThrow(/has given no bundle key/);
+    await noKey.vault.close();
     await lab.vault.close();
     await breeder.vault.close();
   });
 });
 
-describe('self exit: VeilCore hands over, the partner sends the transactions', () => {
-  it('retires the store; the partner recovers each record with the kit; VeilCore’s copies then control nothing', async () => {
+describe('self exit: VeilCore hands over; the partner’s own recovery finishes it', () => {
+  it('retires the store; partner-recover takes every record back; exit-check then says complete', async () => {
     const { lab, breeder } = await setUp();
     const out = path.join(t.root, 'lab-exit.vcb');
-    await exitSelf(lab, { passphrase: PASSPHRASE, out });
+    await exitSelf(lab, { out });
     await allRefused(lab);
+    // Until the partner recovers, VeilCore can still act (it holds the record and recovery secrets).
+    expect((await power(lab)).map((p) => [p.veilcoreCanAct, p.veilcoreHoldsCurrentRecovery, p.exitComplete])).toEqual([
+      [true, true, false],
+      [true, true, false],
+    ]);
 
-    const b = await readBundle(out, PASSPHRASE);
+    const b = await readBundle(out, lab.master);
     expect(b.kind).toBe('exit-self');
+    expect(b.procedure).toMatch(/REQUIRED/);
     // A second copy for a partner who lost the first, until the purge.
     const copy = path.join(t.root, 'lab-exit-copy.vcb');
-    await exportBundle(lab, { passphrase: PASSPHRASE, out: copy });
-    expect((await readBundle(copy, PASSPHRASE)).kind).toBe('exit-self');
-    expect(b.procedure).toMatch(/recoverRecordSecret/);
-    // The partner, with the kit and their own wallet: one recovery per record.
-    for (const r of b.vault.records) {
-      await vc.recoverRecordSecret({
-        originalRecord: kit.fromHex(r.origin),
-        recoverySecret: kit.fromHex(r.recovery.secret!),
-        newRecordSecret: kit.newSecret(),
-        newRecoveryCommitment: kit.commit.recovery(kit.newSecret()),
-      });
-    }
-    const listed = op.listPartner(lab.vault.read(), await kit.readLedger(read()));
-    expect(listed.records.map((r) => r.chain?.veilcoreCanAct)).toEqual([false, false]);
-    for (const r of lab.vault.read().records) {
-      await expect(vc.useRecordSecret(kit.fromHex(r.secret!))).rejects.toThrow(/not the current one/);
-      expect(await vc.recoverySecretIsCurrent(kit.fromHex(r.origin), kit.fromHex(r.recovery.secret!))).toBe(false);
-    }
-    await lab.vault.purge();
+    await exportBundle(lab, { out: copy });
+    expect((await readBundle(copy, lab.master)).kind).toBe('exit-self');
+
+    // The partner, on their computer, with their master and their own wallet.
+    const records = recordsIn([b]);
+    const done = await recoverRecords(vc, records, lab.master, [lab.master]);
+    expect(done.map((d) => d.outcome)).toEqual([
+      'recovered to your own secrets (generation 0)',
+      'recovered to your own secrets (generation 0)',
+    ]);
+    expect(checkRecords(await kit.readLedger(read()), records, lab.master).every((c) => c.yours)).toBe(true);
+    expect((await recoverRecords(vc, records, lab.master, [lab.master])).map((d) => d.outcome)).toEqual([
+      'already yours',
+      'already yours',
+    ]);
+    expect((await power(lab)).every((p) => p.exitComplete && !p.veilcoreCanAct)).toBe(true);
+
+    const r = await lab.vault.purge();
+    expect(r.deleted.sort()).toEqual([copy, out].sort());
+    expect(existsSync(out) || existsSync(copy)).toBe(false);
     expect(lab.vault.secrets().size).toBe(0);
-    expect(
-      leaked(
-        await allText(lab.vault.dir),
-        b.vault.records.map((r) => r.secret!),
-      ),
-    ).toEqual([]);
+    expect((await power(lab)).every((p) => p.holdsNothing && p.exitComplete)).toBe(true);
     await lab.vault.close();
     await breeder.vault.close();
+  });
+
+  it('a partner who ROTATES instead of recovering is told VeilCore still holds the recovery (reviewer C2)', async () => {
+    const lab = await newPartner(t.root, 'lab', { vc, claims });
+    await op.anchorRecord(lab, { label: 'acc-1' });
+    const out = path.join(t.root, 's.vcb');
+    await exitSelf(lab, { out });
+    const rec = (await readBundle(out, lab.master)).vault.records[0];
+    await vc.useRecordSecret(kit.fromHex(rec.secret!));
+    await vc.rotateRecordSecret(kit.newSecret());
+    const [p] = await power(lab);
+    expect(p).toMatchObject({
+      veilcoreHoldsLiveSecret: false,
+      veilcoreHoldsCurrentRecovery: true,
+      veilcoreCanAct: true,
+      exitComplete: false,
+    });
+    await lab.vault.close();
   });
 });
 
 describe('assisted exit: VeilCore sends the transactions', () => {
-  it('installs the partner’s recovery commitments, rotates to secrets only the bundle holds, proposes the licence move', async () => {
+  it('refuses an answer whose fingerprint was not confirmed, before sending anything', async () => {
     const { lab, breeder } = await setUp();
-    // acc-3 is a partner-mode record: its recovery secret was never VeilCore's.
-    const firstMaster = newMaster();
-    await op.importPool(lab, makePool({ partner: 'lab', network: NETWORK, master: firstMaster, count: 2 }));
+    const answer = answerExit(exitRequest(lab.vault.read()), lab.master, 0);
+    // An attacker's answer, built from their own master, with the real fingerprint typed: refused.
+    const forged = answerExit(exitRequest(lab.vault.read()), newMaster(), 0);
+    const n = chainLog.length;
+    for (const [a, typed] of [
+      [answer, '0000 0000 0000 0000 0000'],
+      [forged, fingerprintOf(answer)],
+    ] as const)
+      await expect(
+        exitAssisted(lab, { answer: a, confirmedFingerprint: typed, out: path.join(t.root, 'x.vcb') }),
+      ).rejects.toThrow(/not the fingerprint/);
+    const missing = answerExit({ ...exitRequest(lab.vault.read()), records: [] }, lab.master, 0);
+    await expect(
+      exitAssisted(lab, {
+        answer: missing,
+        confirmedFingerprint: fingerprintOf(missing),
+        out: path.join(t.root, 'y.vcb'),
+      }),
+    ).rejects.toThrow(/no new recovery commitment for record "acc-1"/);
+    const other = answerExit({ ...exitRequest(lab.vault.read()), partner: 'breeder' }, lab.master, 0);
+    await expect(
+      exitAssisted(lab, { answer: other, confirmedFingerprint: fingerprintOf(other), out: path.join(t.root, 'z.vcb') }),
+    ).rejects.toThrow(/made for breeder/);
+    expect(chainLog.length).toBe(n);
+    expect(lab.vault.read().exit).toBeUndefined();
+    await lab.vault.close();
+    await breeder.vault.close();
+  });
+
+  it('hands over with secrets never stored by VeilCore; only the partner’s recovery completes it', async () => {
+    const { lab, breeder } = await setUp();
+    // acc-3 keeps the partner's own recovery secret from the start (partner mode).
+    const pool = (await import('../src/partner-keys.ts')).makePool({
+      partner: 'lab',
+      network: 'undeployed',
+      master: lab.master,
+      count: 2,
+    });
+    await op.importPool(lab, pool, fingerprintOf(pool));
     await op.anchorRecord(lab, { label: 'acc-3', recovery: 'partner' });
     const old = lab.vault.read();
-
     const request = exitRequest(old);
-    expect(request.records.map((r) => r.label)).toEqual(['acc-1', 'acc-2']); // custody ones only
-    expect(request.licences.map((l) => l.label)).toEqual(['lic']);
-    expect(JSON.stringify(request)).not.toMatch(new RegExp([...lab.vault.secrets()].join('|')));
-    // On the partner's computer: a new master, and commitments only back to VeilCore.
-    const master = newMaster();
-    const answer = answerExit(request, master, 0);
-
+    expect(request.records.map((r) => r.label)).toEqual(['acc-1', 'acc-2']);
+    const answer = answerExit(request, lab.master, 2); // indexes after the pool's
     const out = path.join(t.root, 'lab-assisted.vcb');
-    const r = await exitAssisted(lab, { answer, passphrase: PASSPHRASE, out });
+    const r = await exitAssisted(lab, { answer, confirmedFingerprint: fingerprintOf(answer), out });
     expect(r.complete).toBe(true);
     expect(r.handover.map((h) => [h.label, h.status])).toEqual([
       ['acc-1', 'done'],
@@ -182,100 +229,214 @@ describe('assisted exit: VeilCore sends the transactions', () => {
     ]);
     await allRefused(lab);
 
-    const b = await readBundle(out, PASSPHRASE);
+    // The hand-over secrets are in the sealed bundle only: not in VeilCore's folder, not in the result.
+    const b = await readBundle(out, lab.master);
+    const handed = b.vault.records.map((x) => x.pendingSecret!);
+    expect(handed.every((s) => /^[0-9a-f]{64}$/.test(s))).toBe(true);
+    expect(leaked(await allText(lab.vault.dir), handed)).toEqual([]);
+    expect(JSON.stringify(r)).not.toMatch(new RegExp(handed.join('|')));
     const ledger = await kit.readLedger(read());
-    for (const rec of old.records) {
-      const mine = b.vault.records.find((x) => x.label === rec.label)!;
-      // VeilCore's old record secret controls nothing; the bundle's is live.
-      expect(kit.isLive(ledger, kit.fromHex(rec.current))).toBe(false);
-      expect(kit.isLive(ledger, kit.commit.record(kit.fromHex(mine.secret!)))).toBe(true);
-      expect(mine.pendingSecret).toBeUndefined();
-    }
-    // Custody records: only the partner's derived recovery secret works now.
+    for (const s of handed) expect(kit.isLive(ledger, kit.commit.record(kit.fromHex(s)))).toBe(true);
+    for (const x of old.records) expect(kit.isLive(ledger, kit.fromHex(x.current))).toBe(false);
     for (const [i, label] of ['acc-1', 'acc-2'].entries()) {
       const rec = old.records.find((x) => x.label === label)!;
       expect(await vc.recoverySecretIsCurrent(kit.fromHex(rec.origin), kit.fromHex(rec.recovery.secret!))).toBe(false);
-      expect(await vc.recoverySecretIsCurrent(kit.fromHex(rec.origin), recoverySecretAt(master, i))).toBe(true);
+      expect(await vc.recoverySecretIsCurrent(kit.fromHex(rec.origin), recoverySecretAt(lab.master, 2 + i))).toBe(true);
     }
-    // The partner-mode record kept the partner's own recovery secret throughout.
-    const acc3 = old.records.find((x) => x.label === 'acc-3')!;
-    expect(await vc.recoverySecretIsCurrent(kit.fromHex(acc3.origin), recoverySecretAt(firstMaster, 0))).toBe(true);
 
-    // The new record secrets were never written to VeilCore's side: vault, status or audit log.
-    const newSecrets = r.handover.map((h) => h.newSecret);
-    expect(leaked(await allText(lab.vault.dir), newSecrets)).toEqual([]);
-    expect(lab.vault.read().records.every((x) => x.secret === undefined && x.status === 'handed-over')).toBe(true);
+    // VeilCore holds nothing that acts (reviewer C1 said "can act: true"), but the exit is not complete.
+    expect((await power(lab)).map((p) => [p.veilcoreCanAct, p.headMadeByVeilcore, p.exitComplete])).toEqual([
+      [false, true, false],
+      [false, true, false],
+      [false, true, false],
+    ]);
+    expect(b.procedure).toMatch(/REQUIRED/);
+    expect(b.procedure).toMatch(/partner-recover/);
+
+    // The partner's REQUIRED step: then it is.
+    const records = recordsIn([b]);
+    await recoverRecords(vc, records, lab.master, [lab.master]);
+    expect(checkRecords(await kit.readLedger(read()), records, lab.master).every((c) => c.yours)).toBe(true);
+    expect((await power(lab)).every((p) => p.exitComplete)).toBe(true);
 
     // The licence: VeilCore proposed the move; the breeder approves; the old secret is dead.
     const lic = lab.vault.read().licences[0];
     expect(lic).toMatchObject({ status: 'transfer-proposed', transferTo: answer.licences[0].licenceCommitment });
     await op.licenceTransferApprove(breeder, {
       label: 'to-lab',
-      newCommitment: lic.role === 'licensee' ? lic.transferTo! : '',
+      newCommitment: answer.licences[0].licenceCommitment,
       newLabel: 'to-lab-2',
     });
     const issuer = kit.fromHex(breeder.vault.read().records[0].current);
-    await vc.proveLicense(licenceSecretAt(master, 0), issuer, kit.newChallenge());
+    await vc.proveLicense(licenceSecretAt(lab.master, 2), issuer, kit.newChallenge());
     const refused = await vc
       .proveLicense(kit.fromHex(lic.role === 'licensee' ? lic.secret! : ''), issuer, kit.newChallenge())
       .catch((e: unknown) => e);
     expect(kit.isContractRefusal(refused)).toBe(true);
 
-    expect(b.procedure).toMatch(/which VeilCore\s+never saw/);
-    // What is left in VeilCore's store controls nothing: it is never exported as if it did.
-    await expect(exportBundle(lab, { passphrase: PASSPHRASE, out: path.join(t.root, 'again.vcb') })).rejects.toThrow(
+    // The audit head was anchored at the end: a receipt for the partner.
+    const { readAudit } = await import('../src/audit.ts');
+    expect((await readAudit(lab.audit.file)).entries.some((e) => e.op === 'audit-anchor')).toBe(true);
+    await expect(exportBundle(lab, { out: path.join(t.root, 'again.vcb') })).rejects.toThrow(
       /only in their exit bundle/,
     );
     await lab.vault.close();
     await breeder.vault.close();
   });
 
-  it('refuses an answer missing a custody record, and an answer for another partner, before sending anything', async () => {
+  it('stops on an error, is not retired, and resumes with the same answer: one new secret only where needed', async () => {
     const { lab, breeder } = await setUp();
-    const request = exitRequest(lab.vault.read());
-    const answer = answerExit({ ...request, records: request.records.slice(1) }, newMaster(), 0);
-    const n = chainLog.length;
+    const answer = answerExit(exitRequest(lab.vault.read()), lab.master, 0);
+    const confirmedFingerprint = fingerprintOf(answer);
+    const real = vc.rotateRecordSecret.bind(vc);
+    let calls = 0;
+    vi.spyOn(vc, 'rotateRecordSecret').mockImplementation(async (s: Uint8Array) => {
+      if (++calls === 2) throw new Error('proof server went away'); // did not land
+      return real(s);
+    });
+    const first = path.join(t.root, 'part-1.vcb');
+    const r1 = await exitAssisted(lab, { answer, confirmedFingerprint, out: first });
+    expect(r1.complete).toBe(false);
+    expect(r1.handover.map((h) => h.status)).toEqual(['done', 'failed']);
+    await lab.vault.assertActive(); // not retired
+    expect(lab.vault.read().exit?.records['acc-2'].status).toBe('failed');
+
+    // A fresh exit with another answer is refused while this one is under way.
+    const other = answerExit(exitRequest(lab.vault.read()), newMaster(), 0);
     await expect(
-      exitAssisted(lab, { answer, passphrase: PASSPHRASE, out: path.join(t.root, 'x.vcb') }),
-    ).rejects.toThrow(/no new recovery commitment for record "acc-1"/);
-    const other = answerExit({ ...request, partner: 'breeder' }, newMaster(), 0);
-    await expect(
-      exitAssisted(lab, { answer: other, passphrase: PASSPHRASE, out: path.join(t.root, 'y.vcb') }),
-    ).rejects.toThrow(/made for breeder/);
-    expect(chainLog.length).toBe(n);
-    await lab.vault.assertActive();
+      exitAssisted(lab, { answer: other, confirmedFingerprint: fingerprintOf(other), out: path.join(t.root, 'o.vcb') }),
+    ).rejects.toThrow(/already under way/);
+
+    vi.restoreAllMocks();
+    const second = path.join(t.root, 'part-2.vcb');
+    const r2 = await exitAssisted(lab, { answer, confirmedFingerprint, out: second });
+    expect(r2.complete).toBe(true);
+    expect(r2.handover.map((h) => h.label)).toEqual(['acc-2']); // acc-1 was done: no second secret for it
+    const b1 = await readBundle(first, lab.master);
+    const b2 = await readBundle(second, lab.master);
+    expect(b2.earlierBundles).toEqual([{ sha256: expect.any(String) as string, labels: ['acc-1'] }]);
+    const ledger = await kit.readLedger(read());
+    expect(kit.isLive(ledger, kit.commit.record(kit.fromHex(b1.vault.records[0].pendingSecret!)))).toBe(true);
+    expect(kit.isLive(ledger, kit.commit.record(kit.fromHex(b2.vault.records[1].pendingSecret!)))).toBe(true);
+    // The partner recovers from both bundles together.
+    await recoverRecords(vc, recordsIn([b1, b2]), lab.master, [lab.master]);
+    expect((await power(lab)).every((p) => p.exitComplete)).toBe(true);
     await lab.vault.close();
     await breeder.vault.close();
   });
 
-  it('an exit interrupted part-way is not retired, and finishes with --previous, keeping the secrets already handed over', async () => {
-    const { lab, breeder } = await setUp();
-    const master = newMaster();
-    const answer = answerExit(exitRequest(lab.vault.read()), master, 0);
+  it('a rotation that LANDED but reported an error is found on chain, in the same run or the next (reviewer D)', async () => {
+    const lab = await newPartner(t.root, 'lab', { vc, claims });
+    await op.anchorRecord(lab, { label: 'acc-1' });
+    await op.anchorRecord(lab, { label: 'acc-2' });
+    const answer = answerExit(exitRequest(lab.vault.read()), lab.master, 0);
+    const confirmedFingerprint = fingerprintOf(answer);
     const real = vc.rotateRecordSecret.bind(vc);
+    const realLedger = vc.ledger.bind(vc);
     let calls = 0;
     vi.spyOn(vc, 'rotateRecordSecret').mockImplementation(async (s: Uint8Array) => {
-      if (++calls === 2) throw new Error('proof server went away');
-      return real(s);
+      const r = await real(s);
+      if (++calls === 2) {
+        // Landed; then the indexer times out, and so does the check that follows.
+        vi.spyOn(vc, 'ledger').mockRejectedValueOnce(new Error('indexer down'));
+        throw new Error('indexer timed out');
+      }
+      return r;
     });
-    const first = path.join(t.root, 'part-1.vcb');
-    const r1 = await exitAssisted(lab, { answer, passphrase: PASSPHRASE, out: first });
-    expect(r1.complete).toBe(false);
+    const r1 = await exitAssisted(lab, { answer, confirmedFingerprint, out: path.join(t.root, 'p1.vcb') });
     expect(r1.handover.map((h) => h.status)).toEqual(['done', 'failed']);
-    await lab.vault.assertActive(); // not retired
-
     vi.restoreAllMocks();
-    const second = path.join(t.root, 'part-2.vcb');
-    const r2 = await exitAssisted(lab, { answer, passphrase: PASSPHRASE, out: second, previous: first });
+    void realLedger;
+    const r2 = await exitAssisted(lab, { answer, confirmedFingerprint, out: path.join(t.root, 'p2.vcb') });
     expect(r2.complete).toBe(true);
-    const b1 = await readBundle(first, PASSPHRASE);
-    const b2 = await readBundle(second, PASSPHRASE);
-    expect(b2.handover![0].newSecret).toBe(b1.handover![0].newSecret);
-    const ledger = await kit.readLedger(read());
-    for (const rec of b2.vault.records)
-      expect(kit.isLive(ledger, kit.commit.record(kit.fromHex(rec.secret!)))).toBe(true);
-    await expect(lab.vault.assertActive()).rejects.toBeInstanceOf(RetiredPartnerError);
+    expect(r2.handover).toEqual([]); // nothing new made: acc-2 was found on chain
+    expect(lab.vault.read().exit?.records['acc-2']).toMatchObject({ status: 'done', note: 'found on chain' });
+    const b1 = await readBundle(path.join(t.root, 'p1.vcb'), lab.master);
+    expect(
+      kit.isLive(await kit.readLedger(read()), kit.commit.record(kit.fromHex(b1.vault.records[1].pendingSecret!))),
+    ).toBe(true);
     await lab.vault.close();
-    await breeder.vault.close();
+  });
+
+  it('when one landed and only its check failed in the same run, it is done at once', async () => {
+    const lab = await newPartner(t.root, 'lab', { vc, claims });
+    await op.anchorRecord(lab, { label: 'acc-1' });
+    const answer = answerExit(exitRequest(lab.vault.read()), lab.master, 0);
+    const real = vc.rotateRecordSecret.bind(vc);
+    vi.spyOn(vc, 'rotateRecordSecret').mockImplementation(async (s: Uint8Array) => {
+      await real(s);
+      throw new Error('indexer timed out');
+    });
+    const r = await exitAssisted(lab, {
+      answer,
+      confirmedFingerprint: fingerprintOf(answer),
+      out: path.join(t.root, 'p.vcb'),
+    });
+    expect(r.complete).toBe(true);
+    expect(r.handover[0].status).toBe('done');
+    await lab.vault.close();
+  });
+
+  it('falls back to a self exit while an assisted one is under way', async () => {
+    const lab = await newPartner(t.root, 'lab', { vc, claims });
+    await op.anchorRecord(lab, { label: 'acc-1' });
+    await op.anchorRecord(lab, { label: 'acc-2' });
+    const answer = answerExit(exitRequest(lab.vault.read()), lab.master, 0);
+    vi.spyOn(vc, 'rotateRecordSecret').mockRejectedValue(new Error('no proofs today'));
+    const r = await exitAssisted(lab, {
+      answer,
+      confirmedFingerprint: fingerprintOf(answer),
+      out: path.join(t.root, 'a.vcb'),
+    });
+    expect(r.complete).toBe(false);
+    vi.restoreAllMocks();
+    const out = path.join(t.root, 'self.vcb');
+    await exitSelf(lab, { out });
+    const b = await readBundle(out, lab.master);
+    // acc-1's recovery was replaced with the partner's before the rotation failed.
+    await recoverRecords(vc, recordsIn([b]), lab.master, [lab.master]);
+    expect((await power(lab)).every((p) => p.exitComplete)).toBe(true);
+    await lab.vault.close();
+  });
+});
+
+describe('what an exit cannot simply rotate', () => {
+  it('refuses to start with a record never anchored or a licence never countersigned; abandon clears them', async () => {
+    const lab = await newPartner(t.root, 'lab', { vc, claims });
+    await op.anchorRecord(lab, { label: 'acc-1' });
+    vi.spyOn(vc, 'anchor').mockRejectedValueOnce(new Error('indexer timeout'));
+    await expect(op.anchorRecord(lab, { label: 'half' })).rejects.toThrow(/indexer timeout/);
+    await op.licenceRequest(lab, { label: 'req', issuerRecord: 'ab'.repeat(32) });
+    expect(exitBlockers(lab.vault.read())).toHaveLength(2);
+    await expect(exitSelf(lab, { out: path.join(t.root, 'x.vcb') })).rejects.toThrow(
+      /never anchored.*never countersigned/,
+    );
+    const answer = answerExit(exitRequest(lab.vault.read()), lab.master, 0);
+    await expect(
+      exitAssisted(lab, { answer, confirmedFingerprint: fingerprintOf(answer), out: path.join(t.root, 'y.vcb') }),
+    ).rejects.toThrow(/never anchored/);
+    await op.abandonRecord(lab, { label: 'half' });
+    await op.abandonLicence(lab, { label: 'req' });
+    expect(exitBlockers(lab.vault.read())).toEqual([]);
+    expect(lab.vault.read().records.map((r) => r.label)).toEqual(['acc-1']);
+    await lab.vault.close();
+  });
+
+  it('a record with all 16 rotations used is not rotated: its recovery becomes the partner’s, and their recovery takes it', async () => {
+    const lab = await newPartner(t.root, 'lab', { vc, claims });
+    await op.anchorRecord(lab, { label: 'acc-1' });
+    for (let i = 0; i < 16; i++) await op.rotateRecord(lab, { record: 'acc-1' });
+    await expect(op.rotateRecord(lab, { record: 'acc-1' })).rejects.toThrow();
+    const answer = answerExit(exitRequest(lab.vault.read()), lab.master, 0);
+    const out = path.join(t.root, 'r.vcb');
+    const r = await exitAssisted(lab, { answer, confirmedFingerprint: fingerprintOf(answer), out });
+    expect(r.handover[0]).toMatchObject({ status: 'not-rotatable' });
+    expect(r.complete).toBe(true);
+    // VeilCore's record secret still works until the partner's recovery: the listing says so.
+    expect((await power(lab))[0]).toMatchObject({ veilcoreCanAct: true, veilcoreHoldsCurrentRecovery: false });
+    const b = await readBundle(out, lab.master);
+    await recoverRecords(vc, recordsIn([b]), lab.master, [lab.master]);
+    expect((await power(lab))[0]).toMatchObject({ veilcoreCanAct: false, exitComplete: true });
+    await lab.vault.close();
   });
 });

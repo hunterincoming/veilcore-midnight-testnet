@@ -1,28 +1,30 @@
-// The bundle a partner is handed: every secret VeilCore holds for them (or, after an
-// assisted exit, the secrets they now hold), encrypted to a passphrase THEY choose, with
-// the plain-English procedure and a copy of their audit log.
+// The bundle a partner is handed: the secrets VeilCore holds for them (or, from an
+// assisted exit, the new record secrets it made for them), the plain-English procedure,
+// and a copy of their audit log, SEALED TO THE PARTNER'S PUBLIC KEY (box.ts, sealTo). The
+// matching private key is derived from the partner's master on their own computer:
+// nothing on VeilCore's side can open a bundle, and no passphrase is typed there.
 // SPDX-License-Identifier: Apache-2.0
 
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
-import { passwordProblem } from '@veilcore/contracts';
 import { type AuditEntry } from './audit.ts';
-import { BoxKey, openBox, parseBox, sealBox } from './box.ts';
+import { openSealed, parseSealed, sealTo } from './box.ts';
 import { writePrivate } from './files.ts';
+import { bundleKeyOf } from './partner-keys.ts';
 import { type ExitMode, type VaultPayload } from './vault.ts';
 
-export const BUNDLE_FORMAT = 'veilcore-run/exit-bundle/1';
+export const BUNDLE_FORMAT = 'veilcore-run/exit-bundle/2';
 
-/** What happened to one record when VeilCore handed it over (assisted exit). */
+/** What happened to one record in an assisted exit. Public except `newSecret`. */
 export type RecordHandover = {
   readonly label: string;
   readonly origin: string;
-  /** The record secret the partner now holds (made for the hand-over, never stored in VeilCore's vault). */
-  readonly newSecret: string;
-  readonly newRecord: string;
+  /** The record secret the partner now holds; made in the exit run, written only into this bundle. */
+  readonly newSecret?: string;
+  readonly newRecord?: string;
   /** The recovery commitment the partner made, installed in place of VeilCore's (custody records). */
   readonly newRecoveryCommitment?: string;
-  status: 'pending' | 'done' | 'failed';
+  status: 'sent' | 'done' | 'failed' | 'taken-back' | 'not-rotatable';
   txIds: string[];
   note?: string;
 };
@@ -37,58 +39,40 @@ export type ExitBundle = {
   /** The partner's secrets and public data, in the vault's own shape. */
   readonly vault: VaultPayload;
   readonly handover?: RecordHandover[];
+  /** Assisted exits that took more than one run: which earlier bundle holds which record's secret. */
+  readonly earlierBundles?: readonly { readonly sha256: string; readonly labels: readonly string[] }[];
   /** What to do next, in plain English, with the partner kit calls for a developer. */
   readonly procedure: string;
   readonly audit: readonly AuditEntry[];
 };
 
-/** A passphrase the partner chose for their bundle: the same rule as every VeilCore password. */
-export const checkPassphrase = (passphrase: string): void => {
-  const problem = passwordProblem(passphrase);
-  if (problem !== null) throw new Error(`That passphrase will not be accepted: ${problem}.`);
-};
-
 /**
- * Encrypt `bundle` to `passphrase` and write it to `file` (0600). `replace`: overwrite a
- * bundle this command wrote earlier; otherwise an existing file is never overwritten.
- * Reads it back and opens it before returning, so a bundle that would not open is
- * never reported as written. Returns the file's SHA-256.
+ * Seal `bundle` to the partner's public key and write it to `file` (0600; never over an
+ * existing file). VeilCore cannot read it back; it checks the file parses and names the
+ * right key. Returns the file's SHA-256.
  */
-export const writeBundle = async (
-  file: string,
-  passphrase: string,
-  bundle: ExitBundle,
-  { replace = false } = {},
-): Promise<string> => {
-  checkPassphrase(passphrase);
-  const key = await BoxKey.fresh(passphrase);
-  try {
-    const box = sealBox(
-      key,
-      { kind: 'exit-bundle', partner: bundle.partner.id, network: bundle.partner.network },
-      bundle,
-    );
-    const text = JSON.stringify(box);
-    await writePrivate(file, text, { exclusive: !replace });
-    const back = await readBundle(file, passphrase);
-    if (JSON.stringify(back) !== JSON.stringify(bundle))
-      throw new Error(`The bundle written to ${file} does not read back the same. Do not hand it over.`);
-    return createHash('sha256').update(text, 'utf8').digest('hex');
-  } finally {
-    key.destroy();
-  }
+export const writeBundle = async (file: string, recipient: string, bundle: ExitBundle): Promise<string> => {
+  const box = sealTo(recipient, { partner: bundle.partner.id, network: bundle.partner.network }, bundle);
+  const text = JSON.stringify(box);
+  await writePrivate(file, text, { exclusive: true });
+  const back = parseSealed(await readFile(file, 'utf8'));
+  if (back.recipient !== recipient || back.ciphertext !== box.ciphertext)
+    throw new Error(`The bundle written to ${file} does not read back the same. Do not hand it over.`);
+  return createHash('sha256').update(text, 'utf8').digest('hex');
 };
 
-/** Open a bundle with the partner's passphrase. */
-export const readBundle = async (file: string, passphrase: string): Promise<ExitBundle> => {
-  const box = parseBox(await readFile(file, 'utf8'), { kind: 'exit-bundle' });
-  const key = await BoxKey.forHeader(passphrase, box);
-  try {
-    const b = openBox(key, box) as ExitBundle;
-    if (b.format !== BUNDLE_FORMAT || b.partner.id !== box.partner || b.partner.network !== box.network)
-      throw new Error('That bundle does not match its header. Refused.');
-    return b;
-  } finally {
-    key.destroy();
-  }
+/** Open a bundle on the partner's computer, with their master secret. */
+export const readBundle = async (file: string, master: Uint8Array): Promise<ExitBundle> => {
+  const box = parseSealed(await readFile(file, 'utf8'));
+  const key = bundleKeyOf(master);
+  if (key.publicHex !== box.recipient)
+    throw new Error('That bundle was sealed to a different master secret (check which sheet). Nothing was opened.');
+  const b = openSealed(key.privateKey, box) as ExitBundle;
+  if (b.format !== BUNDLE_FORMAT || b.partner.id !== box.partner || b.partner.network !== box.network)
+    throw new Error('That bundle does not match its header. Refused.');
+  return b;
 };
+
+/** Which key a bundle is sealed to, without opening it. */
+export const bundleRecipient = async (file: string): Promise<string> =>
+  parseSealed(await readFile(file, 'utf8')).recipient;

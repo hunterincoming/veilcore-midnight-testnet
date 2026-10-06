@@ -233,17 +233,21 @@ once #1605 is resolved.
 ## VeilCore-run (managed service v1, added 6 October)
 
 Built on branch `managed`: `veilcore-run/` (custody stores, operator CLI `npm run managed`,
-exit), `docs/MANAGED.md`, `docs/legal/managed-service-agreement-DRAFT.md`. Uses only the
-partner kit's public exports (a test checks). 30 tests on the kit's chain stand-in; not run on
-a live network.
+exit, partner-side recovery), `docs/MANAGED.md`, `docs/legal/managed-service-agreement-DRAFT.md`.
+Uses only the partner kit's public exports (a test checks). Independent review 6 Oct
+(`review-managed.md`): NOT PASS, 4 high and 7 medium; all addressed the same day (H1 password
+change, H2 fingerprint-confirmed pools and exit answers, H3 bundles sealed to a key from the
+partner's master and the partner's own recovery REQUIRED to finish an exit, H4 status from what
+VeilCore really holds; M1-M7). 41 tests on the kit's chain stand-in, the reviewer's experiments
+among them; not run on a live network.
 
 | # | What | Status |
 |---|---|---|
-| R1 | Per-partner encrypted store (scrypt N=2^17 + AES-256-GCM, 0700/0600, own password), export bundle to the partner's passphrase, printable sheet | **Built, tested** |
-| R2 | Operator CLI: every partner operation, per-partner audit log (hash-chained, no secrets) | **Built, tested on the stand-in.** First live run on preprod: Hunter (one partner, `anchor`, `prove-ownership`, `export`, `exit --mode assisted`) |
-| R3 | Exit: self, and assisted (VeilCore installs the partner's recovery commitment, then rotates to a secret only the bundle holds); retire; purge | **Built, tested on the stand-in** |
-| R4 | Agreement | **Draft only.** Must be reviewed by a lawyer before any partner signs. Fees and governing law blank |
+| R1 | Per-partner encrypted store (scrypt N=2^17 + AES-256-GCM, 0700/0600, own password, lock before read); bundles sealed to the partner's X25519 key (from their master) | **Built, tested** |
+| R2 | Operator CLI: every partner operation; per-partner audit log (hash-chained, no secrets, anchored on chain with receipts) | **Built, tested on the stand-in.** First live run on preprod: Hunter (one partner: partner-keys, import-pool, anchor, prove-ownership, audit-anchor, export, exit --mode assisted, partner-recover, exit-check) |
+| R3 | Exit: self, and assisted (resumable, exit-in-progress marker, landed-but-errored found on chain); partner-recover and partner-check (required); exit-check; retire; purge (secrets and bundle files) | **Built, tested on the stand-in** |
+| R4 | Agreement | **Draft only.** Must be reviewed by a lawyer before any partner signs. Fees, governing law, deadlines and liability cap blank |
 | R5 | Decision: offer custody mode (VeilCore holds recovery secrets) at all, or partner-held recovery only | **Open.** Recommendation in MANAGED.md: partner-held; custody only with the risk in writing |
-| R6 | The operations computer (dedicated, FileVault, no cloud backup of `~/.veilcore/managed`), and its offline encrypted backup | **Not done.** Hunter |
-| R7 | Independent security review of `veilcore-run/` | **Not done** |
-
+| R6 | The operations computer (dedicated, FileVault, no cloud backup of `~/.veilcore/managed`), its offline encrypted backups with a written retention list | **Not done.** Hunter |
+| R7 | Independent security review of `veilcore-run/` (a paid one; the 6 Oct review was an AI review) | **Not done** |
+| R8 | The partner's last exit step needs a DUST wallet; a lab with no developer needs someone to run one command | **Open.** Options: a VeilCore-written guide for any IT person; website self-custody after launch |

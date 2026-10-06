@@ -18,9 +18,7 @@ import {
   errorChain,
   fromHex,
   identityOf,
-  isAnchored,
   isContractRefusal,
-  isLive,
   labKeyOf,
   newLabKey,
   newSecret,
@@ -29,8 +27,8 @@ import {
   signRecord,
   toHex,
 } from '@veilcore/contracts';
-import { type AuditFields, type AuditLog } from './audit.ts';
-import { type RecoveryPool } from './partner-keys.ts';
+import { type AuditFields, type AuditLog, auditHead } from './audit.ts';
+import { type RecoveryPool, fingerprintMatches } from './partner-keys.ts';
 import {
   type FieldSetEntry,
   type HeldLicence,
@@ -97,6 +95,8 @@ const failureNote = (e: unknown): string =>
 /** Run one transaction, and write its audit line, success or failure. */
 const sent = async <T extends TxRef>(ctx: Ctx, base: Omit<AuditFields, 'ok'>, f: () => Promise<T>): Promise<T> => {
   let r: T;
+  // A line BEFORE sending too: a crash after the transaction lands still leaves a trace.
+  await ctx.audit.write({ ...base, ok: false, phase: 'sending' });
   try {
     r = await f();
   } catch (e) {
@@ -130,11 +130,25 @@ const actAs = async (ctx: Ctx, r: RecordEntry): Promise<{ anchored: boolean }> =
 // ─────────────────────────────────────────────────────────── recovery pools
 
 /** Take in the recovery commitments a partner made on their own computer (partner-keys). */
-export const importPool = async (ctx: Ctx, pool: RecoveryPool): Promise<{ added: number; unused: number }> => {
+export const importPool = async (
+  ctx: Ctx,
+  pool: RecoveryPool,
+  /** The fingerprint the partner read out from their own screen (partner-keys), as the operator typed it. */
+  confirmedFingerprint: string,
+): Promise<{ added: number; unused: number }> => {
   await ctx.vault.assertActive();
   const p = ctx.vault.read();
   if (pool.partner !== p.partner.id || pool.network !== p.partner.network)
     throw new Error(`That pool was made for ${pool.partner} on ${pool.network}. Refused.`);
+  if (!fingerprintMatches(confirmedFingerprint, pool))
+    throw new Error(
+      'That is not the fingerprint of this pool file: it was changed on the way, or is not the one the partner made. ' +
+        'Refused: nothing was imported.',
+    );
+  if (p.partnerKey !== undefined && p.partnerKey.bundleKey !== pool.bundleKey)
+    throw new Error(
+      `That pool is from a different master (pool ${pool.poolId}) than the one registered (pool ${p.partnerKey.poolId}). Refused.`,
+    );
   const known = new Set(p.recoveryPools.flatMap((x) => x.commitments));
   for (const r of p.records) known.add(r.recovery.commitment);
   if (pool.commitments.some((c) => known.has(c)))
@@ -142,12 +156,17 @@ export const importPool = async (ctx: Ctx, pool: RecoveryPool): Promise<{ added:
       'That pool repeats a recovery commitment already in this vault. Refused: make the next pool from a later index.',
     );
   await ctx.vault.update((v) => {
-    v.recoveryPools.push({ poolId: pool.poolId, start: pool.start, commitments: [...pool.commitments], used: [] });
+    if (pool.commitments.length > 0)
+      v.recoveryPools.push({ poolId: pool.poolId, start: pool.start, commitments: [...pool.commitments], used: [] });
+    v.partnerKey ??= { bundleKey: pool.bundleKey, poolId: pool.poolId, at: new Date().toISOString() };
   });
   await ctx.audit.write({
     op: 'import-recovery-pool',
     ok: true,
-    note: `${pool.commitments.length} recovery commitments, pool ${pool.poolId}, indexes ${pool.start} to ${pool.start + pool.commitments.length - 1}`,
+    note:
+      `${pool.commitments.length} recovery commitments, pool ${pool.poolId}` +
+      (pool.commitments.length === 0 ? '' : `, indexes ${pool.start} to ${pool.start + pool.commitments.length - 1}`) +
+      `; bundle key ${pool.bundleKey}; fingerprint confirmed`,
   });
   return { added: pool.commitments.length, unused: unusedPool(ctx.vault.read()) };
 };
@@ -220,6 +239,8 @@ export const anchorRecord = async (
       recovery,
       status: 'new',
       createdAt: new Date().toISOString(),
+      made: [record],
+      heldRecoveries: recovery.secret === undefined ? [] : [recovery.commitment],
     };
     await ctx.vault.update((v) => {
       v.records.push(fresh);
@@ -316,7 +337,11 @@ export const rotateRecord = async (
     }
   } else {
     const next = toHex(newSecret());
-    await ctx.vault.update((v) => void (recordOf(v, o.record).pendingSecret = next));
+    await ctx.vault.update((v) => {
+      const x = recordOf(v, o.record);
+      x.pendingSecret = next;
+      x.made.push(toHex(commit.record(fromHex(next))));
+    });
     r = recordOf(ctx.vault.read(), o.record);
   }
   const pending = r.pendingSecret as string;
@@ -331,6 +356,69 @@ export const rotateRecord = async (
     if (e instanceof LandedButUnconfirmedError) await promote(pending);
     throw e;
   }
+};
+
+/**
+ * Give up a record that was stored but never anchored (status 'new'), so it is not left
+ * behind at an exit. Refused if the chain shows it anchored after all: then run anchor
+ * again to record that.
+ */
+export const abandonRecord = async (ctx: Ctx, o: { readonly label: string }): Promise<void> => {
+  await ctx.vault.assertActive();
+  const r = recordOf(ctx.vault.read(), o.label);
+  if (r.status !== 'new')
+    throw new Error(`Record "${o.label}" is on chain (${r.status}); only an unanchored record can be abandoned.`);
+  if ((await actAs(ctx, r)).anchored)
+    throw new Error(
+      `The chain shows record "${o.label}" anchored after all. Run anchor again to record that. Nothing changed.`,
+    );
+  await ctx.vault.update((v) => void (v.records = v.records.filter((x) => x.label !== o.label)));
+  await ctx.audit.write({
+    op: 'abandon-record',
+    ok: true,
+    label: o.label,
+    record: r.origin,
+    note: 'never anchored; secret deleted',
+  });
+};
+
+/** Give up a licence the partner requested that was never countersigned (status 'requested'). */
+export const abandonLicence = async (ctx: Ctx, o: { readonly label: string }): Promise<void> => {
+  await ctx.vault.assertActive();
+  const l = held(ctx.vault.read(), o.label);
+  if (l.status !== 'requested')
+    throw new Error(`Licence "${o.label}" is ${l.status}; only a requested one can be abandoned.`);
+  await ctx.vault.update((v) => void (v.licences = v.licences.filter((x) => x.label !== o.label)));
+  await ctx.audit.write({
+    op: 'abandon-licence',
+    ok: true,
+    label: o.label,
+    licence: l.commitment,
+    note: 'never countersigned; secret deleted',
+  });
+};
+
+/**
+ * Timestamp the audit log's current head on chain (anchorBatch, the kit's dating call),
+ * and log the receipt. Give the partner the receipt: with it, a later change to any line
+ * up to this one shows (audit.ts, verifyAnchors).
+ */
+export const anchorAudit = async (
+  ctx: Ctx,
+): Promise<{ readonly head: string; readonly seq: number; readonly txId: string }> => {
+  const h = await auditHead(ctx.audit.file);
+  if (h === null) throw new Error('The audit log is empty: nothing to anchor.');
+  const tx = await needVc(ctx).anchorBatch(fromHex(h.head));
+  await ctx.audit.write({
+    op: 'audit-anchor',
+    ok: true,
+    txId: tx.txId,
+    txHash: tx.txHash,
+    blockHeight: tx.blockHeight,
+    anchoredHead: h.head,
+    anchoredSeq: h.seq,
+  });
+  return { ...h, txId: tx.txId };
 };
 
 // ─────────────────────────────────────────────────────────── licences
@@ -351,18 +439,29 @@ export const licenceIssue = async (
     );
   const r = recordOf(p, o.record);
   await actAs(ctx, r);
-  const tx = await sent(ctx, { op: 'licence-issue', label: o.label, record: r.current, licence: lc }, () =>
-    needVc(ctx).issueLicense(fromHex(lc)),
-  );
+  // Stored before sending ('issuing'), so a licence that lands is always in the vault to revoke.
   const entry: IssuedLicence = {
     label: o.label,
     role: 'issuer',
     recordLabel: r.label,
     issuedUnder: r.current,
     commitment: lc,
-    status: 'issued',
+    status: 'issuing',
   };
   await ctx.vault.update((v) => void v.licences.push(entry));
+  let tx: TxRef;
+  try {
+    tx = await sent(ctx, { op: 'licence-issue', label: o.label, record: r.current, licence: lc }, () =>
+      needVc(ctx).issueLicense(fromHex(lc)),
+    );
+  } catch (e) {
+    // Refused by the contract: nothing was sent, so nothing is kept. Otherwise it may have
+    // landed: it stays 'issuing' (list shows it; revoke works on it).
+    if (isContractRefusal(e))
+      await ctx.vault.update((v) => void (v.licences = v.licences.filter((l) => l.label !== o.label)));
+    throw e;
+  }
+  await ctx.vault.update((v) => void (issued(v, o.label).status = 'issued'));
   return tx;
 };
 
@@ -782,6 +881,57 @@ export const makeClaim = async (ctx: Ctx, c: ClaimRequest): Promise<ClaimRef> =>
 
 // ─────────────────────────────────────────────────────────── listing
 
+/** What VeilCore still holds over one record, judged against the chain (both directions). */
+export type RecordPower = {
+  readonly anchored: boolean;
+  /** A record secret VeilCore holds (current or pending rotation) is the identity's head. */
+  readonly veilcoreHoldsLiveSecret: boolean;
+  /** VeilCore holds the recovery secret the chain has for this identity: it could take the record back, for good. */
+  readonly veilcoreHoldsCurrentRecovery: boolean;
+  /** VeilCore can act as this record now, by either route. */
+  readonly veilcoreCanAct: boolean;
+  /**
+   * The head is a record secret VeilCore's software made (a hand-over, say) but no longer
+   * holds: the partner's own recovery is still needed to finish taking it back.
+   */
+  readonly headMadeByVeilcore: boolean;
+  /** The current recovery commitment is one whose secret VeilCore held at some point. */
+  readonly recoveryOnceVeilcores: boolean;
+  /** Nothing VeilCore's software made or held controls this record any more: the exit is complete for it. */
+  readonly exitComplete: boolean;
+  /** VeilCore holds no secret for this record at all (purged, or handed over). */
+  readonly holdsNothing: boolean;
+};
+
+export const recordPower = (r: RecordEntry, ledger: Ledger): RecordPower => {
+  const origin = fromHex(r.origin);
+  const anchored = ledger.recoveryOf.member(origin);
+  const id = identityOf(ledger, origin);
+  const head = toHex(ledger.headOf.member(id) ? ledger.headOf.lookup(id) : id);
+  const recoveryNow = anchored ? toHex(ledger.recoveryOf.lookup(origin)) : undefined;
+  const liveSecret = [r.secret, r.pendingSecret].some(
+    (s) => s !== undefined && toHex(commit.record(fromHex(s))) === head,
+  );
+  const holdsRecovery =
+    r.recovery.secret !== undefined &&
+    recoveryNow !== undefined &&
+    toHex(commit.recovery(fromHex(r.recovery.secret))) === recoveryNow;
+  const made = r.made ?? [r.origin];
+  const held = r.heldRecoveries ?? [];
+  const headMadeByVeilcore = made.includes(head);
+  const recoveryOnceVeilcores = recoveryNow !== undefined && held.includes(recoveryNow);
+  return {
+    anchored,
+    veilcoreHoldsLiveSecret: liveSecret,
+    veilcoreHoldsCurrentRecovery: holdsRecovery,
+    veilcoreCanAct: liveSecret || holdsRecovery,
+    headMadeByVeilcore,
+    recoveryOnceVeilcores,
+    exitComplete: anchored && !liveSecret && !holdsRecovery && !headMadeByVeilcore && !recoveryOnceVeilcores,
+    holdsNothing: r.secret === undefined && r.pendingSecret === undefined && r.recovery.secret === undefined,
+  };
+};
+
 export type Listing = {
   readonly partner: { readonly id: string; readonly displayName: string; readonly network: string };
   readonly retired?: { readonly at: string; readonly mode: string };
@@ -793,7 +943,8 @@ export type Listing = {
     readonly record: string;
     readonly anchoredAs: string;
     readonly recoveryHeldBy: RecoveryHolder;
-    readonly chain?: { readonly anchored: boolean; readonly veilcoreCanAct: boolean; readonly openObligations: string };
+    readonly holdsNothing: boolean;
+    readonly chain?: RecordPower & { readonly openObligations: string };
   }[];
   readonly licences: readonly {
     readonly label: string;
@@ -827,13 +978,13 @@ export const listPartner = (p: VaultPayload, ledger?: Ledger): Listing => ({
     record: r.current,
     anchoredAs: r.origin,
     recoveryHeldBy: r.recovery.heldBy,
+    holdsNothing: r.secret === undefined && r.pendingSecret === undefined && r.recovery.secret === undefined,
     ...(ledger === undefined
       ? {}
       : {
           chain: {
-            anchored: isAnchored(ledger, fromHex(r.current)),
-            veilcoreCanAct: isLive(ledger, fromHex(r.current)),
-            openObligations: String(openObligations(ledger, identityOf(ledger, fromHex(r.current)))),
+            ...recordPower(r, ledger),
+            openObligations: String(openObligations(ledger, identityOf(ledger, fromHex(r.origin)))),
           },
         }),
   })),

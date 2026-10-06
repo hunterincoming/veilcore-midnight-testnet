@@ -18,8 +18,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Recovery secrets stay with the partner by default: one master sheet made on their own
   computer (`partner-keys`), VeilCore given only commitments.
 - Exit: self, or assisted (the partner's recovery commitment replaces VeilCore's, then each
-  record is rotated to a secret written only into the partner's bundle); the store is then
-  retired and every operation refused; `purge` deletes the remaining secrets.
+  record is rotated to a secret made in the run and sealed straight into the partner's
+  bundle); resumable; the partner's own recovery (`partner-recover`, `partner-check`) is the
+  required last step, and `exit-check` shows it on chain. The store is then retired and every
+  operation refused; `purge` deletes the remaining secrets and the bundle files.
+- After the independent review (same day): bundles sealed to an X25519 key derived from the
+  partner's master (no passphrase typed on VeilCore's computer, no plaintext sheets there);
+  pools and exit answers confirmed by a fingerprint the partner reads out; "can act" status
+  from what VeilCore actually holds; audit log anchored on chain with receipts; lock before
+  read; `change-password` fixed; obligation terms never on the command line.
 - `docs/MANAGED.md`; `docs/PARTNERS.md` now lists three options at launch;
   `docs/legal/managed-service-agreement-DRAFT.md` (draft, for a lawyer).
 

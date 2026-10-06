@@ -100,7 +100,7 @@ export const openChain = async (
   s: Settings,
   io: Io,
   env: NodeJS.ProcessEnv,
-  o: { readonly claims: boolean },
+  o: { readonly claims: boolean; readonly who?: 'operator' | 'partner' },
 ): Promise<Chain> => {
   const health = await fetch(new URL('/health', s.proofServer), { signal: AbortSignal.timeout(3_000) }).catch(
     () => null,
@@ -118,11 +118,20 @@ export const openChain = async (
       : undefined;
   const endpoints = endpointsFor(s.network, { proofServer: s.proofServer }, { blockfrostProjectId });
   const seed = (
-    take(env, 'VEILCORE_WALLET_SEED') ?? (await io.askHidden("VeilCore's operator wallet seed (hex; nothing shows): "))
+    take(env, 'VEILCORE_WALLET_SEED') ??
+    (await io.askHidden(
+      o.who === 'partner'
+        ? 'Your own wallet seed, the wallet that pays the fees (hex; nothing shows): '
+        : "VeilCore's operator wallet seed (hex; nothing shows): ",
+    ))
   ).replace(/^0x/i, '');
   const password =
     take(env, 'VEILCORE_WALLET_PASSWORD') ??
-    (await io.askHidden("The operator wallet's progress password (nothing shows): "));
+    (await io.askHidden(
+      o.who === 'partner'
+        ? "Your wallet's progress password (16+ characters; nothing shows): "
+        : "The operator wallet's progress password (nothing shows): ",
+    ));
   const problem = passwordProblem(password);
   if (problem !== null) throw new Error(`That wallet password will not be accepted: ${problem}.`);
   const logger = quietLogger(io);
@@ -137,7 +146,7 @@ export const openChain = async (
   await wallet.start();
   try {
     const balances = await wallet.synced();
-    if (balances.dust === 0n) throw new Error('The operator wallet has no DUST to pay fees with. Nothing was sent.');
+    if (balances.dust === 0n) throw new Error('That wallet has no DUST to pay fees with. Nothing was sent.');
     const conn = connect({
       network: s.network,
       wallet,

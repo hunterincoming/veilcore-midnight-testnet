@@ -31,6 +31,11 @@ export type AuditFields = {
   readonly txHash?: string;
   readonly blockHeight?: number;
   readonly note?: string;
+  /** 'sending': written before a transaction is sent; the line after it says how it ended. */
+  readonly phase?: 'sending';
+  /** audit-anchor: the hash of line `anchoredSeq`, timestamped on chain by `txId`. */
+  readonly anchoredHead?: string;
+  readonly anchoredSeq?: number;
 };
 
 export type AuditEntry = AuditFields & {
@@ -129,4 +134,64 @@ export const readAudit = async (
     ...(problem === undefined ? {} : { problem }),
     ...(lines.length === 0 ? {} : { lastLine: lines[lines.length - 1] }),
   };
+};
+
+/** The hash of the log's last line (what an anchor timestamps), and its line number. */
+export const auditHead = async (file: string): Promise<{ readonly head: string; readonly seq: number } | null> => {
+  const r = await readAudit(file);
+  if (r.lastLine === undefined) return null;
+  return { head: sha(r.lastLine), seq: r.entries.length };
+};
+
+/**
+ * Check every anchor line: the hash it names is the hash of the line it names, and the
+ * chain timestamped exactly that hash in that transaction (`onChain`, e.g. the kit's
+ * checkBatchAnchor, which needs no wallet). An edit to any line up to an anchored one, or
+ * a rewrite of the whole chain after it, then shows; a partner who kept the receipts
+ * (head, line, transaction) also sees an anchor line that was removed.
+ */
+export const verifyAnchors = async (
+  file: string,
+  onChain: (txId: string, head: string) => Promise<boolean>,
+): Promise<{ readonly anchors: number; readonly problems: readonly string[] }> => {
+  if (!(await exists(file))) return { anchors: 0, problems: [] };
+  const lines = (await readFile(file, 'utf8')).split('\n').filter((l) => l !== '');
+  const problems: string[] = [];
+  let anchors = 0;
+  for (const l of lines) {
+    let e: AuditEntry;
+    try {
+      e = JSON.parse(l) as AuditEntry;
+    } catch {
+      continue;
+    }
+    if (e.op !== 'audit-anchor' || !e.ok || e.anchoredHead === undefined || e.anchoredSeq === undefined) continue;
+    anchors++;
+    const target = lines[e.anchoredSeq - 1];
+    if (target === undefined || sha(target) !== e.anchoredHead)
+      problems.push(
+        `the anchor at line ${e.seq} does not match line ${e.anchoredSeq}: the log was changed after it was anchored`,
+      );
+    else if (e.txId === undefined || !(await onChain(e.txId, e.anchoredHead).catch(() => false)))
+      problems.push(`the anchor at line ${e.seq} is not on chain as stated (transaction ${e.txId ?? 'none'})`);
+  }
+  return { anchors, problems };
+};
+
+/**
+ * Check one receipt a partner was given (audit-anchor): line `seq` of the log still hashes
+ * to `head`, and the chain timestamped `head` in `txId`. A log cut short or rewritten
+ * before that line fails, even if every anchor line was removed from it.
+ */
+export const verifyReceipt = async (
+  file: string,
+  receipt: { readonly seq: number; readonly head: string; readonly txId: string },
+  onChain: (txId: string, head: string) => Promise<boolean>,
+): Promise<boolean> => {
+  if (!(await exists(file))) return false;
+  const lines = (await readFile(file, 'utf8')).split('\n').filter((l) => l !== '');
+  const line = lines[receipt.seq - 1];
+  return (
+    line !== undefined && sha(line) === receipt.head && (await onChain(receipt.txId, receipt.head).catch(() => false))
+  );
 };

@@ -1,18 +1,22 @@
-// What a partner makes on THEIR OWN computer, so that VeilCore never sees it: one master
-// secret, written on paper, from which every recovery secret (and, on leaving, every new
-// licence secret) is derived. VeilCore is given only the commitments.
+// What a partner makes on THEIR OWN computer, so that VeilCore never holds it: one master
+// secret, written on paper, from which everything of theirs is derived. VeilCore is given
+// only public values: recovery commitments, licence commitments, and a public key that
+// hand-over bundles are encrypted to.
 // SPDX-License-Identifier: Apache-2.0
 //
-//   recovery secret i = HMAC-SHA256(master, "veilcore-run/v1/recovery/" + i)
-//   licence secret j  = HMAC-SHA256(master, "veilcore-run/v1/licence/" + j)
-//   pool id           = first 16 hex of HMAC-SHA256(master, "veilcore-run/v1/pool-id")
+//   recovery secret i     = HMAC-SHA256(master, "veilcore-run/v1/recovery/" + i)
+//   licence secret j      = HMAC-SHA256(master, "veilcore-run/v1/licence/" + j)
+//   bundle key (X25519)   = HMAC-SHA256(master, "veilcore-run/v1/bundle-key")   (private)
+//   own record secret     = HMAC-SHA256(master, "veilcore-run/v1/own-record/" + origin + "/" + n)
+//   own recovery secret   = HMAC-SHA256(master, "veilcore-run/v1/own-recovery/" + origin + "/" + n)
+//   pool id               = first 16 hex of HMAC-SHA256(master, "veilcore-run/v1/pool-id")
 //
 // Each record gets its own recovery secret, so the chain cannot link a partner's records
 // by a shared recovery commitment, and the partner keeps one sheet of paper, not one per
-// record. Anyone can re-derive a secret from the master with these three lines; nothing
-// here depends on VeilCore.
+// record. "Own" secrets are what the partner moves each record to when they take it back
+// (partner-recover): keyed by the record's origin, so nothing needs remembering.
 
-import { createHmac } from 'node:crypto';
+import { createHash, createHmac, createPrivateKey, createPublicKey, type KeyObject } from 'node:crypto';
 import { commit, fromHex, newSecret, toHex } from '@veilcore/contracts';
 
 export const POOL_FORMAT = 'veilcore-run/recovery-pool/1';
@@ -23,26 +27,86 @@ const hmac = (master: Uint8Array, msg: string): Uint8Array => {
   if (!(master instanceof Uint8Array) || master.length !== 32) throw new Error('A master secret is 32 bytes.');
   return new Uint8Array(createHmac('sha256', master).update(msg, 'utf8').digest());
 };
+const index = (i: number, what: string): number => {
+  if (!Number.isInteger(i) || i < 0) throw new Error(`A ${what} index is a whole number, 0 or more.`);
+  return i;
+};
 
 export const newMaster = (): Uint8Array => newSecret();
 export const poolIdOf = (master: Uint8Array): string => toHex(hmac(master, 'veilcore-run/v1/pool-id')).slice(0, 16);
-export const recoverySecretAt = (master: Uint8Array, i: number): Uint8Array => {
-  if (!Number.isInteger(i) || i < 0) throw new Error('A recovery index is a whole number, 0 or more.');
-  return hmac(master, `veilcore-run/v1/recovery/${i}`);
-};
-export const licenceSecretAt = (master: Uint8Array, j: number): Uint8Array => {
-  if (!Number.isInteger(j) || j < 0) throw new Error('A licence index is a whole number, 0 or more.');
-  return hmac(master, `veilcore-run/v1/licence/${j}`);
+export const recoverySecretAt = (master: Uint8Array, i: number): Uint8Array =>
+  hmac(master, `veilcore-run/v1/recovery/${index(i, 'recovery')}`);
+export const licenceSecretAt = (master: Uint8Array, j: number): Uint8Array =>
+  hmac(master, `veilcore-run/v1/licence/${index(j, 'licence')}`);
+export const ownRecordSecret = (master: Uint8Array, origin: string, n: number): Uint8Array =>
+  hmac(master, `veilcore-run/v1/own-record/${origin}/${index(n, 'generation')}`);
+export const ownRecoverySecret = (master: Uint8Array, origin: string, n: number): Uint8Array =>
+  hmac(master, `veilcore-run/v1/own-recovery/${origin}/${index(n, 'generation')}`);
+
+// X25519 keys as raw 32 bytes, wrapped in the fixed DER prefixes Node reads.
+const PKCS8_X25519 = Buffer.from('302e020100300506032b656e04220420', 'hex');
+const SPKI_X25519 = Buffer.from('302a300506032b656e032100', 'hex');
+
+/** The partner's bundle key: private (from the master, on their computer only) and public (hex, given to VeilCore). */
+export const bundleKeyOf = (master: Uint8Array): { readonly privateKey: KeyObject; readonly publicHex: string } => {
+  const d = Buffer.from(hmac(master, 'veilcore-run/v1/bundle-key'));
+  try {
+    const privateKey = createPrivateKey({ key: Buffer.concat([PKCS8_X25519, d]), format: 'der', type: 'pkcs8' });
+    // The private key's JWK carries its public key (x), base64url.
+    const { x } = privateKey.export({ format: 'jwk' });
+    if (typeof x !== 'string') throw new Error('Could not derive the bundle key.');
+    return { privateKey, publicHex: Buffer.from(x, 'base64url').toString('hex') };
+  } finally {
+    d.fill(0);
+  }
 };
 
-/** Public: the recovery commitments a partner gives VeilCore, one per future record. */
+/** A public X25519 key from its 64-hex form. */
+export const publicKeyFromHex = (hex: string): KeyObject => {
+  if (!HEX64.test(hex)) throw new Error('A bundle key is 64 hex characters.');
+  return createPublicKey({ key: Buffer.concat([SPKI_X25519, Buffer.from(hex, 'hex')]), format: 'der', type: 'spki' });
+};
+
+/** JSON with keys sorted at every level: the same object always gives the same text. */
+const canonical = (v: unknown): string =>
+  Array.isArray(v)
+    ? `[${v.map(canonical).join(',')}]`
+    : v !== null && typeof v === 'object'
+      ? `{${Object.keys(v)
+          .sort()
+          .map((k) => `${JSON.stringify(k)}:${canonical((v as Record<string, unknown>)[k])}`)
+          .join(',')}}`
+      : JSON.stringify(v);
+
+/**
+ * A short fingerprint of a file a partner sends VeilCore (a pool, an exit answer): the
+ * partner reads it out from their own screen, and the operator types it. A file that was
+ * changed or forged on the way gives a different fingerprint. 80 bits, in groups of four.
+ */
+export const fingerprintOf = (v: unknown): string =>
+  (
+    createHash('sha256')
+      .update(`veilcore-run/v1/fingerprint:${canonical(v)}`, 'utf8')
+      .digest('hex')
+      .slice(0, 20)
+      .match(/.{4}/g) ?? []
+  ).join(' ');
+
+/** Whether what the operator typed is the fingerprint (spaces and case ignored). */
+export const fingerprintMatches = (typed: string, v: unknown): boolean =>
+  typed.replace(/\s+/g, '').toLowerCase() === fingerprintOf(v).replace(/\s+/g, '');
+
+/** Public: what a partner gives VeilCore at onboarding (fingerprint-confirmed). */
 export type RecoveryPool = {
   readonly format: typeof POOL_FORMAT;
   readonly partner: string;
   readonly network: string;
   readonly poolId: string;
+  /** The public key hand-over bundles are encrypted to. */
+  readonly bundleKey: string;
   /** Index of the first commitment (so a second pool from the same master can follow on). */
   readonly start: number;
+  /** Recovery commitments, one per future record. Empty for a custody-mode partner (key only). */
   readonly commitments: readonly string[];
 };
 
@@ -53,7 +117,7 @@ export const makePool = (o: {
   readonly count: number;
   readonly start?: number;
 }): RecoveryPool => {
-  if (!Number.isInteger(o.count) || o.count < 1 || o.count > 10_000) throw new Error('Make 1 to 10000 at a time.');
+  if (!Number.isInteger(o.count) || o.count < 0 || o.count > 10_000) throw new Error('Make 0 to 10000 at a time.');
   const start = o.start ?? 0;
   const commitments: string[] = [];
   for (let i = start; i < start + o.count; i++) commitments.push(toHex(commit.recovery(recoverySecretAt(o.master, i))));
@@ -62,6 +126,7 @@ export const makePool = (o: {
     partner: o.partner,
     network: o.network,
     poolId: poolIdOf(o.master),
+    bundleKey: bundleKeyOf(o.master).publicHex,
     start,
     commitments,
   };
@@ -86,8 +151,10 @@ export const parsePool = (v: unknown): RecoveryPool => {
     throw new Error('That recovery pool file is damaged.');
   if (!/^[0-9a-f]{16}$/.test(p.poolId) || !Number.isInteger(p.start) || (p.start ?? -1) < 0)
     throw new Error('That recovery pool file is damaged.');
+  if (typeof p.bundleKey !== 'string' || !HEX64.test(p.bundleKey))
+    throw new Error('That recovery pool file has no bundle key.');
   const cs: unknown = p.commitments;
-  if (!Array.isArray(cs) || cs.length === 0 || !cs.every((c: unknown) => typeof c === 'string' && HEX64.test(c)))
+  if (!Array.isArray(cs) || !cs.every((c: unknown) => typeof c === 'string' && HEX64.test(c)))
     throw new Error('That recovery pool file is damaged.');
   if (new Set(cs).size !== cs.length) throw new Error('That recovery pool repeats a commitment.');
   return p as RecoveryPool;
@@ -104,12 +171,14 @@ export type ExitRequest = {
   readonly licences: readonly { readonly label: string; readonly issuerRecord: string }[];
 };
 
-/** Public: the partner's answer. Commitments only; the secrets stay derivable from their master. */
+/** Public: the partner's answer. Commitments and a public key only; confirmed by fingerprint. */
 export type ExitAnswer = {
   readonly format: typeof ANSWER_FORMAT;
   readonly partner: string;
   readonly network: string;
   readonly poolId: string;
+  /** The public key the exit bundle is encrypted to. */
+  readonly bundleKey: string;
   readonly records: readonly { readonly label: string; readonly index: number; readonly recoveryCommitment: string }[];
   readonly licences: readonly { readonly label: string; readonly index: number; readonly licenceCommitment: string }[];
 };
@@ -135,6 +204,8 @@ export const parseAnswer = (v: unknown): ExitAnswer => {
     typeof a.partner !== 'string' ||
     typeof a.network !== 'string' ||
     typeof a.poolId !== 'string' ||
+    typeof a.bundleKey !== 'string' ||
+    !HEX64.test(a.bundleKey) ||
     !recs.every((x) => hasHex(x, 'recoveryCommitment') && isIndex(x)) ||
     !lics.every((x) => hasHex(x, 'licenceCommitment') && isIndex(x))
   )
@@ -145,7 +216,8 @@ export const parseAnswer = (v: unknown): ExitAnswer => {
 /**
  * The partner's side of leaving: new recovery commitments for the records VeilCore holds
  * recovery secrets for, and new licence commitments for the licences they hold, all
- * derived from `master` starting at `from` (use indexes no earlier pool used).
+ * derived from `master` starting at `from` (use indexes no earlier pool used), and the
+ * public key the bundle is to be encrypted to.
  */
 export const answerExit = (request: ExitRequest, master: Uint8Array, from: number): ExitAnswer => {
   let i = from;
@@ -166,6 +238,7 @@ export const answerExit = (request: ExitRequest, master: Uint8Array, from: numbe
     partner: request.partner,
     network: request.network,
     poolId: poolIdOf(master),
+    bundleKey: bundleKeyOf(master).publicHex,
     records,
     licences,
   };

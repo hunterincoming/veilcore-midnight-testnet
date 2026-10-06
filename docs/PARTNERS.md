@@ -46,8 +46,9 @@ expiry; those stay in your contract with the licensee.
 **What it costs to run.** Network fees, paid in DUST, for each action that writes to the
 chain. Checking what others show you costs nothing and needs no wallet.
 
-**No developers?** VeilCore can run all of this for you (VeilCore-run): you need none of the
-three things above, only a safe place for one sheet of paper. See _Three ways to use VeilCore
+**No developers?** VeilCore can run all of this for you (VeilCore-run): day to day you need none
+of the three things above, only a safe place for one sheet of paper. Leaving needs one recovery
+run, with a DUST wallet, by you or someone you choose. See _Three ways to use VeilCore
 at launch_ below, and [MANAGED.md](MANAGED.md), written for a lab owner.
 
 **If VeilCore disappears.** Your records still verify. Fingerprints are plain SHA-256, the
@@ -268,8 +269,8 @@ back (docs/preprod-run-4oct.md). Everything else needs much less.
 | Who pays fees | VeilCore's wallet (fees per the agreement) | your wallet (DUST) | your wallet |
 | Record, licence and claim secrets | held by VeilCore, in an encrypted store that is yours alone | you | you |
 | Recovery secrets | you, from one master sheet VeilCore never sees (recommended); or VeilCore | you | you |
-| What you need | a safe for one sheet of paper | a developer, Node 24, Docker, a DUST wallet | a browser and a wallet |
-| Leaving | any time: VeilCore hands you a bundle encrypted to your passphrase and moves every record so its copies stop working (or you do it with this package), then deletes its copies | nothing to leave | nothing to leave |
+| What you need | a safe for one sheet of paper (your master secret) | a developer, Node 24, Docker, a DUST wallet | a browser and a wallet |
+| Leaving | any time, in two parts. VeilCore hands you a bundle only your master opens, and (assisted) moves every record off the secrets it stored, or (self) stops acting. Then **you** take each record back with your own recovery secret (`partner-recover`, which needs a DUST wallet): only after that does nothing VeilCore's software made or held control your records. Licences you hold stay usable with VeilCore's old copy until their issuer approves the move. VeilCore then deletes its copies, as far as deleting can (MANAGED.md) | nothing to leave | nothing to leave |
 | Available | **at launch** ([MANAGED.md](MANAGED.md)) | **at launch** (this guide) | **after launch** |
 
 VeilCore-run is built on this package's public surface only: VeilCore does for you exactly

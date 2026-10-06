@@ -9,12 +9,23 @@
 // the open failing. Node's own crypto only: nothing to install, and the format is written
 // out in docs/MANAGED.md so a partner's developer can open a bundle in any language.
 
-import { createCipheriv, createDecipheriv, randomBytes, scrypt as scryptCb, timingSafeEqual } from 'node:crypto';
+import {
+  type KeyObject,
+  createCipheriv,
+  createDecipheriv,
+  createPublicKey,
+  diffieHellman,
+  generateKeyPairSync,
+  hkdfSync,
+  randomBytes,
+  scrypt as scryptCb,
+  timingSafeEqual,
+} from 'node:crypto';
 
 export const BOX_FORMAT = 'veilcore-run/box/1';
 
-/** What a box holds. Part of the authenticated header. */
-export type BoxKind = 'custody-vault' | 'exit-bundle' | 'partner-keys';
+/** What a password box holds. Part of the authenticated header. (Bundles are sealed boxes, below.) */
+export type BoxKind = 'custody-vault';
 
 export type KdfParams = { readonly name: 'scrypt'; readonly N: number; readonly r: number; readonly p: number };
 
@@ -207,4 +218,139 @@ export const sameText = (a: string, b: string): boolean => {
   const x = Buffer.from(a, 'utf8');
   const y = Buffer.from(b, 'utf8');
   return x.length === y.length && timingSafeEqual(x, y);
+};
+
+// ─────────────────────────────────────────────────────────── sealed to a partner's key
+
+/**
+ * A box sealed to a partner's public X25519 key (ECIES): a fresh ephemeral key pair per
+ * box, X25519 with the partner's key, HKDF-SHA256 (salt: ephemeral key || partner key,
+ * info "veilcore-run/v1/sealed"), AES-256-GCM over the payload with the header as
+ * authenticated data. The ephemeral private key exists only inside sealTo. Only the
+ * holder of the partner's private key (derived from their master, on their computer)
+ * can open it: nothing on VeilCore's side can, and no passphrase is typed there.
+ */
+export const SEALED_FORMAT = 'veilcore-run/sealed/1';
+
+export type SealedHeader = {
+  readonly format: typeof SEALED_FORMAT;
+  readonly kind: 'exit-bundle';
+  readonly partner: string;
+  readonly network: string;
+  /** The partner's public key, hex. */
+  readonly recipient: string;
+  /** The ephemeral public key, hex. */
+  readonly ephemeral: string;
+  readonly cipher: 'aes-256-gcm';
+  readonly iv: string;
+};
+export type SealedFile = SealedHeader & { readonly tag: string; readonly ciphertext: string };
+
+const SPKI_X25519 = Buffer.from('302a300506032b656e032100', 'hex');
+const rawPublic = (k: KeyObject): Buffer => {
+  const spki = k.export({ format: 'der', type: 'spki' });
+  return spki.subarray(spki.length - 32);
+};
+const sealedAad = (h: SealedHeader): Buffer =>
+  Buffer.from(
+    JSON.stringify([h.format, h.kind, h.partner, h.network, h.recipient, h.ephemeral, h.cipher, h.iv]),
+    'utf8',
+  );
+const sealedKey = (shared: Buffer, ephemeral: string, recipient: string): Buffer =>
+  Buffer.from(
+    hkdfSync('sha256', shared, Buffer.from(ephemeral + recipient, 'hex'), Buffer.from('veilcore-run/v1/sealed'), 32),
+  );
+
+export const sealTo = (
+  recipientHex: string,
+  meta: { readonly partner: string; readonly network: string },
+  payload: unknown,
+): SealedFile => {
+  if (!/^[0-9a-f]{64}$/.test(recipientHex)) throw new Error('A bundle key is 64 hex characters.');
+  const recipient = createPublicKey({
+    key: Buffer.concat([SPKI_X25519, Buffer.from(recipientHex, 'hex')]),
+    format: 'der',
+    type: 'spki',
+  });
+  const eph = generateKeyPairSync('x25519');
+  const ephemeral = rawPublic(eph.publicKey).toString('hex');
+  const shared = diffieHellman({ privateKey: eph.privateKey, publicKey: recipient });
+  const key = sealedKey(shared, ephemeral, recipientHex);
+  shared.fill(0);
+  const header: SealedHeader = {
+    format: SEALED_FORMAT,
+    kind: 'exit-bundle',
+    partner: meta.partner,
+    network: meta.network,
+    recipient: recipientHex,
+    ephemeral,
+    cipher: 'aes-256-gcm',
+    iv: randomBytes(12).toString('hex'),
+  };
+  const plain = Buffer.from(JSON.stringify(payload), 'utf8');
+  try {
+    const c = createCipheriv('aes-256-gcm', key, Buffer.from(header.iv, 'hex'));
+    c.setAAD(sealedAad(header));
+    const ciphertext = Buffer.concat([c.update(plain), c.final()]).toString('base64');
+    return { ...header, tag: c.getAuthTag().toString('hex'), ciphertext };
+  } finally {
+    plain.fill(0);
+    key.fill(0);
+  }
+};
+
+export const parseSealed = (text: string): SealedFile => {
+  let b: Partial<SealedFile>;
+  try {
+    b = JSON.parse(text) as Partial<SealedFile>;
+  } catch {
+    throw new Error('That file is not a VeilCore-run bundle (it is not JSON).');
+  }
+  if (b.format !== SEALED_FORMAT || b.kind !== 'exit-bundle')
+    throw new Error('That file is not a VeilCore-run bundle.');
+  for (const [k, n] of [
+    ['recipient', 64],
+    ['ephemeral', 64],
+    ['iv', 24],
+    ['tag', 32],
+  ] as const) {
+    const v = b[k];
+    if (typeof v !== 'string' || !HEX.test(v) || v.length !== n) throw new Error('That bundle is damaged.');
+  }
+  if (
+    b.cipher !== 'aes-256-gcm' ||
+    typeof b.ciphertext !== 'string' ||
+    typeof b.partner !== 'string' ||
+    typeof b.network !== 'string'
+  )
+    throw new Error('That bundle is damaged.');
+  return b as SealedFile;
+};
+
+/** Open a sealed box with the partner's private key. A wrong key and a changed file look the same. */
+export const openSealed = (privateKey: KeyObject, box: SealedFile): unknown => {
+  const ephemeral = createPublicKey({
+    key: Buffer.concat([SPKI_X25519, Buffer.from(box.ephemeral, 'hex')]),
+    format: 'der',
+    type: 'spki',
+  });
+  const shared = diffieHellman({ privateKey, publicKey: ephemeral });
+  const key = sealedKey(shared, box.ephemeral, box.recipient);
+  shared.fill(0);
+  let plain: Buffer;
+  try {
+    const d = createDecipheriv('aes-256-gcm', key, Buffer.from(box.iv, 'hex'));
+    d.setAAD(sealedAad(box));
+    d.setAuthTag(Buffer.from(box.tag, 'hex'));
+    plain = Buffer.concat([d.update(Buffer.from(box.ciphertext, 'base64')), d.final()]);
+  } catch {
+    throw new Error('That master secret does not open this bundle (or the bundle was changed).');
+  } finally {
+    key.fill(0);
+  }
+  try {
+    return JSON.parse(plain.toString('utf8')) as unknown;
+  } finally {
+    plain.fill(0);
+  }
 };

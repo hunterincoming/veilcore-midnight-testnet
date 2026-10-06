@@ -6,7 +6,8 @@
 // send transactions also start VeilCore's operator wallet (which pays) and join the
 // contracts with in-memory private state. Nothing secret is printed, except where a
 // command exists to show one (a new partner password, once) and on a partner's own
-// computer (partner-derive). docs/MANAGED.md is the procedure.
+// computer (partner-derive). Nothing secret is ever taken from the command line.
+// docs/MANAGED.md is the procedure.
 
 import { readFile, readdir } from 'node:fs/promises';
 import { realpathSync } from 'node:fs';
@@ -14,9 +15,17 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { randomBytes } from 'node:crypto';
-import { type FieldSetFile, type RangeDirection, passwordProblem, readLedger, toHex } from '@veilcore/contracts';
-import { AuditLog, readAudit, AUDIT_FILE } from './audit.ts';
-import { readBundle } from './bundle.ts';
+import {
+  type FieldSetFile,
+  type RangeDirection,
+  checkBatchAnchor,
+  fromHex,
+  passwordProblem,
+  readLedger,
+  toHex,
+} from '@veilcore/contracts';
+import { AuditLog, readAudit, AUDIT_FILE, verifyAnchors } from './audit.ts';
+import { type ExitBundle, readBundle, bundleRecipient } from './bundle.ts';
 import { sameText } from './box.ts';
 import { type Chain, openChain, settingsFrom } from './chain.ts';
 import { exitAssisted, exitRequest, exitSelf, exportBundle, readJson } from './exit.ts';
@@ -25,15 +34,19 @@ import { type Io, describeError, scrub, terminalIo } from './io.ts';
 import * as op from './operator.ts';
 import {
   answerExit,
+  bundleKeyOf,
+  fingerprintOf,
   licenceSecretAt,
   makePool,
   newMaster,
   parseAnswer,
   parsePool,
   parseRequest,
+  poolIdOf,
   recoverySecretAt,
 } from './partner-keys.ts';
-import { fromPaper, masterSheet } from './sheet.ts';
+import { checkRecords, recordsIn, recoverRecords } from './partner-side.ts';
+import { custodySheet, fromPaper, masterSheet } from './sheet.ts';
 import { PartnerVault, type RecoveryHolder, readStatus } from './vault.ts';
 
 const HELP = `VeilCore-run: VeilCore operates on chain for partners who have no developers.
@@ -43,12 +56,15 @@ const HELP = `VeilCore-run: VeilCore operates on chain for partners who have no 
 Partners
   partners                                     list partners (no password)
   add-partner --name "<name>" [--recovery partner|custody]
-  import-pool --file <recovery-pool.json>      recovery commitments the partner made (partner-keys)
-  list [--chain]                               what VeilCore runs for them; --chain: live status (no wallet)
-  audit                                        their audit log, and whether it is intact (no password)
+  import-pool --file <recovery-pool.json>      the partner's bundle key and recovery commitments (partner-keys);
+                                               the partner reads its fingerprint out to you
+  list [--chain]                               what VeilCore runs for them; --chain: what VeilCore can still do (no wallet)
+  audit [--verify]                             their audit log; --verify checks its anchors on chain (no wallet)
+  audit-anchor                                 timestamp the log's head on chain; give the partner the receipt
   change-password
 Records (send transactions)
   anchor --label <L> [--recovery partner|custody] [--recovery-commitment <hex>]
+  abandon --record <L> | --licence <X>         drop a record never anchored / a licence never countersigned
   date --root <hex> [--label <L>]              timestamp a batch root or a record's SDK commitment
   seal-fields --label <L> --file <field-set.json> [--date]
   pair-dna --record <L> --report <hex>
@@ -62,11 +78,11 @@ Licences
   licence-prove --label <X> --challenge <hex>
   licence-transfer --label <X> --to <hex>
   licence-approve --label <X> --to <hex> --new-label <Y>
-Lineage and obligations
+Lineage and obligations (terms are typed at a prompt, or read from --terms-file; never on the command line)
   lineage-propose --record <child L> --parent <L|hex>
   lineage-confirm --record <parent L> --child <L|hex>
-  obligation-encumber --record <L> --terms "<terms>" --label <O>
-  obligation-propose --record <L> --on <L|hex> --terms "<terms>" --label <O>
+  obligation-encumber --record <L> --label <O> [--terms-file <file>]
+  obligation-propose --record <L> --on <L|hex> --label <O> [--terms-file <file>]
   obligation-accept --record <L> --commitment <hex> --beneficiary <L|hex>
   obligation-discharge --label <O>
 Claims
@@ -74,19 +90,25 @@ Claims
   claim --fields <L> --kind value|range|distinct|unchanged|attested
         [--slot N] [--direction at-least|at-most] [--bound N] [--other <L>] [--corrected <L>]
         [--may-change 1,4] [--lab-key <K>] [--publish-value]
-Hand-over and leaving
-  export --out <bundle> [--sheet <file>]       a copy for the partner; they stay in
+Hand-over and leaving (every bundle is sealed to the partner's own key; nothing typed on this computer opens it)
+  export --out <bundle>                        a copy for the partner; they stay in
   exit-request --out <file>                    public: what the partner prepares for an assisted exit
-  exit --mode self|assisted --out <bundle> [--sheet <file>] [--answer <file>] [--previous <bundle>]
+  exit --mode self --out <bundle>
+  exit --mode assisted --answer <file> --out <bundle>    (the partner reads the answer's fingerprint out to you;
+                                               run it again to resume an exit that stopped)
+  exit-check                                   whether the partner has taken every record back (no wallet)
   purge                                        after exit, once the partner has opened their bundle
 On the PARTNER's computer
   partner-keys --partner <id> --out-dir <dir> [--count N] [--start N] [--request <exit-request.json>]
-  partner-derive --index N [--licence]
-  open-bundle --file <bundle> [--out <file.json>]
+  open-bundle --file <bundle> [--sheet <file>] [--out <file.json>]
+  partner-recover --partner <id> --bundle <bundle> [--bundle ...]     REQUIRED to finish leaving (wallet with DUST)
+  partner-check --partner <id> --bundle <bundle> [--bundle ...]       confirms every record is yours (no wallet)
+  partner-derive --index N [--kind licence]
 `;
 
 const CHAIN_COMMANDS = new Set([
   'anchor',
+  'abandon',
   'date',
   'pair-dna',
   'prove-ownership',
@@ -104,6 +126,7 @@ const CHAIN_COMMANDS = new Set([
   'obligation-accept',
   'obligation-discharge',
   'claim',
+  'audit-anchor',
 ]);
 
 const OPTIONS = {
@@ -126,7 +149,7 @@ const OPTIONS = {
   parent: { type: 'string' },
   child: { type: 'string' },
   on: { type: 'string' },
-  terms: { type: 'string' },
+  'terms-file': { type: 'string' },
   beneficiary: { type: 'string' },
   fields: { type: 'string' },
   kind: { type: 'string' },
@@ -139,26 +162,33 @@ const OPTIONS = {
   'lab-key': { type: 'string' },
   'publish-value': { type: 'boolean' },
   chain: { type: 'boolean' },
+  verify: { type: 'boolean' },
   out: { type: 'string' },
   'out-dir': { type: 'string' },
   sheet: { type: 'string' },
   mode: { type: 'string' },
   answer: { type: 'string' },
-  previous: { type: 'string' },
+  bundle: { type: 'string', multiple: true },
   count: { type: 'string' },
   start: { type: 'string' },
   request: { type: 'string' },
   index: { type: 'string' },
-  licence: { type: 'boolean' },
+  licence: { type: 'string' },
   help: { type: 'boolean' },
 } as const;
 
-type Opts = { [K in keyof typeof OPTIONS]?: (typeof OPTIONS)[K]['type'] extends 'boolean' ? boolean : string };
+type Opts = {
+  [K in keyof typeof OPTIONS]?: (typeof OPTIONS)[K] extends { multiple: true }
+    ? string[]
+    : (typeof OPTIONS)[K]['type'] extends 'boolean'
+      ? boolean
+      : string;
+};
 
-/** Hooks for tests: a chain to use instead of the operator's wallet and the network. */
+/** Hooks for tests: a chain to use instead of a wallet and the network. */
 export type MainDeps = {
   readonly env?: NodeJS.ProcessEnv;
-  readonly chain?: (o: { readonly claims: boolean }) => Promise<Chain>;
+  readonly chain?: (o: { readonly claims: boolean; readonly who?: 'operator' | 'partner' }) => Promise<Chain>;
 };
 
 /** Run one command. Returns the exit code. */
@@ -188,7 +218,7 @@ export const main = async (argv: readonly string[], io: Io = terminalIo, deps: M
     }
     const network = o.network ?? env.VEILCORE_NETWORK ?? 'preprod';
     const root = env.VEILCORE_RUN_DIR ?? defaultRoot(network);
-    const need = (name: keyof Opts): string => {
+    const need = (name: Exclude<keyof Opts, 'bundle'>): string => {
       const v = o[name];
       if (typeof v !== 'string' || v.trim() === '') throw new Error(`${command} needs --${name}.`);
       return v;
@@ -197,13 +227,35 @@ export const main = async (argv: readonly string[], io: Io = terminalIo, deps: M
       const typed = await io.ask(`${what}\nType ${expected} to go ahead, or anything else to stop: `);
       if (typed.trim() !== expected) throw new Error('Stopped. Nothing was changed.');
     };
+    const openChainFor = async (claims: boolean, who: 'operator' | 'partner' = 'operator'): Promise<Chain> =>
+      deps.chain
+        ? deps.chain({ claims, who })
+        : openChain(settingsFrom(env, network), { ...io, print: out }, env, { claims, who });
+    const chainCheck =
+      (address?: string) =>
+      async (txId: string, head: string): Promise<boolean> =>
+        (
+          await checkBatchAnchor({
+            network: network as never,
+            txId,
+            root: fromHex(head),
+            ...(address === undefined ? {} : { address }),
+            ...(env.VEILCORE_BLOCKFROST_PROJECT_ID ? { blockfrostProjectId: env.VEILCORE_BLOCKFROST_PROJECT_ID } : {}),
+          })
+        ).accepted;
+    const ledgerNow = () =>
+      readLedger({
+        network: network as never,
+        ...(env.VEILCORE_ADDRESS ? { address: env.VEILCORE_ADDRESS } : {}),
+        ...(env.VEILCORE_BLOCKFROST_PROJECT_ID ? { blockfrostProjectId: env.VEILCORE_BLOCKFROST_PROJECT_ID } : {}),
+      });
 
     // ── commands with no partner vault ─────────────────────────────────────────
     if (command === 'partners') {
       const dirs = await readdir(root).catch(() => [] as string[]);
       let n = 0;
       for (const d of dirs.sort()) {
-        const st = await readStatus(path.join(root, d));
+        const st = await readStatus(path.join(root, d)).catch(() => null);
         if (st === null) continue;
         n++;
         out(
@@ -217,29 +269,44 @@ export const main = async (argv: readonly string[], io: Io = terminalIo, deps: M
     }
     if (command === 'audit') {
       const id = need('partner');
-      const r = await readAudit(path.join(partnerDir(root, id), AUDIT_FILE));
+      const file = path.join(partnerDir(root, id), AUDIT_FILE);
+      const r = await readAudit(file);
       for (const e of r.entries)
         out(
-          `${e.seq}. ${e.at}  ${e.op}${e.ok ? '' : ' FAILED'}${e.label === undefined ? '' : `  ${e.label}`}` +
-            `${e.txId === undefined ? '' : `  tx ${e.txId}`}${e.note === undefined ? '' : `  (${e.note})`}`,
+          `${e.seq}. ${e.at}  ${e.op}${e.phase === 'sending' ? ' (sending)' : e.ok ? '' : ' FAILED'}` +
+            `${e.label === undefined ? '' : `  ${e.label}`}${e.txId === undefined ? '' : `  tx ${e.txId}`}` +
+            `${e.anchoredHead === undefined ? '' : `  head of line ${e.anchoredSeq}: ${e.anchoredHead}`}` +
+            `${e.note === undefined ? '' : `  (${e.note})`}`,
         );
-      out(r.intact ? `${r.entries.length} entries; the chain of hashes is intact.` : `WARNING: ${r.problem}.`);
-      return r.intact ? 0 : 1;
+      out(
+        r.intact
+          ? `${r.entries.length} entries; each line follows the one before. (That alone does not show a rewrite of the whole log after a line: the anchors do.)`
+          : `WARNING: ${r.problem}.`,
+      );
+      if (o.verify !== true) return r.intact ? 0 : 1;
+      const v = await verifyAnchors(file, chainCheck(env.VEILCORE_ADDRESS));
+      for (const p of v.problems) out(`WARNING: ${p}.`);
+      out(
+        v.anchors === 0
+          ? 'No anchors yet (audit-anchor): nothing shows a rewrite of the log.'
+          : `${v.anchors} anchors checked on chain; ${v.problems.length === 0 ? 'every one matches' : `${v.problems.length} do not`}. Compare the receipts the partner was given with these.`,
+      );
+      return r.intact && v.problems.length === 0 ? 0 : 1;
     }
     if (command === 'partner-keys') return await partnerKeys(o, need, hidden, out, network);
     if (command === 'partner-derive') {
       const master = fromPaper(await hidden('Your master secret, as on your sheet, with its check (nothing shows): '));
       known.add(toHex(master));
       const i = Number(need('index'));
-      const s = o.licence === true ? licenceSecretAt(master, i) : recoverySecretAt(master, i);
-      // Shown on purpose: this runs on the partner's own computer, for the procedure.
-      io.print(`${o.licence === true ? 'Licence' : 'Recovery'} secret ${i}: ${toHex(s)}`);
+      const lic = o.kind === 'licence';
+      const s = lic ? licenceSecretAt(master, i) : recoverySecretAt(master, i);
+      // Shown on purpose: this runs on the partner's own computer.
+      io.print(`${lic ? 'Licence' : 'Recovery'} secret ${i}: ${toHex(s)}`);
       io.print('Close this window when you have used it.');
       return 0;
     }
     if (command === 'open-bundle') {
-      const passphrase = await hidden('Passphrase for this bundle (nothing shows): ');
-      const b = await readBundle(need('file'), passphrase);
+      const [b] = await openBundles([need('file')], hidden, known);
       out(
         `Bundle for ${b.partner.displayName} (${b.partner.id}) on ${b.partner.network}, ${b.kind}, made ${b.madeAt}.`,
       );
@@ -248,7 +315,17 @@ export const main = async (argv: readonly string[], io: Io = terminalIo, deps: M
           `${b.vault.fieldSets.length} field sets, ${b.vault.labKeys.length} lab keys; ${b.audit.length} audit entries.`,
       );
       if (b.contracts !== undefined) out(`Contracts: ${JSON.stringify(b.contracts)}`);
+      for (const e of b.earlierBundles ?? [])
+        out(`Earlier bundle ${e.sha256.slice(0, 16)}… holds the hand-over secrets of: ${e.labels.join(', ')}`);
       out('\n' + b.procedure);
+      if (o.sheet !== undefined) {
+        await writePrivate(
+          o.sheet,
+          custodySheet(b.vault, { title: 'YOUR SECRETS', madeAt: new Date().toISOString() }),
+          { exclusive: true },
+        );
+        out(`\nPrintable sheet (secrets in plain text, on THIS computer): ${o.sheet}. Print it, then delete the file.`);
+      }
       if (o.out !== undefined) {
         await writePrivate(o.out, JSON.stringify(b, null, 2) + '\n', { exclusive: true });
         out(
@@ -256,6 +333,46 @@ export const main = async (argv: readonly string[], io: Io = terminalIo, deps: M
         );
       }
       return 0;
+    }
+    if (command === 'partner-check' || command === 'partner-recover') {
+      const id = need('partner');
+      const files = o.bundle ?? [];
+      if (files.length === 0) throw new Error(`${command} needs --bundle (each bundle VeilCore gave you).`);
+      const masters: Uint8Array[] = [];
+      const bundles = await openBundles(files, hidden, known, masters);
+      if (bundles.some((b) => b.partner.id !== id)) throw new Error(`Those bundles are not all for ${id}.`);
+      const latest = [...bundles].sort((a, b) => (a.madeAt < b.madeAt ? 1 : -1))[0];
+      const own = masters.find((m) => bundleKeyOf(m).publicHex === latest.ownKey)!;
+      const records = recordsIn(bundles.map((b) => b.bundle));
+      // Recovery secrets may come from another master (an earlier pool): ask for any missing.
+      for (const r of records) {
+        const pool = r.recovery.pool;
+        if (r.recovery.secret === undefined && pool !== undefined && !masters.some((m) => poolIdOf(m) === pool.id)) {
+          const m = fromPaper(
+            await hidden(`The master secret for pool ${pool.id} (record ${r.label}; nothing shows): `),
+          );
+          known.add(toHex(m));
+          if (poolIdOf(m) !== pool.id) throw new Error(`That master is pool ${poolIdOf(m)}, not ${pool.id}.`);
+          masters.push(m);
+        }
+      }
+      if (command === 'partner-recover') {
+        chain = await openChainFor(false, 'partner');
+        for (const r of await recoverRecords(chain.vc, records, own, masters))
+          out(`  ${r.label}: ${r.outcome}${r.txId === undefined ? '' : ` (transaction ${r.txId})`}`);
+      }
+      const checks = checkRecords(chain === undefined ? await ledgerNow() : await chain.vc.ledger(), records, own);
+      for (const c of checks)
+        out(
+          `  ${c.label}: ${c.yours ? 'yours: record secret and recovery secret both from your master' : 'NOT yet yours'}`,
+        );
+      const all = checks.every((c) => c.yours);
+      out(
+        all
+          ? 'Every record is yours. Tell VeilCore; its exit-check will show the same.'
+          : 'Not finished: run partner-recover.',
+      );
+      return all ? 0 : 1;
     }
 
     // ── commands on one partner ────────────────────────────────────────────────
@@ -283,7 +400,8 @@ export const main = async (argv: readonly string[], io: Io = terminalIo, deps: M
         password,
         defaultRecovery: recovery,
       });
-      const audit = new AuditLog(vault.dir, id, network, () => vault!.secrets());
+      const made = vault;
+      const audit = new AuditLog(made.dir, id, network, () => made.secrets());
       await audit.write({ op: 'add-partner', ok: true, note: `recovery secrets held by: ${recovery}` });
       if (generated) {
         // Shown once, on screen only (io.print, never through the scrubbed log path).
@@ -292,36 +410,32 @@ export const main = async (argv: readonly string[], io: Io = terminalIo, deps: M
         );
         io.print(`  ${password}\n  (shown once; not written anywhere)\n`);
       }
-      out(`Partner ${id} added: ${vault.dir}`);
-      if (recovery === 'partner')
-        out(
-          'Next: the partner makes their master secret and recovery pool on THEIR computer (partner-keys); then import-pool.',
-        );
-      else
-        out(
-          'Recovery secrets will be held by VeilCore (custody). docs/MANAGED.md says what that means for the partner.',
-        );
+      out(`Partner ${id} added: ${made.dir}`);
+      out(
+        recovery === 'partner'
+          ? 'Next: the partner runs partner-keys on THEIR computer (master sheet, bundle key, recovery pool); then import-pool.'
+          : 'Recovery secrets will be held by VeilCore (custody). The partner still runs partner-keys (--count 0) for a bundle key; then import-pool.',
+      );
       return 0;
     }
 
     const password = await hidden(`Password for ${id}'s custody store (nothing shows): `);
     vault = await PartnerVault.open({ root, id, network, password });
     for (const s of vault.secrets()) known.add(s);
-    const v = vault;
-    const audit = new AuditLog(v.dir, id, network, () => {
-      const s = v.secrets();
+    // The audit log always asks the vault in use NOW (change-password replaces it).
+    const audit = new AuditLog(vault.dir, id, network, () => {
+      const s = vault!.secrets();
       for (const x of s) known.add(x);
       return s;
     });
+    const v = vault;
     if (
       CHAIN_COMMANDS.has(command) ||
       (command === 'seal-fields' && o.date === true) ||
       (command === 'exit' && o.mode === 'assisted')
     ) {
-      await v.assertActive(); // before starting a wallet for nothing
-      chain = deps.chain
-        ? await deps.chain({ claims: command === 'claim' })
-        : await openChain(settingsFrom(env, network), { ...io, print: out }, env, { claims: command === 'claim' });
+      if (command !== 'audit-anchor') await v.assertActive(); // before starting a wallet for nothing
+      chain = await openChainFor(command === 'claim');
     }
     const ctx: op.Ctx = {
       vault: v,
@@ -330,21 +444,43 @@ export const main = async (argv: readonly string[], io: Io = terminalIo, deps: M
     };
     const tx = (r: { txId: string; blockHeight?: number }): string =>
       `transaction ${r.txId}${r.blockHeight === undefined ? '' : ` (block ${r.blockHeight})`}`;
+    /** Obligation terms: private, so never from the command line. */
+    const terms = async (): Promise<string> =>
+      o['terms-file'] !== undefined
+        ? (await readFile(o['terms-file'], 'utf8')).trim()
+        : (await io.ask('The obligation terms, exactly as agreed (one line): ')).trim();
+    const fingerprint = async (what: string, value: unknown): Promise<string> => {
+      void value; // checked against what is typed; never shown here, so it cannot be copied instead of heard
+      out(`${what} decides who controls the partner's records. The partner reads ITS FINGERPRINT out to you, from`);
+      out('their own screen (partner-keys printed it), in person or by phone: not by email or chat.');
+      return io.ask('Type the fingerprint the partner reads out: ');
+    };
 
     switch (command) {
       case 'list': {
-        const ledger =
-          o.chain === true
-            ? await readLedger({
-                network: network as never,
-                ...(env.VEILCORE_ADDRESS ? { address: env.VEILCORE_ADDRESS } : {}),
-                ...(env.VEILCORE_BLOCKFROST_PROJECT_ID
-                  ? { blockfrostProjectId: env.VEILCORE_BLOCKFROST_PROJECT_ID }
-                  : {}),
-              })
-            : undefined;
-        out(JSON.stringify(op.listPartner(v.read(), ledger), null, 2));
+        out(JSON.stringify(op.listPartner(v.read(), o.chain === true ? await ledgerNow() : undefined), null, 2));
         return 0;
+      }
+      case 'exit-check': {
+        const listing = op.listPartner(v.read(), await ledgerNow());
+        for (const r of listing.records)
+          out(
+            `  ${r.label}: ${
+              r.chain?.exitComplete
+                ? 'taken back: nothing VeilCore made or held controls it'
+                : r.chain?.veilcoreCanAct
+                  ? 'VeilCore CAN still act as it' +
+                    (r.chain.veilcoreHoldsCurrentRecovery ? ' (it holds the current recovery secret)' : '')
+                  : r.chain?.headMadeByVeilcore
+                    ? "a hand-over secret VeilCore's software made still controls it: the partner's recovery is needed"
+                    : r.chain?.recoveryOnceVeilcores
+                      ? "its recovery commitment is one VeilCore held: the partner's recovery is needed"
+                      : 'not anchored'
+            }`,
+          );
+        const done = listing.records.every((r) => r.chain?.exitComplete === true || r.status === 'new');
+        out(done ? 'Exit complete on chain for every record.' : 'Exit NOT complete on chain.');
+        return done ? 0 : 1;
       }
       case 'change-password': {
         const next = await hidden('New password (nothing shows): ');
@@ -352,12 +488,18 @@ export const main = async (argv: readonly string[], io: Io = terminalIo, deps: M
           throw new Error('The two passwords differ. Nothing was changed.');
         vault = await v.changePassword(next);
         await audit.write({ op: 'change-password', ok: true });
-        out('Password changed. Update the password manager entry for this partner now.');
+        out(
+          'Password changed. Update the password manager entry for this partner now: the old password no longer opens it.',
+        );
         return 0;
       }
       case 'import-pool': {
-        const r = await op.importPool(ctx, parsePool(await readJson(need('file'))));
-        out(`Imported ${r.added} recovery commitments; ${r.unused} unused in all.`);
+        const pool = parsePool(await readJson(need('file')));
+        const typed = await fingerprint('This pool', pool);
+        const r = await op.importPool(ctx, pool, typed);
+        out(
+          `Imported: fingerprint confirmed. ${r.added} recovery commitments; ${r.unused} unused in all; bundle key registered.`,
+        );
         return 0;
       }
       case 'anchor': {
@@ -375,19 +517,34 @@ export const main = async (argv: readonly string[], io: Io = terminalIo, deps: M
           out(`Only ${left} recovery commitments left: ask the partner for a new pool.`);
         return 0;
       }
+      case 'abandon': {
+        if (o.record !== undefined) await op.abandonRecord(ctx, { label: o.record });
+        else if (o.licence !== undefined) await op.abandonLicence(ctx, { label: o.licence });
+        else throw new Error('abandon needs --record or --licence.');
+        out('Abandoned; its secret is deleted from the store.');
+        return 0;
+      }
       case 'date':
         out(
           `Timestamped: ${tx(await op.dateRoot(ctx, { root: need('root'), ...(o.label === undefined ? {} : { label: o.label }) }))}.`,
         );
         return 0;
       case 'seal-fields': {
-        const file = JSON.parse(await readFile(need('file'), 'utf8')) as FieldSetFile;
+        let file: FieldSetFile;
+        try {
+          file = JSON.parse(await readFile(need('file'), 'utf8')) as FieldSetFile;
+        } catch {
+          // Never JSON.parse's own message: it quotes the file, which holds hidden values.
+          throw new Error(`${need('file')} is not a JSON field-set file.`);
+        }
         const r = await op.sealFieldSet(ctx, { label: need('label'), file, date: o.date === true });
         out(
           `Sealed into custody. Record commitment ${r.commitment}; schema ${r.schemaId}; field-set root ${r.setRoot}.`,
         );
         if (r.tx !== undefined) out(`Timestamped: ${tx(r.tx)}.`);
-        out(`The file ${need('file')} holds the hidden values: delete it securely now that it is in custody.`);
+        out(
+          `The file ${need('file')} holds the hidden values: delete it now that it is in custody (docs/MANAGED.md on what deleting can and cannot do).`,
+        );
         return 0;
       }
       case 'pair-dna':
@@ -453,12 +610,12 @@ export const main = async (argv: readonly string[], io: Io = terminalIo, deps: M
         return 0;
       case 'obligation-encumber':
         out(
-          `Obligation placed: ${tx(await op.obligationEncumber(ctx, { record: need('record'), terms: need('terms'), label: need('label') }))}.`,
+          `Obligation placed: ${tx(await op.obligationEncumber(ctx, { record: need('record'), terms: await terms(), label: need('label') }))}.`,
         );
         return 0;
       case 'obligation-propose':
         out(
-          `Obligation proposed: ${tx(await op.obligationPropose(ctx, { record: need('record'), on: need('on'), terms: need('terms'), label: need('label') }))}.`,
+          `Obligation proposed: ${tx(await op.obligationPropose(ctx, { record: need('record'), on: need('on'), terms: await terms(), label: need('label') }))}.`,
         );
         return 0;
       case 'obligation-accept':
@@ -512,16 +669,19 @@ export const main = async (argv: readonly string[], io: Io = terminalIo, deps: M
         out(`Claim made (${r.claim.kind}). Give the verifier ${tx(r)}.`);
         return 0;
       }
+      case 'audit-anchor': {
+        const r = await op.anchorAudit(ctx);
+        out(`Anchored the log's head (line ${r.seq}) in transaction ${r.txId}.`);
+        out(
+          `Receipt for the partner (send it to them; not secret): line ${r.seq}, head ${r.head}, transaction ${r.txId}.`,
+        );
+        return 0;
+      }
       case 'export': {
-        const passphrase = await partnerPassphrase(io, hidden, password);
-        const r = await exportBundle(ctx, {
-          passphrase,
-          out: need('out'),
-          ...(o.sheet === undefined ? {} : { sheet: o.sheet }),
-        });
-        out(`Bundle written to ${need('out')} (sha256 ${r.sha256}). It opens with the partner's passphrase only.`);
-        if (o.sheet !== undefined)
-          out(`Printable sheet: ${o.sheet}. Print it for the partner, then delete the file securely.`);
+        const r = await exportBundle(ctx, { out: need('out') });
+        out(
+          `Bundle written to ${need('out')} (sha256 ${r.sha256}), sealed to the partner's key: only their master opens it.`,
+        );
         return 0;
       }
       case 'exit-request': {
@@ -536,46 +696,60 @@ export const main = async (argv: readonly string[], io: Io = terminalIo, deps: M
         const mode = need('mode');
         if (mode !== 'self' && mode !== 'assisted') throw new Error('--mode is self or assisted.');
         await v.assertActive();
-        await confirm(
-          `Partner ${id} leaves VeilCore-run (${mode}). Afterwards every operation for them is refused.` +
-            (mode === 'assisted' ? ' VeilCore will send one or two transactions per record now.' : ''),
-          id,
-        );
-        const passphrase = await partnerPassphrase(io, hidden, password);
-        const sheet = o.sheet === undefined ? {} : { sheet: o.sheet };
         if (mode === 'self') {
-          const r = await exitSelf(ctx, { passphrase, out: need('out'), ...sheet });
-          out(`Bundle written to ${need('out')} (sha256 ${r.sha256}). ${id}'s store is retired.`);
-          out("VeilCore's copies still work on chain until the partner runs the procedure in the bundle. Then: purge.");
+          await confirm(
+            `Partner ${id} leaves VeilCore-run (self). Afterwards every operation for them is refused.`,
+            id,
+          );
+          const r = await exitSelf(ctx, { out: need('out') });
+          out(
+            `Bundle written to ${need('out')} (sha256 ${r.sha256}), sealed to the partner's key. ${id}'s store is retired.`,
+          );
+          out(
+            "VeilCore's copies still work on chain until the partner runs partner-recover (REQUIRED). exit-check shows when they have.",
+          );
           return 0;
         }
         const answer = parseAnswer(await readJson(need('answer')));
-        const r = await exitAssisted(ctx, {
-          answer,
-          passphrase,
-          out: need('out'),
-          ...sheet,
-          ...(o.previous === undefined ? {} : { previous: o.previous }),
-        });
+        const typed = await fingerprint('This exit answer', answer);
+        if (v.read().exit === undefined)
+          await confirm(
+            `Partner ${id} leaves VeilCore-run (assisted). VeilCore will send one or two transactions per record now.`,
+            id,
+          );
+        const r = await exitAssisted(ctx, { answer, confirmedFingerprint: typed, out: need('out') });
         for (const h of r.handover)
-          out(`  ${h.label}: ${h.status}${h.txIds.length === 0 ? '' : ` (${h.txIds.join(', ')})`}`);
-        out(`Bundle written to ${need('out')} (sha256 ${r.sha256}).`);
+          out(
+            `  ${h.label}: ${h.status}${h.txIds.length === 0 ? '' : ` (${h.txIds.join(', ')})`}${h.note === undefined ? '' : ` ${h.note}`}`,
+          );
+        out(
+          `Bundle written to ${need('out')} (sha256 ${r.sha256}), sealed to the partner's key. Give the partner EVERY bundle of this exit.`,
+        );
         out(
           r.complete
-            ? `Done: ${id}'s store is retired. When the partner confirms they opened the bundle: purge.`
-            : `NOT finished; the store is not retired. Fix the cause, then run exit again with --previous ${need('out')} and a new --out.`,
+            ? `Done on VeilCore's side: ${id}'s store is retired. The exit is complete when the partner has run partner-recover (REQUIRED); exit-check shows it. Then purge.`
+            : 'NOT finished; the store is not retired. Fix the cause, then run the same exit again (a new --out): it resumes. If it cannot finish, exit --mode self.',
         );
         return r.complete ? 0 : 1;
       }
       case 'purge': {
         await confirm(
-          `Every secret VeilCore still holds for ${id} is deleted for good. The audit log stays.`,
+          `Every secret VeilCore still holds for ${id}, and every bundle file of theirs on this computer, is deleted. The audit log stays.`,
           `PURGE ${id}`,
         );
-        await v.purge();
-        await audit.write({ op: 'purge', ok: true, note: 'every secret removed from the custody store' });
+        const r = await v.purge();
+        await audit.write({
+          op: 'purge',
+          ok: true,
+          note: `every secret removed from the custody store; ${r.deleted.length} bundle files deleted, ${r.missing.length} already gone`,
+        });
         out(
-          `Purged. ${v.dir}/custody.vcbox now holds no secrets. Delete any backup copies of the old file too (docs/MANAGED.md).`,
+          `Purged. ${v.dir}/custody.vcbox now holds no secrets. Deleted: ${r.deleted.join(', ') || 'no bundle files'}.`,
+        );
+        if (r.missing.length > 0)
+          out(`Not found (moved or already deleted; find and delete any copies): ${r.missing.join(', ')}.`);
+        out(
+          'Deleting a file cannot be guaranteed to erase it from a solid-state disk, nor from backups: see docs/MANAGED.md, Backups.',
         );
         return 0;
       }
@@ -583,7 +757,11 @@ export const main = async (argv: readonly string[], io: Io = terminalIo, deps: M
         throw new Error(`Unknown command ${command}. npm run managed -- help`);
     }
   } catch (e) {
-    for (const s of vault?.secrets() ?? []) known.add(s);
+    try {
+      for (const s of vault?.secrets() ?? []) known.add(s);
+    } catch {
+      // the vault was closed (or replaced): what it held was already added
+    }
     io.print(`\nSTOPPED: ${describeError(e, known)}`);
     return 1;
   } finally {
@@ -592,29 +770,34 @@ export const main = async (argv: readonly string[], io: Io = terminalIo, deps: M
   }
 };
 
-/** The partner chooses the passphrase for their bundle, and types it twice. */
-const partnerPassphrase = async (
-  io: Io,
+/** Open bundles on the partner's computer, asking for each master needed (by the key a bundle is sealed to). */
+const openBundles = async (
+  files: readonly string[],
   hidden: (q: string) => Promise<string>,
-  vaultPassword: string,
-): Promise<string> => {
-  io.print(
-    'The PARTNER now types a passphrase of their own for their bundle (16+ characters). VeilCore must not see it.',
-  );
-  const p = await hidden('Partner passphrase (nothing shows): ');
-  const problem = passwordProblem(p);
-  if (problem !== null) throw new Error(`That passphrase will not be accepted: ${problem}. Nothing was written.`);
-  if (sameText(p, vaultPassword))
-    throw new Error("That is VeilCore's password for this partner's store. Choose another. Nothing was written.");
-  if (!sameText(await io.askHidden('The same passphrase again: '), p))
-    throw new Error('The two passphrases differ. Nothing was written.');
-  return p;
+  known: Set<string>,
+  masters: Uint8Array[] = [],
+): Promise<(ExitBundle & { readonly bundle: ExitBundle; readonly ownKey: string })[]> => {
+  const out: (ExitBundle & { bundle: ExitBundle; ownKey: string })[] = [];
+  for (const f of files) {
+    const recipient = await bundleRecipient(f);
+    let m = masters.find((x) => bundleKeyOf(x).publicHex === recipient);
+    if (m === undefined) {
+      m = fromPaper(
+        await hidden(`Your master secret for ${path.basename(f)}, as on your sheet, with its check (nothing shows): `),
+      );
+      known.add(toHex(m));
+      masters.push(m);
+    }
+    const b = await readBundle(f, m);
+    out.push({ ...b, bundle: b, ownKey: recipient });
+  }
+  return out;
 };
 
 /** partner-keys: on the partner's own computer. Makes (or reuses) the master; writes the sheet and the public files. */
 const partnerKeys = async (
   o: Opts,
-  need: (n: keyof Opts) => string,
+  need: (n: Exclude<keyof Opts, 'bundle'>) => string,
   hidden: (q: string) => Promise<string>,
   out: (s: string) => void,
   network: string,
@@ -637,6 +820,12 @@ const partnerKeys = async (
     });
     out(`Your master sheet: ${sheetFile}. Print two copies, store them apart, then delete the file.`);
   }
+  const readOut = (v: unknown): void => {
+    out('');
+    out(`  FINGERPRINT: ${fingerprintOf(v)}`);
+    out('  Read this out to VeilCore yourself (in person or by phone), from this screen. VeilCore types it in;');
+    out('  if the file was changed on the way, it will not match and VeilCore will not use it.');
+  };
   if (o.request !== undefined) {
     const request = parseRequest(await readJson(o.request));
     if (request.partner !== partner || request.network !== network)
@@ -644,18 +833,20 @@ const partnerKeys = async (
     const answer = answerExit(request, master, start);
     const file = path.join(dir, 'exit-answer.json');
     await writePrivate(file, JSON.stringify(answer, null, 2) + '\n', { exclusive: true });
+    const used = Math.max(answer.records.length, answer.licences.length);
     out(`Exit answer (no secrets; send it to VeilCore): ${file}`);
-    out(
-      `It used indexes ${start} to ${start + Math.max(answer.records.length, answer.licences.length) - 1}. Next --start: ${start + Math.max(answer.records.length, answer.licences.length)}.`,
-    );
+    out(`It used indexes ${start} to ${start + used - 1}. Next --start: ${start + used}.`);
+    readOut(answer);
     return 0;
   }
   const pool = makePool({ partner, network, master, count, start });
   const file = path.join(dir, `recovery-pool-${pool.poolId}-${start}.json`);
   await writePrivate(file, JSON.stringify(pool, null, 2) + '\n', { exclusive: true });
   out(
-    `Recovery pool (no secrets; send it to VeilCore): ${file}. ${count} commitments, indexes ${start} to ${start + count - 1}. Next --start: ${start + count}.`,
+    `Recovery pool and bundle key (no secrets; send it to VeilCore): ${file}. ${count} commitments` +
+      (count === 0 ? '.' : `, indexes ${start} to ${start + count - 1}. Next --start: ${start + count}.`),
   );
+  readOut(pool);
   return 0;
 };
 

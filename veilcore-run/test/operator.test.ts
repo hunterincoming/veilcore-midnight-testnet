@@ -18,7 +18,7 @@ vi.mock('@midnight-ntwrk/midnight-js-contracts', async (orig) => {
 const kit = await import('@veilcore/contracts');
 const { VEILCORE_ADDR, CLAIMS_ADDR, fakeChain } = await import('../../partner-kit/test/local-chain.ts');
 const op = await import('../src/operator.ts');
-const { makePool, newMaster, recoverySecretAt } = await import('../src/partner-keys.ts');
+const { fingerprintOf, makePool, newMaster, recoverySecretAt } = await import('../src/partner-keys.ts');
 const { readAudit } = await import('../src/audit.ts');
 const { NETWORK, PW2, allText, leaked, newPartner, tempRoot } = await import('./helpers.ts');
 
@@ -49,8 +49,17 @@ describe('records', () => {
   it('partner mode: the record is anchored with the partner’s pool commitment; VeilCore never holds the recovery secret', async () => {
     const lab = await newPartner(t.root, 'lab', { vc, claims }, { recovery: 'partner' });
     await expect(op.anchorRecord(lab, { label: 'acc-1' })).rejects.toThrow(/no unused recovery commitment/);
-    const master = newMaster();
-    await op.importPool(lab, makePool({ partner: 'lab', network: NETWORK, master, count: 3 }));
+    const master = lab.master; // made on the partner's computer
+    const pool = makePool({ partner: 'lab', network: NETWORK, master, count: 3 });
+    await expect(op.importPool(lab, pool, 'abcd abcd abcd abcd abcd')).rejects.toThrow(/not the fingerprint/);
+    await expect(
+      op.importPool(
+        lab,
+        makePool({ partner: 'lab', network: NETWORK, master: newMaster(), count: 3 }),
+        fingerprintOf(pool),
+      ),
+    ).rejects.toThrow(/not the fingerprint/);
+    await op.importPool(lab, pool, fingerprintOf(pool));
     const r = await op.anchorRecord(lab, { label: 'acc-1' });
     expect(r).toMatchObject({ label: 'acc-1', recoveryHeldBy: 'partner' });
     const stored = lab.vault.read().records[0];
@@ -238,7 +247,10 @@ describe('the audit log', () => {
         'rotate',
       ]),
     );
-    expect(log.entries.find((e) => e.op === 'anchor')?.txId).toMatch(/^[0-9a-f]{64}$/);
+    // A line before each transaction, and one after with its id.
+    const anchorLines = log.entries.filter((e) => e.op === 'anchor');
+    expect(anchorLines.map((e) => e.phase ?? 'done')).toEqual(['sending', 'done']);
+    expect(anchorLines[1].txId).toMatch(/^[0-9a-f]{64}$/);
     expect(log.entries.at(-1)).toMatchObject({ op: 'licence-prove', ok: false });
 
     // Every secret the vault ever held (the rotated-away one included) is absent from the log.
@@ -257,7 +269,7 @@ describe('the audit log', () => {
     // Changing a line breaks the chain.
     const fs = await import('node:fs/promises');
     const lines = (await fs.readFile(lab.audit.file, 'utf8')).split('\n');
-    lines[1] = lines[1].replace('"ok":true', '"ok":false');
+    lines[1] = lines[1].replace('"op":"', '"op":"x');
     await fs.writeFile(lab.audit.file, lines.join('\n'));
     expect((await readAudit(lab.audit.file)).intact).toBe(false);
     await lab.vault.close();

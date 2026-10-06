@@ -325,7 +325,8 @@ const LabWelcome: React.FC = () => (
       </Paper>
     </Box>
     <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 600, mx: 'auto', mt: 3, textAlign: 'center' }}>
-      {IS_MAINNET ? "Don't type anything here you need to keep secret." : 'Trying it out? Use made-up details.'} A lab using VeilCore for real would sign inside its own systems; the{' '}
+      {IS_MAINNET ? "Don't type anything here you need to keep secret." : 'Trying it out? Use made-up details.'} A lab
+      using VeilCore for real would sign inside its own systems; the{' '}
       <Box component={RouterLink} to="/docs/integrate" sx={{ color: TEAL }}>
         integration guide
       </Box>{' '}

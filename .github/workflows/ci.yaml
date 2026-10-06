@@ -93,6 +93,10 @@ jobs:
         run: |
           npm run ci
 
+      - name: VeilCore-run (managed service)
+        run: |
+          npm run managed:check
+
       - name: Compile bboard-cli
         working-directory: bboard-cli
         run: |

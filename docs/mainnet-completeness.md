@@ -222,7 +222,28 @@ once #1605 is resolved.
   `hunterincoming/veilcore-midnight-testnet`. On the Mac: `npm run keys:stage -w @veilcore/contracts`,
   then upload every file it produces to that release. The kit checks every file against the
   committed fingerprints, so a wrong file is refused.
-- **Managed option at launch:** dating only (VeilCore anchors partners' fingerprints and batch
-  roots). VeilCore does not hold partners' record or license secrets.
+- **Managed option at launch:** ~~dating only~~ changed later on 6 Oct: **VeilCore-run**, custody
+  with an exit (docs/MANAGED.md). VeilCore holds a partner's record, licence and claim secrets
+  in a store of that partner's own, and by default NOT their recovery secrets (the partner keeps
+  one master sheet). Three options at launch: VeilCore-run, the partner kit, website
+  self-custody after launch (docs/PARTNERS.md). See "VeilCore-run" below for what is open.
 - **Maintenance key:** one key, two paper copies (Hunter, Mako). Hunter approved 6 Oct;
   Mako to confirm. The policy stays PROPOSED until he does, and the site says so.
+
+## VeilCore-run (managed service v1, added 6 October)
+
+Built on branch `managed`: `veilcore-run/` (custody stores, operator CLI `npm run managed`,
+exit), `docs/MANAGED.md`, `docs/legal/managed-service-agreement-DRAFT.md`. Uses only the
+partner kit's public exports (a test checks). 30 tests on the kit's chain stand-in; not run on
+a live network.
+
+| # | What | Status |
+|---|---|---|
+| R1 | Per-partner encrypted store (scrypt N=2^17 + AES-256-GCM, 0700/0600, own password), export bundle to the partner's passphrase, printable sheet | **Built, tested** |
+| R2 | Operator CLI: every partner operation, per-partner audit log (hash-chained, no secrets) | **Built, tested on the stand-in.** First live run on preprod: Hunter (one partner, `anchor`, `prove-ownership`, `export`, `exit --mode assisted`) |
+| R3 | Exit: self, and assisted (VeilCore installs the partner's recovery commitment, then rotates to a secret only the bundle holds); retire; purge | **Built, tested on the stand-in** |
+| R4 | Agreement | **Draft only.** Must be reviewed by a lawyer before any partner signs. Fees and governing law blank |
+| R5 | Decision: offer custody mode (VeilCore holds recovery secrets) at all, or partner-held recovery only | **Open.** Recommendation in MANAGED.md: partner-held; custody only with the risk in writing |
+| R6 | The operations computer (dedicated, FileVault, no cloud backup of `~/.veilcore/managed`), and its offline encrypted backup | **Not done.** Hunter |
+| R7 | Independent security review of `veilcore-run/` | **Not done** |
+

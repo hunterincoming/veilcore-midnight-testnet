@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### VeilCore-run, managed service v1 (6 Oct 2026)
+
+- New folder `veilcore-run/` and `npm run managed`: VeilCore operates on chain for partners
+  with no developers, through the partner kit's public exports only. Each partner's secrets
+  are in their own encrypted store (scrypt N=2^17, AES-256-GCM, owner-only files, a password
+  per partner), never in the operator's own private state; the chain clients run with
+  in-memory private state. Every partner operation, a hash-chained audit log per partner
+  with no secrets, export bundles encrypted to the partner's passphrase, printable sheets.
+- Recovery secrets stay with the partner by default: one master sheet made on their own
+  computer (`partner-keys`), VeilCore given only commitments.
+- Exit: self, or assisted (the partner's recovery commitment replaces VeilCore's, then each
+  record is rotated to a secret written only into the partner's bundle); the store is then
+  retired and every operation refused; `purge` deletes the remaining secrets.
+- `docs/MANAGED.md`; `docs/PARTNERS.md` now lists three options at launch;
+  `docs/legal/managed-service-agreement-DRAFT.md` (draft, for a lawyer).
+
 ### Partner integration kit (6 Oct 2026)
 
 - New workspace `partner-kit/`: the package `@veilcore/contracts` (Apache-2.0, ESM, Node 24)

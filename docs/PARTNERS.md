@@ -46,6 +46,10 @@ expiry; those stay in your contract with the licensee.
 **What it costs to run.** Network fees, paid in DUST, for each action that writes to the
 chain. Checking what others show you costs nothing and needs no wallet.
 
+**No developers?** VeilCore can run all of this for you (VeilCore-run): you need none of the
+three things above, only a safe place for one sheet of paper. See _Three ways to use VeilCore
+at launch_ below, and [MANAGED.md](MANAGED.md), written for a lab owner.
+
 **If VeilCore disappears.** Your records still verify. Fingerprints are plain SHA-256, the
 contracts live on Midnight, and this package and the SDK (both Apache-2.0) work without any
 VeilCore server.
@@ -245,12 +249,9 @@ Every action that writes to the chain pays a fee in **DUST**. Checking costs not
    On preprod: get test NIGHT from the faucet (`https://midnight-tmnight-preprod.nethermind.dev/`)
    for `await wallet.nightAddress()`, then `await wallet.registerNightForDust()` (test networks
    only; the package refuses it on mainnet).
-2. **VeilCore dates your records for you (managed dating).** You send VeilCore your records'
-   fingerprints, or a batch root; VeilCore's own wallet anchors them on Midnight. No secret of
-   yours is involved (`anchorBatch` needs none). This is the only managed service at launch.
-   Anything that acts as a record or a licence (proving possession, licenses, lineage,
-   claims) has to be sent by whoever holds that record's or license's secret, so at launch
-   you run those yourself with this package. VeilCore does not hold partners' secrets.
+2. **VeilCore runs it for you (VeilCore-run).** VeilCore's own wallet pays, and VeilCore sends
+   the transactions on your behalf. See _Three ways to use VeilCore at launch_ below and
+   [MANAGED.md](MANAGED.md).
 
 **Not offered yet:** VeilCore paying the fees of transactions you prove and send yourself
 (fee sponsorship). It is built for VeilCore's website demo and not in service.
@@ -258,6 +259,28 @@ Every action that writes to the chain pays a fee in **DUST**. Checking costs not
 Proving the two heavy claims (`proveDistinct`, `proveUnchanged`) takes the most memory: on
 VeilCore's own 16 GB laptop the proof server peaked at 3.7 GB proving every claim back to
 back (docs/preprod-run-4oct.md). Everything else needs much less.
+
+### Three ways to use VeilCore at launch
+
+| | **VeilCore-run** (custody, with an exit) | **Partner kit** (self-run) | **Website self-custody** |
+| --- | --- | --- | --- |
+| Who sends transactions | VeilCore, on your written instruction | you, with this package | you, in your browser |
+| Who pays fees | VeilCore's wallet (fees per the agreement) | your wallet (DUST) | your wallet |
+| Record, licence and claim secrets | held by VeilCore, in an encrypted store that is yours alone | you | you |
+| Recovery secrets | you, from one master sheet VeilCore never sees (recommended); or VeilCore | you | you |
+| What you need | a safe for one sheet of paper | a developer, Node 24, Docker, a DUST wallet | a browser and a wallet |
+| Leaving | any time: VeilCore hands you a bundle encrypted to your passphrase and moves every record so its copies stop working (or you do it with this package), then deletes its copies | nothing to leave | nothing to leave |
+| Available | **at launch** ([MANAGED.md](MANAGED.md)) | **at launch** (this guide) | **after launch** |
+
+VeilCore-run is built on this package's public surface only: VeilCore does for you exactly
+what your own developer would do with it, nothing more. What it means that VeilCore holds
+your secrets, what it can and cannot do with them, and what happens if VeilCore's computer is
+broken into, are in MANAGED.md, plainly. Managed dating (VeilCore timestamps your records'
+fingerprints or a batch root, `anchorBatch`, needing no secret of yours) is part of it.
+
+A VeilCore-run partner who leaves receives every secret in a form this package takes
+(`useRecordSecret`), so they can carry on self-run. (The other way, handing records you
+already run to VeilCore-run, is not built yet.)
 
 ### Where your secrets live
 
@@ -307,7 +330,8 @@ provider, those guarantees are yours to keep.
 - Publish to npm (pending the `@veilcore` npm organisation) or publish the key files (pending
   the `zk-r4` release). Until then: build from this repository, and point `keys.dir` at a build.
 - Mainnet: the addresses are pinned on deploy day; before that, mainnet joins are refused.
-- Fee sponsorship (above). Browsers (this package is for Node; the website is a demo and
+- Fee sponsorship (above). Website self-custody (after launch; until then, VeilCore-run or
+  this package). Browsers (this package is for Node; the website is a demo and
   verification page, not an integration point). Signing keys held in an HSM: secrets are
   passed to the package as bytes.
 

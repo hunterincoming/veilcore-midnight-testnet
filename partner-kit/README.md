@@ -10,6 +10,11 @@ identifiers, your workflow. What leaves your machine is 32-byte commitments, plu
 you choose to prove in a claim (a proved value is published; a proved bound publishes the
 bound, not the number).
 
+**Status:** VeilCore's contracts are live on Midnight's preprod test network, and this
+release joins them there. They are not on Midnight's main network yet. The mainnet
+addresses come in the release after the mainnet deploy; until then, joining on mainnet is
+refused.
+
 **Read [docs/PARTNERS.md](https://github.com/hunterincoming/veilcore-midnight-testnet/blob/main/docs/PARTNERS.md)
 first.** It says what this does and does not prove, how fees work, and where your secrets
 must be kept.
@@ -37,7 +42,7 @@ const conn = connect({
   privateState: await encryptedPrivateState({ network, password: process.env.STATE_PASSWORD, accountId: 'my-lab' }),
   keys: { dir: '/path/to/veilcore-keys' }, // a build's contract/src/managed, or `npx veilcore-keys fetch --to …`
 });
-const vc = await VeilCore.join(conn); // preprod and mainnet have a default address
+const vc = await VeilCore.join(conn); // preprod has a default address; mainnet's comes after the mainnet deploy
 
 const recordSecret = newSecret(); // store it in your secret manager FIRST
 await vc.useRecordSecret(recordSecret);

@@ -4,7 +4,6 @@
   "description": "Integrate VeilCore's Midnight contracts into your own systems: anchor records, licences, lineage, obligations and claims, and verify what others show you.",
   "author": "VeilCore",
   "license": "Apache-2.0",
-  "private": true,
   "publishConfig": {
     "access": "public"
   },

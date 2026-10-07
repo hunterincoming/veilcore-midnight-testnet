@@ -1429,6 +1429,12 @@ Until then, joining either contract on mainnet is refused.
 - **Nothing is deployed to mainnet. The deploy key issued on 8 September has not been
   used.** Neither contract is on mainnet. A zero-spend rehearsal on mainnet (wallet sync
   and DUST check, then exit) has not been done yet.
+- **Paper-key deploy path on preprod (7 October 2026):** passed. Practice contract
+  `72fe33436d424fcf247919c8e2f0de224175cc55061739be0ebffb2d650f2f73`; a generated key
+  written on two sheets and typed back from the second; finished from paper (option 4);
+  retired provably from paper (option 33), transaction
+  `0081bdbc410b9713dd8235ba20ad78ad6849552ff9a2d9470e0c43ca9ddc77a54c`
+  (`docs/preprod-paper-key-practice.md`).
 
 ### What this revision changes in this document
 
@@ -1465,6 +1471,15 @@ Until then, joining either contract on mainnet is refused.
   corrected (the 1,024-active-licence test has run to completion; `verify.ts` does refuse
   a presentation that landed before its challenge); the mainnet blanks marked. The
   material an external auditor starts from is in `docs/audit/README.md`.
+- **6 and 7 October 2026:** the partner package (`@veilcore/contracts`, which exposes no
+  deploy or maintenance operation) passed 23 of 23 checks against both preprod contracts
+  (`docs/partner-check-run-6oct.md`); one independent review of the mainnet-only operator
+  checks (address pins, fingerprint gates, the claims deploy guard, the site preflights)
+  found nothing serious, and its one medium and two lows were fixed in `799c765`, which
+  changes no contract; and the paper-key deploy path ran on preprod for the first time:
+  a generated key written on two sheets and typed back from the second, a deploy finished
+  and the authority provably retired with the key typed from the first
+  (`docs/preprod-paper-key-practice.md`).
 
 ### Founder sign-off
 

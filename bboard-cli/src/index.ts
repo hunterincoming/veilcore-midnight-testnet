@@ -43,6 +43,7 @@ import { sampleSigningKey } from '@midnight-ntwrk/midnight-js-protocol/compact-r
 import { TestEnvironment } from '@midnight-ntwrk/testkit-js';
 import { MidnightWalletProvider, SavedProgressNotOpenedError } from './midnight-wallet-provider';
 import { randomBytes } from '../../api/src/utils';
+import { assertFinishAllowed } from '../../api/src/deploy-guard';
 import { showSecret } from './secret-out';
 import { unshieldedToken } from '@midnight-ntwrk/midnight-js-protocol/ledger';
 import { syncWallet, waitForUnshieldedFunds } from './wallet-utils';
@@ -376,6 +377,8 @@ export const deployOrJoin = async (
         // transactions only, and dropped again however it ends.
         if (getNetworkId() === 'mainnet') checkBuild(zkConfigPath, logger);
         const address = await askContractAddress(rli, logger);
+        // Once the mainnet address is pinned, only that contract may be finished (B5 review).
+        assertFinishAllowed(address);
         logger.info('The maintenance key is not kept on this computer. Type it from your paper copy.');
         for (;;) {
           const typed = await hidden(

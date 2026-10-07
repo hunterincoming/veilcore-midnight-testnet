@@ -442,7 +442,7 @@ const privateLevelFactory = (dir: string): LevelFactory => {
 /**
  * The CLI's private-state providers over the folder `dir`, made private (0700/0600)
  * first. The main contract's store keeps signing keys in memory only and writes one-call
- * secrets as zeros (memory-overlays.ts). The claims contract (test networks only) keeps
+ * secrets as zeros (memory-overlays.ts). The claims contract (every network, mainnet too) keeps
  * its throwaway authority key in its store so an interrupted claims deploy can be
  * finished; that key is retired, provably, when the deploy completes.
  */

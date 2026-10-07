@@ -130,6 +130,30 @@ export const assertJoinAllowed = (
   );
 
 /**
+ * "Finish a deploy" (CLI option 4) joins the operator's own, just-deployed contract, before
+ * any pin exists, so it cannot use assertJoinAllowed. Once MAINNET_VEILCORE_ADDRESS is set,
+ * the only contract on a non-development network that may still need finishing is that
+ * one, so any other address is refused ('pinned'). While the pin is empty (deploy day) it
+ * allows ('unpinned'); development networks allow ('development').
+ */
+export const assertFinishAllowed = (
+  address: string,
+  pinned: string = MAINNET_VEILCORE_ADDRESS,
+): 'development' | 'unpinned' | 'pinned' => {
+  const network = resolveNetwork();
+  if (network !== null && RECORD_NOT_REQUIRED.has(network)) return 'development';
+  const want = pinned.trim().toLowerCase().replace(/^0x/, '');
+  if (want === '') return 'unpinned';
+  if (address.trim().toLowerCase().replace(/^0x/, '') !== want) {
+    throw new Error(
+      `Refusing to finish a deploy at ${address}: on ${network ?? 'this network'} VeilCore's contract is ${want} ` +
+        '(MAINNET_VEILCORE_ADDRESS, the deployment record), and no other contract is ours to finish. Nothing was sent.',
+    );
+  }
+  return 'pinned';
+};
+
+/**
  * The same for the claims contract: on every network but a development one, only
  * MAINNET_CLAIMS_ADDRESS, and nothing while that is empty.
  */

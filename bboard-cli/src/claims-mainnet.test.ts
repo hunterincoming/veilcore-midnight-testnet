@@ -27,8 +27,8 @@ vi.mock('@midnight-ntwrk/midnight-js-contracts', async (orig) => {
 });
 
 const { ClaimsAPI, assertClaimsDeployAllowed } = await import('../../api/src/claims-api');
-const { MAINNET_CLAIMS_ADDRESS, assertClaimsJoinAllowed, assertJoinAllowed } =
-  await import('../../api/src/deploy-guard');
+const guard = await import('../../api/src/deploy-guard');
+const { MAINNET_CLAIMS_ADDRESS, assertClaimsJoinAllowed, assertJoinAllowed } = guard;
 const { CLAIMS_HEADING, assertKeysMatchRecord, parseFingerprints } = await import('./keys-check');
 const { handleClaimsChoice } = await import('./claims-menu');
 
@@ -472,5 +472,29 @@ describe('contract/fingerprints.mjs --claims and --check', () => {
     expect(r.stdout).toMatch(/main contract: all 13 artefacts match/);
     expect(r.stdout).toMatch(/claims contract: DOES NOT MATCH docs\/fingerprints\.md: the table lists nothing/);
     expect(readFileSync(l.doc, 'utf8')).toBe(before);
+  });
+});
+
+describe('finishing a deploy (CLI option 4) once the mainnet address is pinned', () => {
+  const { assertFinishAllowed } = guard;
+  const PIN = 'ab'.repeat(32);
+  it('deploy day, nothing pinned: the operator may finish their own deploy', () => {
+    expect(assertFinishAllowed('cd'.repeat(32), '')).toBe('unpinned');
+  });
+  it('pinned: the pinned contract may be finished, whatever the case or 0x prefix', () => {
+    expect(assertFinishAllowed(`0x${PIN.toUpperCase()}`, PIN)).toBe('pinned');
+  });
+  it('pinned: any other address is refused before anything is asked or sent', () => {
+    expect(() => assertFinishAllowed('cd'.repeat(32), PIN)).toThrow(/Refusing to finish a deploy/);
+  });
+  it('a network name not on the test list gets the mainnet rule', () => {
+    setNetworkId('main');
+    expect(() => assertFinishAllowed('cd'.repeat(32), PIN)).toThrow(/Refusing to finish a deploy/);
+  });
+  it('test networks are unchanged', () => {
+    for (const n of ['undeployed', 'preview', 'preprod']) {
+      setNetworkId(n);
+      expect(assertFinishAllowed('cd'.repeat(32), PIN)).toBe('development');
+    }
   });
 });

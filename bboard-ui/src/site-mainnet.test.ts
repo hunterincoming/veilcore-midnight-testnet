@@ -125,6 +125,11 @@ describe("deploy:prod's registry check", () => {
     expect(checkTestSiteAllowed(at('preview'))).toEqual({ ok: true });
     expect(checkTestSiteAllowed(at('preprod'))).toEqual({ ok: true });
     expect(checkTestSiteAllowed({ anchors: [] })).toEqual({ ok: true });
+    // B5 review: a descriptor that cannot say, or a capitalised network name, must not pass.
+    expect(checkTestSiteAllowed({}).ok).toBe(false);
+    expect(checkTestSiteAllowed({ anchors: 'mainnet' }).ok).toBe(false);
+    expect(checkTestSiteAllowed({ anchors: [{ network: 'Mainnet' }] }).ok).toBe(false);
+    expect(checkTestSiteAllowed({ anchors: [{ network: ' MAINNET ' }] }).ok).toBe(false);
     const refused = checkTestSiteAllowed(at('mainnet'));
     expect(refused).toMatchObject({ ok: false });
     expect(!refused.ok && refused.problem).toMatch(/Use npm run deploy:mainnet instead/);

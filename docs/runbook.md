@@ -229,6 +229,11 @@ table, which must stay as it is.
 - The preprod smoke test has passed on this build (section B). Done 5 October: 37 of 37 on
   `d9d563f`, the round D tool (`docs/preprod-run-5oct.md`). If anything in `bboard-cli`,
   `api` or `contract` changes after that (other than wording), run it again.
+  Changed since: smoke check 27's wording (`c75c155`) and the pin check in option 4
+  (`799c765`, a refusal that applies only on mainnet once the address is pinned), which the
+  paper-key practice runs (`docs/preprod-paper-key-practice.md`). Neither needs a new smoke run.
+- The paper-key practice on preprod has been done (`docs/preprod-paper-key-practice.md`).
+  **Not done yet.**
 - `git log -1` shows the latest commit.
 - A zero-spend mainnet rehearsal has been done: steps 1 to 13, then 5 (Exit) at the
   deploy menu. **Not done yet.**

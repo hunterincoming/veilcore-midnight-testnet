@@ -13,14 +13,15 @@ the evening of 5 October (kept outside the repo).
   files and `contract/index.js`.
 - **Operator tool:** preprod smoke test 37 of 37 on 5 October, both contracts, on `d9d563f`
   (`docs/preprod-run-5oct.md`).
-- **Registry:** round D fixes live on Railway from `veilcore-api` `main` `a9a9611` (5 October,
-  about 07:30). Still on SDK 0.13.0. Still anchoring to the test network (its `/.well-known`,
-  5 October).
-- **Website:** round D fixes live since 5 October, about 07:57 (`b274acd`). The copy rewrite
-  (`ea4302c` to `149484e`) is being deployed on the evening of 5 October. Still on SDK 0.13.0.
+- **Registry:** live from `veilcore-api` `main` `cfb2ee9` (6 October, about 14:05): SDK 0.15.0,
+  the two attester Lows, `priorPossession` true only for a mainnet anchor, CI. Still anchoring
+  to the test network.
+- **Website:** live from main on 6 October, about 20:05 (mainnet mode built in, copy pass,
+  partner wording). Still the test-network build.
 - **SDK:** 0.15.0 on npm since 5 October, 23:55 UTC, from `veilcore-sdk` `db91cc7`.
-- **Partner kit:** `@veilcore/contracts` built on branch `partner-kit` (6 October), not yet
-  run on a live network (see "Partner integration kit" below).
+- **Partner kit:** `@veilcore/contracts` 0.1.0 on npm and the key release `zk-r4` published
+  6 October; partner-check passed 23 of 23 on preprod (`docs/partner-check-run-6oct.md`).
+- **Mako:** sent the three maintenance decisions on 6 October, about 21:45 New York time.
 - **Neither contract is on mainnet.** Deployment record revision 4 is not filed.
 
 ## Blockers: before the mainnet deploy
@@ -31,7 +32,7 @@ the evening of 5 October (kept outside the repo).
 | B2 | **File deployment record revision 4 upstream** (`midnightntwrk/midnight-improvement-proposals`, `deployments/veilcore.md`) before any mainnet deploy. The filed 16 September correction promised it "will be filed before the deploy key is used and before any mainnet deployment is requested" | **Open.** Upstream (fetched 5 October) still ends at the 13 September revision and the 16 September correction. The local draft was brought up to date on 5 October evening: paragraphs the code contradicted fixed, round D and the 4 and 5 October preprod runs added, claims fingerprint table copied in, slots for both mainnet addresses and transaction ids. Still needs: B1's three decisions, the filing date, both founders' read. The CLI only checks `VEILCORE_DEPLOYMENT_RECORD_REVISION=4`; it cannot see whether the record was filed |
 | B3 | **Zero-spend mainnet rehearsal** (runbook C, steps 1 to 13, then 5 to exit; `docs/release-checklist.md` section 6). The only live test of the mainnet wallet restore, DUST check, Blockfrost and both fingerprint checks before money moves. Hunter | **Not done.** No record of it |
 | B4 | **Runbook matches the policy and the code** | **Corrected 5 October evening:** step 17 gives the policy's reasons (network upgrades, fixes; no retirement date); the "retire on the published date" section replaced; a second-copy step added to step 18, marked pending B1; the claims build message corrected; claims steps renumbered 22 to 30. Needs Mako's read. Final only once B1 is decided |
-| B5 | **One independent review of the latest operator-path code**: `5a980b3` (claims mainnet deploy guard, address pins, fingerprint gating), `8de6f2a` (join reads the deploy transaction), `abc1fc9` (`?fp=` links). `docs/release-checklist.md` section 3 asks for a re-check of the fixes themselves. The mainnet-only branches (fingerprint refusals, empty-pin refusals, the claims "authority kept" refusal, `Starting state not re-checked` at the pin) cannot run on preprod and are covered only by unit tests from the same author. One focused review under the "only a HIGH reopens code" stop rule closes it | **Not done** |
+| B5 | **One independent review of the latest operator-path code**: `5a980b3` (claims mainnet deploy guard, address pins, fingerprint gating), `8de6f2a` (join reads the deploy transaction), `abc1fc9` (`?fp=` links). `docs/release-checklist.md` section 3 asks for a re-check of the fixes themselves. The mainnet-only branches (fingerprint refusals, empty-pin refusals, the claims "authority kept" refusal, `Starting state not re-checked` at the pin) cannot run on preprod and are covered only by unit tests from the same author. One focused review under the "only a HIGH reopens code" stop rule closes it | **Done 6 Oct:** independent review PASS, no HIGH. One Medium (option 4 "Finish a deploy" skipped the pin once set) and two Lows (deploy:prod preflight let a descriptor with no anchors list, or a capitalised network name, through; a stale comment) fixed in `799c765`, with tests. Not changed, noted: the record-revision check accepts 4 or higher; the main contract's fingerprint check is in the CLI, not inside `VeilcoreAPI.deploy` |
 
 ## Strongly recommended before the deploy
 
@@ -53,12 +54,9 @@ the evening of 5 October (kept outside the repo).
 
 ## After launch, or not blocking the contract deploy
 
-- **Site and registry to SDK 0.15.0.** Both still use 0.13.0, which accepts small-order
-  Ed25519 keys; the site's built-in `/docs/spec` is the 0.13.0 SPEC. The registry's
-  `buildBatch` filter for this is already in (`a9a9611`).
-- **Two registry Lows from the round D re-check:** small-order Ed25519 keys accepted at
-  attester registration (`lineage/attesters.mjs:71`); an uppercase `subjectCommitment`
-  accepted (`lineage/attesters.mjs:206`).
+- **Site to SDK 0.15.0.** The registry moved on 6 October (`cfb2ee9`, which also fixed the two
+  attester Lows); the site still uses 0.13.0, which accepts small-order Ed25519 keys, and its
+  built-in `/docs/spec` is the 0.13.0 SPEC.
 - **Round D "Still open"** (`docs/security-pass-4oct-roundD.md`), round C format gaps
   (below), SDK spec gaps (null attestation fields, challenge `state` unsigned), and the
   1024-active-licence test (`SLOW_TESTS=1`), never run to completion.

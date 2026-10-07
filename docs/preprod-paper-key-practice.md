@@ -54,3 +54,22 @@ in them is secret (the key is never printed in the log).
 - Step 9 asks `Deploy transaction id`: paste it from the log of the stopped run, the line
   `deploy transaction submitted (…)` in the newest file in `bboard-cli/logs/preprod-remote/`.
 - Any error: stop and send Claude the last 30 lines. Do not choose `1` again.
+
+## Run of 7 October 2026 (Hunter, on main after `4e051cc`)
+
+**Passed.** Practice contract `72fe33436d424fcf247919c8e2f0de224175cc55061739be0ebffb2d650f2f73`
+on preprod, test wallet seed 2.
+
+- Option 1 with a generated key: written on two sheets, `WRITTEN`, typed back from the second
+  sheet and accepted. Deploy finished, every circuit key on chain (08:00).
+- The deploy finished before the planned Ctrl+C, so the interruption itself was not
+  practised. Option 4 was then run on the finished contract with the key typed from the first
+  sheet: accepted, nothing missing to add, authority kept. Adding keys after a real
+  interruption is the one part not run live here.
+- Option 33 with the key from the first sheet: lower-case `retire` was refused ("Not
+  retired."); `RETIRE` then retired it provably, transaction
+  `0081bdbc410b9713dd8235ba20ad78ad6849552ff9a2d9470e0c43ca9ddc77a54c`, block 2876308 (08:21):
+  "the chain shows an empty committee (threshold 1), which no key can satisfy".
+
+So both paper copies of a generated key are proven to work, and the key from paper controls
+the contract. Practice sheets to be shredded.

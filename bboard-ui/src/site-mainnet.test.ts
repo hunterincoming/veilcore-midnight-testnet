@@ -447,8 +447,8 @@ describe('builds', () => {
       expect(mainnet['/']).toMatch(
         /Now on Midnight's main network: we anchor records there in batches, by hand for now\./,
       );
-      // Built from the real policy, which says PROPOSED today.
-      expect(mainnet['/']).toMatch(/A policy for using it is proposed, not decided\./);
+      // Built from the real policy, approved by both founders on 7 October 2026.
+      expect(mainnet['/']).toMatch(/Both founders have approved the policy for using it\./);
       expect(mainnet['/']).toMatch(/The claims contract has no maintenance key/);
       expect(mainnet['/']).toContain(DUMMY);
       expect(mainnet['/']).toContain(DUMMY_CLAIMS);

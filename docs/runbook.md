@@ -27,8 +27,8 @@ confirmed from the code.
 5. **Write the maintenance authority key on paper.** It controls the contract. It is shown
    once and is **never stored on the computer**, not even during the deploy. Whenever the
    CLI needs it again (finishing a deploy, retiring), you type it from the paper. As the
-   tool stands, the deploy makes one key and you write one copy; a second copy, one per
-   founder, is proposed and waits on both founders (step 18).
+   tool stands, the deploy makes one key; you write it on two sheets, one per founder
+   (decided 6 and 7 October; step 18).
 6. **Main menu option 33 retires the maintenance authority, permanently. Option 32 shows
    your record secret on screen.** Do not mix them up.
 7. When a run is done, close the Terminal window (Cmd+W) so secrets shown on screen do not
@@ -237,9 +237,9 @@ table, which must stay as it is.
 - `git log -1` shows the latest commit.
 - A zero-spend mainnet rehearsal has been done: steps 1 to 13, then 5 (Exit) at the
   deploy menu. **Not done yet.**
-- **CHECK WITH CLAUDE BEFORE MAINNET:** both founders have decided the maintenance key
-  question (`docs/maintenance-policy.md`, proposed 3 October). Steps 17 and 18 and the
-  deployment record depend on it.
+- Both founders have decided the maintenance key question (`docs/maintenance-policy.md`,
+  approved 6 and 7 October): one key, two paper copies, no retirement date, the claims
+  contract with none. Done.
 - **CHECK WITH CLAUDE BEFORE MAINNET:** deployment record revision 4 is filed and names
   the fingerprints in `docs/fingerprints.md`. The 16 September correction promised it
   would be filed before any mainnet deployment. The CLI refuses to deploy until you
@@ -298,15 +298,15 @@ table, which must stay as it is.
 17. `Keep a maintenance authority? (Y/n)`: press **Enter** (keep). Do not type `n`. Why
     keep it: Midnight network upgrades can require a verifier-key update that only the
     authority can make, and it is how a wrong circuit gets fixed. There is no plan to
-    retire it on a date (`docs/maintenance-policy.md`, proposed 3 October and awaiting both
-    founders; `docs/design.md` says the same).
+    retire it on a date (`docs/maintenance-policy.md`, approved by both founders 6 and 7
+    October; `docs/design.md` says the same).
 18. `Signing key (… blank to generate one)`: press **Enter**. The key appears under
     `MAINTENANCE AUTHORITY SIGNING KEY`, in groups of 8. **Write it on paper, all 64
     characters.** Type `WRITTEN` and press Enter, then type the key back from your paper
     (nothing shows; spaces are fine). If it doesn't match, fix the paper and type it again
     (type `SHOW` to see the key again). Nothing is sent until it matches. The key is
     never written to this Mac: the deploy holds it in memory and drops it when it ends.
-    - **Second copy (Hunter decided 6 Oct; Mako to confirm).** While the key is on screen,
+    - **Second copy (decided by both founders, 6 and 7 October).** While the key is on screen,
       and **before** typing `WRITTEN`, write it on a second sheet too, and check that sheet
       against the screen, group by group (the CLI checks only the copy you type back). One
       sheet is Hunter's, one is Mako's, kept in different places. Never photograph, scan,
@@ -428,8 +428,8 @@ minutes).
 
 ### Retiring the maintenance authority later
 
-Not planned, and there is no retirement date. Under `docs/maintenance-policy.md` (proposed
-3 October, awaiting both founders) the main contract keeps its authority, because Midnight
+Not planned, and there is no retirement date. Under `docs/maintenance-policy.md` (approved
+by both founders, 6 and 7 October) the main contract keeps its authority, because Midnight
 network upgrades can require verifier-key updates, and a retired authority could not make
 them. Retiring stays possible only if both founders decide it in writing, it has been
 announced as that policy says, and a new revision of the deployment record says so. It

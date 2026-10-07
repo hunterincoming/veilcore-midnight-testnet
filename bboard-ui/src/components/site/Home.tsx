@@ -10,7 +10,7 @@
 // Content rules (Mako's): "prior possession", never "ownership"; no customer, pilot or
 // partner claims; plant AND animal genetics; the three implementations have one author and
 // are never called independent; the status tiles stay honest and current, and the status
-// block says plainly who holds the maintenance key (docs/maintenance-policy.md, PROPOSED).
+// block says plainly who holds the maintenance key (docs/maintenance-policy.md, APPROVED 7 Oct).
 // Strings that flip on mainnet day are grouped in i18n/en.ts under "MAINNET DAY".
 //
 // SPDX-License-Identifier: Apache-2.0

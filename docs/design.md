@@ -419,7 +419,7 @@ verifier keys, so it can repair or disable any circuit, and a key for a new circ
 rewrite state: whoever holds it controls the contract. VeilCore keeps it for launch, held offline by the deployer (the client shows it before
 deploying and never writes it to disk: it is held in memory for the deploy, and typed from
 paper whenever it is needed again), and
-keeps it under `docs/maintenance-policy.md` (proposed 3 October 2026): no retirement
+keeps it under `docs/maintenance-policy.md` (approved by both founders, 6 and 7 October 2026): no retirement
 date, because Midnight network upgrades can require verifier-key updates; every use
 announced ahead and published with fingerprints; custody moving to a two-of-three
 committee with an independent holder. Retiring stays possible through

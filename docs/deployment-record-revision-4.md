@@ -1167,9 +1167,9 @@ runbook has the operator write the second sheet while the key is on screen and c
 against the screen group by group, and Makoto Steiner's copy goes to him by hand, never
 photographed, scanned, emailed, messaged or typed anywhere (`docs/runbook.md`, step 18).
 
-**[DECISION (Makoto Steiner to confirm): the two-copy key above, and the maintenance policy
-in `docs/maintenance-policy.md`. Until he confirms, the policy stays PROPOSED and this
-revision is not filed.]**
+**Decided.** The two-copy key above and the maintenance policy in
+`docs/maintenance-policy.md` were approved by Hunter Roberts on 6 October 2026 and confirmed
+by Makoto Steiner on 7 October 2026.
 
 **VeilCore-run does not touch the authority.** VeilCore also offers a managed service,
 VeilCore-run (`docs/MANAGED.md`), for partners with no developers: VeilCore holds a
@@ -1201,8 +1201,8 @@ can satisfy it, no replacement key is made or stored, and anyone can read it fro
 contract's state. The claims contract is locked the same way at the end of its deploy.
 
 **No retirement date for the main contract.** Proposed on 3 October 2026 and approved by
-Hunter Roberts on 6 October 2026 (`docs/maintenance-policy.md`). **[DECISION (Makoto
-Steiner to confirm), with the key above.]** A retired authority
+Hunter Roberts on 6 October 2026 (`docs/maintenance-policy.md`); confirmed by Makoto
+Steiner on 7 October 2026, with the key above. A retired authority
 could not make the verifier-key update a ledger upgrade may require. The end state named on
 13 September, relinquishment, changes to custody by independent parties under published
 rules. Retirement remains possible if Midnight stops requiring maintenance across
@@ -1225,8 +1225,8 @@ happens. It does not prevent one.
 test network, mainnet included, the tool refuses any claims deploy that would end with an
 authority (`assertClaimsDeployAllowed`, `api/src/claims-api.ts`): the only deploy it builds
 ends with an empty committee. Keeping an authority would mean changing that code and
-another review first (`docs/mainnet-completeness.md`). **[DECISION (Makoto Steiner to
-confirm).]** Its address and transaction ids are filled in after the deploy (*Mainnet
+another review first (`docs/mainnet-completeness.md`). Both founders agreed (Hunter
+Roberts 6 October, Makoto Steiner 7 October 2026). Its address and transaction ids are filled in after the deploy (*Mainnet
 deployment* below).
 
 A second contract, deployed separately from the main one, which stays unchanged. A holder
@@ -1342,7 +1342,7 @@ Until then, joining either contract on mainnet is refused.
   halved]; the rest added in [AFTER THE MAINNET DEPLOY: n] maintenance transactions; all 24
   on chain at [AFTER THE MAINNET DEPLOY: date, time]
 - **Maintenance authority:** one signing key, on paper, two copies, as under *The
-  maintenance authority* (subject to Makoto Steiner's confirmation there)
+  maintenance authority*
 
 **Claims contract (`veilcore-claims`, source `cd30c11`, built at `c75c155`, fingerprints in
 `765cab1`):**
@@ -1460,12 +1460,13 @@ Until then, joining either contract on mainnet is refused.
   maintenance authority section was corrected to match the code after round D: the key is
   never on disk, and retiring installs an empty committee that anyone can see on chain.
 - **Two statements of the 13 September revision change,** approved by Hunter Roberts on
-  6 October 2026, Makoto Steiner to confirm: the authority is not held jointly at launch,
+  6 October 2026 and confirmed by Makoto Steiner on 7 October 2026: the authority is not
+  held jointly at launch,
   and relinquishment is no longer the intended end state (`docs/maintenance-policy.md`).
   Notes were added there.
 - **6 October 2026:** the maintenance decisions brought up to date (two paper copies of one
   key, one per founder; no retirement date; the claims contract with none, as the tool
-  enforces), each left open only for Makoto Steiner's confirmation; VeilCore-run, the
+  enforces), confirmed by Makoto Steiner on 7 October 2026; VeilCore-run, the
   managed service, stated to be outside the contracts' authority; the build reproduced
   again and the contract tests re-run at `a3d1884`; two statements in earlier drafts
   corrected (the 1,024-active-licence test has run to completion; `verify.ts` does refuse
@@ -1483,12 +1484,12 @@ Until then, joining either contract on mainnet is refused.
 
 ### Founder sign-off
 
-Both founders read and approve this revision before it is filed upstream
-(`midnightntwrk/midnight-improvement-proposals`, `deployments/veilcore.md`), and it is
-filed before either contract is deployed to mainnet.
+Both founders approved the decisions this revision records before it was filed upstream
+(`midnightntwrk/midnight-improvement-proposals`, `deployments/veilcore.md`), and it is filed
+before either contract is deployed to mainnet.
 
-- **Hunter Roberts:** approved the maintenance policy on 6 October 2026. Approves this
-  revision: [AT SIGN-OFF: date]
-- **Makoto Steiner:** [DECISION: confirms the maintenance policy, the two-copy key and the
-  claims contract with no authority]. Approves this revision: [AT SIGN-OFF: date]
+- **Hunter Roberts:** approved the maintenance policy, the two-copy key and the claims
+  contract with no authority on 6 October 2026, and files this revision: [AT FILING: date]
+- **Makoto Steiner:** confirmed the maintenance policy, the two-copy key and the claims
+  contract with no authority on 7 October 2026
 - **Filed upstream:** [AT FILING: date and pull request]

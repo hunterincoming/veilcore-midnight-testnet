@@ -114,3 +114,45 @@ export const transientSecrets = <P extends object>(store: P): P => {
     },
   });
 };
+
+/**
+ * For the royalties store: a call's `input` (the record secret, a licence secret, an admin
+ * secret, a challenge) is kept in this process and written to disk as `{}`; `held` (the
+ * secrets a party must keep between runs) is written as given. Memory is keyed by
+ * contract address and state id, as the store itself is.
+ */
+export const transientInput = <P extends object>(store: P): P => {
+  const inner = store as unknown as Store;
+  const mem = new Map<string, unknown>();
+  let address: ContractAddress | null = null;
+  const slot = (id: string): string => `${address ?? ''}:${id}`;
+  return new Proxy(store, {
+    get(target, name, receiver) {
+      if (name === 'setContractAddress')
+        return (a: ContractAddress): void => {
+          address = a;
+          inner.setContractAddress(a);
+        };
+      if (name === 'set')
+        return async (id: string, state: unknown): Promise<void> => {
+          if (state === null || typeof state !== 'object' || !('input' in state)) return inner.set(id, state as never);
+          mem.set(slot(id), state.input);
+          return inner.set(id, { ...state, input: {} } as never);
+        };
+      if (name === 'get')
+        return async (id: string): Promise<unknown> => {
+          const key = slot(id);
+          const s = await inner.get(id);
+          if (s === null || s === undefined || typeof s !== 'object') return s;
+          return mem.has(key) ? { ...s, input: mem.get(key) } : s;
+        };
+      if (name === 'remove' || name === 'clear')
+        return async (...args: unknown[]): Promise<unknown> => {
+          if (name === 'remove') mem.delete(slot(args[0] as string));
+          else for (const k of [...mem.keys()]) if (k.startsWith(`${address ?? ''}:`)) mem.delete(k);
+          return (Reflect.get(target, name, receiver) as (...a: unknown[]) => Promise<unknown>).apply(target, args);
+        };
+      return Reflect.get(target, name, receiver) as unknown;
+    },
+  });
+};

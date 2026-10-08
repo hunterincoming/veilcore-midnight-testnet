@@ -117,6 +117,15 @@ const askWallet = async (c: RoyaltiesMenuContext): Promise<Uint8Array> => {
   }
 };
 
+/** An admin secret as typed: blank for the one held here, else 64 hex (spaces and dashes ignored). */
+const adminTyped = (typed: string): Uint8Array | undefined => {
+  const t = typed.replace(/[\s-]/g, '').replace(/^0x/i, '');
+  if (t === '') return undefined;
+  if (!/^[0-9a-fA-F]{64}$/.test(t))
+    throw new RoyaltiesInputError('An admin secret is 64 hex characters. Nothing was sent.');
+  return Uint8Array.from(Buffer.from(t, 'hex'));
+};
+
 const day = (unix: bigint): string => new Date(Number(unix) * 1000).toISOString().slice(0, 10);
 
 const describeOffer = (o: OfferView): string =>
@@ -262,6 +271,8 @@ export const handleRoyaltiesChoice = async (choice: string, c: RoyaltiesMenuCont
           req.period === '0'.repeat(64)
             ? ''
             : await ask(c, 'Units your receipt for that period covers (Enter if you paid it here): ');
+        if (unitsTyped !== '' && !/^\d{1,30}$/.test(unitsTyped))
+          throw new RoyaltiesInputError('That is not a whole number of units. Nothing was sent.');
         const r = await api.prove(req, unitsTyped === '' ? {} : { units: BigInt(unitsTyped) });
         c.logger.info(`Answered. Give the verifier this transaction id: ${r.txId}`);
         return true;
@@ -280,7 +291,7 @@ export const handleRoyaltiesChoice = async (choice: string, c: RoyaltiesMenuCont
         const typed = await c.hidden('Admin secret (64 hex; Enter if this computer posted it; nothing shows): ');
         if (!(await askYes(c, 'Close this offer (no new sales; sold licences carry on)?')))
           return (c.logger.info('Nothing was sent.'), true);
-        await api.closeOffer(offer, typed === '' ? undefined : Uint8Array.from(Buffer.from(typed, 'hex')));
+        await api.closeOffer(offer, adminTyped(typed));
         c.logger.info('Closed.');
         return true;
       }
@@ -290,7 +301,7 @@ export const handleRoyaltiesChoice = async (choice: string, c: RoyaltiesMenuCont
         const typed = await c.hidden('Admin secret (64 hex; Enter if this computer posted it; nothing shows): ');
         if (!(await askYes(c, 'Revoke this licence? The buyer is not refunded by the contract.')))
           return (c.logger.info('Nothing was sent.'), true);
-        const r = await api.revokeLicense(key, typed === '' ? undefined : Uint8Array.from(Buffer.from(typed, 'hex')));
+        const r = await api.revokeLicense(key, adminTyped(typed));
         c.logger.info(
           r.sealed
             ? 'Revoked and sealed: older proofs stop working now.'
@@ -351,16 +362,11 @@ const postOffer = async (c: RoyaltiesMenuContext): Promise<void> => {
       `ending ${day(expires)}, ${revocable ? 'revocable' : 'not revocable'}, paid to ${hex(payTo)}. All of this is public; the terms are not.`,
   );
   if (!(await askYes(c, 'Post it?'))) return c.logger.info('Nothing was sent.');
-  const r = await api.postOffer(recordSecret, {
-    terms,
-    color,
-    price,
-    perUnit,
-    payTo,
-    count,
-    expires,
-    revocable,
-  });
+  const r = await api.postOffer(
+    recordSecret,
+    { terms, color, price, perUnit, payTo, count, expires, revocable },
+    c.mainAddress,
+  );
   c.logger.info(`Posted. Offer id: ${hex(r.offer)}`);
   showSecret(
     'OFFER ADMIN SECRET: write it on paper now. It is the only way to close this offer or revoke its licences ' +

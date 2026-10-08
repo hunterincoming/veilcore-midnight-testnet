@@ -16,10 +16,10 @@
  */
 import { createCipheriv, createDecipheriv, createHash, randomBytes, scryptSync } from 'node:crypto';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
-import * as os from 'node:os';
 import * as path from 'node:path';
 import type { Logger } from 'pino';
 import { privateStatePassword } from './password.js';
+import { veilcoreHome } from './veilcore-home.js';
 
 export type SavedWalletState = {
   readonly shielded: string;
@@ -40,7 +40,7 @@ export class WalletStateFile {
     private readonly logger: Logger,
     networkId: string,
     masterSeed: string,
-    directory = path.join(os.homedir(), '.veilcore', 'wallet-state'),
+    directory = path.join(veilcoreHome(), '.veilcore', 'wallet-state'),
     password = privateStatePassword(),
   ) {
     // The name says which wallet without revealing the seed.

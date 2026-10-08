@@ -11,7 +11,7 @@ you don't have one); a scrap of paper; any small file to stand in for licence te
 file on your Desktop is fine).
 
 Two Terminal windows run side by side. Window A is the breeder, window B the grower. Window
-B uses its own folder for saved state, so the two don't collide.
+B keeps its saved state in its own folder (`VEILCORE_HOME`), so the two don't collide.
 
 ## Once, before starting (about 10 minutes)
 
@@ -57,12 +57,15 @@ B uses its own folder for saved state, so the two don't collide.
    ```
    mkdir -p ~/veilcore-grower
    cd ~/Desktop/veilcore/bboard-cli
-   HOME=~/veilcore-grower npm run preprod-remote
+   VEILCORE_HOME=~/veilcore-grower npm run preprod-remote
    ```
-   Password: any new one for this test (16+ characters).
-   - Wallet: `2` and a second seed if you have one. If not, `1` makes a new wallet. Write its
-     seed on the scrap paper, then send it tNIGHT from the preprod faucet at the address it
-     shows, and wait until it says it has funds and DUST.
+   Password: any new one for this test (16+ characters). If it asks you to type MOVE for an
+   old store, don't: press Ctrl+C and tell Claude (window B must not use window A's folder).
+   - Wallet: `2` with a second preprod seed that already has tNIGHT, if you have one. If not,
+     `1` makes a new wallet: write its seed on the scrap paper and send it tNIGHT from the
+     preprod faucet at the address it shows. A new wallet needs about 10 minutes after the
+     funds arrive before it can pay fees. If the buy below fails with a fee or DUST error,
+     wait 10 minutes and try again.
    - **Write down the NIGHT balance it shows**, for checking later.
    - Join the same main contract (`72fe…` as above).
    - `51`: join the royalties contract (the address from step 3).
@@ -95,15 +98,17 @@ B uses its own folder for saved state, so the two don't collide.
    `ACCEPTED`.
 8. `63`: revoke the grower's licence. Paste the licence key from step 4, press Enter at the
    admin secret (this computer posted the offer), then `yes`.
-9. `64`: seal. If it says "possible from" a time, wait until then and run `64` again until it
-   says `Sealed`.
+9. If step 8 said `Revoked and sealed`, skip this step. If it said older proofs keep working
+   until the next seal, run `64`. If `64` says "possible from" a time, wait until then and run
+   it again, until it says `Sealed` or `Nothing waiting for a seal`.
 10. `59` again: a new request (same answers, file `~/Desktop/request2.json`).
 
 ## Grower, window B
 
 11. `60` with `~/Desktop/request2.json`. Expect it to be **refused** (the licence is revoked).
-12. `0` to exit. Write down the NIGHT balance shown the next time it starts, or check it in
-    Lace.
+12. `0` to exit. To see the new balance, start it once more the same way
+    (`VEILCORE_HOME=~/veilcore-grower npm run preprod-remote`) and read the NIGHT balance it
+    shows, then `0`.
 
 ## Breeder, window A
 
@@ -113,8 +118,9 @@ B uses its own folder for saved state, so the two don't collide.
 
 - The royalties contract address and the offer id.
 - The last 30 lines of each window after steps 4, 6, 7 and 11.
-- The grower's NIGHT balance before and after. It should be about 2 NIGHT lower: 1 for the
-  licence and 1 for the royalty, plus fees in DUST, not NIGHT.
+- The grower's NIGHT balance before and after. The tool shows it in the smallest unit
+  (1 NIGHT = 1,000,000), so expect about 2,000,000 lower: 1 NIGHT for the licence and 1 for
+  the royalty. Fees are paid in DUST, not NIGHT.
 
 Nothing in those is secret. Do not paste the admin secret, the wallet seeds or the recovery
 secret.

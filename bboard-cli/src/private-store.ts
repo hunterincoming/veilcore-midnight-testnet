@@ -30,14 +30,15 @@ import {
   decryptValue,
   levelPrivateStateProvider,
 } from '@midnight-ntwrk/midnight-js-level-private-state-provider';
-import { TRANSIENT_FIELDS, memorySigningKeys, transientSecrets } from '../../api/src/memory-overlays';
+import { TRANSIENT_FIELDS, memorySigningKeys, transientInput, transientSecrets } from '../../api/src/memory-overlays';
 import { oneAtATime } from './one-at-a-time.js';
+import { veilcoreHome } from './veilcore-home.js';
 
 /** The folder name midnight-js used by default, relative to wherever the CLI ran. */
 export const OLD_STORE_NAME = 'midnight-level-db';
 
 /** ~/.veilcore/<network>/private-state. */
-export const storeDirFor = (networkId: string, home = os.homedir()): string => {
+export const storeDirFor = (networkId: string, home = veilcoreHome()): string => {
   if (!/^[a-z0-9-]+$/.test(networkId)) throw new Error(`Unexpected network id: ${networkId}`);
   return path.join(home, '.veilcore', networkId, 'private-state');
 };
@@ -70,7 +71,7 @@ const isEmptyDir = async (p: string): Promise<boolean> => {
  * `dir` 0600. mkdir's mode is masked by the umask and leaves existing folders alone, so
  * each is chmod'ed as well.
  */
-export const makePrivate = async (dir: string, home = os.homedir()): Promise<void> => {
+export const makePrivate = async (dir: string, home = veilcoreHome()): Promise<void> => {
   await mkdir(dir, { recursive: true, mode: 0o700 });
   const top = path.join(home, '.veilcore');
   for (let d = dir; d.startsWith(top); d = path.dirname(d)) {
@@ -213,7 +214,7 @@ export const cleanLeftovers = async (args: {
   readonly tmp?: string;
 }): Promise<string[]> => {
   const { logger } = args;
-  const home = args.home ?? os.homedir();
+  const home = args.home ?? veilcoreHome();
   const tmp = args.tmp ?? os.tmpdir();
   const dir = storeDirFor(args.networkId, home);
   const uid = typeof process.getuid === 'function' ? process.getuid() : undefined;
@@ -356,7 +357,7 @@ export const chooseStore = async (args: {
   readonly tmp?: string;
 }): Promise<StoreChoice> => {
   const { logger } = args;
-  const home = args.home ?? os.homedir();
+  const home = args.home ?? veilcoreHome();
   const dir = storeDirFor(args.networkId, home);
   // First, whatever an interrupted copy left behind (it may be what makes `dir` look in use).
   await cleanLeftovers({ networkId: args.networkId, logger, home, tmp: args.tmp });
@@ -460,7 +461,7 @@ export const openStores = async <
   readonly accountId: string;
   readonly home?: string;
 }) => {
-  const home = args.home ?? os.homedir();
+  const home = args.home ?? veilcoreHome();
   if (args.dir.startsWith(path.join(home, '.veilcore') + path.sep)) await makePrivate(args.dir, home);
   const levelFactory = privateLevelFactory(args.dir);
   const main = memorySigningKeys(
@@ -489,15 +490,17 @@ export const openStores = async <
   );
   // The royalties contract keeps offer admin secrets and licence secrets here, encrypted
   // like the rest, so a breeder or grower can act again after a restart.
-  const royalties = oneAtATime(
-    levelPrivateStateProvider<RoyaltiesId, RoyaltiesState>({
-      midnightDbName: args.dir,
-      privateStateStoreName: `${args.storeName}-royalties`,
-      signingKeyStoreName: `${args.storeName}-royalties-signing-keys`,
-      privateStoragePasswordProvider: args.password,
-      accountId: args.accountId,
-      levelFactory,
-    }),
+  const royalties = transientInput(
+    oneAtATime(
+      levelPrivateStateProvider<RoyaltiesId, RoyaltiesState>({
+        midnightDbName: args.dir,
+        privateStateStoreName: `${args.storeName}-royalties`,
+        signingKeyStoreName: `${args.storeName}-royalties-signing-keys`,
+        privateStoragePasswordProvider: args.password,
+        accountId: args.accountId,
+        levelFactory,
+      }),
+    ),
   );
   return { main, claims, royalties };
 };

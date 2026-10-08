@@ -12,7 +12,6 @@
  */
 import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from 'node:crypto';
 import { mkdir, readFile, rename, rmdir, stat, writeFile } from 'node:fs/promises';
-import * as os from 'node:os';
 import * as path from 'node:path';
 import {
   ChallengeBook,
@@ -20,6 +19,7 @@ import {
   type ChallengeKind,
   type ChallengeVerdict,
 } from '../../contract/src/verify.js';
+import { veilcoreHome } from './veilcore-home.js';
 
 const MAGIC = Buffer.from('VCCB1');
 
@@ -29,7 +29,7 @@ export class ChallengeFile {
   constructor(
     networkId: string,
     private readonly password: string,
-    directory = path.join(os.homedir(), '.veilcore', 'challenges'),
+    directory = path.join(veilcoreHome(), '.veilcore', 'challenges'),
   ) {
     if (!/^[a-z0-9-]+$/.test(networkId)) throw new Error(`Unexpected network id: ${networkId}`);
     this.path = path.join(directory, `${networkId}.bin`);

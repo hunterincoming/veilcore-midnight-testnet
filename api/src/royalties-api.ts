@@ -154,6 +154,20 @@ export type PresentationVerdict = {
   readonly holder?: string;
 };
 
+/** A request with every hex field lower-case and without 0x, as this client compares them. */
+const normalised = (r: PresentationRequest): PresentationRequest => {
+  const h = (s: string): string => s.trim().toLowerCase().replace(/^0x/, '');
+  return {
+    contract: h(r.contract),
+    offer: h(r.offer),
+    period: h(r.period),
+    minUnits: r.minUnits.trim(),
+    validAt: r.validAt.trim(),
+    scope: h(r.scope),
+    challenge: h(r.challenge),
+  };
+};
+
 export class RoyaltiesAPI {
   readonly deployedContractAddress: ContractAddress;
 
@@ -206,7 +220,16 @@ export class RoyaltiesAPI {
   async postOffer(
     recordSecret: Uint8Array,
     t: OfferTerms,
+    mainAddress?: ContractAddress,
   ): Promise<TxRef & { readonly offer: Uint8Array; readonly adminSecret: Uint8Array }> {
+    if (mainAddress !== undefined) {
+      const standing = await this.recordStandingIn(mainAddress, R.recordCommit(recordSecret));
+      if (!standing.ok)
+        throw new Error(
+          'Your record is not the current record of an anchored identity in the VeilCore contract, so buyers ' +
+            'would refuse this offer. Anchor it (or act as your current record) first. Nothing was sent.',
+        );
+    }
     if (isZero(t.terms) || t.terms.length !== 32) throw new Error('The terms fingerprint is 32 bytes, not all zero.');
     if (t.payTo.length !== 32) throw new Error('The payout wallet is a 32-byte unshielded address.');
     if (t.price <= 0n || t.count <= 0n) throw new Error('The price and the number for sale must be more than zero.');
@@ -246,10 +269,17 @@ export class RoyaltiesAPI {
   ): Promise<TxRef & { readonly adminSecret: Uint8Array }> {
     const admin = adminSecret ?? (await this.adminFor(offer));
     const next = utils.randomBytes(32);
+    // Kept before sending, beside the current one: if the change lands and this client
+    // stops, the new secret is still here (adminFor tries it when the chain shows it).
+    await this.updateHeld((h) => ({ ...h, admins: { ...h.admins, [`${hex(offer)}:next`]: hex(next) } }));
     const tx = await this.call('changeOfferAdmin', { adminSecret: admin }, (c) =>
       c.callTx.changeOfferAdmin(offer, R.adminCommit(next)),
     );
-    await this.updateHeld((h) => ({ ...h, admins: { ...h.admins, [hex(offer)]: hex(next) } }));
+    await this.updateHeld((h) => {
+      const admins: Record<string, string> = { ...h.admins, [hex(offer)]: hex(next) };
+      delete admins[`${hex(offer)}:next`];
+      return { ...h, admins };
+    });
     return { ...tx, adminSecret: next };
   }
 
@@ -295,9 +325,19 @@ export class RoyaltiesAPI {
     };
     // Kept before the call: if it lands and this client stops, the licence is still held.
     await this.updateHeld((h) => ({ ...h, licences: [...h.licences, pending] }));
-    const { txData, ref } = await this.callWithData('buyLicense', { licenseSecret: secret }, (c) =>
-      c.callTx.buyLicense(offer, slot),
-    );
+    let landed;
+    try {
+      landed = await this.callWithData('buyLicense', { licenseSecret: secret }, (c) =>
+        c.callTx.buyLicense(offer, slot),
+      );
+    } catch (e) {
+      // Not on chain: forget the secret, so nothing is ever paid against a licence that does not exist.
+      const now = await this.currentLedger().catch(() => undefined);
+      if (now !== undefined && !now.licenseOffer.member(license))
+        await this.updateHeld((h) => ({ ...h, licences: h.licences.filter((x) => x.secret !== pending.secret) }));
+      throw e;
+    }
+    const { txData, ref } = landed;
     const root = royaltiesLedger(txData.public.nextContractState).licenses.root().field.toString();
     await this.updateHeld((h) => ({
       ...h,
@@ -352,10 +392,11 @@ export class RoyaltiesAPI {
    * or payment made, since proving against it would name that transaction.
    */
   async prove(
-    req: PresentationRequest,
+    request: PresentationRequest,
     opts: { readonly units?: bigint; readonly periodLabel?: string } = {},
   ): Promise<TxRef> {
-    if (req.contract.toLowerCase() !== this.deployedContractAddress.toLowerCase())
+    const req = normalised(request);
+    if (req.contract !== this.deployedContractAddress.toLowerCase())
       throw new Error('That request is for another royalties contract. Nothing was sent.');
     const offer = unhex(req.offer);
     const lic = await this.licenceFor(offer);
@@ -364,10 +405,13 @@ export class RoyaltiesAPI {
       throw new Error('That request has expired: ask the verifier for a new one.');
     if (BigInt(lic.expires) <= validAt) throw new Error('Your licence ends before the time the verifier asks about.');
     const l = await this.currentLedger();
-    if (lic.rootAfterPurchase !== '' && l.licenses.root().field.toString() === lic.rootAfterPurchase)
+    if (
+      hex(l.lastSale) === hex(RoyaltiesAPI.keyOf(lic)) ||
+      (lic.rootAfterPurchase !== '' && l.licenses.root().field.toString() === lic.rootAfterPurchase)
+    )
       throw new Error(
-        'Nobody else has bought or changed a licence since your purchase, so a proof now would point at it. ' +
-          'Try again after the next sale or seal. Nothing was sent.',
+        'Nobody else has bought a licence since your purchase, so a proof now would point at it. ' +
+          'Try again after the next sale. Nothing was sent.',
       );
     const period = unhex(req.period);
     let units: bigint | undefined;
@@ -386,7 +430,11 @@ export class RoyaltiesAPI {
       if (units < BigInt(req.minUnits))
         throw new Error('The royalty paid for that period covers fewer units than asked.');
       const own = mine.find((r) => BigInt(r.units) === units);
-      if (own !== undefined && l.receipts.root().field.toString() === own.rootAfterPayment)
+      const ownLeaf = R.receiptLeaf(R.receiptCommit(unhex(lic.secret), period), offer, units);
+      if (
+        hex(l.lastReceipt) === hex(ownLeaf) ||
+        (own !== undefined && l.receipts.root().field.toString() === own.rootAfterPayment)
+      )
         throw new Error(
           'Nobody else has paid a royalty since your payment, so a proof now would point at it. ' +
             'Try again after the next payment. Nothing was sent.',
@@ -406,7 +454,14 @@ export class RoyaltiesAPI {
   }
 
   /** The verifier checks the licensee's transaction against the request it made. */
-  async verifyPresentation(req: PresentationRequest, txId: string, indexerUri: string): Promise<PresentationVerdict> {
+  async verifyPresentation(
+    request: PresentationRequest,
+    txId: string,
+    indexerUri: string,
+  ): Promise<PresentationVerdict> {
+    const req = normalised(request);
+    if (req.contract !== this.deployedContractAddress.toLowerCase())
+      throw new Error('That request is for another royalties contract: join that one to check it.');
     const found = await singleCallState(
       indexerUri,
       this.deployedContractAddress,
@@ -437,10 +492,20 @@ export class RoyaltiesAPI {
         'WAIT   A revocation was waiting for a seal when this was proved. Ask again after the next seal ' +
           `(at most ${SEAL_INTERVAL_SECONDS / 60} minutes after the last one) before relying on it.`,
       );
+    const revokedSince = (await this.currentLedger()).revocationSeq > cells.revocationSeq;
+    if (revokedSince)
+      lines.push(
+        'WAIT   A licence on this contract has been revoked since this was proved. Ask for a new answer before ' +
+          'relying on it.',
+      );
     lines.push(
       `holder ${hex(cells.lastPresentationHolder)} (repeats if the same licence is shown to you again in this scope)`,
     );
-    return { accepted: tagOk && !cells.lastPresentationUnsealed, lines, holder: hex(cells.lastPresentationHolder) };
+    return {
+      accepted: tagOk && !cells.lastPresentationUnsealed && !revokedSince,
+      lines,
+      holder: hex(cells.lastPresentationHolder),
+    };
   }
 
   // ─────────────────────────────────────────────────────────── upkeep
@@ -468,15 +533,23 @@ export class RoyaltiesAPI {
     const l = await this.currentLedger();
     const endedOffers = new Set([...l.offers].filter(([, o]) => o.expires <= now).map(([id]) => hex(id)));
     let licences = 0;
+    const attempt = async (what: string, f: () => Promise<unknown>): Promise<boolean> => {
+      try {
+        await f();
+        return true;
+      } catch (e) {
+        this.logger?.info(`${what} not done now: ${e instanceof Error ? e.message : String(e)}`);
+        return false;
+      }
+    };
     for (const [k, id] of [...l.licenseOffer]) {
       if (!endedOffers.has(hex(id))) continue;
-      await this.call('clearEnded', {}, (c) => c.callTx.clearEnded(k));
-      licences++;
+      if (await attempt('clearEnded', () => this.call('clearEnded', {}, (c) => c.callTx.clearEnded(k)))) licences++;
     }
     let offers = 0;
     for (const id of endedOffers) {
-      await this.call('removeEnded', {}, (c) => c.callTx.removeEnded(unhex(id)));
-      offers++;
+      if (await attempt('removeEnded', () => this.call('removeEnded', {}, (c) => c.callTx.removeEnded(unhex(id)))))
+        offers++;
     }
     return { licences, offers };
   }
@@ -492,17 +565,33 @@ export class RoyaltiesAPI {
     if (units <= 0n) throw new Error('A royalty covers at least one unit. Nothing was sent.');
   }
 
+  /** The held admin secret the chain currently accepts for `offer` (the current one, or a pending new one). */
   private async adminFor(offer: Uint8Array): Promise<Uint8Array> {
-    const s = (await this.held()).admins[hex(offer)];
-    if (s === undefined)
-      throw new Error('This client holds no admin secret for that offer: type it in. Nothing was sent.');
-    return unhex(s);
+    const h = (await this.held()).admins;
+    const onChain = hex((await this.offer(offer)).admin);
+    for (const s of [h[hex(offer)], h[`${hex(offer)}:next`]])
+      if (s !== undefined && hex(R.adminCommit(unhex(s))) === onChain) return unhex(s);
+    throw new Error('This client holds no admin secret that runs that offer now: type it in. Nothing was sent.');
   }
 
+  /** The key a held licence has on chain. */
+  private static keyOf(lic: HeldLicence): Uint8Array {
+    const offer = unhex(lic.offer);
+    return R.licenseKey(R.licenseCommit(unhex(lic.secret), offer), offer, BigInt(lic.expires));
+  }
+
+  /** The newest licence this client holds from `offer` that is live on chain now. */
   private async licenceFor(offer: Uint8Array): Promise<HeldLicence> {
-    const all = (await this.held()).licences.filter((x) => x.offer === hex(offer));
-    if (all.length === 0) throw new Error('This client holds no licence from that offer.');
-    return all[all.length - 1];
+    const l = await this.currentLedger();
+    const live = (await this.held()).licences.filter(
+      (x) => x.offer === hex(offer) && l.licenseOffer.member(RoyaltiesAPI.keyOf(x)),
+    );
+    if (live.length === 0)
+      throw new Error(
+        'This client holds no live licence from that offer (none bought here, or it was revoked, ended or never ' +
+          'landed). Nothing was sent.',
+      );
+    return live[live.length - 1];
   }
 
   private async freeSlot(): Promise<bigint> {
@@ -636,7 +725,15 @@ export class RoyaltiesAPI {
       );
       throw e;
     }
-    await retireMaintenanceAuthorityProvably(providers, address, logger, RoyaltiesAPI.confirmIntervalMs);
+    try {
+      await retireMaintenanceAuthorityProvably(providers, address, logger, RoyaltiesAPI.confirmIntervalMs);
+    } catch (e) {
+      logger?.error(
+        `The royalties contract at ${address} has every circuit key, but its maintenance authority is NOT retired ` +
+          'yet. Do not pay through it until it is: choose "Finish a royalties deploy" with this address.',
+      );
+      throw e;
+    }
     if (!(await api.authority()).retired)
       throw new Error(`The royalties contract at ${address} still shows a maintenance authority.`);
     logger?.info(

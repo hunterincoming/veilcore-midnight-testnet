@@ -17,6 +17,11 @@
       "import": "./dist/claims.js",
       "default": "./dist/claims.js"
     },
+    "./royalties": {
+      "types": "./dist/royalties.d.ts",
+      "import": "./dist/royalties.js",
+      "default": "./dist/royalties.js"
+    },
     "./field-schema": {
       "types": "./dist/field-schema.d.ts",
       "import": "./dist/field-schema.js",
@@ -29,7 +34,7 @@
     }
   },
   "scripts": {
-    "build": "rm -rf dist && tsc --project tsconfig.build.json && cp -Rf ./src/managed ./dist/managed && cp ./src/veilcore.compact ./src/veilcore-claims.compact ./dist",
+    "build": "rm -rf dist && tsc --project tsconfig.build.json && cp -Rf ./src/managed ./dist/managed && cp ./src/veilcore.compact ./src/veilcore-claims.compact ./src/veilcore-royalties.compact ./dist",
     "ci": "npm run compact && npm run typecheck && npm run lint && npm run build && npm run test",
     "compact": "compact compile src/veilcore.compact ./src/managed/veilcore && compact compile src/veilcore-claims.compact ./src/managed/veilcore-claims && compact compile src/veilcore-royalties.compact ./src/managed/veilcore-royalties",
     "lint": "eslint src",

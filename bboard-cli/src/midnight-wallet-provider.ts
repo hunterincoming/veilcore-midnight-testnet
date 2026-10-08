@@ -45,6 +45,8 @@ import { type DustWalletOptions, type EnvironmentConfiguration, WalletSeeds } fr
 type UnshieldedKeystore = {
   getPublicKey(): unknown;
   signData(payload: Uint8Array): string;
+  /** This wallet's unshielded address, 32 bytes as hex: where payments to it go. */
+  getAddress(): string;
 };
 
 /**

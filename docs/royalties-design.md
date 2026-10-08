@@ -141,7 +141,7 @@ decision below traces to one of them.
 
 1. Independent attack passes. Two were run on 8 October (see "Reviews").
 2. Proving keys generated and fingerprinted, as for the live contracts.
-3. A preprod run with real wallets. This confirms that Lace and the SDK wallet add the payer's
+3. A preprod run with real wallets (`docs/royalties-preprod-run.md`). This confirms that Lace and the SDK wallet add the payer's
    input and the breeder's output automatically. That is confirmed in SDK code but not yet on
    a live network.
 4. A lawyer on money transmission and royalty collection before real money moves through it.

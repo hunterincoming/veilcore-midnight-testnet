@@ -31,6 +31,13 @@ import {
 } from '../../api/src/index';
 import { type ClaimsPrivateState } from '../../contract/src/claims.js';
 import { CLAIMS_MENU, type ClaimsMenuContext, handleClaimsChoice } from './claims-menu';
+import { ROYALTIES_MENU, type RoyaltiesMenuContext, handleRoyaltiesChoice } from './royalties-menu';
+import {
+  type RoyaltiesProviders,
+  type RoyaltiesPrivateStateId,
+  type RoyaltiesCircuitKeys,
+} from '../../api/src/royalties-types.js';
+import { type RoyaltiesPrivateState } from '../../contract/src/royalties.js';
 import { type WalletFacade } from '@midnight-ntwrk/wallet-sdk-facade';
 import { pureCircuits } from '../../contract/src/managed/veilcore/contract/index.js';
 import { NodeZkConfigProvider } from '@midnight-ntwrk/midnight-js-node-zk-config-provider';
@@ -475,6 +482,7 @@ const MAIN_LOOP_QUESTION = `
                                           41. Use a record secret you hold
                                           42. Check which recovery secret is current
 ${CLAIMS_MENU}
+${ROYALTIES_MENU}
 
   0. Exit
 Which would you like to do? `;
@@ -486,6 +494,8 @@ const mainLoop = async (
   zkConfigPath: string,
   indexerUri: string,
   claimsProviders?: ClaimsProviders,
+  royaltiesProviders?: RoyaltiesProviders,
+  ownWallet?: () => Uint8Array,
 ): Promise<void> => {
   const api = await deployOrJoin(providers, rli, logger, zkConfigPath, indexerUri, undefined, claimsProviders);
   if (api === null) return;
@@ -497,6 +507,21 @@ const mainLoop = async (
     hidden: (q) => askHidden(q),
     during,
     checkBuild: claimsBuildCheck(zkConfigPath),
+    api: undefined,
+  };
+  const royalties: RoyaltiesMenuContext = {
+    rli,
+    logger,
+    providers: royaltiesProviders,
+    indexerUri,
+    hidden: (q) => askHidden(q),
+    during,
+    mainAddress: api.deployedContractAddress,
+    recordSecret: async () => (await providers.privateStateProvider.get(veilcorePrivateStateKey))?.geneticSecret,
+    ownWallet: () => {
+      if (ownWallet === undefined) throw new Error('This run has no wallet address to be paid at: type one.');
+      return ownWallet();
+    },
     api: undefined,
   };
 
@@ -925,7 +950,8 @@ const mainLoop = async (
           case '0':
             return;
           default:
-            if (!(await handleClaimsChoice(choice, claims))) logger.error(NOT_AN_OPTION);
+            if (!(await handleClaimsChoice(choice, claims)) && !(await handleRoyaltiesChoice(choice, royalties)))
+              logger.error(NOT_AN_OPTION);
         }
       } catch (e) {
         logError(logger, e);
@@ -1259,7 +1285,9 @@ export const run = async (config: Config, testEnv: TestEnvironment, logger: Logg
       VeilcorePrivateStateId,
       VeilcorePrivateState,
       ClaimsPrivateStateId,
-      ClaimsPrivateState
+      ClaimsPrivateState,
+      RoyaltiesPrivateStateId,
+      RoyaltiesPrivateState
     >({
       dir: store.dir,
       storeName: config.privateStateStoreName,
@@ -1291,7 +1319,31 @@ export const run = async (config: Config, testEnv: TestEnvironment, logger: Logg
       midnightProvider: walletProvider,
     };
 
-    await mainLoop(providers, rli, logger, config.zkConfigPath, envConfiguration.indexer, claimsProviders);
+    // The royalties contract: its own keys and store, as for the claims contract.
+    const royaltiesZkConfigProvider = new NodeZkConfigProvider<RoyaltiesCircuitKeys>(
+      path.resolve(config.zkConfigPath, '..', 'veilcore-royalties'),
+    );
+    const royaltiesProviders: RoyaltiesProviders = {
+      privateStateProvider: stores.royalties,
+      publicDataProvider,
+      zkConfigProvider: royaltiesZkConfigProvider,
+      proofProvider: httpClientProofProvider(envConfiguration.proofServer, royaltiesZkConfigProvider),
+      walletProvider: walletProvider,
+      midnightProvider: walletProvider,
+    };
+    const ownWallet = (): Uint8Array =>
+      Uint8Array.from(Buffer.from(walletProvider.unshieldedKeystore.getAddress(), 'hex'));
+
+    await mainLoop(
+      providers,
+      rli,
+      logger,
+      config.zkConfigPath,
+      envConfiguration.indexer,
+      claimsProviders,
+      royaltiesProviders,
+      ownWallet,
+    );
   } catch (e) {
     if (e instanceof SavedProgressNotOpenedError) logger.info(e.message);
     // Stopped at a prompt (Ctrl+C, or the input closed): nothing went wrong.

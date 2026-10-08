@@ -190,3 +190,47 @@ export const assertDeploymentRecordCurrent = (contractName: string, logger?: Log
       `File deployment record revision ${REQUIRED_RECORD_REVISION}, then set ${REVISION_VAR}=${REQUIRED_RECORD_REVISION}.`,
   );
 };
+
+/**
+ * The royalties contract (contract/src/veilcore-royalties.compact) on mainnet: empty until
+ * it has its own filed deployment record, so joining one there is refused. Unlike the two
+ * live contracts, this one moves tokens, so it needs its own filing, a lawyer's view on
+ * money transmission and both founders' sign-off first (docs/royalties-design.md).
+ */
+export const MAINNET_ROYALTIES_ADDRESS: string = '';
+
+/** Throw unless the royalties contract at `address` may be joined (as assertClaimsJoinAllowed). */
+export const assertRoyaltiesJoinAllowed = (
+  address: string,
+  logger?: Logger,
+  pinned: string = MAINNET_ROYALTIES_ADDRESS,
+): 'development' | 'pinned' =>
+  assertPinned(
+    address,
+    {
+      contract: 'VeilCore royalties',
+      constant: 'MAINNET_ROYALTIES_ADDRESS',
+      why: 'Payments made through another address could go wherever its code sends them.',
+    },
+    pinned,
+    logger,
+  );
+
+/**
+ * Throw unless a royalties deploy may go ahead: test networks (undeployed, preview,
+ * preprod) only, until the royalties contract is approved for mainnet. Then this changes
+ * to the claims contract's rule: a filed record revision and a build matching the
+ * committed fingerprints.
+ */
+export const assertRoyaltiesDeployAllowed = (logger?: Logger): 'development' => {
+  const network = resolveNetwork();
+  if (network !== null && RECORD_NOT_REQUIRED.has(network)) {
+    logger?.info(`veilcore-royalties: network ${network}, test deploy allowed`);
+    return 'development';
+  }
+  throw new Error(
+    `Refusing to deploy the royalties contract on ${network ?? 'an unknown network'}: it is approved for test networks ` +
+      'only. It moves tokens, so mainnet waits for its own deployment record, a lawyer on money transmission and both ' +
+      "founders' sign-off (docs/royalties-design.md). Nothing was made or sent.",
+  );
+};

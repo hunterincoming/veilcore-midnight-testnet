@@ -446,7 +446,14 @@ const privateLevelFactory = (dir: string): LevelFactory => {
  * its throwaway authority key in its store so an interrupted claims deploy can be
  * finished; that key is retired, provably, when the deploy completes.
  */
-export const openStores = async <MainId extends string, MainState, ClaimsId extends string, ClaimsState>(args: {
+export const openStores = async <
+  MainId extends string,
+  MainState,
+  ClaimsId extends string,
+  ClaimsState,
+  RoyaltiesId extends string = string,
+  RoyaltiesState = unknown,
+>(args: {
   readonly dir: string;
   readonly storeName: string;
   readonly password: () => string;
@@ -480,5 +487,17 @@ export const openStores = async <MainId extends string, MainState, ClaimsId exte
       levelFactory,
     }),
   );
-  return { main, claims };
+  // The royalties contract keeps offer admin secrets and licence secrets here, encrypted
+  // like the rest, so a breeder or grower can act again after a restart.
+  const royalties = oneAtATime(
+    levelPrivateStateProvider<RoyaltiesId, RoyaltiesState>({
+      midnightDbName: args.dir,
+      privateStateStoreName: `${args.storeName}-royalties`,
+      signingKeyStoreName: `${args.storeName}-royalties-signing-keys`,
+      privateStoragePasswordProvider: args.password,
+      accountId: args.accountId,
+      levelFactory,
+    }),
+  );
+  return { main, claims, royalties };
 };

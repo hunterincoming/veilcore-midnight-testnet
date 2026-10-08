@@ -45,22 +45,42 @@ export type RoyaltyInput = {
   readonly rate?: Royalties.RateOpening;
 };
 
-/** A licence this party bought: its secret and end date, and the root its own purchase made. */
+/** A licence this party bought: its secret (one per licence) and end date. */
 export type HeldLicence = {
   readonly offer: string;
   readonly secret: string;
   readonly expires: string;
-  /** The licence root right after the purchase: proving against it would name the purchase. */
-  readonly rootAfterPurchase: string;
 };
 
-/** A royalty this party paid for its own licence. */
+/** A credit note this licensee holds. */
+export type HeldNote = {
+  readonly offer: string;
+  /** The licence key it belongs to (its secret spends it). Older stores lack it. */
+  readonly licence?: string;
+  readonly nonce: string;
+  readonly amount: string;
+  readonly spent: boolean;
+};
+
+/** A settlement this licensee made (kept before it is sent: only ones in the receipt tree count). */
 export type HeldReceipt = {
   readonly offer: string;
   readonly period: string;
   readonly units: string;
-  /** The receipt root right after the payment: proving against it would name the payment. */
-  readonly rootAfterPayment: string;
+  readonly leaf: string;
+};
+
+/** The parts of an offer card a party keeps (api/src/royalties-api.ts OfferCard). */
+export type HeldOfferCard = {
+  readonly kind: "veilcore-offer-card";
+  readonly contract: string;
+  readonly offer: string;
+  readonly payTo: string;
+  readonly color: string;
+  readonly rateCommit: string;
+  readonly expires: string;
+  readonly rate: string;
+  readonly rateSalt: string;
 };
 
 /** What a party keeps between calls. All hex or decimal strings, so the store needs no custom types. */
@@ -69,8 +89,17 @@ export type RoyaltiesHeld = {
   readonly admins: Readonly<Record<string, string>>;
   readonly licences: readonly HeldLicence[];
   readonly receipts: readonly HeldReceipt[];
-  /** Receipt leaves this client paid (for itself or anyone): the latest 256. */
-  readonly paidLeaves?: readonly string[];
+  /** Offer id -> the offer card (rate and salt) this party was given or made. */
+  readonly offerCards?: Readonly<Record<string, HeldOfferCard>>;
+  /** Top-up codes this licensee handed out and has not seen paid. */
+  readonly codes?: readonly {
+    readonly offer: string;
+    readonly licence?: string;
+    readonly nonce: string;
+  }[];
+  readonly notes?: readonly HeldNote[];
+  /** Licence keys, notes and receipts this party put on chain: never prove while one is the latest. */
+  readonly mine?: readonly string[];
 };
 
 export type RoyaltiesPrivateState = {

@@ -1,26 +1,30 @@
-// The client API for the VeilCore royalties contract (contract/src/veilcore-royalties.compact).
+// The client API for the VeilCore royalties contract, version 2 (contract/src/veilcore-royalties.compact).
 // SPDX-License-Identifier: Apache-2.0
 //
-// A breeder posts an offer against one of their records and runs it with an admin key
-// made here. A grower buys a licence from it; the price passes to the breeder's wallet in
-// the same transaction. Royalties are paid per unit, by the licensee or by anyone holding
-// the licensee's receipt commitment for a period. A licensee proves a licence, and if
-// asked a paid-up period, to one verifier, who checks the result here.
+// Public money, private books. A breeder posts an offer and hands licensees an OFFER CARD
+// (the rate and its salt, which the chain only commits to). A grower buys a licence and
+// hands the breeder a LICENCE CARD (viewing and spending keys for that offer). Royalty
+// credit is topped up in public, by the grower or by anyone holding the grower's TOP-UP
+// REQUEST; each period is settled in private against that credit. The breeder reads every
+// settlement of their own licensees with the licence cards. A buyer or regulator checks a
+// licence, and a settled period, with a PRESENTATION REQUEST.
 //
-// Two rules the contract cannot enforce, enforced here:
-//   1. Buy only from an offer whose record is the LIVE HEAD of an ANCHORED identity in the
-//      main VeilCore contract now (Midnight mainnet has no calls between contracts yet).
-//   2. Never prove against the root your own purchase or payment created: that root names
-//      it. Wait until someone else's transaction has changed the tree.
+// Rules the contract cannot enforce, enforced here:
+//   1. Buy only from an offer whose record is the live head of an anchored identity in the
+//      main VeilCore contract (ledger 8 has no calls between contracts).
+//   2. Never prove while the latest sale, credit note or receipt on chain is one of yours:
+//      the root a proof publishes would then name your own transaction.
+//   3. Open the rate from the offer card before paying: credit against a rate that does
+//      not match, or is zero, could never be settled (the contract refuses it too).
 //
-// Secrets a party keeps (admin secrets, licence secrets) are stored in this client's own
-// private-state store, which is encrypted; each call's input is cleared when it ends.
-// The contract is deployed without a maintenance authority anyone can use, as the claims
-// contract is. Design and limits: docs/royalties-design.md.
+// Secrets kept between runs (admin secrets, licence secrets, credit notes) live in this
+// client's encrypted store; each call's input is kept in memory only (transientInput).
+// Design and limits: docs/royalties-design.md.
 
 import { type ContractAddress, sampleSigningKey } from '@midnight-ntwrk/midnight-js-protocol/compact-runtime';
 import { type StateValue } from '@midnight-ntwrk/midnight-js-protocol/onchain-runtime';
 import { type Logger } from 'pino';
+import { firstValueFrom, filter, scan, timeout } from 'rxjs';
 import {
   createCircuitMaintenanceTxInterfaces,
   createUnprovenDeployTx,
@@ -31,14 +35,20 @@ import {
   CompiledVeilcoreRoyalties,
   ROYALTIES_PROVABLE_CIRCUITS,
   type HeldLicence,
+  type HeldReceipt,
+  type NoteOpening,
+  type OfferOpening,
   type RoyaltiesHeld,
   type RoyaltiesLedger,
   type RoyaltiesPrivateState,
   type RoyaltyInput,
   type RoyaltyOffer,
+  changeNonceOf,
   compiledRoyaltiesDeploying,
   emptyRoyaltiesHeld,
   emptyRoyaltiesPrivateState,
+  licenceKeyOf,
+  noteOf,
   royaltiesLedger,
   royaltiesPureCircuits as R,
 } from '../../contract/src/royalties.js';
@@ -57,70 +67,106 @@ import {
 import * as utils from './utils/index.js';
 
 const hex = (b: Uint8Array): string => Buffer.from(b).toString('hex');
-const unhex = (s: string): Uint8Array => Uint8Array.from(Buffer.from(s, 'hex'));
+const unhex = (s: string): Uint8Array => Uint8Array.from(Buffer.from(s.trim().toLowerCase().replace(/^0x/, ''), 'hex'));
 const ZERO32 = (): Uint8Array => new Uint8Array(32);
 const isZero = (b: Uint8Array): boolean => b.every((x) => x === 0);
+const nowSeconds = (): bigint => BigInt(Math.floor(Date.now() / 1000));
 
 /** NIGHT's token colour, as an offer names it. */
 export const NIGHT_COLOR = ZERO32();
-/** Slots in the licence tree (LICENSE_SLOTS in the contract). */
 export const LICENSE_SLOTS = 16777216n;
+/** The scalar field masked units live in (BLS12-381). */
+export const FIELD_MODULUS = 0x73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001n;
+const DAY = 86400n;
 const SEAL_AHEAD_SECONDS = 200;
 const SEAL_SKEW_SECONDS = 30;
-const RECEIPT_SEAL_SECONDS = 86400;
+/** SETTLE_GRACE in the contract: 30 days after an offer ends before its licences can be cleared. */
+const SETTLE_GRACE = 30n * DAY;
 
-/** Whether a record can stand behind an offer, read from the main VeilCore contract now. */
-export type RecordStanding =
-  | { readonly ok: true }
-  | { readonly ok: false; readonly why: 'not-anchored' | 'moved' | 'no-contract' };
+// ─────────────────────────────────────────────────────────────── cards and requests
 
-/** The rule tools apply before a sale: the record is the live head of an anchored identity. */
-export const recordStanding = (main: ReturnType<typeof veilcoreLedger>, record: Uint8Array): RecordStanding => {
-  const origin = main.originOf.member(record) ? main.originOf.lookup(record) : record;
-  if (!main.recoveryOf.member(origin)) return { ok: false, why: 'not-anchored' };
-  const live = main.headOf.member(origin)
-    ? hex(main.headOf.lookup(origin)) === hex(record)
-    : hex(origin) === hex(record);
-  return live ? { ok: true } : { ok: false, why: 'moved' };
+/** What a breeder gives licensees and payers with the terms. Private to them: it holds the rate. */
+export type OfferCard = {
+  readonly kind: 'veilcore-offer-card';
+  readonly contract: string;
+  readonly offer: string;
+  readonly payTo: string;
+  readonly color: string;
+  readonly rateCommit: string;
+  readonly expires: string;
+  readonly rate: string;
+  readonly rateSalt: string;
 };
 
-/** An offer as the chain shows it, with its id. */
-export type OfferView = RoyaltyOffer & { readonly id: Uint8Array };
-
-/** What a breeder sets on a new offer. */
-export type OfferTerms = {
-  /** SHA-256 (or any 32-byte fingerprint) of the licence terms the parties hold. */
-  readonly terms: Uint8Array;
-  readonly color: Uint8Array;
-  readonly price: bigint;
-  readonly perUnit: bigint;
-  readonly payTo: Uint8Array;
-  readonly count: bigint;
-  /** Unix seconds. */
-  readonly expires: bigint;
-  readonly revocable: boolean;
+/** What a licensee gives the breeder with the signed terms: it lets the breeder read their settlements. */
+export type LicenceCard = {
+  readonly kind: 'veilcore-licence-card';
+  readonly contract: string;
+  readonly offer: string;
+  readonly licence: string;
+  readonly viewKey: string;
+  readonly spendKey: string;
 };
 
-/**
- * What a verifier asks for. The verifier makes it (newPresentationRequest), hands it to the
- * licensee, and checks the licensee's transaction against it (verifyPresentation).
- */
+/** What a licensee gives whoever tops up their credit: the offer card and a code naming nobody. */
+export type TopUpRequest = {
+  readonly kind: 'veilcore-topup-request';
+  readonly card: OfferCard;
+  readonly code: string;
+};
+
+/** What a verifier asks for (as in version 1). */
 export type PresentationRequest = {
   readonly contract: string;
-  /** The offer the verifier wants a licence from (hex). */
   readonly offer: string;
-  /** The period a royalty must be paid for (hex, 32 bytes), or all zeros for none. */
   readonly period: string;
   readonly minUnits: string;
-  /** Unix seconds: the licence must still be live then. In the future when asked. */
   readonly validAt: string;
-  /** The verifier's own scope (hex): the holder tag repeats only within it. */
   readonly scope: string;
-  /** 32 fresh random bytes (hex), used once. */
   readonly challenge: string;
 };
 
-/** A period label as 32 bytes: the text, UTF-8, zero-padded (at most 32 bytes). */
+export type PresentationVerdict = {
+  readonly accepted: boolean;
+  readonly lines: readonly string[];
+  readonly holder?: string;
+};
+
+/** One settlement a breeder read: which licence, which period, how many units. */
+export type SettlementReading = {
+  readonly licence: string;
+  readonly offer: string;
+  readonly period: string;
+  readonly units: bigint;
+  readonly receipt: string;
+};
+
+export const openingOf = (c: OfferCard): OfferOpening => ({
+  offer: unhex(c.offer),
+  payTo: unhex(c.payTo),
+  color: unhex(c.color),
+  rateCommit: unhex(c.rateCommit),
+  expires: BigInt(c.expires),
+});
+
+/** Refuse an offer card that does not match the chain, or whose rate does not open its commitment. */
+export const checkOfferCard = (card: OfferCard, onChain?: RoyaltyOffer): void => {
+  if (card.kind !== 'veilcore-offer-card') throw new Error('That is not an offer card.');
+  const rate = BigInt(card.rate);
+  if (rate <= 0n) throw new Error('That offer card has no royalty rate: nothing could settle against credit for it.');
+  if (hex(R.rateCommit(rate, unhex(card.rateSalt))) !== card.rateCommit.toLowerCase())
+    throw new Error("That offer card's rate does not match its rate commitment. Do not pay against it.");
+  if (onChain !== undefined) {
+    const same =
+      hex(onChain.payTo.bytes) === card.payTo.toLowerCase() &&
+      hex(onChain.color) === card.color.toLowerCase() &&
+      hex(onChain.rateCommit) === card.rateCommit.toLowerCase() &&
+      onChain.expires === BigInt(card.expires);
+    if (!same) throw new Error('That offer card does not match the offer on chain. Do not pay against it.');
+  }
+};
+
+/** A period label as 32 bytes: the text, UTF-8, zero-padded (1 to 32 bytes). */
 export const periodBytes = (label: string): Uint8Array => {
   const b = Buffer.from(label.trim(), 'utf8');
   if (b.length === 0 || b.length > 32) throw new Error('A period label is 1 to 32 bytes of text, e.g. 2026-Q4.');
@@ -137,7 +183,7 @@ export const newPresentationRequest = (args: {
   readonly validForSeconds?: number;
   readonly scope?: Uint8Array;
 }): PresentationRequest => ({
-  contract: args.contract,
+  contract: args.contract.toLowerCase(),
   offer: hex(args.offer),
   period: hex(args.period === undefined || args.period === '' ? ZERO32() : periodBytes(args.period)),
   minUnits: String(args.minUnits ?? 0n),
@@ -146,15 +192,6 @@ export const newPresentationRequest = (args: {
   challenge: hex(utils.randomBytes(32)),
 });
 
-/** A verifier's verdict on one presentation. */
-export type PresentationVerdict = {
-  readonly accepted: boolean;
-  readonly lines: readonly string[];
-  /** The holder tag: the same licence shown again in this scope shows the same tag. */
-  readonly holder?: string;
-};
-
-/** A request with every hex field lower-case and without 0x, as this client compares them. */
 const normalised = (r: PresentationRequest): PresentationRequest => {
   const h = (s: string): string => s.trim().toLowerCase().replace(/^0x/, '');
   return {
@@ -168,6 +205,67 @@ const normalised = (r: PresentationRequest): PresentationRequest => {
   };
 };
 
+/**
+ * The time a top-up says the offer is open until: a whole UTC day, so it names no offer,
+ * at least a day ahead and no later than the offer's end.
+ */
+export const roundedValidUntil = (expires: bigint, now = nowSeconds()): bigint => {
+  const dayAfterTomorrow = (now / DAY + 2n) * DAY;
+  const lastWholeDay = (expires / DAY) * DAY;
+  const v = dayAfterTomorrow < lastWholeDay ? dayAfterTomorrow : lastWholeDay;
+  return v > now ? v : expires;
+};
+
+/** Whether a record can stand behind an offer, read from the main VeilCore contract now. */
+export type RecordStanding =
+  | { readonly ok: true }
+  | { readonly ok: false; readonly why: 'not-anchored' | 'moved' | 'no-contract' };
+
+export const recordStanding = (main: ReturnType<typeof veilcoreLedger>, record: Uint8Array): RecordStanding => {
+  const origin = main.originOf.member(record) ? main.originOf.lookup(record) : record;
+  if (!main.recoveryOf.member(origin)) return { ok: false, why: 'not-anchored' };
+  const live = main.headOf.member(origin)
+    ? hex(main.headOf.lookup(origin)) === hex(record)
+    : hex(origin) === hex(record);
+  return live ? { ok: true } : { ok: false, why: 'moved' };
+};
+
+export type OfferView = RoyaltyOffer & { readonly id: Uint8Array };
+
+export type OfferTerms = {
+  readonly terms: Uint8Array;
+  readonly color: Uint8Array;
+  readonly price: bigint;
+  /** Royalty per unit, in the token's smallest unit; 0 for none through the contract. */
+  readonly rate: bigint;
+  readonly payTo: Uint8Array;
+  readonly count: bigint;
+  readonly expires: bigint;
+  readonly revocable: boolean;
+};
+
+/**
+ * Rule 2 refused: sending now would let anyone watching guess the proof is yours (see
+ * assertNotLatest). Callers may wait, or send anyway with `evenIfLinkable`.
+ */
+export class WouldLinkError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'WouldLinkError';
+  }
+}
+
+/** The trees a proof can use, by the ledger cell naming each one's newest leaf. */
+type Tree = 'sale' | 'note' | 'receipt';
+
+/** A note this client can spend, with the licence whose secret spends it. */
+type Spendable = { readonly note: NoteOpening; readonly lic: HeldLicence; readonly key: string };
+
+const sameNote = (x: { nonce: string; amount: string }, n: NoteOpening): boolean =>
+  x.nonce === hex(n.nonce) && x.amount === String(n.amount);
+
+// ─────────────────────────────────────────────────────────────── the client
+
 export class RoyaltiesAPI {
   readonly deployedContractAddress: ContractAddress;
 
@@ -180,7 +278,7 @@ export class RoyaltiesAPI {
     providers.privateStateProvider.setContractAddress(this.deployedContractAddress);
   }
 
-  // ─────────────────────────────────────────────────────────── reading
+  // ─────────────────────────────────────────── reading
 
   async currentLedger(): Promise<RoyaltiesLedger> {
     const state = await this.providers.publicDataProvider.queryContractState(this.deployedContractAddress);
@@ -198,7 +296,6 @@ export class RoyaltiesAPI {
     return { ...l.offers.lookup(id), id };
   }
 
-  /** The record's standing in the main VeilCore contract at `mainAddress`, now. */
   async recordStandingIn(mainAddress: ContractAddress, record: Uint8Array): Promise<RecordStanding> {
     const state = await this.providers.publicDataProvider.queryContractState(mainAddress);
     if (state === null || state === undefined) return { ok: false, why: 'no-contract' };
@@ -207,39 +304,69 @@ export class RoyaltiesAPI {
 
   async held(): Promise<RoyaltiesHeld> {
     const ps = await this.providers.privateStateProvider.get(royaltiesPrivateStateKey);
-    return ps?.held ?? emptyRoyaltiesHeld();
+    return { ...emptyRoyaltiesHeld(), ...(ps?.held ?? {}) };
   }
 
-  // ─────────────────────────────────────────────────────────── offers
+  /** This licensee's unspent credit on an offer, as far as this client knows it. */
+  async credit(offer: Uint8Array): Promise<bigint> {
+    return (await this.spendable(offer)).reduce((a, s) => a + s.note.amount, 0n);
+  }
+
+  /** Settlements this client made on `offer` that are on chain (a sent one that never landed is left out). */
+  async settlements(offer: Uint8Array): Promise<HeldReceipt[]> {
+    const l = await this.currentLedger();
+    return (await this.held()).receipts.filter(
+      (r) => r.offer === hex(offer) && l.receipts.findPathForLeaf(unhex(r.leaf)) !== undefined,
+    );
+  }
+
+  // ─────────────────────────────────────────── breeder: offers
 
   /**
-   * Post an offer from the record `recordSecret` stands for. Makes the offer's admin
-   * secret, keeps it in this client's store, and returns it: the caller must have it
-   * written down (on paper) too. Losing it means the offer can never be closed or revoked.
+   * Post an offer from the record `recordSecret` stands for. Makes the admin secret and the
+   * rate salt; returns the offer card to hand licensees with the terms. The admin secret
+   * must also be written on paper: without it the offer can never be closed or revoked.
    */
   async postOffer(
     recordSecret: Uint8Array,
     t: OfferTerms,
     mainAddress?: ContractAddress,
-  ): Promise<TxRef & { readonly offer: Uint8Array; readonly adminSecret: Uint8Array }> {
+  ): Promise<TxRef & { readonly offer: Uint8Array; readonly adminSecret: Uint8Array; readonly card: OfferCard }> {
+    if (t.terms.length !== 32 || isZero(t.terms)) throw new Error('The terms fingerprint is 32 bytes, not all zero.');
+    if (t.payTo.length !== 32) throw new Error('The payout wallet is a 32-byte unshielded address.');
+    if (t.price <= 0n || t.count <= 0n) throw new Error('The price and the number for sale must be more than zero.');
+    if (t.rate < 0n) throw new Error('The royalty rate cannot be negative.');
+    if (t.expires <= nowSeconds()) throw new Error('The end date must be in the future.');
     if (mainAddress !== undefined) {
       const standing = await this.recordStandingIn(mainAddress, R.recordCommit(recordSecret));
       if (!standing.ok)
         throw new Error(
-          'Your record is not the current record of an anchored identity in the VeilCore contract, so buyers ' +
-            'would refuse this offer. Anchor it (or act as your current record) first. Nothing was sent.',
+          'Your record is not the current record of an anchored identity in the VeilCore contract, so buyers would ' +
+            'refuse this offer. Anchor it (or act as your current record) first. Nothing was sent.',
         );
     }
-    if (isZero(t.terms) || t.terms.length !== 32) throw new Error('The terms fingerprint is 32 bytes, not all zero.');
-    if (t.payTo.length !== 32) throw new Error('The payout wallet is a 32-byte unshielded address.');
-    if (t.price <= 0n || t.count <= 0n) throw new Error('The price and the number for sale must be more than zero.');
-    if (t.expires <= BigInt(Math.floor(Date.now() / 1000))) throw new Error('The end date must be in the future.');
     const adminSecret = utils.randomBytes(32);
+    const rateSalt = utils.randomBytes(32);
     const nonce = utils.randomBytes(32);
-    const record = R.recordCommit(recordSecret);
-    const offer = R.offerId(record, nonce);
-    // Kept before the call, so an interrupted post still leaves the admin secret here.
-    await this.updateHeld((h) => ({ ...h, admins: { ...h.admins, [hex(offer)]: hex(adminSecret) } }));
+    const offer = R.offerId(R.recordCommit(recordSecret), nonce);
+    const rateCommit = t.rate === 0n ? ZERO32() : R.rateCommit(t.rate, rateSalt);
+    const card: OfferCard = {
+      kind: 'veilcore-offer-card',
+      contract: this.deployedContractAddress.toLowerCase(),
+      offer: hex(offer),
+      payTo: hex(t.payTo),
+      color: hex(t.color),
+      rateCommit: hex(rateCommit),
+      expires: String(t.expires),
+      rate: String(t.rate),
+      rateSalt: hex(rateSalt),
+    };
+    // Kept before the call, so an interrupted post still leaves the admin secret and card here.
+    await this.updateHeld((h) => ({
+      ...h,
+      admins: { ...h.admins, [hex(offer)]: hex(adminSecret) },
+      offerCards: { ...h.offerCards, [hex(offer)]: card },
+    }));
     const tx = await this.call('postOffer', { recordSecret }, (c) =>
       c.callTx.postOffer(
         nonce,
@@ -247,14 +374,14 @@ export class RoyaltiesAPI {
         t.terms,
         t.color,
         t.price,
-        t.perUnit,
+        rateCommit,
         { bytes: t.payTo },
         t.count,
         t.expires,
         t.revocable,
       ),
     );
-    return { ...tx, offer, adminSecret };
+    return { ...tx, offer, adminSecret, card };
   }
 
   async closeOffer(offer: Uint8Array, adminSecret?: Uint8Array): Promise<TxRef> {
@@ -262,33 +389,6 @@ export class RoyaltiesAPI {
     return this.call('closeOffer', { adminSecret: admin }, (c) => c.callTx.closeOffer(offer));
   }
 
-  /** Hand the offer to a new admin secret, made here and returned (write it down). */
-  async changeOfferAdmin(
-    offer: Uint8Array,
-    adminSecret?: Uint8Array,
-  ): Promise<TxRef & { readonly adminSecret: Uint8Array }> {
-    const admin = adminSecret ?? (await this.adminFor(offer));
-    if (hex(R.adminCommit(admin)) !== hex((await this.offer(offer)).admin))
-      throw new Error('That admin secret does not run this offer. Nothing was sent.');
-    // Whatever runs the offer now becomes the main entry, so a new pending one never
-    // overwrites the only copy of the secret on chain (an earlier change that landed).
-    await this.updateHeld((h) => ({ ...h, admins: { ...h.admins, [hex(offer)]: hex(admin) } }));
-    const next = utils.randomBytes(32);
-    // Kept before sending, beside the current one: if the change lands and this client
-    // stops, the new secret is still here (adminFor tries it when the chain shows it).
-    await this.updateHeld((h) => ({ ...h, admins: { ...h.admins, [`${hex(offer)}:next`]: hex(next) } }));
-    const tx = await this.call('changeOfferAdmin', { adminSecret: admin }, (c) =>
-      c.callTx.changeOfferAdmin(offer, R.adminCommit(next)),
-    );
-    await this.updateHeld((h) => {
-      const admins: Record<string, string> = { ...h.admins, [hex(offer)]: hex(next) };
-      delete admins[`${hex(offer)}:next`];
-      return { ...h, admins };
-    });
-    return { ...tx, adminSecret: next };
-  }
-
-  /** Revoke a licence sold from one of this party's offers (its key, as the sale published it). */
   async revokeLicense(license: Uint8Array, adminSecret?: Uint8Array): Promise<TxRef & SealResult> {
     const l = await this.currentLedger();
     if (!l.licenseOffer.member(license)) throw new Error('No such live licence. Nothing was sent.');
@@ -297,104 +397,296 @@ export class RoyaltiesAPI {
     return { ...tx, ...(await this.seal()) };
   }
 
-  // ─────────────────────────────────────────────────────────── sales
+  /** A licence card checked against the chain: its keys must make a licence sold from its offer. */
+  async checkLicenceCard(card: LicenceCard): Promise<void> {
+    if (card.kind !== 'veilcore-licence-card') throw new Error('That is not a licence card.');
+    if (card.contract.toLowerCase() !== this.deployedContractAddress.toLowerCase())
+      throw new Error('That licence card is for another royalties contract.');
+    const l = await this.currentLedger();
+    const offer = unhex(card.offer);
+    if (!l.offers.member(offer)) throw new Error('That licence card names no offer on this contract.');
+    const key = R.licenseKey(
+      R.licenseCommit(unhex(card.viewKey), unhex(card.spendKey), offer),
+      offer,
+      l.offers.lookup(offer).expires,
+    );
+    if (hex(key) !== card.licence.toLowerCase())
+      throw new Error("That licence card's keys do not make its licence key: it is not the licensee's real card.");
+    if (!l.everSold.member(key)) throw new Error('No licence with that key was ever sold on this contract.');
+  }
 
   /**
-   * Buy one licence. Refused before anything is sent unless the offer is open, not ended,
-   * not sold out, and its record is the live head of an anchored identity in the main
-   * VeilCore contract at `mainAddress`. Makes the licence secret and keeps it here.
+   * Every settlement on this contract made under one of `cards`, for one of `periods`.
+   * Reads each state the contract has had (midnight-js, from the start), so it finds every
+   * settlement, not only the latest.
    */
-  async buyLicense(offer: Uint8Array, mainAddress: ContractAddress): Promise<TxRef & { readonly license: Uint8Array }> {
+  async readSettlements(
+    cards: readonly LicenceCard[],
+    periods: readonly string[],
+    timeoutMs = 120_000,
+  ): Promise<SettlementReading[]> {
+    for (const c of cards) await this.checkLicenceCard(c);
+    const target = (await this.currentLedger()).settleSeq;
+    if (target === 0n) return [];
+    const seen = await firstValueFrom(
+      this.providers.publicDataProvider.contractStateObservable(this.deployedContractAddress, { type: 'all' }).pipe(
+        scan(
+          (acc: { last: bigint; settles: RoyaltiesLedger[] }, state) => {
+            const l = royaltiesLedger(state.data);
+            return l.settleSeq > acc.last
+              ? { last: l.settleSeq, settles: [...acc.settles, l] }
+              : { ...acc, last: l.settleSeq };
+          },
+          { last: 0n, settles: [] },
+        ),
+        filter((acc) => acc.last >= target),
+        timeout(timeoutMs),
+      ),
+    );
+    const out: SettlementReading[] = [];
+    for (const l of seen.settles) {
+      for (const card of cards) {
+        const view = unhex(card.viewKey);
+        const units = (l.lastUnitsMasked - R.unitsMask(view, l.lastNote) + FIELD_MODULUS) % FIELD_MODULUS;
+        if (units === 0n || units >= 1n << 64n) continue;
+        const offer = unhex(card.offer);
+        const period = periods.find(
+          (p) => hex(R.receiptLeaf(R.receiptCommit(view, periodBytes(p)), offer, units)) === hex(l.lastReceipt),
+        );
+        if (period !== undefined)
+          out.push({ licence: card.licence, offer: card.offer, period, units, receipt: hex(l.lastReceipt) });
+      }
+    }
+    return out;
+  }
+
+  // ─────────────────────────────────────────── licensee: licence and credit
+
+  /** Keep an offer card (checked against the chain) for later top-ups and settlements. */
+  async keepOfferCard(card: OfferCard): Promise<void> {
+    if (card.contract.toLowerCase() !== this.deployedContractAddress.toLowerCase())
+      throw new Error('That offer card is for another royalties contract.');
+    const o = await this.offer(unhex(card.offer));
+    if (!isZero(o.rateCommit)) checkOfferCard(card, o);
+    await this.updateHeld((h) => ({ ...h, offerCards: { ...h.offerCards, [card.offer.toLowerCase()]: card } }));
+  }
+
+  /**
+   * Buy one licence from the offer the card describes. Refused unless the card matches the
+   * chain and opens its rate, and the offer's record is the live head of an anchored
+   * identity in the main contract. Returns the licence card to hand the breeder.
+   */
+  async buyLicense(
+    card: OfferCard,
+    mainAddress: ContractAddress,
+  ): Promise<TxRef & { readonly license: Uint8Array; readonly licenceCard: LicenceCard }> {
+    const offer = unhex(card.offer);
     const o = await this.offer(offer);
+    if (card.contract.toLowerCase() !== this.deployedContractAddress.toLowerCase())
+      throw new Error('That offer card is for another royalties contract. Nothing was sent.');
+    if (!isZero(o.rateCommit)) checkOfferCard(card, o);
     if (!o.open) throw new Error('That offer is closed. Nothing was sent.');
-    if (o.expires <= BigInt(Math.floor(Date.now() / 1000))) throw new Error('That offer has ended. Nothing was sent.');
+    if (o.expires <= nowSeconds()) throw new Error('That offer has ended. Nothing was sent.');
     if (o.remaining === 0n) throw new Error('That offer is sold out. Nothing was sent.');
     const standing = await this.recordStandingIn(mainAddress, o.record);
     if (!standing.ok)
       throw new Error(
         standing.why === 'moved'
-          ? "That offer's record is no longer its identity's current record in the VeilCore contract (rotated or " +
-              'recovered). The breeder must post the offer again from the current record. Nothing was sent.'
+          ? "That offer's record is no longer its identity's current record in the VeilCore contract. The breeder " +
+              'must post the offer again from the current record. Nothing was sent.'
           : standing.why === 'not-anchored'
             ? "That offer's record is not an anchored record in the VeilCore contract. Nothing was sent."
             : `No VeilCore contract at ${mainAddress} to check the record against. Nothing was sent.`,
       );
     const secret = utils.randomBytes(32);
-    const license = R.licenseKey(R.licenseCommit(secret, offer), offer, o.expires);
+    const license = licenceKeyOf(secret, offer, o.expires);
     const slot = await this.freeSlot();
-    const pending: HeldLicence = {
-      offer: hex(offer),
-      secret: hex(secret),
-      expires: String(o.expires),
-      rootAfterPurchase: '',
-    };
-    // Kept before the call: if it lands and this client stops, the licence is still held.
-    await this.updateHeld((h) => ({ ...h, licences: [...h.licences, pending] }));
-    // The pending licence stays held even if this throws: a timeout can come after the buy
-    // landed. licenceFor only ever uses a licence the chain shows live, so a buy that never
-    // landed leaves nothing anyone can pay against.
-    const landed = await this.callWithData('buyLicense', { licenseSecret: secret }, (c) =>
-      c.callTx.buyLicense(offer, slot),
-    );
-    const { txData, ref } = landed;
-    const root = royaltiesLedger(txData.public.nextContractState).licenses.root().field.toString();
+    // Kept before the call: a timeout can come after the purchase landed. Only licences the
+    // chain shows live are ever used, so one that never landed is harmless.
     await this.updateHeld((h) => ({
       ...h,
-      licences: h.licences.map((x) => (x.secret === pending.secret ? { ...x, rootAfterPurchase: root } : x)),
+      offerCards: { ...h.offerCards, [card.offer.toLowerCase()]: card },
+      licences: [...h.licences, { offer: hex(offer), secret: hex(secret), expires: String(o.expires) }],
+      mine: [...(h.mine ?? []), hex(license)].slice(-512),
     }));
-    return { ...ref, license };
+    const tx = await this.call('buyLicense', { licenseSecret: secret }, (c) => c.callTx.buyLicense(offer, slot));
+    return { ...tx, license, licenceCard: this.cardFor(secret, offer, license) };
   }
 
-  // ─────────────────────────────────────────────────────────── royalties
-
-  /** The receipt commitment a licensee hands whoever pays for a period on their behalf. */
-  async receiptCommitment(offer: Uint8Array, period: string): Promise<Uint8Array> {
-    return R.receiptCommit(unhex((await this.licenceFor(offer)).secret), periodBytes(period));
-  }
-
-  /** Pay a royalty on behalf of a licensee, for the receipt commitment they gave you. */
-  async payRoyaltyFor(
-    offer: Uint8Array,
-    commitment: Uint8Array,
-    units: bigint,
-  ): Promise<TxRef & { readonly amount: bigint }> {
-    const o = await this.offer(offer);
-    this.checkPayable(o, units);
-    if (commitment.length !== 32 || isZero(commitment)) throw new Error('That is not a receipt commitment.');
-    await this.notePaid(R.receiptLeaf(commitment, offer, units));
-    const ref = await this.call('payRoyalty', {}, (c) => c.callTx.payRoyalty(offer, commitment, units));
-    return { ...ref, amount: units * o.perUnit };
-  }
-
-  /** Pay a royalty for this party's own licence from `offer`, for `period`. */
-  async payRoyalty(offer: Uint8Array, period: string, units: bigint): Promise<TxRef & { readonly amount: bigint }> {
-    const o = await this.offer(offer);
-    this.checkPayable(o, units);
+  /** The licence card for this client's live licence from `offer`, to hand the breeder again. */
+  async licenceCard(offer: Uint8Array): Promise<LicenceCard> {
     const lic = await this.licenceFor(offer);
-    const commitment = R.receiptCommit(unhex(lic.secret), periodBytes(period));
-    await this.notePaid(R.receiptLeaf(commitment, offer, units));
-    const { txData, ref } = await this.callWithData('payRoyalty', {}, (c) =>
-      c.callTx.payRoyalty(offer, commitment, units),
-    );
-    const root = royaltiesLedger(txData.public.nextContractState).receipts.root().field.toString();
-    await this.updateHeld((h) => ({
-      ...h,
-      receipts: [...h.receipts, { offer: hex(offer), period, units: String(units), rootAfterPayment: root }],
-    }));
-    return { ...ref, amount: units * o.perUnit };
+    return this.cardFor(unhex(lic.secret), offer, licenceKeyOf(unhex(lic.secret), offer, BigInt(lic.expires)));
   }
 
-  // ─────────────────────────────────────────────────────────── presentations
+  /** A top-up request for someone else to pay: the offer card and a fresh code. */
+  async topUpRequest(offer: Uint8Array): Promise<TopUpRequest & { readonly nonce: string }> {
+    const lic = await this.licenceFor(offer);
+    const card = await this.cardOf(offer);
+    const nonce = utils.randomBytes(32);
+    const licence = hex(licenceKeyOf(unhex(lic.secret), offer, BigInt(lic.expires)));
+    await this.updateHeld((h) => ({
+      ...h,
+      codes: [...(h.codes ?? []), { offer: card.offer, licence, nonce: hex(nonce) }],
+    }));
+    return {
+      kind: 'veilcore-topup-request',
+      card,
+      code: hex(R.topUpCode(R.spendKey(unhex(lic.secret), offer), nonce)),
+      nonce: hex(nonce),
+    };
+  }
+
+  /** Pay a top-up request (anyone). The amount goes to the breeder's wallet in this transaction. */
+  async payTopUp(req: TopUpRequest, amount: bigint): Promise<TxRef> {
+    if (req.kind !== 'veilcore-topup-request') throw new Error('That is not a top-up request.');
+    if (amount <= 0n) throw new Error('A top-up must be more than zero. Nothing was sent.');
+    if (req.card.contract.toLowerCase() !== this.deployedContractAddress.toLowerCase())
+      throw new Error('That request is for another royalties contract. Nothing was sent.');
+    const o = await this.offer(unhex(req.card.offer));
+    checkOfferCard(req.card, o);
+    const op = openingOf(req.card);
+    const until = roundedValidUntil(op.expires);
+    if (until <= nowSeconds()) throw new Error('That offer has ended. Nothing was sent.');
+    return this.call(
+      'topUp',
+      { opening: op, code: unhex(req.code), rate: { rate: BigInt(req.card.rate), salt: unhex(req.card.rateSalt) } },
+      (c) => c.callTx.topUp({ bytes: op.payTo }, op.color, amount, until),
+    );
+  }
 
   /**
-   * Answer a verifier's request with this party's licence from the requested offer. For a
-   * paid-up request, the receipt must be one this client paid or was told about
-   * (`units` given). Refused while the tree still has the root this party's own purchase
-   * or payment made, since proving against it would name that transaction.
+   * Top up your own credit: makes the code, pays, and keeps the note. Paying from the wallet
+   * that bought the licence links the two on chain; a processor paying for you does not.
    */
+  async topUpOwn(offer: Uint8Array, amount: bigint): Promise<TxRef> {
+    const req = await this.topUpRequest(offer);
+    const tx = await this.payTopUp(req, amount);
+    await this.claimTopUp(offer, req.nonce, amount);
+    return tx;
+  }
+
+  /**
+   * Record credit someone paid against a top-up request this client made: the amount they
+   * paid. Checked on chain before it is kept. Tries every open code for the offer when
+   * `nonceHex` is not given.
+   */
+  async claimTopUp(offer: Uint8Array, nonceHex: string | undefined, amount: bigint): Promise<NoteOpening> {
+    const card = await this.cardOf(offer);
+    const l = await this.currentLedger();
+    const h0 = await this.held();
+    const lics = this.licencesOf(h0, offer);
+    const codes = (h0.codes ?? []).filter(
+      (c) => c.offer === card.offer && (nonceHex === undefined || c.nonce === nonceHex.toLowerCase()),
+    );
+    for (const code of codes) {
+      const note: NoteOpening = { nonce: unhex(code.nonce), amount };
+      for (const { lic, key } of lics) {
+        if (code.licence !== undefined && code.licence !== key) continue;
+        const cm = noteOf(unhex(lic.secret), note.nonce, openingOf(card), amount);
+        if (!l.noteSeen.member(cm)) continue;
+        // Recording the same credit twice changes nothing (and never revives a spent note).
+        if ((h0.notes ?? []).some((x) => x.offer === card.offer && sameNote(x, note))) return note;
+        await this.updateHeld((h) => ({
+          ...h,
+          notes: [
+            ...(h.notes ?? []),
+            { offer: card.offer, licence: key, nonce: code.nonce, amount: String(amount), spent: false },
+          ],
+          mine: [...(h.mine ?? []), hex(cm)].slice(-512),
+        }));
+        return note;
+      }
+    }
+    throw new Error(`No credit of exactly ${amount} has landed for your top-up codes on that offer yet.`);
+  }
+
+  /**
+   * Settle a period privately: spends credit covering units x rate (merging two notes first
+   * if no single one covers it), keeps the change, records the receipt. Moves no money.
+   */
+  async settle(
+    offer: Uint8Array,
+    period: string,
+    units: bigint,
+    opts: { readonly evenIfLinkable?: boolean } = {},
+  ): Promise<TxRef> {
+    if (units <= 0n) throw new Error('A settlement covers at least one unit.');
+    periodBytes(period);
+    const card = await this.cardOf(offer);
+    const rate = BigInt(card.rate);
+    const owed = units * rate;
+    await this.assertNotLatest(['sale', 'note'], opts);
+    const find = async (): Promise<{ pick?: Spendable; pair?: [Spendable, Spendable] }> => {
+      const l = await this.currentLedger();
+      // Only credit whose licence the chain still holds (live, or ended within the grace) can settle.
+      const usable = (await this.spendable(offer, l))
+        .filter((s) => l.licenseOffer.member(unhex(s.key)))
+        .sort((a, b) => (a.note.amount < b.note.amount ? -1 : a.note.amount > b.note.amount ? 1 : 0));
+      const pick = usable.find((s) => s.note.amount >= owed);
+      if (pick !== undefined) return { pick };
+      for (const key of new Set(usable.map((s) => s.key))) {
+        const mine = usable.filter((s) => s.key === key);
+        const [x, y] = [mine.at(-1), mine.at(-2)];
+        if (x !== undefined && y !== undefined && x.note.amount + y.note.amount >= owed) return { pair: [x, y] };
+      }
+      return {};
+    };
+    const first = await find();
+    const pair = first.pair;
+    let pick = first.pick;
+    if (pick === undefined && pair !== undefined) {
+      await this.merge(offer, pair[0], pair[1]);
+      await this.assertNotLatest(['sale', 'note'], { ...opts, afterOwnMerge: true });
+      ({ pick } = await find());
+    }
+    if (pick === undefined)
+      throw new Error(
+        `Your credit on that offer does not cover ${units} unit(s) at the agreed rate. Top up first. Nothing was sent.`,
+      );
+    const spent = pick.note;
+    const secret = unhex(pick.lic.secret);
+    const op = openingOf(card);
+    const change: NoteOpening = {
+      nonce: changeNonceOf(secret, spent.nonce, op, spent.amount),
+      amount: spent.amount - owed,
+    };
+    const changeCm = noteOf(secret, change.nonce, op, change.amount);
+    const receipt = R.receiptLeaf(R.receiptCommit(R.viewKey(secret, offer), periodBytes(period)), offer, units);
+    // Kept before the call: a timeout can come after the settlement landed, and the change
+    // would otherwise be lost. Only notes and receipts the chain shows are ever counted.
+    await this.updateHeld((h) => ({
+      ...h,
+      notes: [
+        ...(h.notes ?? []),
+        { offer: card.offer, licence: pick.key, nonce: hex(change.nonce), amount: String(change.amount), spent: false },
+      ],
+      receipts: [...h.receipts, { offer: card.offer, period, units: String(units), leaf: hex(receipt) }],
+      mine: [...(h.mine ?? []), hex(changeCm), hex(receipt)].slice(-512),
+    }));
+    const tx = await this.call(
+      'settle',
+      {
+        licenseSecret: secret,
+        opening: op,
+        expires: BigInt(pick.lic.expires),
+        note: spent,
+        rate: { rate, salt: unhex(card.rateSalt) },
+        period: periodBytes(period),
+        units,
+      },
+      (c) => c.callTx.settle(),
+    );
+    await this.markSpent(card.offer, [spent]);
+    return tx;
+  }
+
+  // ─────────────────────────────────────────── presentations
+
+  /** Answer a verifier's request (rule 2: never while the latest sale, note or receipt is yours). */
   async prove(
     request: PresentationRequest,
-    opts: { readonly units?: bigint; readonly periodLabel?: string } = {},
+    opts: { readonly units?: bigint; readonly evenIfLinkable?: boolean } = {},
   ): Promise<TxRef> {
     const req = normalised(request);
     if (req.contract !== this.deployedContractAddress.toLowerCase())
@@ -402,47 +694,26 @@ export class RoyaltiesAPI {
     const offer = unhex(req.offer);
     const lic = await this.licenceFor(offer);
     const validAt = BigInt(req.validAt);
-    if (validAt <= BigInt(Math.floor(Date.now() / 1000)))
-      throw new Error('That request has expired: ask the verifier for a new one.');
+    if (validAt <= nowSeconds()) throw new Error('That request has expired: ask the verifier for a new one.');
     if (BigInt(lic.expires) <= validAt) throw new Error('Your licence ends before the time the verifier asks about.');
-    const l = await this.currentLedger();
-    const heldNow = await this.held();
-    const myKeys = new Set(heldNow.licences.map((x) => hex(RoyaltiesAPI.keyOf(x))));
-    if (
-      myKeys.has(hex(l.lastSale)) ||
-      (lic.rootAfterPurchase !== '' && l.licenses.root().field.toString() === lic.rootAfterPurchase)
-    )
-      throw new Error(
-        'Nobody else has bought a licence since your purchase, so a proof now would point at it. ' +
-          'Try again after the next sale. Nothing was sent.',
-      );
     const period = unhex(req.period);
+    await this.assertNotLatest(isZero(period) ? ['sale'] : ['sale', 'receipt'], opts);
     let units: bigint | undefined;
     if (!isZero(period)) {
-      const label = opts.periodLabel;
-      const mine = (await this.held()).receipts.filter(
-        (r) => r.offer === req.offer && hex(periodBytes(r.period)) === req.period,
+      // Settlements under this licence, for this period, that are in the receipt tree.
+      const view = R.viewKey(unhex(lic.secret), offer);
+      const leafOf = (u: bigint): string => hex(R.receiptLeaf(R.receiptCommit(view, period), offer, u));
+      const mine = (await this.settlements(offer)).filter(
+        (r) => hex(periodBytes(r.period)) === req.period && leafOf(BigInt(r.units)) === r.leaf,
       );
-      units =
-        opts.units ??
-        (mine.length > 0 ? mine.map((r) => BigInt(r.units)).reduce((a, b) => (a > b ? a : b)) : undefined);
-      if (units === undefined)
-        throw new Error(
-          `No royalty this client knows of for that period${label ? ` (${label})` : ''}. Give the units paid.`,
-        );
+      units = opts.units;
+      if (units !== undefined && !mine.some((r) => BigInt(r.units) === units))
+        throw new Error(`No settlement of exactly ${units} unit(s) for that period under this licence.`);
+      if (opts.units === undefined)
+        for (const r of mine) if (units === undefined || BigInt(r.units) > units) units = BigInt(r.units);
+      if (units === undefined) throw new Error('No settlement on chain under this licence for that period.');
       if (units < BigInt(req.minUnits))
-        throw new Error('The royalty paid for that period covers fewer units than asked.');
-      const own = mine.find((r) => BigInt(r.units) === units);
-      const ownLeaf = R.receiptLeaf(R.receiptCommit(unhex(lic.secret), period), offer, units);
-      const myLeaves = new Set([...(heldNow.paidLeaves ?? []), hex(ownLeaf)]);
-      if (
-        myLeaves.has(hex(l.lastReceipt)) ||
-        (own !== undefined && l.receipts.root().field.toString() === own.rootAfterPayment)
-      )
-        throw new Error(
-          'Nobody else has paid a royalty since your payment, so a proof now would point at it. ' +
-            'Try again after the next payment. Nothing was sent.',
-        );
+        throw new Error('Your settlement for that period covers fewer units than asked.');
     }
     return this.call(
       'proveLicense',
@@ -488,7 +759,7 @@ export class RoyaltiesAPI {
       tagOk
         ? isZero(unhex(req.period))
           ? 'ok     A live licence from the offer you asked about, live at the time you asked.'
-          : `ok     A live licence from that offer, and a royalty paid for that period covering at least ${req.minUnits} unit(s).`
+          : `ok     A live licence from that offer, and that period settled for at least ${req.minUnits} unit(s).`
         : 'FAILED This transaction does not answer your request (another offer, period, time, scope or challenge).',
     );
     if (cells.lastPresentationUnsealed)
@@ -498,10 +769,7 @@ export class RoyaltiesAPI {
       );
     const revokedSince = (await this.currentLedger()).revocationSeq > cells.revocationSeq;
     if (revokedSince)
-      lines.push(
-        'WAIT   A licence on this contract has been revoked since this was proved. Ask for a new answer before ' +
-          'relying on it.',
-      );
+      lines.push('WAIT   A licence on this contract has been revoked since this was proved. Ask for a new answer.');
     lines.push(
       `holder ${hex(cells.lastPresentationHolder)} (repeats if the same licence is shown to you again in this scope)`,
     );
@@ -512,13 +780,12 @@ export class RoyaltiesAPI {
     };
   }
 
-  // ─────────────────────────────────────────────────────────── upkeep
+  // ─────────────────────────────────────────── upkeep
 
-  /** Seal waiting revocations if the contract allows it now (anyone may). */
   async seal(): Promise<SealResult> {
     const l = await this.currentLedger();
     if (!l.unsealedChanges && !l.rootsSinceSeal) return { sealed: false, waiting: false };
-    const now = BigInt(Math.floor(Date.now() / 1000));
+    const now = nowSeconds();
     const earliest = l.lastSealTime + BigInt(SEAL_INTERVAL_SECONDS + SEAL_SKEW_SECONDS);
     if (now < earliest) return { sealed: false, waiting: true, sealableAt: Number(earliest) };
     try {
@@ -531,12 +798,12 @@ export class RoyaltiesAPI {
     }
   }
 
-  /** Clear every ended licence, then every ended offer with none left. Anyone may. */
+  /** Clear licences 30 days past their offer's end, then ended offers with none left. Anyone may. */
   async clearEnded(): Promise<{ readonly licences: number; readonly offers: number }> {
-    const now = BigInt(Math.floor(Date.now() / 1000));
+    const now = nowSeconds();
     const l = await this.currentLedger();
-    const endedOffers = new Set([...l.offers].filter(([, o]) => o.expires <= now).map(([id]) => hex(id)));
-    let licences = 0;
+    const ended = new Set([...l.offers].filter(([, o]) => o.expires <= now).map(([id]) => hex(id)));
+    const clearable = new Set([...l.offers].filter(([, o]) => o.expires + SETTLE_GRACE <= now).map(([id]) => hex(id)));
     const attempt = async (what: string, f: () => Promise<unknown>): Promise<boolean> => {
       try {
         await f();
@@ -546,54 +813,161 @@ export class RoyaltiesAPI {
         return false;
       }
     };
-    for (const [k, id] of [...l.licenseOffer]) {
-      if (!endedOffers.has(hex(id))) continue;
-      if (await attempt('clearEnded', () => this.call('clearEnded', {}, (c) => c.callTx.clearEnded(k)))) licences++;
-    }
+    let licences = 0;
+    for (const [k, id] of [...l.licenseOffer])
+      if (
+        clearable.has(hex(id)) &&
+        (await attempt('clearEnded', () => this.call('clearEnded', {}, (c) => c.callTx.clearEnded(k))))
+      )
+        licences++;
     let offers = 0;
-    for (const id of endedOffers) {
+    for (const id of ended)
       if (await attempt('removeEnded', () => this.call('removeEnded', {}, (c) => c.callTx.removeEnded(unhex(id)))))
         offers++;
-    }
     return { licences, offers };
   }
 
-  /** How long a receipt path stays usable at least (receipt roots are retired at most daily). */
-  static readonly receiptRootSeconds = RECEIPT_SEAL_SECONDS;
+  // ─────────────────────────────────────────── plumbing
 
-  // ─────────────────────────────────────────────────────────── plumbing
-
-  private checkPayable(o: OfferView, units: bigint): void {
-    if (o.perUnit === 0n) throw new Error('That offer takes no royalties through this contract. Nothing was sent.');
-    if (o.expires <= BigInt(Math.floor(Date.now() / 1000))) throw new Error('That offer has ended. Nothing was sent.');
-    if (units <= 0n) throw new Error('A royalty covers at least one unit. Nothing was sent.');
+  private cardFor(secret: Uint8Array, offer: Uint8Array, license: Uint8Array): LicenceCard {
+    return {
+      kind: 'veilcore-licence-card',
+      contract: this.deployedContractAddress.toLowerCase(),
+      offer: hex(offer),
+      licence: hex(license),
+      viewKey: hex(R.viewKey(secret, offer)),
+      spendKey: hex(R.spendKey(secret, offer)),
+    };
   }
 
-  /** The held admin secret the chain currently accepts for `offer` (the current one, or a pending new one). */
+  private async cardOf(offer: Uint8Array): Promise<OfferCard> {
+    const card = (await this.held()).offerCards?.[hex(offer)];
+    if (card === undefined)
+      throw new Error('This client holds no offer card for that offer: load the one the breeder gave you.');
+    return card;
+  }
+
+  /**
+   * Rule 2: refuse while the newest leaf of a tree this proof uses is this client's own.
+   * Every proof publishes the root it used; a root whose newest leaf is yours points at the
+   * transaction that put it there. Only the trees the circuit proves against count:
+   * settle uses licences and notes, merge uses notes, a presentation uses licences (and
+   * receipts when it asks about a period).
+   */
+  private async assertNotLatest(
+    trees: readonly Tree[],
+    opts: { readonly afterOwnMerge?: boolean; readonly evenIfLinkable?: boolean } = {},
+  ): Promise<void> {
+    if (opts.evenIfLinkable === true) return;
+    const l = await this.currentLedger();
+    const mine = new Set((await this.held()).mine ?? []);
+    const latest: Record<Tree, [Uint8Array, string, string]> = {
+      sale: [l.lastSale, 'licence purchase', 'licence purchase on this contract'],
+      note: [l.lastNote, 'credit note', 'top-up, settlement or merge'],
+      receipt: [l.lastReceipt, 'settlement', 'settlement'],
+    };
+    for (const t of trees) {
+      const [leaf, what, next] = latest[t];
+      if (mine.has(hex(leaf)))
+        throw new WouldLinkError(
+          `${opts.afterOwnMerge === true ? 'Your credit was merged into one note. ' : ''}Your own ${what} is still ` +
+            `the newest on chain, so anyone watching could guess this proof is yours. Waiting for someone else's next ` +
+            `${next} hides it among theirs. Nothing was sent.`,
+        );
+    }
+  }
+
+  /** Merge two notes of the same licence into one (kept before the call, as in settle). */
+  private async merge(offer: Uint8Array, a: Spendable, b: Spendable): Promise<void> {
+    if (a.key !== b.key) throw new Error('Only notes of the same licence can be merged.');
+    const card = await this.cardOf(offer);
+    const secret = unhex(a.lic.secret);
+    const op = openingOf(card);
+    const merged: NoteOpening = {
+      nonce: changeNonceOf(secret, a.note.nonce, op, a.note.amount),
+      amount: a.note.amount + b.note.amount,
+    };
+    await this.updateHeld((h) => ({
+      ...h,
+      notes: [
+        ...(h.notes ?? []),
+        { offer: card.offer, licence: a.key, nonce: hex(merged.nonce), amount: String(merged.amount), spent: false },
+      ],
+      mine: [...(h.mine ?? []), hex(noteOf(secret, merged.nonce, op, merged.amount))].slice(-512),
+    }));
+    await this.call('mergeNotes', { licenseSecret: secret, opening: op, note: a.note, note2: b.note }, (c) =>
+      c.callTx.mergeNotes(),
+    );
+    await this.markSpent(card.offer, [a.note, b.note]);
+  }
+
+  private async markSpent(offer: string, spent: readonly NoteOpening[]): Promise<void> {
+    await this.updateHeld((h) => ({
+      ...h,
+      notes: (h.notes ?? []).map((x) =>
+        x.offer === offer && spent.some((n) => sameNote(x, n)) ? { ...x, spent: true } : x,
+      ),
+    }));
+  }
+
+  /** Every licence held for `offer`, with its licence key. */
+  private licencesOf(h: RoyaltiesHeld, offer: Uint8Array): { readonly lic: HeldLicence; readonly key: string }[] {
+    return h.licences
+      .filter((x) => x.offer === hex(offer))
+      .map((lic) => ({ lic, key: hex(licenceKeyOf(unhex(lic.secret), offer, BigInt(lic.expires))) }));
+  }
+
+  /**
+   * Unspent notes for `offer` this client holds, each with the licence that spends it, checked
+   * against the chain: the note landed and its nullifier has not. A note sent but never landed,
+   * or a licence bought but never landed, is simply never matched.
+   */
+  private async spendable(offer: Uint8Array, ledger?: RoyaltiesLedger): Promise<Spendable[]> {
+    const h = await this.held();
+    const card = h.offerCards?.[hex(offer)];
+    if (card === undefined) return [];
+    const l = ledger ?? (await this.currentLedger());
+    const op = openingOf(card);
+    const lics = this.licencesOf(h, offer);
+    const out: Spendable[] = [];
+    const counted = new Set<string>();
+    for (const n of h.notes ?? []) {
+      if (n.offer !== hex(offer) || n.spent) continue;
+      const note: NoteOpening = { nonce: unhex(n.nonce), amount: BigInt(n.amount) };
+      for (const { lic, key } of lics) {
+        if (n.licence !== undefined && n.licence !== key) continue;
+        const secret = unhex(lic.secret);
+        const cm = noteOf(secret, note.nonce, op, note.amount);
+        if (!l.noteSeen.member(cm)) continue;
+        if (!counted.has(hex(cm)) && !l.nullifiers.member(R.nullifier(R.nullifierKey(secret), cm))) {
+          counted.add(hex(cm));
+          out.push({ note, lic, key });
+        }
+        break;
+      }
+    }
+    return out;
+  }
+
   private async adminFor(offer: Uint8Array): Promise<Uint8Array> {
-    const h = (await this.held()).admins;
-    const onChain = hex((await this.offer(offer)).admin);
-    for (const s of [h[hex(offer)], h[`${hex(offer)}:next`]])
-      if (s !== undefined && hex(R.adminCommit(unhex(s))) === onChain) return unhex(s);
-    throw new Error('This client holds no admin secret that runs that offer now: type it in. Nothing was sent.');
+    const s = (await this.held()).admins[hex(offer)];
+    if (s === undefined || hex(R.adminCommit(unhex(s))) !== hex((await this.offer(offer)).admin))
+      throw new Error('This client holds no admin secret that runs that offer now: type it in. Nothing was sent.');
+    return unhex(s);
   }
 
-  /** The key a held licence has on chain. */
-  private static keyOf(lic: HeldLicence): Uint8Array {
-    const offer = unhex(lic.offer);
-    return R.licenseKey(R.licenseCommit(unhex(lic.secret), offer), offer, BigInt(lic.expires));
-  }
-
-  /** The newest licence this client holds from `offer` that is live on chain now. */
-  private async licenceFor(offer: Uint8Array): Promise<HeldLicence> {
+  /** The newest licence held for `offer` that the chain shows live (or, `allowEnded`, ended but not cleared). */
+  private async licenceFor(offer: Uint8Array, allowEnded = false): Promise<HeldLicence> {
     const l = await this.currentLedger();
     const live = (await this.held()).licences.filter(
-      (x) => x.offer === hex(offer) && l.licenseOffer.member(RoyaltiesAPI.keyOf(x)),
+      (x) =>
+        x.offer === hex(offer) &&
+        l.licenseOffer.member(licenceKeyOf(unhex(x.secret), offer, BigInt(x.expires))) &&
+        (allowEnded || BigInt(x.expires) > nowSeconds()),
     );
     if (live.length === 0)
       throw new Error(
-        'This client holds no live licence from that offer (none bought here, or it was revoked, ended or never ' +
-          'landed). Nothing was sent.',
+        'This client holds no live licence from that offer (none bought here, revoked, ended or never landed).',
       );
     return live[live.length - 1];
   }
@@ -608,24 +982,16 @@ export class RoyaltiesAPI {
     throw new Error('Could not find a free licence slot. Try again.');
   }
 
-  /** Remember a receipt leaf this client paid, so it never proves while that payment is the latest. */
-  private async notePaid(leaf: Uint8Array): Promise<void> {
-    await this.updateHeld((h) => ({ ...h, paidLeaves: [...(h.paidLeaves ?? []), hex(leaf)].slice(-256) }));
-  }
-
   private async updateHeld(f: (h: RoyaltiesHeld) => RoyaltiesHeld): Promise<void> {
-    const ps =
-      (await this.providers.privateStateProvider.get(royaltiesPrivateStateKey)) ?? emptyRoyaltiesPrivateState();
-    await this.providers.privateStateProvider.set(royaltiesPrivateStateKey, { input: {}, held: f(ps.held) });
+    await this.providers.privateStateProvider.set(royaltiesPrivateStateKey, { input: {}, held: f(await this.held()) });
   }
 
-  private async callWithData(
+  private async call(
     circuit: string,
     input: RoyaltyInput,
     call: (c: DeployedRoyaltiesContract) => Promise<{ public: TxRef & { nextContractState: StateValue } }>,
-  ): Promise<{ txData: { public: TxRef & { nextContractState: StateValue } }; ref: TxRef }> {
-    const held = await this.held();
-    await this.providers.privateStateProvider.set(royaltiesPrivateStateKey, { input, held });
+  ): Promise<TxRef> {
+    await this.providers.privateStateProvider.set(royaltiesPrivateStateKey, { input, held: await this.held() });
     let txData;
     try {
       txData = await call(this.deployedContract);
@@ -634,15 +1000,7 @@ export class RoyaltiesAPI {
     }
     const { txId, txHash, blockHeight } = txData.public;
     this.logger?.info({ transactionAdded: { circuit, txHash, blockHeight } });
-    return { txData, ref: { txId, txHash, blockHeight } };
-  }
-
-  private async call(
-    circuit: string,
-    input: RoyaltyInput,
-    call: (c: DeployedRoyaltiesContract) => Promise<{ public: TxRef & { nextContractState: StateValue } }>,
-  ): Promise<TxRef> {
-    return (await this.callWithData(circuit, input, call)).ref;
+    return { txId, txHash, blockHeight };
   }
 
   private static async authorityOf(
@@ -659,13 +1017,8 @@ export class RoyaltiesAPI {
     return RoyaltiesAPI.authorityOf(this.providers, this.deployedContractAddress);
   }
 
-  // ─────────────────────────────────────────────────────────── deploy and join
+  // ─────────────────────────────────────────── deploy and join
 
-  /**
-   * Deploy a royalties contract, add every circuit key, then retire the maintenance
-   * authority provably (an empty committee). Test networks only for now
-   * (assertRoyaltiesDeployAllowed).
-   */
   static async deploy(
     providers: RoyaltiesProviders,
     logger?: Logger,
@@ -702,7 +1055,6 @@ export class RoyaltiesAPI {
 
   static confirmIntervalMs = 2_000;
 
-  /** Add missing circuit keys, check every key, retire the authority provably. Safe to run again. */
   static async finishDeploy(
     providers: RoyaltiesProviders,
     address: ContractAddress,
@@ -752,11 +1104,6 @@ export class RoyaltiesAPI {
     return api;
   }
 
-  /**
-   * Join a royalties contract. On mainnet, refused unless it is the pinned address (none
-   * yet). Refused unless every circuit key on chain matches this build and the contract
-   * carries no circuit this build lacks. Warns if its authority is not retired.
-   */
   static async join(
     providers: RoyaltiesProviders,
     contractAddress: ContractAddress,

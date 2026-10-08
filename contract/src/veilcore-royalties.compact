@@ -1,34 +1,50 @@
-// VeilCore royalties: licences sold from an offer, and royalties paid through the contract.
+// VeilCore royalties: licences sold from an offer, royalties paid through, paid-up proofs.
 // SPDX-License-Identifier: Apache-2.0
 //
-// A breeder posts an OFFER against a record: a fingerprint of the licence terms (the
-// terms stay with the parties), a price, the token the price is paid in, the wallet that
-// is paid, and how many licences are for sale. A grower BUYS: in one transaction the
-// price passes from the grower to the breeder's wallet and the licence is issued to the
-// grower. Nobody approves a sale by hand. A licensee pays ROYALTIES the same way: the
-// payment passes to the breeder's wallet and a receipt, which only the licensee can
-// later point to, is recorded.
+// OFFER. A breeder posts an offer against a record: a fingerprint of the licence terms
+// (the terms stay with the parties), a price, a royalty per unit, the token both are
+// paid in, the wallet that is paid, how many licences are for sale, when the licences
+// end, and whether they can be revoked. All of it is public, so a buyer sees every rule
+// before paying. The offer is run by its own admin key, not the record secret, so a
+// record secret that leaks or is rotated in veilcore.compact does not take the offer.
 //
-// NO FUNDS ARE HELD. Every payment is received and sent on in the same call, so the
-// contract's balance never changes. There is no fee and no authority over anyone's offer.
+// SALE. In one call the price passes from the buyer to the breeder's wallet and the
+// licence is issued: a tree leaf committing to the buyer's own licence secret, the
+// offer and the end date. Nobody approves a sale by hand. A licence names its holder
+// and is not a token anyone can resend.
 //
-// ONE RECORD, TWO CONTRACTS. The breeder proves they hold the record by its secret,
-// hashed exactly as veilcore.compact's commit() hashes it, so an offer names a record
-// only its holder could name. Whether that record is anchored and live is read from
-// veilcore.compact off chain: Midnight mainnet (ledger 8) has no calls between
-// contracts yet. Tools must check it before a sale and treat an offer whose record
-// has since moved as stale.
+// ROYALTY. Anyone may pay a royalty for a licensee (the licensee, or a grain buyer, lab
+// or registry paying on their behalf) by naming the licensee's receipt commitment for a
+// period and the units it covers. units x the offer's royalty per unit passes to the
+// breeder's wallet, and the contract itself binds the receipt to that offer and those
+// units before it joins the tree, so a receipt proves exactly what was paid, to whom.
 //
-// A LICENCE NAMES ITS HOLDER. It is a commitment to the grower's own licence secret,
-// bound to the offer, not a token anyone can resend. Moving one to someone else is a
-// matter for the breeder, under the terms, as with a licence in veilcore.compact.
+// PRESENTATION. A licensee proves to ONE verifier that they hold a licence from ONE
+// offer that is live until at least a time the verifier names, and optionally that
+// royalties are paid for a period for at least a number of units. Publishes a tag only
+// that verifier can check, and a holder tag that repeats only when the same licence is
+// shown again in the same scope the verifier names: nothing that names the licence, the
+// offer or the payment, given the client rule on roots below.
 //
-// PUBLIC IN THIS VERSION: each offer (price, token, payout wallet, licences left), each
-// sale and royalty payment (amount, offer), and the wallet that paid. NOT PUBLIC: the
-// terms, the licence secret, which licence a later presentation is for.
+// NO FUNDS ARE HELD. Every payment is received and sent on in the same call. There is
+// no fee, and no authority over anyone's offer.
 //
-// Not in this version: revoking a sold licence, expiry, partial or shielded payments.
-// Design and limits: docs/royalties-design.md.
+// ONE RECORD, TWO CONTRACTS. The breeder proves the record by its secret, hashed exactly
+// as veilcore.compact's commit() hashes it. Whether that record was its identity's live
+// head when the offer was posted, with no recovery since, is read from veilcore.compact
+// off chain: Midnight mainnet (ledger 8) has no calls between contracts yet.
+//
+// REVOCATION follows veilcore.compact: the leaf is cleared at once, older roots stop
+// verifying at the next seal, which anyone may call once SEAL_INTERVAL has passed.
+// Anyone may also clear an ended licence, so ended licences do not fill the tree.
+//
+// PUBLIC: each offer; each sale (the licence key, the paying wallet); each royalty
+// payment (offer, units, amount, paying wallet, the receipt leaf); each presentation's
+// time, holder tag and the roots it proved against. A payer who reuses a wallet links
+// their own payments. The roots are the one link left: a presentation proved against
+// the root its own purchase or payment created names that purchase or payment, so
+// clients wait for other insertions before proving (docs/royalties-design.md). Units are
+// declared by the payer; checking them against harvests or deliveries happens off chain.
 
 pragma language_version 0.23;
 
@@ -38,17 +54,27 @@ import CompactStandardLibrary;
 export struct Offer {
   /** The breeder's record commitment, as in veilcore.compact. */
   record: Bytes<32>,
+  /** Commitment to the secret that runs this offer (close, revoke, hand over). */
+  admin: Bytes<32>,
   /** Fingerprint of the licence terms the parties hold. */
   terms: Bytes<32>,
   /** The token the price and royalties are paid in. NIGHT is all zero. */
   color: Bytes<32>,
   /** The price of one licence, in the token's smallest unit. */
-  price: Uint<128>,
+  price: Uint<64>,
+  /** Royalty per unit (a tonne, a plant, a straw: the terms say which). Zero: none through this contract. */
+  perUnit: Uint<64>,
   /** The wallet every sale and royalty payment goes to. */
   payTo: UserAddress,
   /** Licences still for sale. */
   remaining: Uint<32>,
-  /** False once the breeder closes it. A closed offer sells nothing; its licensees still pay through it. */
+  /** Licences sold and still in the tree (not revoked or cleared). */
+  live: Uint<32>,
+  /** Block time (seconds) the licences end: no sale, royalty or presentation from then on. */
+  expires: Uint<64>,
+  /** Whether the admin may revoke a sold licence (for breach, under the terms). */
+  revocable: Boolean,
+  /** False once closed: no new sales. Sold licences and royalties carry on. */
   open: Boolean,
 }
 
@@ -58,22 +84,40 @@ export struct Offer {
 export sealed ledger protocolVersion: Uint<16>;
 
 export ledger offers: Map<Bytes<32>, Offer>;
-/** Every licence ever sold, by key. Licences are never removed in this version. */
-export ledger sold: Set<Bytes<32>>;
-/** The sold licences as tree leaves, so a holder can prove one without naming it. */
-export ledger licenses: HistoricMerkleTree<20, Bytes<32>>;
-/** One entry per royalty payment, unlinkable to its licence without the licence secret. */
-export ledger receipts: Set<Bytes<32>>;
+/** Licence key -> its offer, for every licence sold and not revoked or cleared. */
+export ledger licenseOffer: Map<Bytes<32>, Bytes<32>>;
+/** Every licence key ever sold, so a revoked one can never be bought again. */
+export ledger everSold: Set<Bytes<32>>;
+/** Live licences as tree leaves, at slots the buyers picked. */
+export ledger licenses: HistoricMerkleTree<24, Bytes<32>>;
+export ledger licenseSlotOf: Map<Bytes<32>, Uint<64>>;
+export ledger licenseAtSlot: Map<Uint<64>, Bytes<32>>;
+/** Royalty receipt leaves, each bound to its offer and units. Never removed. */
+export ledger receipts: HistoricMerkleTree<32, Bytes<32>>;
+export ledger receiptSeen: Set<Bytes<32>>;
+
+/** Upper bound on the block time of the last seal, and whether a seal is due. */
+export ledger lastSealTime: Uint<64>;
+export ledger lastReceiptSealTime: Uint<64>;
+export ledger unsealedChanges: Boolean;
+export ledger rootsSinceSeal: Boolean;
 
 export ledger saleSeq: Counter;
 export ledger royaltySeq: Counter;
+export ledger revocationSeq: Counter;
+export ledger sealSeq: Counter;
 export ledger presentationSeq: Counter;
 
 export ledger lastOffer: Bytes<32>;
 export ledger lastSale: Bytes<32>;
 export ledger lastReceipt: Bytes<32>;
 export ledger lastPresentation: Bytes<32>;
+export ledger lastPresentationHolder: Bytes<32>;
 export ledger lastPresentationRoot: MerkleTreeDigest;
+/** The receipt root the last presentation proved against; empty if it proved no payment. */
+export ledger lastPresentationReceiptRoot: MerkleTreeDigest;
+/** True if the licence tree had changes waiting for a seal when the last presentation was made. */
+export ledger lastPresentationUnsealed: Boolean;
 
 constructor() {
   protocolVersion = 1;
@@ -81,19 +125,36 @@ constructor() {
 
 /** The breeder's record secret, the same one veilcore.compact knows them by. */
 witness recordSecret(): Bytes<32>;
+/** The secret that runs an offer. */
+witness adminSecret(): Bytes<32>;
 /** The licensee's licence secret. */
 witness licenseSecret(): Bytes<32>;
 /** The path to the licensee's leaf in `licenses`. */
-witness licensePath(): MerkleTreePath<20, Bytes<32>>;
-/** For a presentation: the offer the licence is from, and the verifier's challenge. */
+witness licensePath(): MerkleTreePath<24, Bytes<32>>;
+/** For a presentation: the offer, the licence's end date, and the verifier's challenge. */
 witness presentationOffer(): Bytes<32>;
+witness presentationExpires(): Uint<64>;
 witness presentationChallenge(): Bytes<32>;
+/** For a paid-up presentation: the units the receipt covers, and its path in `receipts`. */
+witness receiptUnits(): Uint<64>;
+witness receiptPath(): MerkleTreePath<32, Bytes<32>>;
+
+circuit SEAL_INTERVAL(): Uint<64> { return 600; }
+circuit SEAL_SLACK(): Uint<64> { return 300; }
+/** Receipts are never removed, so their old roots are retired rarely: only to bound history. */
+circuit RECEIPT_SEAL_INTERVAL(): Uint<64> { return 86400; }
+circuit LICENSE_SLOTS(): Uint<64> { return 16777216; }
 
 // ─────────────────────────────────────────────────────────────── hashes
 
 /** Exactly veilcore.compact's commit(): the record a secret stands for. */
 export circuit recordCommit(secret: Bytes<32>): Bytes<32> {
   return persistentHash<Vector<2, Bytes<32>>>([pad(32, "veilcore:v1:commit"), secret]);
+}
+
+/** Commitment to an offer's admin secret. */
+export circuit adminCommit(secret: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<2, Bytes<32>>>([pad(32, "veilcore:royalties:v1:admin"), secret]);
 }
 
 /** An offer's id: the record and a nonce the breeder picks, so one record can have many. */
@@ -106,19 +167,37 @@ export circuit licenseCommit(secret: Bytes<32>, offer: Bytes<32>): Bytes<32> {
   return persistentHash<Vector<3, Bytes<32>>>([pad(32, "veilcore:royalties:v1:license"), secret, offer]);
 }
 
-/** A sold licence's key and tree leaf. */
-export circuit licenseKey(licenseCommitment: Bytes<32>, offer: Bytes<32>): Bytes<32> {
-  return persistentHash<Vector<3, Bytes<32>>>([pad(32, "veilcore:royalties:v1:lickey"), licenseCommitment, offer]);
+/** A sold licence's key and tree leaf: the licence, its offer and its end date. */
+export circuit licenseKey(licenseCommitment: Bytes<32>, offer: Bytes<32>, expires: Uint<64>): Bytes<32> {
+  return persistentHash<Vector<4, Bytes<32>>>([
+    pad(32, "veilcore:royalties:v1:lickey"), licenseCommitment, offer, (expires as Field) as Bytes<32>,
+  ]);
 }
 
-/** A royalty receipt: which licence paid for which period. Only the licensee can rebuild it. */
-export circuit receiptKey(secret: Bytes<32>, offer: Bytes<32>, period: Bytes<32>): Bytes<32> {
-  return persistentHash<Vector<4, Bytes<32>>>([pad(32, "veilcore:royalties:v1:receipt"), secret, offer, period]);
+/** What a licensee hands whoever pays for a period. Unlinkable to the licence or other periods. */
+export circuit receiptCommit(secret: Bytes<32>, period: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<3, Bytes<32>>>([pad(32, "veilcore:royalties:v1:receipt"), secret, period]);
 }
 
-/** What a presentation publishes. Checkable only by whoever holds the challenge. */
-export circuit presentationTag(offer: Bytes<32>, challenge: Bytes<32>): Bytes<32> {
-  return persistentHash<Vector<3, Bytes<32>>>([pad(32, "veilcore:royalties:v1:present"), offer, challenge]);
+/** A receipt leaf, built by the contract from what was actually paid: the offer and units. */
+export circuit receiptLeaf(commitment: Bytes<32>, offer: Bytes<32>, units: Uint<64>): Bytes<32> {
+  return persistentHash<Vector<4, Bytes<32>>>([
+    pad(32, "veilcore:royalties:v1:paid"), commitment, offer, (units as Field) as Bytes<32>,
+  ]);
+}
+
+/** What a presentation publishes for its verifier. Checkable only by whoever holds the challenge. */
+export circuit presentationTag(offer: Bytes<32>, period: Bytes<32>, minUnits: Uint<64>, validAt: Uint<64>,
+                               scope: Bytes<32>, challenge: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<7, Bytes<32>>>([
+    pad(32, "veilcore:royalties:v1:present"), offer, period, (minUnits as Field) as Bytes<32>,
+    (validAt as Field) as Bytes<32>, scope, challenge,
+  ]);
+}
+
+/** The same for every presentation of one licence in one scope, and unlinkable across scopes. */
+export circuit holderTag(secret: Bytes<32>, offer: Bytes<32>, scope: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<4, Bytes<32>>>([pad(32, "veilcore:royalties:v1:holder"), secret, offer, scope]);
 }
 
 // ─────────────────────────────────────────────────────────────── helpers
@@ -128,112 +207,235 @@ circuit anyOffer(id: Bytes<32>): Offer {
   return offers.lookup(id);
 }
 
-circuit openOffer(id: Bytes<32>): Offer {
-  const o = anyOffer(id);
-  assert(o.open, "That offer is closed");
-  return o;
+circuit assertBefore(expires: Uint<64>): [] {
+  assert(blockTimeLt(expires), "The licences from that offer have ended");
 }
 
-/** Take `amount` of `color` from the caller and pass all of it to `to`, in this call. */
+circuit assertAdmin(o: Offer): [] {
+  assert(disclose(adminCommit(adminSecret()) == o.admin), "Only the offer's admin can do this");
+}
+
+/** Take `amount` of `color` from the transaction and pass all of it to `to`, in this call. */
 circuit passThrough(color: Bytes<32>, amount: Uint<128>, to: UserAddress): [] {
   receiveUnshielded(color, amount);
   sendUnshielded(color, amount, right<ContractAddress, UserAddress>(to));
 }
 
-/** The caller's leaf, proved present in some root of `licenses`. */
-circuit provenLeaf(offer: Bytes<32>): Bytes<32> {
-  const path = licensePath();
-  const leaf = licenseKey(licenseCommit(licenseSecret(), offer), offer);
-  assert(disclose(path.leaf == leaf), "No licence from that offer for that secret");
-  const root = disclose(merkleTreePathRoot<20, Bytes<32>>(path));
-  assert(licenses.checkRoot(root), "No licence from that offer for that secret");
-  lastPresentationRoot = root;
-  return leaf;
+/** Take a licence out of the tree. Older roots keep verifying until the next seal. */
+circuit clearLicense(k: Bytes<32>, id: Bytes<32>, o: Offer): [] {
+  const s = licenseSlotOf.lookup(k);
+  licenses.insertIndexDefault(s);
+  licenseSlotOf.remove(k);
+  licenseAtSlot.remove(s);
+  licenseOffer.remove(k);
+  offers.insert(id, Offer { ...o, live: (o.live - 1) as Uint<32> });
 }
 
 // ─────────────────────────────────────────────────────────────── offers
 
 /**
- * The record's holder posts an offer. Returns its id. The record is proved by its
- * secret; whether it is anchored and live in veilcore.compact is checked off chain.
+ * The record's holder posts an offer, run from now on by the admin commitment it names.
+ * Returns its id. Whether the record is its identity's live head is checked off chain.
  */
-export circuit postOffer(nonce: Bytes<32>, terms: Bytes<32>, color: Bytes<32>, price: Uint<128>,
-                         payTo: UserAddress, count: Uint<32>): Bytes<32> {
+export circuit postOffer(nonce: Bytes<32>, admin: Bytes<32>, terms: Bytes<32>, color: Bytes<32>, price: Uint<64>,
+                         perUnit: Uint<64>, payTo: UserAddress, count: Uint<32>, expires: Uint<64>,
+                         revocable: Boolean): Bytes<32> {
   const record = disclose(recordCommit(recordSecret()));
   const id = disclose(offerId(record, nonce));
   assert(!offers.member(id), "An offer with that id already exists; pick another nonce");
+  const a = disclose(admin);
+  assert(a != default<Bytes<32>>, "The admin commitment cannot be empty");
   const t = disclose(terms);
   assert(t != default<Bytes<32>>, "The terms fingerprint cannot be empty");
   const p = disclose(price);
   assert(p > 0, "The price must be more than zero");
   const n = disclose(count);
   assert(n > 0, "An offer must have at least one licence for sale");
+  const e = disclose(expires);
+  assertBefore(e);
   offers.insert(id, Offer {
-    record: record, terms: t, color: disclose(color), price: p,
-    payTo: disclose(payTo), remaining: n, open: true,
+    record: record, admin: a, terms: t, color: disclose(color), price: p, perUnit: disclose(perUnit),
+    payTo: disclose(payTo), remaining: n, live: 0, expires: e, revocable: disclose(revocable), open: true,
   });
   lastOffer = id;
   return id;
 }
 
-/** The record's holder closes an offer. Licences already sold stay valid. */
+/** The admin closes an offer. Licences already sold, and their royalties, carry on. */
 export circuit closeOffer(offer: Bytes<32>): [] {
   const id = disclose(offer);
-  const o = openOffer(id);
-  assert(disclose(recordCommit(recordSecret()) == o.record), "Only the record's holder can close its offer");
+  const o = anyOffer(id);
+  assertAdmin(o);
+  assert(o.open, "That offer is already closed");
   offers.insert(id, Offer { ...o, open: false });
+}
+
+/** The admin hands the offer to a new admin commitment (a new key, or a new holder). */
+export circuit changeOfferAdmin(offer: Bytes<32>, newAdmin: Bytes<32>): [] {
+  const id = disclose(offer);
+  const o = anyOffer(id);
+  assertAdmin(o);
+  const a = disclose(newAdmin);
+  assert(a != default<Bytes<32>>, "The admin commitment cannot be empty");
+  offers.insert(id, Offer { ...o, admin: a });
 }
 
 // ─────────────────────────────────────────────────────────────── sales
 
 /**
- * A grower buys one licence. The price passes to the breeder's wallet and the licence,
- * a commitment to the grower's own secret, is issued in the same call.
+ * A buyer buys one licence and places its leaf at `slot` (pick a free one at random).
+ * The price passes to the breeder's wallet in the same call.
  */
-export circuit buyLicense(offer: Bytes<32>): [] {
+export circuit buyLicense(offer: Bytes<32>, slot: Uint<64>): [] {
   const id = disclose(offer);
-  const o = openOffer(id);
+  const o = anyOffer(id);
+  assert(o.open, "That offer is closed");
+  assertBefore(o.expires);
   assert(o.remaining > 0, "That offer is sold out");
-  const k = disclose(licenseKey(licenseCommit(licenseSecret(), id), id));
-  assert(!sold.member(k), "That licence was already bought; use a new licence secret");
-  passThrough(o.color, o.price, o.payTo);
-  offers.insert(id, Offer { ...o, remaining: (o.remaining - 1) as Uint<32> });
-  sold.insert(k);
-  licenses.insert(k);
+  const k = disclose(licenseKey(licenseCommit(licenseSecret(), id), id, o.expires));
+  assert(!everSold.member(k), "That licence was already bought; use a new licence secret");
+  const s = disclose(slot);
+  assert(s < LICENSE_SLOTS(), "That slot is outside the licence tree");
+  assert(!licenseAtSlot.member(s), "That slot is taken; pick another");
+  passThrough(o.color, o.price as Uint<128>, o.payTo);
+  offers.insert(id, Offer { ...o, remaining: (o.remaining - 1) as Uint<32>, live: (o.live + 1) as Uint<32> });
+  everSold.insert(k);
+  licenseOffer.insert(k, id);
+  licenses.insertIndex(k, s);
+  licenseSlotOf.insert(k, s);
+  licenseAtSlot.insert(s, k);
+  rootsSinceSeal = true;
   saleSeq.increment(1);
   lastSale = k;
 }
 
-/**
- * A licensee pays a royalty for a period they name (a month, a harvest, a batch). The
- * payment passes to the breeder's wallet. Publishes the offer and the amount, not which
- * licence paid. One payment per licence and period. Works after the offer is closed:
- * closing stops sales, not what licensees already owe.
- */
-export circuit payRoyalty(offer: Bytes<32>, period: Bytes<32>, amount: Uint<128>): [] {
-  const id = disclose(offer);
+/** The admin revokes a licence sold from the offer, if the offer said it may. */
+export circuit revokeLicense(license: Bytes<32>): [] {
+  const k = disclose(license);
+  assert(licenseOffer.member(k), "No such live licence");
+  const id = licenseOffer.lookup(k);
   const o = anyOffer(id);
-  provenLeaf(id);
-  const a = disclose(amount);
-  assert(a > 0, "A royalty payment must be more than zero");
-  const r = disclose(receiptKey(licenseSecret(), id, period));
-  assert(!receipts.member(r), "A royalty for that period is already recorded for this licence");
-  passThrough(o.color, a, o.payTo);
-  receipts.insert(r);
-  royaltySeq.increment(1);
-  lastReceipt = r;
+  assert(o.revocable, "That offer's licences cannot be revoked");
+  assertAdmin(o);
+  clearLicense(k, id, o);
+  unsealedChanges = true;
+  revocationSeq.increment(1);
 }
 
 /**
- * A licensee proves to ONE verifier that they hold a licence from ONE offer. Publishes
- * presentationTag(offer, challenge) and the root proved against, nothing that names the
- * licence or the offer.
+ * Anyone clears a licence whose offer has ended, so ended licences do not fill the tree.
+ * An ended licence cannot be presented anyway, so this does not flag presentations as
+ * unsealed; it only adds a root for the next seal to retire.
  */
-export circuit proveLicense(): [] {
+export circuit clearEnded(license: Bytes<32>): [] {
+  const k = disclose(license);
+  assert(licenseOffer.member(k), "No such live licence");
+  const id = licenseOffer.lookup(k);
+  const o = anyOffer(id);
+  assert(blockTimeGte(o.expires), "That licence has not ended");
+  clearLicense(k, id, o);
+  rootsSinceSeal = true;
+}
+
+/** Anyone removes an ended offer once every licence from it has been cleared. */
+export circuit removeEnded(offer: Bytes<32>): [] {
+  const id = disclose(offer);
+  const o = anyOffer(id);
+  assert(blockTimeGte(o.expires), "That offer has not ended");
+  assert(o.live == 0, "Clear that offer's ended licences first");
+  offers.remove(id);
+}
+
+/**
+ * Drop every older root of the licence tree, so paths proved before a revocation stop
+ * verifying; and, at most once a day, of the receipt tree, only to bound its history.
+ * Anyone may call it once the block time is SEAL_INTERVAL past the previous seal. `bound`
+ * is an upper bound on the block time, at most SEAL_SLACK ahead of it.
+ */
+export circuit sealRevocations(bound: Uint<64>): [] {
+  const t = disclose(bound);
+  assert(unsealedChanges || rootsSinceSeal, "Nothing has changed the trees since the last seal");
+  assert(blockTimeGte((lastSealTime + SEAL_INTERVAL()) as Uint<64>), "Too soon since the last seal");
+  assert(blockTimeLt(t), "That time is not ahead of the block time");
+  assert(t >= SEAL_SLACK() && blockTimeGte((t - SEAL_SLACK()) as Uint<64>), "That time is too far ahead");
+  licenses.resetHistory();
+  if (blockTimeGte((lastReceiptSealTime + RECEIPT_SEAL_INTERVAL()) as Uint<64>)) {
+    receipts.resetHistory();
+    lastReceiptSealTime = t;
+  }
+  lastSealTime = t;
+  unsealedChanges = false;
+  rootsSinceSeal = false;
+  sealSeq.increment(1);
+}
+
+// ─────────────────────────────────────────────────────────────── royalties
+
+/**
+ * Anyone pays a royalty for a licensee: `units` x the offer's royalty per unit passes to
+ * the breeder's wallet, and the receipt leaf, which the contract binds to this offer and
+ * these units, joins the receipt tree. Proves nothing about who holds the licence, so a
+ * grain buyer can pay on a grower's behalf. `commitment` is receiptCommit(secret, period).
+ */
+export circuit payRoyalty(offer: Bytes<32>, commitment: Bytes<32>, units: Uint<64>): [] {
+  const id = disclose(offer);
+  const o = anyOffer(id);
+  assert(o.perUnit > 0, "That offer takes no royalties through this contract");
+  assertBefore(o.expires);
+  const u = disclose(units);
+  assert(u > 0, "A royalty payment must cover at least one unit");
+  const c = disclose(commitment);
+  assert(c != default<Bytes<32>>, "The receipt commitment cannot be empty");
+  const leaf = receiptLeaf(c, id, u);
+  assert(!receiptSeen.member(leaf), "That receipt is already paid");
+  passThrough(o.color, (u * o.perUnit) as Uint<128>, o.payTo);
+  receiptSeen.insert(leaf);
+  receipts.insert(leaf);
+  rootsSinceSeal = true;
+  royaltySeq.increment(1);
+  lastReceipt = leaf;
+}
+
+// ─────────────────────────────────────────────────────────────── presentations
+
+/**
+ * A licensee proves to ONE verifier that they hold a licence from ONE offer that is still
+ * live at `validAt` (a future time the verifier names), and, unless `period` is
+ * zero, that a royalty for that period covering at least `minUnits` was paid through that
+ * offer. Publishes presentationTag(...) and holderTag(secret, offer, scope), and the roots
+ * proved against. The verifier names period, minUnits, validAt, scope and the challenge;
+ * reusing a scope lets them see the same licence shown twice.
+ */
+export circuit proveLicense(period: Bytes<32>, minUnits: Uint<64>, validAt: Uint<64>, scope: Bytes<32>): [] {
   const offer = presentationOffer();
+  const expires = presentationExpires();
   const challenge = presentationChallenge();
   assert(disclose(challenge != default<Bytes<32>>), "A presentation needs the verifier's challenge");
-  provenLeaf(offer);
+  const v = disclose(validAt);
+  assert(blockTimeLt(v), "The time to be valid at must be in the future");
+  assert(disclose(expires > v), "That licence ends at or before the time asked");
+  assert(disclose(scope != default<Bytes<32>>), "A presentation needs the verifier's scope");
+  const secret = licenseSecret();
+  const path = licensePath();
+  const leaf = licenseKey(licenseCommit(secret, offer), offer, expires);
+  assert(disclose(path.leaf == leaf), "No live licence for that secret");
+  const root = disclose(merkleTreePathRoot<24, Bytes<32>>(path));
+  assert(licenses.checkRoot(root), "No live licence for that secret, or the path is stale");
+  if (disclose(period != default<Bytes<32>>)) {
+    const units = receiptUnits();
+    assert(disclose(units >= minUnits), "No royalty paid for that period covers that many units");
+    const rpath = receiptPath();
+    assert(disclose(rpath.leaf == receiptLeaf(receiptCommit(secret, period), offer, units)),
+           "No royalty paid for that period covers that many units");
+    const rroot = disclose(merkleTreePathRoot<32, Bytes<32>>(rpath));
+    assert(receipts.checkRoot(rroot), "No royalty paid for that period, or the path is stale");
+    lastPresentationReceiptRoot = rroot;
+  } else {
+    lastPresentationReceiptRoot = default<MerkleTreeDigest>;
+  }
   presentationSeq.increment(1);
-  lastPresentation = disclose(presentationTag(offer, challenge));
+  lastPresentationRoot = root;
+  lastPresentationUnsealed = unsealedChanges;
+  lastPresentationHolder = disclose(holderTag(secret, offer, scope));
+  lastPresentation = disclose(presentationTag(offer, period, minUnits, v, scope, challenge));
 }

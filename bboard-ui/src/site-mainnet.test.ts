@@ -238,7 +238,9 @@ describe('the mainnet strings', () => {
     for (const claims of [true, false]) {
       expect(key(claims, false)).toMatch(/A policy for using it is proposed, not decided\..*Read the proposed policy/);
       expect(key(claims, false)).not.toMatch(/approved/i);
-      expect(key(claims, true)).toMatch(/Both founders have approved the policy.*Read the maintenance policy/);
+      expect(key(claims, true)).toMatch(
+        /Every use is announced publicly, under a written maintenance policy\..*Read the maintenance policy/,
+      );
       expect(key(claims, true)).not.toMatch(/proposed/i);
     }
     expect(key(true, false)).toMatch(/The claims contract has no maintenance key/);
@@ -448,7 +450,7 @@ describe('builds', () => {
         /Now on Midnight's main network: we anchor records there in batches, by hand for now\./,
       );
       // Built from the real policy, approved by both founders on 7 October 2026.
-      expect(mainnet['/']).toMatch(/Both founders have approved the policy for using it\./);
+      expect(mainnet['/']).toMatch(/Every use is announced publicly, under a written maintenance policy\./);
       expect(mainnet['/']).toMatch(/The claims contract has no maintenance key/);
       expect(mainnet['/']).toContain(DUMMY);
       expect(mainnet['/']).toContain(DUMMY_CLAIMS);

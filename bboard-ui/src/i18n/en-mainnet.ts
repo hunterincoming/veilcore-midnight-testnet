@@ -92,7 +92,7 @@ const keyStrings = (claimsOnMainnet: boolean, policyApproved: boolean): Overlay 
   'm.status.keyText':
     KEY_HOLDERS +
     (policyApproved
-      ? ' Both founders have approved the policy for using it.'
+      ? ' Every use is announced publicly, under a written maintenance policy.'
       : ' A policy for using it is proposed, not decided.') +
     (claimsOnMainnet ? CLAIMS_NO_KEY : ''),
   'm.status.keyLink': policyApproved ? 'Read the maintenance policy →' : 'Read the proposed policy →',

@@ -58,6 +58,8 @@ export type RoyaltiesHeld = {
   readonly admins: Readonly<Record<string, string>>;
   readonly licences: readonly HeldLicence[];
   readonly receipts: readonly HeldReceipt[];
+  /** Receipt leaves this client paid (for itself or anyone): the latest 256. */
+  readonly paidLeaves?: readonly string[];
 };
 
 export type RoyaltiesPrivateState = {

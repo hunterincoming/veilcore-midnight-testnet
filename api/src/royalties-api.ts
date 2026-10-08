@@ -268,6 +268,11 @@ export class RoyaltiesAPI {
     adminSecret?: Uint8Array,
   ): Promise<TxRef & { readonly adminSecret: Uint8Array }> {
     const admin = adminSecret ?? (await this.adminFor(offer));
+    if (hex(R.adminCommit(admin)) !== hex((await this.offer(offer)).admin))
+      throw new Error('That admin secret does not run this offer. Nothing was sent.');
+    // Whatever runs the offer now becomes the main entry, so a new pending one never
+    // overwrites the only copy of the secret on chain (an earlier change that landed).
+    await this.updateHeld((h) => ({ ...h, admins: { ...h.admins, [hex(offer)]: hex(admin) } }));
     const next = utils.randomBytes(32);
     // Kept before sending, beside the current one: if the change lands and this client
     // stops, the new secret is still here (adminFor tries it when the chain shows it).
@@ -325,18 +330,12 @@ export class RoyaltiesAPI {
     };
     // Kept before the call: if it lands and this client stops, the licence is still held.
     await this.updateHeld((h) => ({ ...h, licences: [...h.licences, pending] }));
-    let landed;
-    try {
-      landed = await this.callWithData('buyLicense', { licenseSecret: secret }, (c) =>
-        c.callTx.buyLicense(offer, slot),
-      );
-    } catch (e) {
-      // Not on chain: forget the secret, so nothing is ever paid against a licence that does not exist.
-      const now = await this.currentLedger().catch(() => undefined);
-      if (now !== undefined && !now.licenseOffer.member(license))
-        await this.updateHeld((h) => ({ ...h, licences: h.licences.filter((x) => x.secret !== pending.secret) }));
-      throw e;
-    }
+    // The pending licence stays held even if this throws: a timeout can come after the buy
+    // landed. licenceFor only ever uses a licence the chain shows live, so a buy that never
+    // landed leaves nothing anyone can pay against.
+    const landed = await this.callWithData('buyLicense', { licenseSecret: secret }, (c) =>
+      c.callTx.buyLicense(offer, slot),
+    );
     const { txData, ref } = landed;
     const root = royaltiesLedger(txData.public.nextContractState).licenses.root().field.toString();
     await this.updateHeld((h) => ({
@@ -362,6 +361,7 @@ export class RoyaltiesAPI {
     const o = await this.offer(offer);
     this.checkPayable(o, units);
     if (commitment.length !== 32 || isZero(commitment)) throw new Error('That is not a receipt commitment.');
+    await this.notePaid(R.receiptLeaf(commitment, offer, units));
     const ref = await this.call('payRoyalty', {}, (c) => c.callTx.payRoyalty(offer, commitment, units));
     return { ...ref, amount: units * o.perUnit };
   }
@@ -372,6 +372,7 @@ export class RoyaltiesAPI {
     this.checkPayable(o, units);
     const lic = await this.licenceFor(offer);
     const commitment = R.receiptCommit(unhex(lic.secret), periodBytes(period));
+    await this.notePaid(R.receiptLeaf(commitment, offer, units));
     const { txData, ref } = await this.callWithData('payRoyalty', {}, (c) =>
       c.callTx.payRoyalty(offer, commitment, units),
     );
@@ -405,8 +406,10 @@ export class RoyaltiesAPI {
       throw new Error('That request has expired: ask the verifier for a new one.');
     if (BigInt(lic.expires) <= validAt) throw new Error('Your licence ends before the time the verifier asks about.');
     const l = await this.currentLedger();
+    const heldNow = await this.held();
+    const myKeys = new Set(heldNow.licences.map((x) => hex(RoyaltiesAPI.keyOf(x))));
     if (
-      hex(l.lastSale) === hex(RoyaltiesAPI.keyOf(lic)) ||
+      myKeys.has(hex(l.lastSale)) ||
       (lic.rootAfterPurchase !== '' && l.licenses.root().field.toString() === lic.rootAfterPurchase)
     )
       throw new Error(
@@ -431,8 +434,9 @@ export class RoyaltiesAPI {
         throw new Error('The royalty paid for that period covers fewer units than asked.');
       const own = mine.find((r) => BigInt(r.units) === units);
       const ownLeaf = R.receiptLeaf(R.receiptCommit(unhex(lic.secret), period), offer, units);
+      const myLeaves = new Set([...(heldNow.paidLeaves ?? []), hex(ownLeaf)]);
       if (
-        hex(l.lastReceipt) === hex(ownLeaf) ||
+        myLeaves.has(hex(l.lastReceipt)) ||
         (own !== undefined && l.receipts.root().field.toString() === own.rootAfterPayment)
       )
         throw new Error(
@@ -602,6 +606,11 @@ export class RoyaltiesAPI {
       if (!l.licenseAtSlot.member(s)) return s;
     }
     throw new Error('Could not find a free licence slot. Try again.');
+  }
+
+  /** Remember a receipt leaf this client paid, so it never proves while that payment is the latest. */
+  private async notePaid(leaf: Uint8Array): Promise<void> {
+    await this.updateHeld((h) => ({ ...h, paidLeaves: [...(h.paidLeaves ?? []), hex(leaf)].slice(-256) }));
   }
 
   private async updateHeld(f: (h: RoyaltiesHeld) => RoyaltiesHeld): Promise<void> {

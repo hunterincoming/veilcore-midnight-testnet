@@ -86,7 +86,7 @@ const main = async () => {
   );
   console.log(
     policy.approved
-      ? 'Maintenance policy: APPROVED. The site will say both founders have approved it.'
+      ? 'Maintenance policy: APPROVED. The site will link the approved maintenance policy.'
       : 'Maintenance policy: PROPOSED. The site will say it is proposed, not decided.',
   );
   console.log(`Registry ${api} anchors on mainnet to the same contract. Building the mainnet site.`);

@@ -69,7 +69,7 @@ export const resolveNetwork = (): string | null => {
  */
 // Deployed 8 October 2026, deploy transaction 007553ba3c32d93d305ec8b828bb3481d3f9c79d9e6644fa12f19e623557141c70
 // (block 2922687); all 24 circuit keys on chain by 06:50 EDT.
-export const MAINNET_VEILCORE_ADDRESS = 'a04de0a2684f3713276325649540c7278ffd07cba8b014e7489844f319a02347';
+export const MAINNET_VEILCORE_ADDRESS: string = 'a04de0a2684f3713276325649540c7278ffd07cba8b014e7489844f319a02347';
 
 /**
  * The VeilCore claims contract's address on mainnet, as the filed deployment record names
@@ -85,7 +85,7 @@ export const MAINNET_VEILCORE_ADDRESS = 'a04de0a2684f3713276325649540c7278ffd07c
 // Deployed 8 October 2026, deploy transaction 0023acc5850b4fc87f97e12cee605d22e80570f40731e38d8574083984e7868f80;
 // maintenance authority retired to an empty committee in 0091979012d160ff9e4cb1162b8e29f18dfccdeb00068357a40913fccfe658335f
 // (block 2922874).
-export const MAINNET_CLAIMS_ADDRESS = 'ef763eb4ad1846b716dbfa90c00560a9a943ffb4d1fc638b0707df5adefd070d';
+export const MAINNET_CLAIMS_ADDRESS: string = 'ef763eb4ad1846b716dbfa90c00560a9a943ffb4d1fc638b0707df5adefd070d';
 
 /** Which contract a pin is for, as messages name it. */
 type Pin = { readonly contract: string; readonly constant: string; readonly why: string };

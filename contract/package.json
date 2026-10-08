@@ -31,7 +31,7 @@
   "scripts": {
     "build": "rm -rf dist && tsc --project tsconfig.build.json && cp -Rf ./src/managed ./dist/managed && cp ./src/veilcore.compact ./src/veilcore-claims.compact ./dist",
     "ci": "npm run compact && npm run typecheck && npm run lint && npm run build && npm run test",
-    "compact": "compact compile src/veilcore.compact ./src/managed/veilcore && compact compile src/veilcore-claims.compact ./src/managed/veilcore-claims",
+    "compact": "compact compile src/veilcore.compact ./src/managed/veilcore && compact compile src/veilcore-claims.compact ./src/managed/veilcore-claims && compact compile src/veilcore-royalties.compact ./src/managed/veilcore-royalties",
     "lint": "eslint src",
     "prepack": "npm run build",
     "test": "vitest run",

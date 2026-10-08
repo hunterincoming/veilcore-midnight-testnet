@@ -1,0 +1,239 @@
+// VeilCore royalties: licences sold from an offer, and royalties paid through the contract.
+// SPDX-License-Identifier: Apache-2.0
+//
+// A breeder posts an OFFER against a record: a fingerprint of the licence terms (the
+// terms stay with the parties), a price, the token the price is paid in, the wallet that
+// is paid, and how many licences are for sale. A grower BUYS: in one transaction the
+// price passes from the grower to the breeder's wallet and the licence is issued to the
+// grower. Nobody approves a sale by hand. A licensee pays ROYALTIES the same way: the
+// payment passes to the breeder's wallet and a receipt, which only the licensee can
+// later point to, is recorded.
+//
+// NO FUNDS ARE HELD. Every payment is received and sent on in the same call, so the
+// contract's balance never changes. There is no fee and no authority over anyone's offer.
+//
+// ONE RECORD, TWO CONTRACTS. The breeder proves they hold the record by its secret,
+// hashed exactly as veilcore.compact's commit() hashes it, so an offer names a record
+// only its holder could name. Whether that record is anchored and live is read from
+// veilcore.compact off chain: Midnight mainnet (ledger 8) has no calls between
+// contracts yet. Tools must check it before a sale and treat an offer whose record
+// has since moved as stale.
+//
+// A LICENCE NAMES ITS HOLDER. It is a commitment to the grower's own licence secret,
+// bound to the offer, not a token anyone can resend. Moving one to someone else is a
+// matter for the breeder, under the terms, as with a licence in veilcore.compact.
+//
+// PUBLIC IN THIS VERSION: each offer (price, token, payout wallet, licences left), each
+// sale and royalty payment (amount, offer), and the wallet that paid. NOT PUBLIC: the
+// terms, the licence secret, which licence a later presentation is for.
+//
+// Not in this version: revoking a sold licence, expiry, partial or shielded payments.
+// Design and limits: docs/royalties-design.md.
+
+pragma language_version 0.23;
+
+import CompactStandardLibrary;
+
+/** One offer. Everything in it is public. */
+export struct Offer {
+  /** The breeder's record commitment, as in veilcore.compact. */
+  record: Bytes<32>,
+  /** Fingerprint of the licence terms the parties hold. */
+  terms: Bytes<32>,
+  /** The token the price and royalties are paid in. NIGHT is all zero. */
+  color: Bytes<32>,
+  /** The price of one licence, in the token's smallest unit. */
+  price: Uint<128>,
+  /** The wallet every sale and royalty payment goes to. */
+  payTo: UserAddress,
+  /** Licences still for sale. */
+  remaining: Uint<32>,
+  /** False once the breeder closes it. A closed offer sells nothing; its licensees still pay through it. */
+  open: Boolean,
+}
+
+// ─────────────────────────────────────────────────────────────── state
+
+/** Protocol version of every hash below (their tags read "veilcore:royalties:v1:..."). */
+export sealed ledger protocolVersion: Uint<16>;
+
+export ledger offers: Map<Bytes<32>, Offer>;
+/** Every licence ever sold, by key. Licences are never removed in this version. */
+export ledger sold: Set<Bytes<32>>;
+/** The sold licences as tree leaves, so a holder can prove one without naming it. */
+export ledger licenses: HistoricMerkleTree<20, Bytes<32>>;
+/** One entry per royalty payment, unlinkable to its licence without the licence secret. */
+export ledger receipts: Set<Bytes<32>>;
+
+export ledger saleSeq: Counter;
+export ledger royaltySeq: Counter;
+export ledger presentationSeq: Counter;
+
+export ledger lastOffer: Bytes<32>;
+export ledger lastSale: Bytes<32>;
+export ledger lastReceipt: Bytes<32>;
+export ledger lastPresentation: Bytes<32>;
+export ledger lastPresentationRoot: MerkleTreeDigest;
+
+constructor() {
+  protocolVersion = 1;
+}
+
+/** The breeder's record secret, the same one veilcore.compact knows them by. */
+witness recordSecret(): Bytes<32>;
+/** The licensee's licence secret. */
+witness licenseSecret(): Bytes<32>;
+/** The path to the licensee's leaf in `licenses`. */
+witness licensePath(): MerkleTreePath<20, Bytes<32>>;
+/** For a presentation: the offer the licence is from, and the verifier's challenge. */
+witness presentationOffer(): Bytes<32>;
+witness presentationChallenge(): Bytes<32>;
+
+// ─────────────────────────────────────────────────────────────── hashes
+
+/** Exactly veilcore.compact's commit(): the record a secret stands for. */
+export circuit recordCommit(secret: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<2, Bytes<32>>>([pad(32, "veilcore:v1:commit"), secret]);
+}
+
+/** An offer's id: the record and a nonce the breeder picks, so one record can have many. */
+export circuit offerId(record: Bytes<32>, nonce: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<3, Bytes<32>>>([pad(32, "veilcore:royalties:v1:offer"), record, nonce]);
+}
+
+/** Commitment to a licence secret, bound to the offer it is bought from. */
+export circuit licenseCommit(secret: Bytes<32>, offer: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<3, Bytes<32>>>([pad(32, "veilcore:royalties:v1:license"), secret, offer]);
+}
+
+/** A sold licence's key and tree leaf. */
+export circuit licenseKey(licenseCommitment: Bytes<32>, offer: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<3, Bytes<32>>>([pad(32, "veilcore:royalties:v1:lickey"), licenseCommitment, offer]);
+}
+
+/** A royalty receipt: which licence paid for which period. Only the licensee can rebuild it. */
+export circuit receiptKey(secret: Bytes<32>, offer: Bytes<32>, period: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<4, Bytes<32>>>([pad(32, "veilcore:royalties:v1:receipt"), secret, offer, period]);
+}
+
+/** What a presentation publishes. Checkable only by whoever holds the challenge. */
+export circuit presentationTag(offer: Bytes<32>, challenge: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<3, Bytes<32>>>([pad(32, "veilcore:royalties:v1:present"), offer, challenge]);
+}
+
+// ─────────────────────────────────────────────────────────────── helpers
+
+circuit anyOffer(id: Bytes<32>): Offer {
+  assert(offers.member(id), "No such offer");
+  return offers.lookup(id);
+}
+
+circuit openOffer(id: Bytes<32>): Offer {
+  const o = anyOffer(id);
+  assert(o.open, "That offer is closed");
+  return o;
+}
+
+/** Take `amount` of `color` from the caller and pass all of it to `to`, in this call. */
+circuit passThrough(color: Bytes<32>, amount: Uint<128>, to: UserAddress): [] {
+  receiveUnshielded(color, amount);
+  sendUnshielded(color, amount, right<ContractAddress, UserAddress>(to));
+}
+
+/** The caller's leaf, proved present in some root of `licenses`. */
+circuit provenLeaf(offer: Bytes<32>): Bytes<32> {
+  const path = licensePath();
+  const leaf = licenseKey(licenseCommit(licenseSecret(), offer), offer);
+  assert(disclose(path.leaf == leaf), "No licence from that offer for that secret");
+  const root = disclose(merkleTreePathRoot<20, Bytes<32>>(path));
+  assert(licenses.checkRoot(root), "No licence from that offer for that secret");
+  lastPresentationRoot = root;
+  return leaf;
+}
+
+// ─────────────────────────────────────────────────────────────── offers
+
+/**
+ * The record's holder posts an offer. Returns its id. The record is proved by its
+ * secret; whether it is anchored and live in veilcore.compact is checked off chain.
+ */
+export circuit postOffer(nonce: Bytes<32>, terms: Bytes<32>, color: Bytes<32>, price: Uint<128>,
+                         payTo: UserAddress, count: Uint<32>): Bytes<32> {
+  const record = disclose(recordCommit(recordSecret()));
+  const id = disclose(offerId(record, nonce));
+  assert(!offers.member(id), "An offer with that id already exists; pick another nonce");
+  const t = disclose(terms);
+  assert(t != default<Bytes<32>>, "The terms fingerprint cannot be empty");
+  const p = disclose(price);
+  assert(p > 0, "The price must be more than zero");
+  const n = disclose(count);
+  assert(n > 0, "An offer must have at least one licence for sale");
+  offers.insert(id, Offer {
+    record: record, terms: t, color: disclose(color), price: p,
+    payTo: disclose(payTo), remaining: n, open: true,
+  });
+  lastOffer = id;
+  return id;
+}
+
+/** The record's holder closes an offer. Licences already sold stay valid. */
+export circuit closeOffer(offer: Bytes<32>): [] {
+  const id = disclose(offer);
+  const o = openOffer(id);
+  assert(disclose(recordCommit(recordSecret()) == o.record), "Only the record's holder can close its offer");
+  offers.insert(id, Offer { ...o, open: false });
+}
+
+// ─────────────────────────────────────────────────────────────── sales
+
+/**
+ * A grower buys one licence. The price passes to the breeder's wallet and the licence,
+ * a commitment to the grower's own secret, is issued in the same call.
+ */
+export circuit buyLicense(offer: Bytes<32>): [] {
+  const id = disclose(offer);
+  const o = openOffer(id);
+  assert(o.remaining > 0, "That offer is sold out");
+  const k = disclose(licenseKey(licenseCommit(licenseSecret(), id), id));
+  assert(!sold.member(k), "That licence was already bought; use a new licence secret");
+  passThrough(o.color, o.price, o.payTo);
+  offers.insert(id, Offer { ...o, remaining: (o.remaining - 1) as Uint<32> });
+  sold.insert(k);
+  licenses.insert(k);
+  saleSeq.increment(1);
+  lastSale = k;
+}
+
+/**
+ * A licensee pays a royalty for a period they name (a month, a harvest, a batch). The
+ * payment passes to the breeder's wallet. Publishes the offer and the amount, not which
+ * licence paid. One payment per licence and period. Works after the offer is closed:
+ * closing stops sales, not what licensees already owe.
+ */
+export circuit payRoyalty(offer: Bytes<32>, period: Bytes<32>, amount: Uint<128>): [] {
+  const id = disclose(offer);
+  const o = anyOffer(id);
+  provenLeaf(id);
+  const a = disclose(amount);
+  assert(a > 0, "A royalty payment must be more than zero");
+  const r = disclose(receiptKey(licenseSecret(), id, period));
+  assert(!receipts.member(r), "A royalty for that period is already recorded for this licence");
+  passThrough(o.color, a, o.payTo);
+  receipts.insert(r);
+  royaltySeq.increment(1);
+  lastReceipt = r;
+}
+
+/**
+ * A licensee proves to ONE verifier that they hold a licence from ONE offer. Publishes
+ * presentationTag(offer, challenge) and the root proved against, nothing that names the
+ * licence or the offer.
+ */
+export circuit proveLicense(): [] {
+  const offer = presentationOffer();
+  const challenge = presentationChallenge();
+  assert(disclose(challenge != default<Bytes<32>>), "A presentation needs the verifier's challenge");
+  provenLeaf(offer);
+  presentationSeq.increment(1);
+  lastPresentation = disclose(presentationTag(offer, challenge));
+}

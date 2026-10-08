@@ -19,7 +19,9 @@ already record, your software adds one fingerprint (a 32-byte hash) and can put 
 Midnight, a public blockchain built for privacy. From then on, anyone you choose can check:
 
 - that the record existed on that date and has not been changed since;
-- that whoever shows it to them really holds it (they send a one-time challenge, you answer);
+- that whoever shows it to them controls the record now (they send a one-time challenge,
+  you answer). That is control today: prior possession of the record, not ownership, and
+  not who held it before;
 - that your lab signed the report on it;
 - that a grower holds a live licence from a breeder, without the chain naming either of them;
 - one fact about a record, such as "germination at least 95%", without seeing the rest.
@@ -62,13 +64,27 @@ VeilCore server.
 ### Install
 
 ```sh
-npm install @veilcore/contracts veilcore-records
-npx veilcore-keys fetch --to ./veilcore-keys      # proving keys, checked (below); once VeilCore publishes them
+npm install --save-exact @veilcore/contracts@0.2.0 veilcore-records
+npm exec --package=@veilcore/contracts@0.2.0 -- veilcore-keys fetch --to ./veilcore-keys   # proving keys, checked (below)
 docker run -d -p 127.0.0.1:6300:6300 midnightntwrk/proof-server:8.0.3 midnight-proof-server -v
 ```
 
-Node 24, ES modules. Not yet on npm. Until it is, build it from this repository. The build
-needs the compiled contracts, which are not in git:
+Node 24, ES modules. On npm as `@veilcore/contracts`. **Pin an exact version** (`0.2.0`, not
+`^0.2.0`): the package carries the mainnet contract addresses and the key fingerprints it
+checks against, so an upgrade should be a choice you make and review, not something a
+reinstall does for you.
+
+**Do not run a bare `npx veilcore-keys`.** VeilCore does not own the npm name
+`veilcore-keys`. From a folder where the package is not installed, `npx` would download
+whatever package has that name, from anyone. Use `npm exec --package=@veilcore/contracts@0.2.0
+-- veilcore-keys …` as above, or the installed file directly:
+`node node_modules/@veilcore/contracts/dist/veilcore-keys.js …`.
+
+The proof server line binds port 6300 to `127.0.0.1` only, so nothing else on your network
+can reach it (see *Keys and the proof server*).
+
+**Or build it from this repository.** The build needs the compiled contracts, which are not
+in git:
 
 1. Install the Compact compiler **0.31.1** exactly (`compact compile --version` prints
    `0.31.1`; another version gives other contract code, and the build refuses it).
@@ -77,9 +93,8 @@ needs the compiled contracts, which are not in git:
    proving keys, so you can use `keys: { dir: '<repo>/contract/src/managed' }`. It needs to
    download Midnight's proving parameters and takes a while.)
 4. `cd .. && npm run build -w @veilcore/contracts`, then depend on the folder `partner-kit/`.
-5. `npx veilcore-keys check --dir contract/src/managed` (from `partner-kit/`:
-   `node dist/veilcore-keys.js check --dir ../contract/src/managed`) confirms every key
-   matches the deployment record.
+5. From `partner-kit/`: `node dist/veilcore-keys.js check --dir ../contract/src/managed`
+   confirms every key matches the deployment record.
 
 ### Quick start
 
@@ -97,7 +112,7 @@ import {
   checkOwnership,
 } from '@veilcore/contracts';
 
-const network = 'preprod'; // 'mainnet' once VeilCore's addresses are pinned
+const network = 'preprod'; // or 'mainnet': 0.2.0 has VeilCore's mainnet addresses pinned
 const endpoints = endpointsFor(network); // mainnet: endpointsFor('mainnet', {}, { blockfrostProjectId })
 
 // The wallet that pays fees. YOUR secret manager supplies the seed.
@@ -133,7 +148,7 @@ Three complete, runnable examples are in [`partner-kit/examples/`](../partner-ki
 
 | Example               | What it does                                                                                                                                                                                                                                                     |
 | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `lab.mjs`             | A lab receives material: seals the intake record (SDK), anchors it, puts the day's records on chain as one batch root, signs its report (SDK), pairs the report's fingerprint with the record, and proves possession to a verifier who checks it with no wallet. |
+| `lab.mjs`             | A lab receives material: seals the intake record (SDK), anchors it, puts the day's records on chain as one batch root, signs its report (SDK), pairs the report's fingerprint with the record, and proves control of the record to a verifier who checks it with no wallet. |
 | `breeder-licence.mjs` | A breeder issues a licence, the grower countersigns, proves it to a buyer's one-time challenge, the buyer checks it with no wallet, the breeder revokes it.                                                                                                      |
 | `claims.mjs`          | A lab seals a record's fields (the SDK computes the same commitment), signs it; the holder proves "germination at least 95.00%" and the lab's signature; a verifier reads both by transaction id and judges them.                                                |
 
@@ -167,6 +182,12 @@ them; `connect` takes any.
 | party to an obligation    | `proposeObligation`, `encumberOwnRecord`, `acceptObligation`, `rejectObligation`, `withdrawObligation`, `discharge` |
 | a verifier                | `checkOwnership`, `checkPresentation`, `ledger`                                                                     |
 
+`proveOwnership` and `checkOwnership` keep the contract's names, but they prove control of
+the record now (prior possession of the record), not ownership. The identity's anchor date
+says nothing about who holds it today: a sale looks like a key rotation on chain. A
+`pairDna` pairing shows the record was paired with that value by that date; anyone can pair
+the same raw report hash, so which pairing came first does not show who had the report first.
+
 Every method that sends a transaction returns its `txId` (give it to whoever checks),
 `txHash` and `blockHeight`. `revokeLicense` and `approveTransfer` also say whether they
 sealed; `sealRevocations` returns only that (`sealed`, `waiting`, `sealableAt`), and the
@@ -181,7 +202,8 @@ lists them all). Commitments are computed offline with `commit.record`, `commit.
 `sealFields` (identical to the SDK's `sealFieldSet`, checked on the same 100 vectors); a
 laboratory signs with `newLabKey` / `signRecord`.
 
-**Checking, with no wallet** (`checkPresentation`, `checkOwnership`, `checkBatchAnchor`,
+**Checking, with no wallet** (`checkPresentation`, `checkOwnership` (control of the record
+now, not ownership), `checkBatchAnchor`,
 `readClaim`, `readClaimsAuthority`, `readLedger`, `verifyClaim`, `ChallengeBook`): only the
 network (and an indexer URL on mainnet). Each looks up the transaction the other party
 names, requires it to have succeeded with exactly one call of the expected kind on
@@ -200,8 +222,8 @@ bundle). Without VeilCore's maintenance key it could do nothing privileged anywa
 On **mainnet** the package accepts only the addresses in VeilCore's filed deployment record
 (`MAINNET_ADDRESSES`); any other address is refused before anything is read or sent. Anyone
 can deploy a contract with identical circuits and different starting state, so the address
-is what says which one is VeilCore's. Until the mainnet deploy, those addresses are empty and
-every mainnet join is refused.
+is what says which one is VeilCore's. They were pinned on 8 October 2026, and 0.2.0 joins
+them by default (an earlier version, with empty pins, refuses every mainnet join).
 
 On **preprod** the default is the pair from the 5 October 2026 test run
 (`PREPROD_ADDRESSES`). Test network: nothing there is real.
@@ -217,7 +239,9 @@ circuit it calls, the circuit and its two keys: 72 files for the main contract, 
 claims contract. They are large, so they are not in
 the npm package.
 
-- `npx veilcore-keys fetch --to <dir>` downloads them from VeilCore's release
+- `npm exec --package=@veilcore/contracts@0.2.0 -- veilcore-keys fetch --to <dir>` (or
+  `node node_modules/@veilcore/contracts/dist/veilcore-keys.js fetch --to <dir>`; never a bare
+  `npx veilcore-keys`, see *Install*) downloads them from VeilCore's release
   (`DEFAULT_KEYS_URL`) and **checks every file's SHA-256 against the fingerprints in the
   deployment record**, built into the package. A file that differs is refused and never
   kept, so the download location does not have to be trusted. Then `keys: { dir }`.
@@ -328,9 +352,6 @@ provider, those guarantees are yours to keep.
 
 ### What it does not do yet
 
-- Publish to npm (pending the `@veilcore` npm organisation) or publish the key files (pending
-  the `zk-r4` release). Until then: build from this repository, and point `keys.dir` at a build.
-- Mainnet: the addresses are pinned on deploy day; before that, mainnet joins are refused.
 - Fee sponsorship (above). Website self-custody (after launch; until then, VeilCore-run or
   this package). Browsers (this package is for Node; the website is a demo and
   verification page, not an integration point). Signing keys held in an HSM: secrets are

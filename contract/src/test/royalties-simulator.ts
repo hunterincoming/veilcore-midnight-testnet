@@ -16,6 +16,9 @@ import {
 import {
   Contract,
   type Ledger,
+  type NoteOpening,
+  type OfferOpening,
+  type RateOpening,
   ledger,
   pureCircuits,
 } from "../managed/veilcore-royalties/contract/index.js";
@@ -34,12 +37,22 @@ export type Caller = {
   offer?: Uint8Array;
   expires?: bigint;
   challenge?: Uint8Array;
-  /** Override the path the SDK would find in the current tree. */
   path?: MerkleTreePath<Uint8Array>;
   /** For a paid-up presentation: the receipt's period and units, and optionally its path. */
   period?: Uint8Array;
   units?: bigint;
   receiptPath?: MerkleTreePath<Uint8Array>;
+  /** For a top-up or settlement: the offer opened privately, and optionally its path. */
+  opening?: OfferOpening;
+  offerPath?: MerkleTreePath<Uint8Array>;
+  /** For a top-up: the licensee's top-up code. */
+  code?: Uint8Array;
+  /** For a settlement or merge: the note(s) spent, the change nonce, the rate. */
+  note?: NoteOpening;
+  notePath?: MerkleTreePath<Uint8Array>;
+  note2?: NoteOpening;
+  notePath2?: MerkleTreePath<Uint8Array>;
+  rate?: RateOpening;
 };
 
 /** The token movements one call asks for, by raw colour (hex). */
@@ -89,6 +102,46 @@ export const stubPath = (
   })),
 });
 
+export const offerLeafOf = (o: OfferOpening): Uint8Array =>
+  R.offerLeaf(o.offer, o.payTo, o.color, o.rateCommit, o.expires);
+
+/** The note a licensee's secret, nonce, offer and amount make. */
+export const noteOf = (
+  secret: Uint8Array,
+  nonce: Uint8Array,
+  o: OfferOpening,
+  amount: bigint,
+): Uint8Array =>
+  R.noteCommit(
+    R.topUpCode(R.spendKey(secret, o.offer), nonce),
+    offerLeafOf(o),
+    amount,
+  );
+
+/** The nonce of the change note that spending (nonce, amount) makes. */
+export const changeNonceOf = (
+  secret: Uint8Array,
+  nonce: Uint8Array,
+  o: OfferOpening,
+  amount: bigint,
+): Uint8Array =>
+  R.changeNonceFor(
+    secret,
+    R.nullifier(R.nullifierKey(secret), noteOf(secret, nonce, o, amount)),
+  );
+
+/** The licence key a secret holds from an offer. */
+export const licenceKeyOf = (
+  secret: Uint8Array,
+  offer: Uint8Array,
+  expires: bigint,
+): Uint8Array =>
+  R.licenseKey(
+    R.licenseCommit(R.viewKey(secret, offer), R.spendKey(secret, offer), offer),
+    offer,
+    expires,
+  );
+
 export class RoyaltiesSimulator {
   private ctx: Ctx;
   private seen: Movements = {
@@ -120,7 +173,6 @@ export class RoyaltiesSimulator {
     this.now += seconds;
   }
 
-  /** A free leaf index (the SDK picks at random). */
   freeSlot(): bigint {
     let s = this.nextSlot;
     while (this.state.licenseAtSlot.member(s)) s++;
@@ -128,19 +180,22 @@ export class RoyaltiesSimulator {
     return s;
   }
 
-  /** The licensee's path, as the SDK finds it: from the current tree. */
   pathFor(
     license: Uint8Array,
     offer: Uint8Array,
     expires: bigint,
   ): MerkleTreePath<Uint8Array> | undefined {
     return this.state.licenses.findPathForLeaf(
-      R.licenseKey(R.licenseCommit(license, offer), offer, expires),
+      licenceKeyOf(license, offer, expires),
     );
   }
 
-  receiptPathFor(receipt: Uint8Array): MerkleTreePath<Uint8Array> | undefined {
-    return this.state.receipts.findPathForLeaf(receipt);
+  receiptPathFor(leaf: Uint8Array): MerkleTreePath<Uint8Array> | undefined {
+    return this.state.receipts.findPathForLeaf(leaf);
+  }
+
+  notePathFor(note: Uint8Array): MerkleTreePath<Uint8Array> | undefined {
+    return this.state.notes.findPathForLeaf(note);
   }
 
   /** Run a call and commit it. Throws the contract's refusal. */
@@ -180,7 +235,6 @@ export class RoyaltiesSimulator {
     };
   }
 
-  /** Land a proved call on the CURRENT state, as the chain would. Throws if the chain would reject it. */
   land(p: Proved): void {
     const q = new QueryContext(
       this.ctx.currentQueryContext.state,
@@ -196,7 +250,6 @@ export class RoyaltiesSimulator {
     this.ctx = { ...this.ctx, currentQueryContext: landed };
   }
 
-  /** The simulated context accumulates effects across calls; report this call's alone. */
   private diff(e: Effects): Movements {
     const totals = (m: Map<{ raw: string }, bigint>): Map<string, bigint> => {
       const out = new Map<string, bigint>();
@@ -244,6 +297,12 @@ export class RoyaltiesSimulator {
   }
 
   private contract(who: Caller): Contract<Record<string, never>> {
+    const offerOf = (): OfferOpening => need(who.opening, "an offer opening");
+    const lic = (): Uint8Array => need(who.license, "a licence secret");
+    const noteLeaf = (n: NoteOpening): Uint8Array =>
+      noteOf(lic(), n.nonce, offerOf(), n.amount);
+    const licOffer = (): Uint8Array => who.offer ?? offerOf().offer;
+    const licExpires = (): bigint => who.expires ?? offerOf().expires;
     return new Contract<Record<string, never>>({
       recordSecret: (c) => [
         c.privateState,
@@ -253,50 +312,77 @@ export class RoyaltiesSimulator {
         c.privateState,
         need(who.admin, "an offer admin secret"),
       ],
-      licenseSecret: (c) => [
-        c.privateState,
-        need(who.license, "a licence secret"),
-      ],
+      licenseSecret: (c) => [c.privateState, lic()],
       presentationOffer: (c) => [
         c.privateState,
         need(who.offer, "an offer to present"),
       ],
-      presentationExpires: (c) => [
-        c.privateState,
-        need(who.expires, "the licence's end date"),
-      ],
+      licenceExpires: (c) => [c.privateState, licExpires()],
       presentationChallenge: (c) => [c.privateState, who.challenge ?? ZERO],
       receiptUnits: (c) => [
         c.privateState,
         need(who.units, "the receipt's units"),
       ],
       licensePath: (c) => {
-        const lic = need(who.license, "a licence secret");
-        const offer = need(who.offer, "the offer the licence is from");
-        const expires = need(who.expires, "the licence's end date");
-        const path =
+        const leaf = licenceKeyOf(lic(), licOffer(), licExpires());
+        return [
+          c.privateState,
           who.path ??
-          this.pathFor(lic, offer, expires) ??
-          stubPath(
-            R.licenseKey(R.licenseCommit(lic, offer), offer, expires),
-            24,
-          );
-        return [c.privateState, path];
+            this.state.licenses.findPathForLeaf(leaf) ??
+            stubPath(leaf, 24),
+        ];
       },
       receiptPath: (c) => {
-        const r = R.receiptLeaf(
+        const offer = need(who.offer, "the offer");
+        const leaf = R.receiptLeaf(
           R.receiptCommit(
-            need(who.license, "a licence secret"),
+            R.viewKey(lic(), offer),
             need(who.period, "the period"),
           ),
-          need(who.offer, "the offer"),
+          offer,
           need(who.units, "the receipt's units"),
         );
         return [
           c.privateState,
-          who.receiptPath ?? this.receiptPathFor(r) ?? stubPath(r, 32),
+          who.receiptPath ?? this.receiptPathFor(leaf) ?? stubPath(leaf, 32),
         ];
       },
+      offerOpening: (c) => [c.privateState, offerOf()],
+      offerPath: (c) => {
+        const leaf = offerLeafOf(offerOf());
+        return [
+          c.privateState,
+          who.offerPath ??
+            this.state.offerLeaves.findPathForLeaf(leaf) ??
+            stubPath(leaf, 20),
+        ];
+      },
+      topUpCodeWitness: (c) => [
+        c.privateState,
+        need(who.code, "a top-up code"),
+      ],
+      noteOpening: (c) => [c.privateState, need(who.note, "a credit note")],
+      notePath: (c) => {
+        const leaf = noteLeaf(need(who.note, "a credit note"));
+        return [
+          c.privateState,
+          who.notePath ?? this.notePathFor(leaf) ?? stubPath(leaf, 32),
+        ];
+      },
+      secondNoteOpening: (c) => [
+        c.privateState,
+        need(who.note2, "a second credit note"),
+      ],
+      secondNotePath: (c) => {
+        const leaf = noteLeaf(need(who.note2, "a second credit note"));
+        return [
+          c.privateState,
+          who.notePath2 ?? this.notePathFor(leaf) ?? stubPath(leaf, 32),
+        ];
+      },
+      rateOpening: (c) => [c.privateState, need(who.rate, "the rate opening")],
+      settlePeriod: (c) => [c.privateState, need(who.period, "the period")],
+      settleUnits: (c) => [c.privateState, need(who.units, "the units")],
     });
   }
 }

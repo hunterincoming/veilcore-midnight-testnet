@@ -15,6 +15,9 @@ import * as Royalties from "./managed/veilcore-royalties/contract/index.js";
 
 export type {
   Offer as RoyaltyOffer,
+  OfferOpening,
+  NoteOpening,
+  RateOpening,
   Ledger as RoyaltiesLedger,
 } from "./managed/veilcore-royalties/contract/index.js";
 export const royaltiesLedger = Royalties.ledger;
@@ -25,13 +28,21 @@ export type RoyaltyInput = {
   readonly recordSecret?: Uint8Array;
   readonly adminSecret?: Uint8Array;
   readonly licenseSecret?: Uint8Array;
-  /** For a presentation, or a payment's receipt path: the offer and the licence's end date. */
+  /** The offer a licence is from, and the licence's end date. */
   readonly offer?: Uint8Array;
   readonly expires?: bigint;
   readonly challenge?: Uint8Array;
-  /** For a paid-up presentation: the receipt's period and units. */
+  /** A settlement's (or a paid-up presentation's) period and units. */
   readonly period?: Uint8Array;
   readonly units?: bigint;
+  /** A top-up's or settlement's offer, opened privately. */
+  readonly opening?: Royalties.OfferOpening;
+  /** A top-up's code. */
+  readonly code?: Uint8Array;
+  /** The note(s) a settlement or merge spends. */
+  readonly note?: Royalties.NoteOpening;
+  readonly note2?: Royalties.NoteOpening;
+  readonly rate?: Royalties.RateOpening;
 };
 
 /** A licence this party bought: its secret and end date, and the root its own purchase made. */
@@ -100,6 +111,46 @@ const absentPath = (leaf: Uint8Array, depth: number) => ({
   })),
 });
 
+export const offerLeafOf = (o: Royalties.OfferOpening): Uint8Array =>
+  C.offerLeaf(o.offer, o.payTo, o.color, o.rateCommit, o.expires);
+
+/** The note a licence secret, nonce, offer and amount make. */
+export const noteOf = (
+  secret: Uint8Array,
+  nonce: Uint8Array,
+  o: Royalties.OfferOpening,
+  amount: bigint,
+): Uint8Array =>
+  C.noteCommit(
+    C.topUpCode(C.spendKey(secret, o.offer), nonce),
+    offerLeafOf(o),
+    amount,
+  );
+
+/** The nonce of the change note that spending (nonce, amount) makes. */
+export const changeNonceOf = (
+  secret: Uint8Array,
+  nonce: Uint8Array,
+  o: Royalties.OfferOpening,
+  amount: bigint,
+): Uint8Array =>
+  C.changeNonceFor(
+    secret,
+    C.nullifier(C.nullifierKey(secret), noteOf(secret, nonce, o, amount)),
+  );
+
+/** The licence key a secret holds from an offer. */
+export const licenceKeyOf = (
+  secret: Uint8Array,
+  offer: Uint8Array,
+  expires: bigint,
+): Uint8Array =>
+  C.licenseKey(
+    C.licenseCommit(C.viewKey(secret, offer), C.spendKey(secret, offer), offer),
+    offer,
+    expires,
+  );
+
 /** Every witness the royalties contract declares. The compiled constructor refuses one missing. */
 export const royaltiesWitnesses: W = {
   recordSecret: ({ privateState }: Ctx) => [
@@ -118,9 +169,12 @@ export const royaltiesWitnesses: W = {
     privateState,
     need(privateState.input.offer, "the offer"),
   ],
-  presentationExpires: ({ privateState }: Ctx) => [
+  licenceExpires: ({ privateState }: Ctx) => [
     privateState,
-    need(privateState.input.expires, "the licence's end date"),
+    need(
+      privateState.input.expires ?? privateState.input.opening?.expires,
+      "the licence's end date",
+    ),
   ],
   presentationChallenge: ({ privateState }: Ctx) => [
     privateState,
@@ -132,11 +186,11 @@ export const royaltiesWitnesses: W = {
   ],
   licensePath: ({ privateState, ledger }: Ctx) => {
     const i = privateState.input;
-    const offer = need(i.offer, "the offer");
-    const leaf = C.licenseKey(
-      C.licenseCommit(need(i.licenseSecret, "the licence secret"), offer),
+    const offer = need(i.offer ?? i.opening?.offer, "the offer");
+    const leaf = licenceKeyOf(
+      need(i.licenseSecret, "the licence secret"),
       offer,
-      need(i.expires, "the licence's end date"),
+      need(i.expires ?? i.opening?.expires, "the licence's end date"),
     );
     return [
       privateState,
@@ -148,7 +202,7 @@ export const royaltiesWitnesses: W = {
     const offer = need(i.offer, "the offer");
     const leaf = C.receiptLeaf(
       C.receiptCommit(
-        need(i.licenseSecret, "the licence secret"),
+        C.viewKey(need(i.licenseSecret, "the licence secret"), offer),
         need(i.period, "the period"),
       ),
       offer,
@@ -159,6 +213,69 @@ export const royaltiesWitnesses: W = {
       ledger.receipts.findPathForLeaf(leaf) ?? absentPath(leaf, 32),
     ];
   },
+  offerOpening: ({ privateState }: Ctx) => [
+    privateState,
+    need(privateState.input.opening, "the offer opening"),
+  ],
+  offerPath: ({ privateState, ledger }: Ctx) => {
+    const leaf = offerLeafOf(
+      need(privateState.input.opening, "the offer opening"),
+    );
+    return [
+      privateState,
+      ledger.offerLeaves.findPathForLeaf(leaf) ?? absentPath(leaf, 20),
+    ];
+  },
+  topUpCodeWitness: ({ privateState }: Ctx) => [
+    privateState,
+    need(privateState.input.code, "the top-up code"),
+  ],
+  noteOpening: ({ privateState }: Ctx) => [
+    privateState,
+    need(privateState.input.note, "the credit note"),
+  ],
+  notePath: ({ privateState, ledger }: Ctx) => {
+    const i = privateState.input;
+    const leaf = noteOf(
+      need(i.licenseSecret, "the licence secret"),
+      need(i.note, "the credit note").nonce,
+      need(i.opening, "the offer opening"),
+      need(i.note, "the credit note").amount,
+    );
+    return [
+      privateState,
+      ledger.notes.findPathForLeaf(leaf) ?? absentPath(leaf, 32),
+    ];
+  },
+  secondNoteOpening: ({ privateState }: Ctx) => [
+    privateState,
+    need(privateState.input.note2, "the second note"),
+  ],
+  secondNotePath: ({ privateState, ledger }: Ctx) => {
+    const i = privateState.input;
+    const leaf = noteOf(
+      need(i.licenseSecret, "the licence secret"),
+      need(i.note2, "the second note").nonce,
+      need(i.opening, "the offer opening"),
+      need(i.note2, "the second note").amount,
+    );
+    return [
+      privateState,
+      ledger.notes.findPathForLeaf(leaf) ?? absentPath(leaf, 32),
+    ];
+  },
+  rateOpening: ({ privateState }: Ctx) => [
+    privateState,
+    need(privateState.input.rate, "the rate opening"),
+  ],
+  settlePeriod: ({ privateState }: Ctx) => [
+    privateState,
+    need(privateState.input.period, "the period"),
+  ],
+  settleUnits: ({ privateState }: Ctx) => [
+    privateState,
+    need(privateState.input.units, "the units"),
+  ],
 };
 
 export const CompiledVeilcoreRoyalties = CompiledContract.make<

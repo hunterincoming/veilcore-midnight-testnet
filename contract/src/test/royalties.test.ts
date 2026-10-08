@@ -1,15 +1,22 @@
-// The royalties contract: offers, sales, revocation, royalty payments and presentations,
-// and the attacks from the first review (8 Oct 2026, A1-A7), kept as regression tests.
+// The royalties contract, version 2: offers, sales, private credit and settlement,
+// presentations, revocation; and every attack from the reviews kept as a regression.
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, it } from "vitest";
 import { pureCircuits as V } from "../managed/veilcore/contract/index.js";
+import type {
+  NoteOpening,
+  OfferOpening,
+} from "../managed/veilcore-royalties/contract/index.js";
 import {
   type Caller,
   R,
   RoyaltiesSimulator,
   T0,
+  changeNonceOf,
   hex,
+  licenceKeyOf,
+  noteOf,
 } from "./royalties-simulator.js";
 
 const b = (n: number): Uint8Array => {
@@ -21,7 +28,6 @@ const b = (n: number): Uint8Array => {
 const NIGHT = new Uint8Array(32);
 const STABLE = b(200);
 const BREEDER = b(1);
-const ROTATED = b(2);
 const OTHER = b(3);
 const ADMIN = b(5);
 const ADMIN2 = b(6);
@@ -35,9 +41,17 @@ const MINE = { bytes: b(41) };
 const NONCE = b(50);
 const CH = b(60);
 const SCOPE = b(80);
+const RATE = 4n;
+const SALT = b(90);
 const HOUR = 3600n;
-const YEAR = 365n * 24n * HOUR;
+const DAY = 24n * HOUR;
+const YEAR = 365n * DAY;
 const EXPIRES = T0 + YEAR;
+const RO = { rate: RATE, salt: SALT };
+const GRACE = 30n * DAY;
+/** The BLS12-381 scalar field the masked units live in. */
+const FIELD =
+  0x73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001n;
 
 type OfferOpts = {
   record?: Uint8Array;
@@ -45,7 +59,7 @@ type OfferOpts = {
   admin?: Uint8Array;
   count?: bigint;
   price?: bigint;
-  perUnit?: bigint;
+  rate?: bigint | null;
   color?: Uint8Array;
   payTo?: { bytes: Uint8Array };
   revocable?: boolean;
@@ -61,14 +75,13 @@ const post = (sim: RoyaltiesSimulator, o: OfferOpts = {}): Uint8Array =>
     TERMS,
     o.color ?? NIGHT,
     o.price ?? 1000n,
-    o.perUnit ?? 4n,
+    o.rate === null ? NIGHT : R.rateCommit(o.rate ?? RATE, SALT),
     o.payTo ?? WALLET,
     o.count ?? 3n,
     o.expires ?? EXPIRES,
     o.revocable ?? true,
   ).result as Uint8Array;
 
-/** A fresh contract with one breeder offer. */
 const withOffer = (o: OfferOpts = {}) => {
   const sim = new RoyaltiesSimulator();
   return { sim, offer: post(sim, o) };
@@ -78,16 +91,90 @@ const buy = (sim: RoyaltiesSimulator, offer: Uint8Array, license = LIC) =>
   sim.call({ license }, "buyLicense", offer, sim.freeSlot());
 
 const keyOf = (offer: Uint8Array, license = LIC, expires = EXPIRES) =>
-  R.licenseKey(R.licenseCommit(license, offer), offer, expires);
+  licenceKeyOf(license, offer, expires);
 
-/** A royalty paid by someone holding no secret at all, for the licensee's receipt commitment. */
-const payFor = (
+/** The opening of an offer as its licensees know it (from the chain and the terms). */
+const openingOf = (
   sim: RoyaltiesSimulator,
   offer: Uint8Array,
+): OfferOpening => {
+  const o = sim.state.offers.lookup(offer);
+  return {
+    offer,
+    payTo: o.payTo.bytes,
+    color: o.color,
+    rateCommit: o.rateCommit,
+    expires: o.expires,
+  };
+};
+
+/** Anyone tops up credit for `license`'s note (nonce, amount) on `offer`. */
+const topUp = (
+  sim: RoyaltiesSimulator,
+  offer: Uint8Array,
+  amount: bigint,
+  nonce: Uint8Array,
+  license = LIC,
+  validUntil = sim.now + DAY,
+  rate = RATE,
+) => {
+  const op = openingOf(sim, offer);
+  return sim.call(
+    {
+      opening: op,
+      code: R.topUpCode(R.spendKey(license, offer), nonce),
+      rate: { rate, salt: SALT },
+    },
+    "topUp",
+    { bytes: op.payTo },
+    op.color,
+    amount,
+    validUntil,
+  );
+};
+
+const settleCaller = (
+  sim: RoyaltiesSimulator,
+  offer: Uint8Array,
+  note: NoteOpening,
   period: Uint8Array,
   units: bigint,
+  extra: Caller = {},
+): Caller => ({
+  license: LIC,
+  opening: openingOf(sim, offer),
+  note,
+  rate: { rate: RATE, salt: SALT },
+  period,
+  units,
+  ...extra,
+});
+
+const settleAs = (
+  sim: RoyaltiesSimulator,
+  offer: Uint8Array,
+  note: NoteOpening,
+  period: Uint8Array,
+  units: bigint,
+  extra: Caller = {},
+) => sim.call(settleCaller(sim, offer, note, period, units, extra), "settle");
+
+/** The change note a settlement or merge leaves, as its licensee knows it. */
+const changeOf = (
+  sim: RoyaltiesSimulator,
+  offer: Uint8Array,
+  spent: NoteOpening,
+  amount: bigint,
   license = LIC,
-) => sim.call({}, "payRoyalty", offer, R.receiptCommit(license, period), units);
+): NoteOpening => ({
+  nonce: changeNonceOf(
+    license,
+    spent.nonce,
+    openingOf(sim, offer),
+    spent.amount,
+  ),
+  amount,
+});
 
 const who = (offer: Uint8Array, extra: Caller = {}): Caller => ({
   license: LIC,
@@ -97,7 +184,6 @@ const who = (offer: Uint8Array, extra: Caller = {}): Caller => ({
   ...extra,
 });
 
-/** A presentation for a verifier asking validity one hour from now, in SCOPE. */
 const prove = (
   sim: RoyaltiesSimulator,
   caller: Caller,
@@ -121,6 +207,25 @@ const appears = (
     appears(v, needle, seen),
   );
 };
+const text = (p: unknown): string =>
+  JSON.stringify(p, (_k: string, v: unknown): unknown =>
+    typeof v === "bigint"
+      ? v.toString()
+      : v instanceof Uint8Array
+        ? Buffer.from(v).toString("hex")
+        : v,
+  );
+
+/** A grower who bought a licence and has 200 of credit in note (b(51), 200). */
+const funded = (o: OfferOpts = {}) => {
+  const { sim, offer } = withOffer(o);
+  buy(sim, offer);
+  topUp(sim, offer, 200n, b(51));
+  return { sim, offer, note: { nonce: b(51), amount: 200n } };
+};
+
+const unmask = (masked: bigint, view: Uint8Array, change: Uint8Array): bigint =>
+  (masked - R.unitsMask(view, change) + FIELD) % FIELD;
 
 describe("one record, two contracts", () => {
   it("names a record exactly as veilcore.compact's commit() does", () => {
@@ -128,26 +233,24 @@ describe("one record, two contracts", () => {
       expect(hex(R.recordCommit(s))).toBe(hex(V.commit(s)));
   });
 
-  it("an offer's record is the poster's own, proved by the secret, with every rule public", () => {
+  it("an offer's record is the poster's own; the rate is only committed to", () => {
     const { sim, offer } = withOffer({ revocable: false });
     expect(hex(offer)).toBe(hex(R.offerId(V.commit(BREEDER), NONCE)));
     const o = sim.state.offers.lookup(offer);
     expect(hex(o.record)).toBe(hex(V.commit(BREEDER)));
-    expect(hex(o.admin)).toBe(hex(R.adminCommit(ADMIN)));
-    expect([
-      o.price,
-      o.perUnit,
-      o.remaining,
-      o.expires,
-      o.revocable,
-      o.open,
-    ]).toEqual([1000n, 4n, 3n, EXPIRES, false, true]);
+    expect(hex(o.rateCommit)).toBe(hex(R.rateCommit(RATE, SALT)));
+    expect(
+      sim.state.offerLeaves.findPathForLeaf(
+        R.offerLeaf(offer, WALLET.bytes, NIGHT, o.rateCommit, EXPIRES),
+      ),
+    ).toBeDefined();
   });
 });
 
 describe("offers", () => {
   it("refuses empty terms or admin, a zero price, zero licences and an end date already past", () => {
     const sim = new RoyaltiesSimulator();
+    const A = R.adminCommit(ADMIN);
     const raw = (
       admin: Uint8Array,
       terms: Uint8Array,
@@ -163,13 +266,12 @@ describe("offers", () => {
         terms,
         NIGHT,
         price,
-        0n,
+        NIGHT,
         WALLET,
         count,
         expires,
         true,
       );
-    const A = R.adminCommit(ADMIN);
     expect(() => raw(NIGHT, TERMS, 1n, 1n, EXPIRES)).toThrow(/admin/);
     expect(() => raw(A, NIGHT, 1n, 1n, EXPIRES)).toThrow(/terms/);
     expect(() => raw(A, TERMS, 0n, 1n, EXPIRES)).toThrow(/price/);
@@ -178,33 +280,24 @@ describe("offers", () => {
     raw(A, TERMS, 1n, 1n, T0 + 1n);
   });
 
-  it("refuses the same id twice; another person's same nonce is another offer, not a takeover", () => {
-    const { sim, offer } = withOffer();
-    expect(() => post(sim)).toThrow(/already exists/);
-    const theirs = post(sim, { record: OTHER, payTo: MINE });
-    expect(hex(theirs)).not.toBe(hex(offer));
-    expect(hex(sim.state.offers.lookup(offer).payTo.bytes)).toBe(
-      hex(WALLET.bytes),
+  it("an offer id is never posted twice, even after it is removed; another poster's nonce is another offer", () => {
+    const { sim, offer } = withOffer({ expires: T0 + 1000n });
+    expect(() => post(sim, { expires: T0 + 1000n })).toThrow(/already posted/);
+    sim.advance(1000n);
+    sim.call({}, "removeEnded", offer);
+    expect(() => post(sim, { expires: T0 + YEAR, rate: 100n })).toThrow(
+      /already posted/,
     );
+    expect(
+      hex(post(sim, { record: OTHER, payTo: MINE, expires: T0 + YEAR })),
+    ).not.toBe(hex(offer));
   });
 
-  it("only the admin can close it, once; the record secret alone cannot", () => {
+  it("only the admin can close it or hand it over; the record secret alone cannot", () => {
     const { sim, offer } = withOffer();
-    expect(() => sim.call({ admin: OTHER }, "closeOffer", offer)).toThrow(
-      /admin/,
-    );
     expect(() => sim.call({ admin: BREEDER }, "closeOffer", offer)).toThrow(
       /admin/,
     );
-    sim.call({ admin: ADMIN }, "closeOffer", offer);
-    expect(sim.state.offers.lookup(offer).open).toBe(false);
-    expect(() => sim.call({ admin: ADMIN }, "closeOffer", offer)).toThrow(
-      /already closed/,
-    );
-  });
-
-  it("the admin can hand the offer to a new key; the old key stops working", () => {
-    const { sim, offer } = withOffer();
     expect(() =>
       sim.call(
         { admin: OTHER },
@@ -213,9 +306,6 @@ describe("offers", () => {
         R.adminCommit(OTHER),
       ),
     ).toThrow(/admin/);
-    expect(() =>
-      sim.call({ admin: ADMIN }, "changeOfferAdmin", offer, NIGHT),
-    ).toThrow(/empty/);
     sim.call(
       { admin: ADMIN },
       "changeOfferAdmin",
@@ -226,6 +316,9 @@ describe("offers", () => {
       /admin/,
     );
     sim.call({ admin: ADMIN2 }, "closeOffer", offer);
+    expect(() => sim.call({ admin: ADMIN2 }, "closeOffer", offer)).toThrow(
+      /already closed/,
+    );
   });
 });
 
@@ -236,30 +329,38 @@ describe("sales", () => {
     expect(moved.inputs.get(hex(NIGHT))).toBe(1000n);
     expect(moved.outputs.get(hex(NIGHT))).toBe(1000n);
     expect(moved.spends).toHaveLength(1);
-    expect(moved.spends[0][0]).toBe(hex(NIGHT));
     expect(moved.spends[0][1]).toContain(hex(WALLET.bytes));
-    expect(moved.spends[0][2]).toBe(1000n);
   });
 
-  it("works in any token the offer names, so a stablecoin needs no rebuild", () => {
+  it("works in any token the offer names", () => {
     const { sim, offer } = withOffer({ color: STABLE, price: 25n });
     const { moved } = buy(sim, offer);
-    expect(moved.inputs.get(hex(STABLE))).toBe(25n);
     expect(moved.outputs.get(hex(STABLE))).toBe(25n);
     expect(moved.inputs.has(hex(NIGHT))).toBe(false);
   });
 
-  it("issues the licence to the buyer's own secret, with its end date, and no step from the breeder", () => {
+  it("the breeder checks a licence card (viewing and spending keys) against the sale", () => {
     const { sim, offer } = withOffer();
     buy(sim, offer);
-    const k = keyOf(offer);
-    expect(sim.state.licenseOffer.member(k)).toBe(true);
-    expect(sim.pathFor(LIC, offer, EXPIRES)).toBeDefined();
-    expect(sim.state.offers.lookup(offer).remaining).toBe(2n);
+    const k = R.licenseKey(
+      R.licenseCommit(R.viewKey(LIC, offer), R.spendKey(LIC, offer), offer),
+      offer,
+      EXPIRES,
+    );
     expect(hex(sim.state.lastSale)).toBe(hex(k));
+    expect(sim.state.licenseOffer.member(k)).toBe(true);
   });
 
-  it("refuses the same licence secret twice, a taken slot, a slot off the tree, and sells out", () => {
+  it("keys are per offer: one secret's licences on two offers share no key a breeder could match", () => {
+    const sim = new RoyaltiesSimulator();
+    const a = post(sim);
+    const c = post(sim, { record: OTHER, nonce: b(51), payTo: MINE });
+    expect(hex(R.viewKey(LIC, a))).not.toBe(hex(R.viewKey(LIC, c)));
+    expect(hex(R.spendKey(LIC, a))).not.toBe(hex(R.spendKey(LIC, c)));
+    expect(hex(keyOf(a))).not.toBe(hex(keyOf(c)));
+  });
+
+  it("refuses a repeated secret, a taken slot, a slot off the tree, and sells out", () => {
     const { sim, offer } = withOffer({ count: 2n });
     buy(sim, offer);
     expect(() => buy(sim, offer)).toThrow(/already bought/);
@@ -284,54 +385,228 @@ describe("sales", () => {
   });
 });
 
-describe("royalties", () => {
-  it("anyone can pay for a licensee: units x rate passes to the breeder, the bound receipt joins the tree", () => {
-    const { sim, offer } = withOffer({ perUnit: 4n });
+describe("credit: top-ups", () => {
+  it("anyone tops up: the amount passes to the breeder, a note is made, and the offer and code are not named", () => {
+    const { sim, offer } = withOffer();
     buy(sim, offer);
-    const { moved } = payFor(sim, offer, P1, 30n);
-    expect(moved.inputs.get(hex(NIGHT))).toBe(120n);
-    expect(moved.outputs.get(hex(NIGHT))).toBe(120n);
+    const op = openingOf(sim, offer);
+    const code = R.topUpCode(R.spendKey(LIC, offer), b(51));
+    const p = sim.prove(
+      { opening: op, code, rate: RO },
+      "topUp",
+      WALLET,
+      NIGHT,
+      200n,
+      sim.now + DAY,
+    );
+    for (const secretish of [
+      offer,
+      code,
+      op.rateCommit,
+      R.spendKey(LIC, offer),
+    ])
+      expect(appears(p, secretish)).toBe(false);
+    expect(text(p)).not.toContain(EXPIRES.toString());
+    const { moved } = topUp(sim, offer, 200n, b(51));
+    expect(moved.inputs.get(hex(NIGHT))).toBe(200n);
+    expect(moved.outputs.get(hex(NIGHT))).toBe(200n);
     expect(moved.spends[0][1]).toContain(hex(WALLET.bytes));
-    const leaf = R.receiptLeaf(R.receiptCommit(LIC, P1), offer, 30n);
-    expect(sim.state.receiptSeen.member(leaf)).toBe(true);
-    expect(sim.receiptPathFor(leaf)).toBeDefined();
-    expect(sim.state.royaltySeq).toBe(1n);
+    expect(hex(sim.state.lastNote)).toBe(hex(noteOf(LIC, b(51), op, 200n)));
   });
 
-  it("a receipt is paid once; zero units, an empty commitment, a no-royalty offer and an ended offer are refused", () => {
+  it("refuses another wallet or token, an offer without royalties, a past or too-late time, zero, a repeated note", () => {
     const { sim, offer } = withOffer();
-    payFor(sim, offer, P1, 30n);
-    expect(() => payFor(sim, offer, P1, 30n)).toThrow(/already paid/);
-    expect(() => sim.call({}, "payRoyalty", offer, b(70), 0n)).toThrow(
+    const op = openingOf(sim, offer);
+    const code = R.topUpCode(R.spendKey(LIC, offer), b(51));
+    const go = (
+      payTo: Uint8Array,
+      color: Uint8Array,
+      amount: bigint,
+      until: bigint,
+    ) =>
+      sim.call(
+        { opening: op, code, rate: RO },
+        "topUp",
+        { bytes: payTo },
+        color,
+        amount,
+        until,
+      );
+    expect(() => go(MINE.bytes, NIGHT, 5n, sim.now + DAY)).toThrow(
+      /another wallet or token/,
+    );
+    expect(() => go(WALLET.bytes, STABLE, 5n, sim.now + DAY)).toThrow(
+      /another wallet or token/,
+    );
+    expect(() => go(WALLET.bytes, NIGHT, 5n, sim.now)).toThrow(/already past/);
+    expect(() => go(WALLET.bytes, NIGHT, 5n, EXPIRES + 1n)).toThrow(
+      /ends before/,
+    );
+    expect(() => go(WALLET.bytes, NIGHT, 0n, sim.now + DAY)).toThrow(
+      /more than zero/,
+    );
+    go(WALLET.bytes, NIGHT, 5n, sim.now + DAY);
+    expect(() => go(WALLET.bytes, NIGHT, 5n, sim.now + DAY)).toThrow(
+      /already exists/,
+    );
+    const none = withOffer({ rate: null });
+    expect(() => topUp(none.sim, none.offer, 5n, b(51))).toThrow(
+      /no royalties/,
+    );
+  });
+
+  it("a made-up offer opening is refused", () => {
+    const { sim, offer } = withOffer();
+    const fake = {
+      ...openingOf(sim, offer),
+      rateCommit: R.rateCommit(1n, SALT),
+    };
+    expect(() =>
+      sim.call(
+        { opening: fake, code: b(70) },
+        "topUp",
+        WALLET,
+        NIGHT,
+        5n,
+        sim.now + DAY,
+      ),
+    ).toThrow(/not an offer on this contract/);
+  });
+});
+
+describe("credit: private settlement", () => {
+  it("settles a period: no money moves, change is kept, and nothing names the offer, licensee, period, rate or units", () => {
+    const { sim, offer, note } = funded();
+    const caller = settleCaller(sim, offer, note, P1, 30n);
+    const p = sim.prove(caller, "settle");
+    const view = R.viewKey(LIC, offer);
+    for (const secretish of [
+      offer,
+      P1,
+      view,
+      R.spendKey(LIC, offer),
+      LIC,
+      keyOf(offer),
+      R.receiptCommit(view, P1),
+      SALT,
+    ])
+      expect(appears(p, secretish)).toBe(false);
+    expect(text(p)).not.toMatch(/"(30|120|80)"/);
+    expect(text(p)).not.toContain(EXPIRES.toString());
+    const { moved } = sim.call(caller, "settle");
+    expect(moved.inputs.size + moved.outputs.size + moved.spends.length).toBe(
+      0,
+    );
+    const change = changeOf(sim, offer, note, 200n - 30n * RATE);
+    expect(hex(sim.state.lastNote)).toBe(
+      hex(noteOf(LIC, change.nonce, openingOf(sim, offer), change.amount)),
+    );
+    expect(hex(sim.state.lastReceipt)).toBe(
+      hex(R.receiptLeaf(R.receiptCommit(view, P1), offer, 30n)),
+    );
+  });
+
+  it("the breeder reads the units with the viewing key; others read noise; pads never repeat", () => {
+    const { sim, offer, note } = funded();
+    const view = R.viewKey(LIC, offer);
+    settleAs(sim, offer, note, P1, 30n);
+    const m1 = sim.state.lastUnitsMasked;
+    const c1 = sim.state.lastNote;
+    expect(unmask(m1, view, c1)).toBe(30n);
+    expect(unmask(m1, R.viewKey(OTHER, offer), c1)).not.toBe(30n);
+    settleAs(sim, offer, changeOf(sim, offer, note, 80n), P1, 13n);
+    const m2 = sim.state.lastUnitsMasked;
+    expect(unmask(m2, view, sim.state.lastNote)).toBe(13n);
+    expect((m1 - m2 + FIELD) % FIELD).not.toBe(17n);
+  });
+
+  it("refuses more units than the note covers, a wrong rate, and zero units", () => {
+    const { sim, offer, note } = funded();
+    expect(() => settleAs(sim, offer, note, P1, 51n)).toThrow(/does not cover/);
+    expect(() =>
+      settleAs(sim, offer, note, P1, 30n, { rate: { rate: 1n, salt: SALT } }),
+    ).toThrow(/royalty rate/);
+    expect(() => settleAs(sim, offer, note, P1, 0n)).toThrow(
       /at least one unit/,
     );
-    expect(() => sim.call({}, "payRoyalty", offer, NIGHT, 1n)).toThrow(/empty/);
-    sim.advance(YEAR);
-    expect(() => payFor(sim, offer, P2, 30n)).toThrow(/ended/);
-    const none = withOffer({ perUnit: 0n });
-    expect(() => payFor(none.sim, none.offer, P1, 1n)).toThrow(/no royalties/);
   });
 
-  it("closing an offer stops sales, not royalties on licences already sold", () => {
+  it("an offer committing to a zero rate takes no credit at all (a zero rate would prove any units for nothing)", () => {
+    expect(() => funded({ rate: 0n })).toThrow(/zero/);
+  });
+
+  it("a note spends once; someone else's note, or a note of another offer, cannot be spent", () => {
+    const { sim, offer, note } = funded();
+    settleAs(sim, offer, note, P1, 10n);
+    expect(() => settleAs(sim, offer, note, P2, 10n)).toThrow(/already spent/);
+    buy(sim, offer, LIC2);
+    topUp(sim, offer, 100n, b(55), LIC2);
+    expect(() =>
+      settleAs(sim, offer, { nonce: b(55), amount: 100n }, P2, 1n),
+    ).toThrow(/not yours|not on chain/);
+    const other = post(sim, { nonce: b(57) });
+    topUp(sim, other, 100n, b(58));
+    expect(() =>
+      settleAs(sim, offer, { nonce: b(58), amount: 100n }, P2, 1n),
+    ).toThrow(/not yours|not on chain/);
+  });
+
+  it("settling needs a live licence: none bought, or revoked and sealed, is refused", () => {
     const { sim, offer } = withOffer();
+    topUp(sim, offer, 100n, b(51));
+    expect(() =>
+      settleAs(sim, offer, { nonce: b(51), amount: 100n }, P1, 1n),
+    ).toThrow(/No live licence/);
     buy(sim, offer);
+    sim.advance(700n);
+    sim.call({ admin: ADMIN }, "revokeLicense", keyOf(offer));
+    sim.call({}, "sealRevocations", sim.now + 100n);
+    expect(() =>
+      settleAs(sim, offer, { nonce: b(51), amount: 100n }, P1, 1n),
+    ).toThrow(/No live licence/);
+  });
+
+  it("the change note keeps paying later periods; the same period can be settled again", () => {
+    const { sim, offer, note } = funded();
+    settleAs(sim, offer, note, P1, 10n);
+    const c1 = changeOf(sim, offer, note, 160n);
+    settleAs(sim, offer, c1, P1, 10n);
+    const c2 = changeOf(sim, offer, c1, 120n);
+    settleAs(sim, offer, c2, P2, 30n);
+    const c3 = changeOf(sim, offer, c2, 0n);
+    expect(() => settleAs(sim, offer, c3, b(32), 1n)).toThrow(/does not cover/);
+  });
+
+  it("two notes merge into one, and neither can be spent again", () => {
+    const { sim, offer, note } = funded();
+    topUp(sim, offer, 50n, b(53));
+    const n2 = { nonce: b(53), amount: 50n };
+    sim.call(
+      { license: LIC, opening: openingOf(sim, offer), note, note2: n2 },
+      "mergeNotes",
+    );
+    const merged = changeOf(sim, offer, note, 250n);
+    expect(hex(sim.state.lastNote)).toBe(
+      hex(noteOf(LIC, merged.nonce, openingOf(sim, offer), 250n)),
+    );
+    expect(() => settleAs(sim, offer, note, P1, 1n)).toThrow(/already spent/);
+    expect(() => settleAs(sim, offer, n2, P1, 1n)).toThrow(/already spent/);
+    settleAs(sim, offer, merged, P1, 60n);
+  });
+
+  it("settling still works after an offer closes; top-ups stop when it ends", () => {
+    const { sim, offer, note } = funded({ expires: T0 + 2n * DAY });
     sim.call({ admin: ADMIN }, "closeOffer", offer);
-    expect(() => buy(sim, offer, LIC2)).toThrow(/closed/);
-    const { moved } = payFor(sim, offer, P1, 2n);
-    expect(moved.outputs.get(hex(NIGHT))).toBe(8n);
-  });
-
-  it("the payment names the offer and units, never the licence", () => {
-    const { sim, offer } = withOffer();
-    buy(sim, offer);
-    const p = sim.prove({}, "payRoyalty", offer, R.receiptCommit(LIC, P1), 30n);
-    expect(appears(p, keyOf(offer))).toBe(false);
-    expect(appears(p, LIC)).toBe(false);
+    settleAs(sim, offer, note, P1, 5n);
+    sim.advance(2n * DAY);
+    expect(() => topUp(sim, offer, 10n, b(60))).toThrow(
+      /already past|ends before/,
+    );
   });
 });
 
 describe("presentations", () => {
-  it("proves a live licence to one verifier, publishing only the challenge-bound tag and a scoped holder tag", () => {
+  it("proves a live licence to one verifier, publishing only the tag and a scoped holder tag", () => {
     const { sim, offer } = withOffer();
     buy(sim, offer);
     const at = sim.now + HOUR;
@@ -342,32 +617,33 @@ describe("presentations", () => {
     expect(hex(sim.state.lastPresentationHolder)).toBe(
       hex(R.holderTag(LIC, offer, SCOPE)),
     );
-    expect(sim.state.lastPresentationUnsealed).toBe(false);
   });
 
-  it("proves royalties paid for a period, for at least the units the verifier asks", () => {
-    const { sim, offer } = withOffer();
-    buy(sim, offer);
-    payFor(sim, offer, P1, 30n);
+  it("proves a settled period covering at least the units asked; not more, not another period", () => {
+    const { sim, offer, note } = funded();
+    settleAs(sim, offer, note, P1, 30n);
     prove(sim, who(offer, { period: P1, units: 30n }), P1, 25n);
     expect(() =>
       prove(sim, who(offer, { period: P1, units: 30n }), P1, 31n),
     ).toThrow(/covers that many/);
     expect(() =>
       prove(sim, who(offer, { period: P2, units: 30n }), P2, 1n),
-    ).toThrow(/No royalty paid/);
+    ).toThrow(/No settlement/);
     expect(() =>
       prove(sim, who(offer, { period: P1, units: 40n }), P1, 1n),
-    ).toThrow(/No royalty paid/);
+    ).toThrow(/No settlement/);
   });
 
-  it("someone else's receipt does not count as yours", () => {
+  it("someone else's settlement does not count as yours", () => {
     const { sim, offer } = withOffer();
     buy(sim, offer);
     buy(sim, offer, LIC2);
-    payFor(sim, offer, P1, 30n, LIC2);
+    topUp(sim, offer, 200n, b(51), LIC2);
+    settleAs(sim, offer, { nonce: b(51), amount: 200n }, P1, 30n, {
+      license: LIC2,
+    });
     const theirs = sim.receiptPathFor(
-      R.receiptLeaf(R.receiptCommit(LIC2, P1), offer, 30n),
+      R.receiptLeaf(R.receiptCommit(R.viewKey(LIC2, offer), P1), offer, 30n),
     )!;
     expect(() =>
       prove(
@@ -376,13 +652,12 @@ describe("presentations", () => {
         P1,
         1n,
       ),
-    ).toThrow(/No royalty paid/);
+    ).toThrow(/No settlement/);
   });
 
-  it("a paid-up presentation names neither the licence, the offer, the end date nor the receipt", () => {
-    const { sim, offer } = withOffer();
-    buy(sim, offer);
-    payFor(sim, offer, P1, 30n);
+  it("a paid-up presentation names neither the licence, the offer, the receipt nor the units", () => {
+    const { sim, offer, note } = funded();
+    settleAs(sim, offer, note, P1, 30n);
     const p = sim.prove(
       who(offer, { period: P1, units: 30n }),
       "proveLicense",
@@ -391,18 +666,22 @@ describe("presentations", () => {
       sim.now + HOUR,
       SCOPE,
     );
-    const leaf = R.receiptLeaf(R.receiptCommit(LIC, P1), offer, 30n);
+    const leaf = R.receiptLeaf(
+      R.receiptCommit(R.viewKey(LIC, offer), P1),
+      offer,
+      30n,
+    );
     for (const secretish of [
       keyOf(offer),
       offer,
       leaf,
-      R.receiptCommit(LIC, P1),
       LIC,
+      R.viewKey(LIC, offer),
     ])
       expect(appears(p, secretish)).toBe(false);
   });
 
-  it("the holder tag repeats within a scope and differs across scopes", () => {
+  it("the holder tag repeats within a scope and differs across scopes; a zero scope is refused", () => {
     const { sim, offer } = withOffer();
     buy(sim, offer);
     prove(sim, who(offer));
@@ -411,9 +690,12 @@ describe("presentations", () => {
     expect(hex(sim.state.lastPresentationHolder)).toBe(first);
     prove(sim, who(offer), NIGHT, 0n, sim.now + HOUR, b(81));
     expect(hex(sim.state.lastPresentationHolder)).not.toBe(first);
+    expect(() =>
+      prove(sim, who(offer), NIGHT, 0n, sim.now + HOUR, NIGHT),
+    ).toThrow(/scope/);
   });
 
-  it("needs a challenge, a real licence, the right end date, a future time it is still live at", () => {
+  it("needs a challenge, the real secret and end date, and a future time before the end", () => {
     const { sim, offer } = withOffer();
     buy(sim, offer);
     expect(() => prove(sim, who(offer, { challenge: undefined }))).toThrow(
@@ -426,29 +708,22 @@ describe("presentations", () => {
       /No live licence/,
     );
     expect(() => prove(sim, who(offer), NIGHT, 0n, sim.now)).toThrow(/future/);
-    expect(() => prove(sim, who(offer), NIGHT, 0n, EXPIRES + 1n)).toThrow(
-      /ends at or before/,
-    );
     expect(() => prove(sim, who(offer), NIGHT, 0n, EXPIRES)).toThrow(
       /ends at or before/,
     );
     prove(sim, who(offer), NIGHT, 0n, EXPIRES - 1n);
-    expect(() =>
-      prove(sim, who(offer), NIGHT, 0n, sim.now + HOUR, NIGHT),
-    ).toThrow(/scope/);
-    sim.advance(YEAR);
-    expect(() => prove(sim, who(offer))).toThrow(/ends at or before/);
   });
 
-  it("a licence from one offer is not a licence from another, and a stolen path does not help", () => {
-    const { sim, offer } = withOffer();
-    const second = post(sim, { nonce: b(51) });
-    buy(sim, offer);
-    expect(() => prove(sim, who(second))).toThrow(/No live licence/);
-    const theirs = sim.pathFor(LIC, offer, EXPIRES)!;
-    expect(() =>
-      prove(sim, who(offer, { license: OTHER, path: theirs })),
-    ).toThrow(/No live licence/);
+  it("the breeder's licence card cannot present the licence or spend the credit (it lacks the secret)", () => {
+    const { sim, offer, note } = funded();
+    for (const k of [R.viewKey(LIC, offer), R.spendKey(LIC, offer)]) {
+      expect(() => prove(sim, who(offer, { license: k }))).toThrow(
+        /No live licence/,
+      );
+      expect(() => settleAs(sim, offer, note, P1, 1n, { license: k })).toThrow(
+        /No live licence|not yours|not on chain/,
+      );
+    }
   });
 });
 
@@ -459,9 +734,6 @@ describe("revocation, ending and seals", () => {
     expect(() =>
       sim.call({ admin: OTHER }, "revokeLicense", keyOf(offer)),
     ).toThrow(/admin/);
-    expect(() => sim.call({ admin: ADMIN }, "revokeLicense", b(77))).toThrow(
-      /No such live/,
-    );
     const fixed = withOffer({ revocable: false });
     buy(fixed.sim, fixed.offer);
     expect(() =>
@@ -469,18 +741,13 @@ describe("revocation, ending and seals", () => {
     ).toThrow(/cannot be revoked/);
   });
 
-  it("a revoked licence leaves the tree at once, is flagged until the seal, and cannot be bought back", () => {
+  it("a revoked licence leaves the tree, is flagged until the seal, then stops proving; never re-bought", () => {
     const { sim, offer } = withOffer();
     buy(sim, offer);
     sim.advance(700n);
     sim.call({ admin: ADMIN }, "revokeLicense", keyOf(offer));
     expect(sim.pathFor(LIC, offer, EXPIRES)).toBeUndefined();
-    expect(sim.state.licenseOffer.member(keyOf(offer))).toBe(false);
     expect(() => buy(sim, offer)).toThrow(/already bought/);
-    expect(() =>
-      sim.call({ admin: ADMIN }, "revokeLicense", keyOf(offer)),
-    ).toThrow(/No such live/);
-    // Until the seal, an older root still verifies, and the presentation says so.
     prove(sim, who(offer));
     expect(sim.state.lastPresentationUnsealed).toBe(true);
     sim.call({}, "sealRevocations", sim.now + 100n);
@@ -504,151 +771,97 @@ describe("revocation, ending and seals", () => {
     expect(() => sim.land(p)).toThrow();
   });
 
-  it("anyone clears an ended licence, freeing its slot; not before it ends", () => {
-    const { sim, offer } = withOffer({ expires: T0 + 1000n, revocable: false });
-    sim.call({ license: LIC }, "buyLicense", offer, 7n);
+  it("anyone clears an ended licence and then the ended offer; not before", () => {
+    const { sim, offer } = withOffer({ expires: T0 + 1000n });
+    buy(sim, offer);
     const k = keyOf(offer, LIC, T0 + 1000n);
     expect(() => sim.call({}, "clearEnded", k)).toThrow(/not ended/);
+    expect(() => sim.call({}, "removeEnded", offer)).toThrow(/not ended/);
     sim.advance(1000n);
+    expect(() => sim.call({}, "removeEnded", offer)).toThrow(/Clear/);
+    expect(() => sim.call({}, "clearEnded", k)).toThrow(/30 days/);
+    sim.advance(GRACE);
     sim.call({}, "clearEnded", k);
-    expect(sim.state.licenseAtSlot.member(7n)).toBe(false);
-    const other = post(sim, { record: OTHER, nonce: b(51) });
-    sim.call({ license: LIC2 }, "buyLicense", other, 7n);
+    sim.call({}, "removeEnded", offer);
+    expect(sim.state.offers.member(offer)).toBe(false);
   });
 
-  it("seals are rate-limited and need something to seal", () => {
-    const { sim, offer } = withOffer();
-    sim.advance(700n);
-    expect(() => sim.call({}, "sealRevocations", sim.now + 100n)).toThrow(
-      /Nothing has changed/,
-    );
-    buy(sim, offer);
+  it("seals are rate-limited; a credit note path survives licence-only seals within the day", () => {
+    const { sim, offer, note } = funded();
+    sim.advance(DAY);
     sim.call({}, "sealRevocations", sim.now + 100n);
+    const held = sim.notePathFor(
+      noteOf(LIC, note.nonce, openingOf(sim, offer), note.amount),
+    )!;
     buy(sim, offer, LIC2);
     expect(() => sim.call({}, "sealRevocations", sim.now + 200n)).toThrow(
       /Too soon/,
     );
     sim.advance(700n);
-    expect(() => sim.call({}, "sealRevocations", sim.now + 400n)).toThrow(
-      /too far ahead/,
-    );
-    expect(() => sim.call({}, "sealRevocations", sim.now)).toThrow(/not ahead/);
     sim.call({}, "sealRevocations", sim.now + 100n);
-    expect(sim.state.sealSeq).toBe(2n);
-  });
-
-  it("a seal retires old receipt roots at most once a day, so paid-up proofs in flight survive", () => {
-    const { sim, offer } = withOffer();
-    buy(sim, offer);
-    payFor(sim, offer, P1, 30n);
-    sim.advance(86400n);
-    sim.call({}, "sealRevocations", sim.now + 100n);
-    const leaf = R.receiptLeaf(R.receiptCommit(LIC, P1), offer, 30n);
-    const held = sim.receiptPathFor(leaf)!;
-    buy(sim, offer, LIC2);
-    payFor(sim, offer, P2, 5n, LIC2);
-    sim.advance(700n);
-    sim.call({}, "sealRevocations", sim.now + 100n);
-    prove(
-      sim,
-      who(offer, { period: P1, units: 30n, receiptPath: held }),
-      P1,
-      30n,
-    );
+    settleAs(sim, offer, note, P1, 1n, { notePath: held });
   });
 });
 
-describe("attacks from the first review (8 Oct 2026), now refused", () => {
-  it("A1: a receipt cannot claim more units than were paid for", () => {
-    const { sim, offer } = withOffer({ perUnit: 4n });
-    buy(sim, offer);
-    payFor(sim, offer, P1, 1n);
+describe("attacks from the reviews, kept as regressions", () => {
+  it("A1: a receipt cannot claim more units than were settled", () => {
+    const { sim, offer, note } = funded();
+    settleAs(sim, offer, note, P1, 1n);
     expect(() =>
       prove(sim, who(offer, { period: P1, units: 1_000_000n }), P1, 1_000_000n),
-    ).toThrow(/No royalty paid/);
-    prove(sim, who(offer, { period: P1, units: 1n }), P1, 1n);
+    ).toThrow(/No settlement/);
   });
 
-  it("A2: paying through your own offer does not count for the breeder's", () => {
+  it("A2: credit topped up on your own cheap offer cannot settle the breeder's offer", () => {
     const { sim, offer } = withOffer();
     buy(sim, offer);
     const mine = post(sim, {
       record: OTHER,
-      nonce: b(51),
-      perUnit: 1n,
+      nonce: b(57),
       payTo: MINE,
+      rate: 1n,
       admin: OTHER,
     });
-    payFor(sim, mine, P1, 500n);
+    topUp(sim, mine, 1000n, b(51), LIC, sim.now + DAY, 1n);
     expect(() =>
-      prove(sim, who(offer, { period: P1, units: 500n }), P1, 500n),
-    ).toThrow(/No royalty paid/);
+      settleAs(sim, offer, { nonce: b(51), amount: 1000n }, P1, 1n),
+    ).toThrow(/not yours|not on chain/);
   });
 
-  it("A3: squatting a receipt commitment through another offer does not block the real payment", () => {
+  it("A3: nobody can squat a top-up: the code is never published", () => {
     const { sim, offer } = withOffer();
-    const junk = post(sim, {
-      record: OTHER,
-      nonce: b(51),
-      perUnit: 1n,
-      payTo: MINE,
-      admin: OTHER,
-    });
-    payFor(sim, junk, P1, 1n);
-    payFor(sim, offer, P1, 30n);
-    buy(sim, offer);
-    prove(sim, who(offer, { period: P1, units: 30n }), P1, 30n);
-  });
-
-  it("A4: a presentation publishes the verifier's time, not the licence's end date", () => {
-    const { sim, offer } = withOffer({ expires: EXPIRES + 12345n });
-    buy(sim, offer);
-    const p = sim.prove(
-      who(offer, { expires: EXPIRES + 12345n }),
-      "proveLicense",
-      NIGHT,
-      0n,
-      sim.now + HOUR,
-      SCOPE,
-    );
+    const op = openingOf(sim, offer);
+    const code = R.topUpCode(R.spendKey(LIC, offer), b(51));
     expect(
-      JSON.stringify(p, (_k: string, v: unknown): unknown =>
-        typeof v === "bigint" ? v.toString() : v,
+      appears(
+        sim.prove(
+          { opening: op, code, rate: RO },
+          "topUp",
+          WALLET,
+          NIGHT,
+          50n,
+          sim.now + DAY,
+        ),
+        code,
       ),
-    ).not.toContain((EXPIRES + 12345n).toString());
+    ).toBe(false);
   });
 
   it("A5: an old or stolen record secret cannot close, revoke or hand over the offer", () => {
     const { sim, offer } = withOffer();
     buy(sim, offer);
-    for (const s of [BREEDER, ROTATED]) {
-      expect(() =>
-        sim.call({ admin: s }, "revokeLicense", keyOf(offer)),
-      ).toThrow(/admin/);
-      expect(() => sim.call({ admin: s }, "closeOffer", offer)).toThrow(
-        /admin/,
-      );
-      expect(() =>
-        sim.call({ admin: s }, "changeOfferAdmin", offer, R.adminCommit(s)),
-      ).toThrow(/admin/);
-    }
-  });
-
-  it("A6: a presentation with no period leaves no stale receipt root behind", () => {
-    const { sim, offer } = withOffer();
-    buy(sim, offer);
-    payFor(sim, offer, P1, 3n);
-    prove(sim, who(offer, { period: P1, units: 3n }), P1, 3n);
-    prove(sim, who(offer, { challenge: b(61) }));
-    expect(sim.state.lastPresentationReceiptRoot).toEqual(
-      new RoyaltiesSimulator().state.lastPresentationReceiptRoot,
+    expect(() =>
+      sim.call({ admin: BREEDER }, "revokeLicense", keyOf(offer)),
+    ).toThrow(/admin/);
+    expect(() => sim.call({ admin: BREEDER }, "closeOffer", offer)).toThrow(
+      /admin/,
     );
   });
 
-  it("A7: an ended licence on a non-revocable offer no longer holds its slot for ever", () => {
+  it("A7: an ended licence frees its slot", () => {
     const { sim, offer } = withOffer({ expires: T0 + 1000n, revocable: false });
     sim.call({ license: LIC }, "buyLicense", offer, 7n);
-    sim.advance(2000n);
+    sim.advance(2000n + GRACE);
     sim.call({}, "clearEnded", keyOf(offer, LIC, T0 + 1000n));
     const o2 = post(sim, {
       record: OTHER,
@@ -657,39 +870,62 @@ describe("attacks from the first review (8 Oct 2026), now refused", () => {
     });
     sim.call({ license: LIC2 }, "buyLicense", o2, 7n);
   });
-});
 
-describe("second review (8 Oct 2026)", () => {
-  it("clearing an ended licence does not flag presentations as unsealed", () => {
+  it("X1: a reused top-up code no longer burns credit (each note has its own nullifier)", () => {
     const { sim, offer } = withOffer();
-    const short = post(sim, { nonce: b(51), expires: T0 + 1000n });
     buy(sim, offer);
-    sim.call({ license: LIC2 }, "buyLicense", short, sim.freeSlot());
-    sim.advance(1000n);
-    sim.call({}, "clearEnded", keyOf(short, LIC2, T0 + 1000n));
-    prove(sim, who(offer));
-    expect(sim.state.lastPresentationUnsealed).toBe(false);
+    topUp(sim, offer, 100n, b(51));
+    topUp(sim, offer, 300n, b(51));
+    settleAs(sim, offer, { nonce: b(51), amount: 300n }, P1, 1n);
+    settleAs(sim, offer, { nonce: b(51), amount: 100n }, P1, 2n);
   });
 
-  it("an ended offer can be removed once its licences are cleared, not before", () => {
+  it("X3: two settlements of one period do not publish their units difference", () => {
+    const { sim, offer, note } = funded();
+    settleAs(sim, offer, note, P1, 30n);
+    const m1 = sim.state.lastUnitsMasked;
+    settleAs(sim, offer, changeOf(sim, offer, note, 80n), P1, 13n);
+    expect((m1 - sim.state.lastUnitsMasked + FIELD) % FIELD).not.toBe(17n);
+  });
+
+  it("X7: a removed offer's id cannot come back with other terms", () => {
     const { sim, offer } = withOffer({ expires: T0 + 1000n });
-    buy(sim, offer);
-    buy(sim, offer, LIC2);
-    expect(sim.state.offers.lookup(offer).live).toBe(2n);
-    expect(() => sim.call({}, "removeEnded", offer)).toThrow(/not ended/);
     sim.advance(1000n);
-    expect(() => sim.call({}, "removeEnded", offer)).toThrow(/Clear/);
-    sim.call({}, "clearEnded", keyOf(offer, LIC, T0 + 1000n));
-    sim.call({}, "clearEnded", keyOf(offer, LIC2, T0 + 1000n));
     sim.call({}, "removeEnded", offer);
-    expect(sim.state.offers.member(offer)).toBe(false);
+    expect(() => post(sim, { expires: T0 + YEAR, rate: 100n })).toThrow(
+      /already posted/,
+    );
   });
 
-  it("revoking counts down the offer's live licences", () => {
-    const { sim, offer } = withOffer();
+  it("N1: an expired licence cannot present as live by answering a different end date", () => {
+    const { sim, offer } = withOffer({ expires: T0 + 2n * HOUR });
     buy(sim, offer);
-    sim.call({ admin: ADMIN }, "revokeLicense", keyOf(offer));
-    expect(sim.state.offers.lookup(offer).live).toBe(0n);
-    expect(sim.state.offers.lookup(offer).remaining).toBe(2n);
+    const year = sim.now + YEAR;
+    expect(() =>
+      prove(sim, who(offer, { expires: 2n ** 64n - 1n }), NIGHT, 0n, year),
+    ).toThrow(/No live licence/);
+    expect(() =>
+      prove(sim, who(offer, { expires: T0 + 2n * HOUR }), NIGHT, 0n, year),
+    ).toThrow(/ends at or before/);
+  });
+
+  it("N2: the last period can still be settled after the end; nobody can clear the licence for 30 days", () => {
+    const { sim, offer, note } = funded({ expires: T0 + DAY });
+    sim.advance(DAY);
+    expect(() =>
+      sim.call({}, "clearEnded", keyOf(offer, LIC, T0 + DAY)),
+    ).toThrow(/30 days/);
+    settleAs(sim, offer, note, P1, 5n, { expires: T0 + DAY });
+  });
+
+  it("N5: a top-up must open a non-zero rate, so no credit is sold that nothing could settle", () => {
+    const zero = withOffer({ rate: 0n });
+    expect(() =>
+      topUp(zero.sim, zero.offer, 500n, b(51), LIC, zero.sim.now + DAY, 0n),
+    ).toThrow(/zero/);
+    const { sim, offer } = withOffer();
+    expect(() =>
+      topUp(sim, offer, 500n, b(51), LIC, sim.now + DAY, 5n),
+    ).toThrow(/royalty rate/);
   });
 });

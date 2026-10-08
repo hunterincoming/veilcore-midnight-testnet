@@ -642,20 +642,12 @@ circuit licenceLeaf(secret: Bytes<32>, offer: Bytes<32>, expires: Uint<64>): Byt
   return licenseKey(licenseCommit(viewKey(secret, offer), spendKey(secret, offer), offer), offer, expires);
 }
 
-/** The same leaf, from the presentation key and the spending key (no licence secret). */
-circuit licenceLeafOf(present: Bytes<32>, spend: Bytes<32>, offer: Bytes<32>, expires: Uint<64>): Bytes<32> {
-  return licenseKey(licenseCommit(viewOf(present), spend, offer), offer, expires);
-}
 
 /**
- * The caller holds a licence from `offer`, ending at `expires`, in the licence tree.
- * Publishes only the root. The caller passes the end date it checked, read ONCE: a
- * witness read twice could answer differently each time.
+ * The caller holds the licence whose leaf is `leaf` in the licence tree. Publishes only the
+ * root. Callers pass an end date they read ONCE: a witness read twice could answer
+ * differently each time.
  */
-circuit provenLicence(secret: Bytes<32>, offer: Bytes<32>, expires: Uint<64>): MerkleTreeDigest {
-  return provenLeaf(licenceLeaf(secret, offer, expires));
-}
-
 circuit provenLeaf(leaf: Bytes<32>): MerkleTreeDigest {
   const path = licensePath();
   assert(disclose(path.leaf == leaf), "No live licence for that secret");
@@ -664,28 +656,35 @@ circuit provenLeaf(leaf: Bytes<32>): MerkleTreeDigest {
   return root;
 }
 
+/** An offer opened privately, with its leaf (hashed once: it is the costliest hash here). */
+struct ProvenOffer {
+  op: OfferOpening,
+  leaf: Bytes<32>,
+}
+
 /** The offer the caller opens privately, proved to be one of `offerLeaves`. Publishes only the root. */
-circuit provenOffer(): OfferOpening {
+circuit provenOffer(): ProvenOffer {
   const op = offerOpening();
+  const leaf = leafOf(op);
   const path = offerPath();
-  assert(disclose(path.leaf == leafOf(op)),
+  assert(disclose(path.leaf == leaf),
          "That is not an offer on this contract");
   assert(offerLeaves.checkRoot(disclose(merkleTreePathRoot<32, Bytes<32>>(path))),
          "That is not an offer on this contract, or the path is stale");
-  return op;
+  return ProvenOffer { op: op, leaf: leaf };
 }
 
 /**
  * Spend a credit note of the offer whose leaf is `leaf`: proved present, nullifier
  * published. Returns the nullifier, from which the change note's nonce is made.
  */
-circuit spendNote(secret: Bytes<32>, offer: Bytes<32>, leaf: Bytes<32>, n: NoteOpening,
+circuit spendNote(secret: Bytes<32>, nk: Bytes<32>, spend: Bytes<32>, leaf: Bytes<32>, n: NoteOpening,
                   path: MerkleTreePath<32, Bytes<32>>): Bytes<32> {
-  const note = noteCommit(topUpCode(spendKey(secret, offer), n.nonce), leaf, n.amount);
+  const note = noteCommit(topUpCode(spend, n.nonce), leaf, n.amount);
   assert(disclose(path.leaf == note), "That credit note is not yours");
   assert(notes.checkRoot(disclose(merkleTreePathRoot<32, Bytes<32>>(path))),
          "That credit note is not on chain, or the path is stale");
-  const nf = disclose(nullifier(nullifierKey(secret), note));
+  const nf = disclose(nullifier(nk, note));
   assert(!nullifiers.member(nf), "That credit note is already spent");
   nullifiers.insert(nf);
   lastNullifier = nf;
@@ -881,7 +880,8 @@ export circuit sealRevocations(bound: Uint<64>): [] {
  * season can be paid for.
  */
 export circuit topUp(payTo: UserAddress, color: Bytes<32>, amount: Uint<64>, validUntil: Uint<64>): [] {
-  const op = provenOffer();
+  const po = provenOffer();
+  const op = po.op;
   assert(disclose(!op.split), "That offer's ancestors take a share: top it up with topUpSplit");
   const w = disclose(payTo);
   const c = disclose(color);
@@ -895,7 +895,7 @@ export circuit topUp(payTo: UserAddress, color: Bytes<32>, amount: Uint<64>, val
   assert(disclose(op.expires + SETTLE_GRACE() >= v), "That offer's 30 days after its end are over by then");
   const a = disclose(amount);
   assert(a > 0, "A top-up must be more than zero");
-  addNote(disclose(noteCommit(topUpCodeWitness(), leafOf(op), a)));
+  addNote(disclose(noteCommit(topUpCodeWitness(), po.leaf, a)));
   passThrough(c, a as Uint<128>, w);
   topUpSeq.increment(1);
 }
@@ -928,12 +928,14 @@ export circuit mergeNotes(): [] {
   const leaf = leafOf(op);
   const n1 = noteOpening();
   const n2 = secondNoteOpening();
-  const nf = spendNote(secret, op.offer, leaf, n1, notePath());
-  spendNote(secret, op.offer, leaf, n2, secondNotePath());
+  // Each key is hashed once and reused: every hash here is a SHA-256, about 4,400 proof rows.
+  const sk = spendKey(secret, op.offer);
+  const nk = nullifierKey(secret);
+  const nf = spendNote(secret, nk, sk, leaf, n1, notePath());
+  spendNote(secret, nk, sk, leaf, n2, secondNotePath());
   const total = (n1.amount as Uint<128>) + (n2.amount as Uint<128>);
   assert(disclose(total < 18446744073709551616), "Those notes together are too large for one note");
-  addNote(disclose(noteCommit(topUpCode(spendKey(secret, op.offer), changeNonceFor(secret, nf)), leaf,
-                              total as Uint<64>)));
+  addNote(disclose(noteCommit(topUpCode(sk, changeNonceFor(secret, nf)), leaf, total as Uint<64>)));
 }
 
 /**
@@ -944,22 +946,26 @@ export circuit mergeNotes(): [] {
  */
 export circuit settle(): [] {
   const secret = licenseSecret();
-  const op = provenOffer();
-  const leaf = leafOf(op);
-  provenLicence(secret, op.offer, licenceExpires());
+  const po = provenOffer();
+  const op = po.op;
+  const leaf = po.leaf;
+  // Each key is hashed once and reused: every hash here is a SHA-256, about 4,400 proof rows,
+  // and this circuit is the largest the licensee proves.
+  const sk = spendKey(secret, op.offer);
+  const view = viewKey(secret, op.offer);
+  provenLeaf(licenseKey(licenseCommit(view, sk, op.offer), op.offer, licenceExpires()));
   const ro = rateOpening();
   assert(disclose(rateCommit(ro.rate, ro.salt) == op.rateCommit && op.rateCommit != default<Bytes<32>> && ro.rate > 0),
          "That is not the offer's royalty rate");
   const n = noteOpening();
-  const nf = spendNote(secret, op.offer, leaf, n, notePath());
+  const nf = spendNote(secret, nullifierKey(secret), sk, leaf, n, notePath());
   const units = settleUnits();
   assert(disclose(units > 0), "A settlement covers at least one unit");
   const owed = (units * ro.rate) as Uint<128>;
   assert(disclose((n.amount as Uint<128>) >= owed), "That credit note does not cover this period");
-  const change = disclose(noteCommit(topUpCode(spendKey(secret, op.offer), changeNonceFor(secret, nf)), leaf,
+  const change = disclose(noteCommit(topUpCode(sk, changeNonceFor(secret, nf)), leaf,
                                      ((n.amount as Uint<128>) - owed) as Uint<64>));
   addNote(change);
-  const view = viewKey(secret, op.offer);
   const r = disclose(receiptLeaf(receiptCommit(view, settlePeriod()), op.offer, units, change));
   receipts.insert(r);
   lastReceipt = r;
@@ -1168,12 +1174,13 @@ export circuit proveLicense(period: Bytes<32>, minUnits: Uint<64>, validAt: Uint
     assert(disclose(expires > v), "That licence ends at or before the time asked");
   }
   const present = presentationKey();
-  const root = provenLeaf(licenceLeafOf(present, licenceSpendKey(), offer, expires));
+  const view = viewOf(present);
+  const root = provenLeaf(licenseKey(licenseCommit(view, licenceSpendKey(), offer), offer, expires));
   if (hasPeriod) {
     const units = receiptUnits();
     assert(disclose(units >= minUnits), "No settlement for that period covers that many units");
     const rpath = receiptPath();
-    assert(disclose(rpath.leaf == receiptLeaf(receiptCommit(viewOf(present), period), offer, units, receiptChange())),
+    assert(disclose(rpath.leaf == receiptLeaf(receiptCommit(view, period), offer, units, receiptChange())),
            "No settlement for that period covers that many units");
     const rroot = disclose(merkleTreePathRoot<32, Bytes<32>>(rpath));
     assert(receipts.checkRoot(rroot), "No settlement for that period, or the path is stale");

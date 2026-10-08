@@ -168,7 +168,7 @@ not joined the royalties contract to check.
 
 ## Circuit sizes (rows, measured with `zkir mock-compile` from compiler 0.31.1 on 8 Oct 2026; the limit is 2^17 = 131,072)
 
-buyLicense 38,905 · topUpSplit 32,715 · topUp 34,532 · settle 126,364 (96%) · confirmLink
+buyLicense 38,905 · topUpSplit 32,715 · topUp 26,753 · settle 102,942 (79%) · confirmLink
 27,033 · postOffer 35,039 · finaliseStack 9,374 · proposeLink 9,557 · movePayee 4,964 ·
 relaxLink 4,956.
 

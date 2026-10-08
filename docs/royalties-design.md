@@ -42,18 +42,23 @@ is kept out of the payment and moved into the private settlement.
 | `postOffer` | record holder | Posts an offer, run from then on by its own admin key. A rate commitment must open to a rate above zero. | 35,039 |
 | `closeOffer`, `changeOfferAdmin` | offer admin | Stop new sales; hand the offer to a new key. | |
 | `buyLicense` | anyone | Pays the price (and any ancestors' shares and fees) and issues the licence, in one call. Sales are counted in counters, so two buyers at once do not conflict. | 38,905 |
-| `topUp` | anyone | Pays an amount to the breeder; creates a credit note only the licensee can spend. Proves the offer without naming it. Until 30 days after the offer ends. | 34,532 |
-| `settle` | licensee | Spends a note, proves units × rate ≤ its value, keeps the change, records a unique receipt, a numbered lookup tag and the units masked for the breeder. | 126,364 |
-| `mergeNotes` | licensee | Joins two credit notes into one. | 80,747 |
-| `proveLicense` | licensee or delegate | A licence live at the verifier's time, and optionally a settled period ≥ N units; or that period settled under a licence since ended. Needs only the presentation key. | 55,371 |
+| `topUp` | anyone | Pays an amount to the breeder; creates a credit note only the licensee can spend. Proves the offer without naming it. Until 30 days after the offer ends. | 26,753 |
+| `settle` | licensee | Spends a note, proves units × rate ≤ its value, keeps the change, records a unique receipt, a numbered lookup tag and the units masked for the breeder. | 102,942 |
+| `mergeNotes` | licensee | Joins two credit notes into one. | 69,023 |
+| `proveLicense` | licensee or delegate | A licence live at the verifier's time, and optionally a settled period ≥ N units; or that period settled under a licence since ended. Needs only the presentation key. | 51,485 |
 | `revokeLicense` | offer admin | Only if the offer said revocable, and only before it ends. Tracked per offer. | |
 | `clearEnded`, `removeEnded` | anyone | Tidy up ended licences (30 days after the end, at the earliest) and ended offers. | |
 | `sealRevocations` | anyone | Retires old licence roots so revoked licences stop proving; every tree's at most daily. Every 600 s at most. | |
 
 Measured with `zkir mock-compile` from compiler 0.31.1 on 8 October 2026. The limit for
-anything a holder proves is 2^17 = 131,072 rows. **`settle` uses 96% of it:** there is no
-room left in it for another check, so anything more must go into a separate circuit.
-Proving time on a laptop is still to be measured.
+anything a holder proves is 2^17 = 131,072 rows. `settle` uses 79% of it (it was 96%
+until each key was hashed once instead of up to three times; the hashes and what they
+prove are unchanged). Nearly all of its cost is about 20 SHA-256 hashes (`persistentHash`,
+about 4,400 rows each); Merkle paths are cheap (about 3,000 rows for depth 32). The
+cheaper hash (`transientHash`, about 600 rows) is not used for anything stored, because
+Midnight's docs say it may change between upgrades and this contract cannot be changed.
+That leaves room for about six more hashes in `settle`. Proving time on a laptop is still
+to be measured.
 
 ## How the privacy works
 

@@ -2,7 +2,7 @@
 
 Status as of 5 October 2026, evening. Owner: Claude (CTO work) unless marked. Decisions are
 for Hunter and Mako. Nothing here is marked done unless a commit, a run record or a file
-shows it. The blocker, recommended and mainnet-day lists come from an independent audit on
+shows it. The blocker, recommended and mainnet-day lists come from a fresh-session AI review (not an audit) on
 the evening of 5 October (kept outside the repo).
 
 ## Where things stand
@@ -32,7 +32,7 @@ the evening of 5 October (kept outside the repo).
 | B2 | **File deployment record revision 4 upstream** (`midnightntwrk/midnight-improvement-proposals`, `deployments/veilcore.md`) before any mainnet deploy. The filed 16 September correction promised it "will be filed before the deploy key is used and before any mainnet deployment is requested" | **Filed 7 Oct:** https://github.com/midnightntwrk/midnight-improvement-proposals/pull/373 (from `hunterincoming:patch-2`, commit `3b88865` by Hunter). The file in the pull request is byte-for-byte `docs/deployment-record-revision-4.md` at `008080e` (1,500 lines). Waiting on Midnight's code-owner review; since 2 October Midnight's review no longer gates a deploy |
 | B3 | **Zero-spend mainnet rehearsal** (runbook C, steps 1 to 13, then 5 to exit; `docs/release-checklist.md` section 6). The only live test of the mainnet wallet restore, DUST check, Blockfrost and both fingerprint checks before money moves. Hunter | **Done 7 Oct.** Blockfrost, node and proof server connected; wallet restored from the 1AM wallet's phrase, DUST address matched; synced in about 10 minutes; DUST available; exit at the deploy menu, nothing sent |
 | B4 | **Runbook matches the policy and the code** | **Corrected 5 October evening:** step 17 gives the policy's reasons (network upgrades, fixes; no retirement date); the "retire on the published date" section replaced; a second-copy step added to step 18, marked pending B1; the claims build message corrected; claims steps renumbered 22 to 30. Needs Mako's read. Final only once B1 is decided |
-| B5 | **One independent review of the latest operator-path code**: `5a980b3` (claims mainnet deploy guard, address pins, fingerprint gating), `8de6f2a` (join reads the deploy transaction), `abc1fc9` (`?fp=` links). `docs/release-checklist.md` section 3 asks for a re-check of the fixes themselves. The mainnet-only branches (fingerprint refusals, empty-pin refusals, the claims "authority kept" refusal, `Starting state not re-checked` at the pin) cannot run on preprod and are covered only by unit tests from the same author. One focused review under the "only a HIGH reopens code" stop rule closes it | **Done 6 Oct:** independent review PASS, no HIGH. One Medium (option 4 "Finish a deploy" skipped the pin once set) and two Lows (deploy:prod preflight let a descriptor with no anchors list, or a capitalised network name, through; a stale comment) fixed in `799c765`, with tests. Not changed, noted: the record-revision check accepts 4 or higher; the main contract's fingerprint check is in the CLI, not inside `VeilcoreAPI.deploy` |
+| B5 | **One fresh-session AI review of the latest operator-path code**: `5a980b3` (claims mainnet deploy guard, address pins, fingerprint gating), `8de6f2a` (join reads the deploy transaction), `abc1fc9` (`?fp=` links). `docs/release-checklist.md` section 3 asks for a re-check of the fixes themselves. The mainnet-only branches (fingerprint refusals, empty-pin refusals, the claims "authority kept" refusal, `Starting state not re-checked` at the pin) cannot run on preprod and are covered only by unit tests from the same author. One focused review under the "only a HIGH reopens code" stop rule closes it | **Done 6 Oct:** independent review PASS, no HIGH. One Medium (option 4 "Finish a deploy" skipped the pin once set) and two Lows (deploy:prod preflight let a descriptor with no anchors list, or a capitalised network name, through; a stale comment) fixed in `799c765`, with tests. Not changed, noted: the record-revision check accepts 4 or higher; the main contract's fingerprint check is in the CLI, not inside `VeilcoreAPI.deploy` |
 
 ## Strongly recommended before the deploy
 
@@ -40,7 +40,7 @@ the evening of 5 October (kept outside the repo).
 |---|---|---|
 | R1 | **Run the real mainnet deploy path once on preprod.** The smoke test deploys the main contract with a key passed straight to the API (`bboard-cli/src/smoke.ts`), so deploy option 1's paper-key prompts (generate, WRITTEN, type back), finishing with option 4 from paper, and option 33 on the main contract have never run on a live network. One preprod option-1 deploy with a generated paper key, interrupted, finished with option 4, then the authority read back (one key). Hunter, with Claude | **Done 7 Oct** (`docs/preprod-paper-key-practice.md`): generate, two sheets, type back from the second, finish (option 4) and provable retirement (option 33) from paper all ran on preprod. Not practised live: option 4 adding keys after a real interruption (the deploy finished first) |
 | R2 | **Claims fingerprints in the deployment record** | **Done 5 October evening:** the 21 rows from `docs/fingerprints.md` (built at `c75c155`, committed `765cab1`) copied into revision 4. An independent build matched the 5 `.zkir` files and `contract/index.js`; keys and `.bzkir` could not be checked that way (no key generation) |
-| R3 | **Round D summary up to date** (`docs/security-pass-4oct-roundD.md`) | **Done 5 October evening:** registry and site status, what came after the re-check and has not been independently reviewed, and the Still open list (including the two registry Lows and the SDK 0.15 move) |
+| R3 | **Round D summary up to date** (`docs/security-pass-4oct-roundD.md`) | **Done 5 October evening:** registry and site status, what came after the re-check and has not been re-checked by a fresh-session AI review, and the Still open list (including the two registry Lows and the SDK 0.15 move) |
 | R4 | **One real Bitcoin timestamp from the live registry** (item 7): a `root.bin.ots` exists for a batch sealed since the 5 October deploy, and upgrades and verifies with the official client | **Not confirmed** |
 
 ## Mainnet day (open until the day, by design)
@@ -109,7 +109,7 @@ change or recover a key · licences (issue, countersign, transfer, revoke, prove
 
 ## Attack round C, 4 October (after the preprod pass)
 
-Four independent attackers, on the claims contract, the record format across all four
+Four fresh-session AI attackers (not an audit), on the claims contract, the record format across all four
 implementations (52,000 generated cases), the verifier and operator tool, and the
 registry's Bitcoin-timestamp branch.
 
@@ -141,8 +141,8 @@ registry's Bitcoin-timestamp branch.
 
 Website, fee-paying demo service, SDK, registry, operator tool, supply chain; see
 `docs/security-pass-4oct-roundD.md`. Main contract: nothing found. The first set of fixes
-was independently re-checked; that re-check found new problems, which were fixed afterwards
-and have not been re-checked independently (B5). Two registry Lows and the move to SDK 0.15
+was re-checked by a fresh-session AI review; that re-check found new problems, which were fixed afterwards
+and have not been re-checked (B5). Two registry Lows and the move to SDK 0.15
 are still open. What changes for the mainnet deploy:
 
 1. Re-run the preprod smoke test on this build first. **Done 5 Oct, 37/37 on `d9d563f`**
@@ -183,7 +183,7 @@ three runnable examples (lab, breeder licence, claims).
 
 | # | What | Status |
 |---|---|---|
-| P1 | Package: connect, join (mainnet: pinned addresses only), every partner operation on both contracts, wallet-free checks; no deploy or maintenance reachable | **Built, reviewed, fixed.** Independent review 6 Oct (`review-partner-kit.md`): one blocker (the example's refusal check read only the top error; midnight-js wraps the refusal two causes deep, so partner-check would have failed at check 18 after ~10 transactions) and four mediums, fixed on `partner-kit-fixes`. 56 tests, including the reviewer's experiment through real midnight-js as a regression test, and a chain stand-in that now throws exactly what midnight-js throws |
+| P1 | Package: connect, join (mainnet: pinned addresses only), every partner operation on both contracts, wallet-free checks; no deploy or maintenance reachable | **Built, reviewed, fixed.** Fresh-session AI review 6 Oct (`review-partner-kit.md`): one blocker (the example's refusal check read only the top error; midnight-js wraps the refusal two causes deep, so partner-check would have failed at check 18 after ~10 transactions) and four mediums, fixed on `partner-kit-fixes`. 56 tests, including the reviewer's experiment through real midnight-js as a regression test, and a chain stand-in that now throws exactly what midnight-js throws |
 | P2 | First live run: `npm run partner-check` on preprod (wallet seed 2): checks all 87 key files against the record first (stops before any transaction if one differs), then 23 checks through the public package only | **Done 6 Oct: PASSED, 23 of 23** on preprod (`docs/partner-check-run-6oct.md`) |
 | P3 | Keys published: `npm run keys:stage -w @veilcore/contracts` on the Mac that built them, then every file in `partner-kit/zk-release/` uploaded to ONE GitHub release tagged `zk-r4` (the package's default keys URL). Every client checks every file against the fingerprints, so the host need not be trusted | **Done 6 Oct.** Release `zk-r4` published with 87 files and SHA256SUMS; GitHub's own SHA-256 of every file matches `docs/fingerprints.md` (checked 6 Oct, 87 of 87) |
 | P4 | npm: create the `@veilcore` organisation on npmjs.com (the scope does not exist yet; the name `@veilcore/contracts` is free), set `"private": false`, publish from a tagged commit | **Done 6 Oct.** npm organisation `veilcore` created; `@veilcore/contracts` 0.1.0 published from main `962fb73` (preprod only: the mainnet pins are empty, so mainnet joins are refused until 0.2.0 after M1) |
@@ -233,7 +233,7 @@ once #1605 is resolved.
 
 Built on branch `managed`: `veilcore-run/` (custody stores, operator CLI `npm run managed`,
 exit, partner-side recovery), `docs/MANAGED.md`, `docs/legal/managed-service-agreement-DRAFT.md`.
-Uses only the partner kit's public exports (a test checks). Independent review 6 Oct
+Uses only the partner kit's public exports (a test checks). Fresh-session AI review 6 Oct
 (`review-managed.md`): NOT PASS, 4 high and 7 medium; all addressed the same day (H1 password
 change, H2 fingerprint-confirmed pools and exit answers, H3 bundles sealed to a key from the
 partner's master and the partner's own recovery REQUIRED to finish an exit, H4 status from what
@@ -250,5 +250,5 @@ stand-in, the reviewers' experiments among them; not run on a live network.
 | R4 | Agreement | **Draft only.** Must be reviewed by a lawyer before any partner signs. Fees, governing law, deadlines and liability cap blank |
 | R5 | Decision: offer custody mode (VeilCore holds recovery secrets) at all, or partner-held recovery only | **Open.** Recommendation in MANAGED.md: partner-held; custody only with the risk in writing |
 | R6 | The operations computer (dedicated, FileVault, no cloud backup of `~/.veilcore/managed`), its offline encrypted backups with a written retention list | **Not done.** Hunter |
-| R7 | Independent security review of `veilcore-run/` (a paid one; the 6 Oct review was an AI review) | **Not done** |
+| R7 | Outside security review of `veilcore-run/` (a paid one; the 6 Oct review was an AI review) | **Not done** |
 | R8 | The partner's last exit step needs a DUST wallet; a lab with no developer needs someone to run one command | **Open.** Options: a VeilCore-written guide for any IT person; website self-custody after launch |

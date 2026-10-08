@@ -85,7 +85,7 @@ Five circuits: `proveValue`, `proveRange`, `proveDistinct`, `proveUnchanged` and
 `proveAttested`, checks a signature on one) and records the claim in event
 cells (`lastClaimKind`, `lastClaimRecord`, `lastClaimOther`, `lastClaimSchema`,
 `lastClaimSlot`, `lastClaimParam`, `lastClaimOp`) and a counter. Verifiers read the
-cells per transaction from the indexer, as for ownership proofs in the main contract.
+cells per transaction from the indexer, as for control proofs in the main contract.
 
 **No per-claim state.** Nothing grows with the number of claims, so there is no state
 bound to argue: the contract holds only fixed cells and a counter.

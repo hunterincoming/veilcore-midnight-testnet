@@ -247,7 +247,7 @@ table, which must stay as it is.
   would be filed before any mainnet deployment. The CLI refuses to deploy until you
   declare revision 4 (step 6), but it cannot check that the record was really filed.
 - **CHECK WITH CLAUDE BEFORE MAINNET:** the fixes made after the round D re-check
-  (`8de6f2a`, `abc1fc9`) and the claims mainnet gate (`5a980b3`) have had one independent
+  (`8de6f2a`, `abc1fc9`) and the claims mainnet gate (`5a980b3`) have had one fresh-session AI
   review (`docs/mainnet-completeness.md`).
 - The 24-word recovery phrase of the wallet whose NIGHT generates your DUST.
 - That wallet's DUST address (starts `mn_dust1`), from your wallet app.

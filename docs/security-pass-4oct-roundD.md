@@ -1,6 +1,6 @@
 # Attack round D, 4 October 2026
 
-Six independent reviews, each told to assume the code is broken: the fee-paying demo
+Six fresh-session AI reviews (not an audit), each told to assume the code is broken: the fee-paying demo
 service, the website, the SDK (TypeScript, Python `verify.py`, Rust), the registry, the
 main contract with its operator tool and client API, and the supply chain (dependencies,
 CI, publishing, deploy). The claims contract was not part of this round; it was attacked
@@ -34,7 +34,7 @@ This file is the record of what was found and what was done.
 - **Fee-paying demo service:** fixed on branch `demo-real` (`762cd6f`), which is not merged
   into `main` and not deployed. The website demo stays simulated.
 
-**Not independently re-checked.** These came after the re-check and have been reviewed only
+**Not re-checked by a fresh-session AI review.** These came after the re-check and have been reviewed only
 by whoever wrote them (plus automated tests and, for some, the 5 October Semgrep and CodeQL
 scan):
 
@@ -169,7 +169,7 @@ commit SHAs; the published SDK rebuilds byte-for-byte (0.13.0 then; 0.15.0 check
 way on 5 October).
 
 ## Still open
-- **Independent re-check** of the fixes made after the re-check, and of `5a980b3` (see
+- **Fresh-session AI re-check** of the fixes made after the re-check, and of `5a980b3` (see
   *Status, 5 October*). Needed before mainnet.
 - **Site and registry move to SDK 0.15.0.** It is published; neither has moved. Until they
   do, both use 0.13.0, which accepts small-order Ed25519 keys (SDK finding 1, High in the

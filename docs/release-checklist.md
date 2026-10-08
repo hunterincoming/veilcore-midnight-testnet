@@ -29,7 +29,7 @@ to skip.
 
 ## 3. Adversarial review
 
-- [ ] At least two independent reviews that did not write the change: one on the
+- [ ] At least two reviews by reviewers who did not write the change (a fresh-session AI review is not an audit): one on the
       contract, one on the operator path. Findings and fixes recorded in `docs/`.
 - [ ] A re-check of the fixes themselves.
 - [ ] Stop rule: from here until release, only a HIGH or blocker reopens code.

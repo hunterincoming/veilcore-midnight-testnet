@@ -1427,8 +1427,12 @@ Until then, joining either contract on mainnet is refused.
   `f75d42dc1e4ec5a2cdcc50509f2d432ad60fb5c64b5da921a0ec22a0e287f939` (27 September,
   before the merge).
 - **Nothing is deployed to mainnet. The deploy key issued on 8 September has not been
-  used.** Neither contract is on mainnet. A zero-spend rehearsal on mainnet (wallet sync
-  and DUST check, then exit) has not been done yet.
+  used.** Neither contract is on mainnet.
+- **Zero-spend mainnet rehearsal (7 October 2026):** passed. The operator tool on mainnet
+  through Blockfrost: indexer, node and local proof server connected; the deploy wallet
+  restored from its recovery phrase, its DUST address matching the wallet app's; synced in
+  about 10 minutes with DUST available for fees; then exit at the deploy menu. Nothing was
+  sent.
 - **Paper-key deploy path on preprod (7 October 2026):** passed. Practice contract
   `72fe33436d424fcf247919c8e2f0de224175cc55061739be0ebffb2d650f2f73`; a generated key
   written on two sheets and typed back from the second; finished from paper (option 4);
@@ -1489,7 +1493,8 @@ Both founders approved the decisions this revision records before it was filed u
 before either contract is deployed to mainnet.
 
 - **Hunter Roberts:** approved the maintenance policy, the two-copy key and the claims
-  contract with no authority on 6 October 2026, and files this revision: [AT FILING: date]
+  contract with no authority on 6 October 2026, and files this revision on 7 October 2026
 - **Makoto Steiner:** confirmed the maintenance policy, the two-copy key and the claims
   contract with no authority on 7 October 2026
-- **Filed upstream:** [AT FILING: date and pull request]
+- **Filed upstream:** 7 October 2026, as a pull request to
+  `midnightntwrk/midnight-improvement-proposals` replacing `deployments/veilcore.md`

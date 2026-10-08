@@ -236,7 +236,8 @@ table, which must stay as it is.
   Done 7 October.
 - `git log -1` shows the latest commit.
 - A zero-spend mainnet rehearsal has been done: steps 1 to 13, then 5 (Exit) at the
-  deploy menu. **Not done yet.**
+  deploy menu. Done 7 October (sync about 10 minutes; the deploy wallet is the 1AM wallet
+  whose DUST address matched).
 - Both founders have decided the maintenance key question (`docs/maintenance-policy.md`,
   approved 6 and 7 October): one key, two paper copies, no retirement date, the claims
   contract with none. Done.

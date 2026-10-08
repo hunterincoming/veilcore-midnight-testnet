@@ -97,12 +97,15 @@ export {
   checkOwnership,
   checkPresentation,
   readClaim,
+  readAuthority,
   readClaimsAuthority,
   readLedger,
   type ReadOptions,
   type Verdict,
   type WhenLanded,
+  type WithAuthority,
 } from './verify.js';
+export { ContractStateMismatchError, type AuthorityReport } from '../../api/src/state-check.js';
 export {
   ChallengeBook,
   MAX_PRESENTATION_AGE_MS,

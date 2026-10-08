@@ -27,9 +27,10 @@
 // worth that amount, bound to the offer's leaf (its id and every term, the rate included),
 // from a top-up code the licensee gives the payer (topUpCode(spendKey, nonce)). The payer
 // knows which offer they are paying for; the public sees the paying wallet, the breeder's
-// wallet, the token, the amount and a rounded time the offer is open until, and not which
-// of that wallet's royalty offers in that token it is, nor the licensee. A breeder with a
-// single royalty offer per wallet and token has no such cover. Each note has its own
+// wallet, the token, the amount and a rounded time the offer is open until (clients always
+// send the start of the day after tomorrow, UTC, and stop top-ups before an offer's last
+// two days), and not which of that wallet's royalty offers in that token it is, nor the
+// licensee. A breeder with a single royalty offer per wallet and token has no such cover. Each note has its own
 // nullifier, so a code reused for top-ups of different amounts makes several spendable
 // notes (the same code, offer and amount twice is refused before anything is paid). The
 // payer opens the rate too, so no credit is ever sold that nothing could settle against.
@@ -41,9 +42,9 @@
 // new note whose nonce comes from the spent note's nullifier, and records a receipt leaf
 // bound to the offer, the period (through the viewing key) and the units. It publishes
 // the units masked with a pad made from the viewing key and the change note, so no two
-// settlements share a pad and only the breeder reads them. Settling is allowed for 30
-// days after the offer ends (it moves no money; nobody can clear the licence sooner);
-// top-ups are not. Credit left when a licence ends or is
+// settlements share a pad and only the breeder reads them; every settlement is kept in
+// `settlements`, so none is missed. Settling is allowed for at least 30 days after the
+// offer ends (it moves no money; nobody can clear the licence sooner); top-ups are not. Credit left when a licence ends or is
 // revoked stays where it is: the breeder already holds that money, and the terms say
 // whether any is refunded.
 //
@@ -51,6 +52,11 @@
 // is read once and checked against both that time and the licence leaf), and
 // optionally a settlement for a period covering at least minUnits. Publishes a tag only
 // that verifier can check and a holder tag that repeats only within the verifier's scope.
+// It proves that SOMEONE holding that licence answered, not that the person in front of
+// the verifier holds it: a licensee could answer for another grower. A verifier that
+// keeps one scope sees the same holder tag each time one licence answers it. Revocations
+// are tracked per offer, so a verifier waits only for a seal after a revocation on the
+// offer it asked about.
 //
 // ONE RECORD, TWO CONTRACTS. The breeder proves the record by its secret, hashed exactly
 // as veilcore.compact's commit() hashes it. Whether that record is the live head of an
@@ -62,9 +68,13 @@
 // presentation to a settlement, a settlement to the top-up that made its note, and the
 // top-up to its paying wallet, when few others used the contract in between; and a
 // licensee who tops up from the wallet that bought the licence links the two. Clients
-// wait for other transactions before proving and pay from a fresh wallet or let a
-// processor pay (docs/royalties-design.md). Units are declared by the licensee; checking
-// them against harvests happens off chain, by the breeder, who can read them.
+// wait for someone else's transaction before proving, which helps only as much as there
+// are others; privacy grows with use. Also public: which circuit each transaction calls
+// (and its fee-paying wallet); whether a presentation asked about a period; the time the
+// verifier asked for; equal holder tags; that a merge spent two notes of one owner; top-up
+// amounts (unrounded ones can hint at the rate); and a refused proof tells a verifier
+// something about the units. Units are declared by the licensee; checking them against
+// harvests happens off chain, by the breeder, who can read them.
 
 pragma language_version 0.23;
 
@@ -102,6 +112,12 @@ export struct NoteOpening {
   amount: Uint<64>,
 }
 
+/** One settlement, kept for the breeder: its receipt leaf and its units masked for the viewing key. */
+export struct Settlement {
+  receipt: Bytes<32>,
+  unitsMasked: Field,
+}
+
 /** The royalty rate and the salt its commitment hides it with (both in the terms). */
 export struct RateOpening {
   rate: Uint<64>,
@@ -128,6 +144,20 @@ export ledger noteSeen: Set<Bytes<32>>;
 export ledger nullifiers: Set<Bytes<32>>;
 /** Settlement receipts. Never removed; a repeated leaf is harmless. */
 export ledger receipts: HistoricMerkleTree<32, Bytes<32>>;
+/**
+ * Every settlement, keyed by its change note (unique, already public): the breeder scans
+ * this with each licensee's viewing key. Kept per settlement, not in a "last" cell, so two
+ * settlements in one transaction are both readable.
+ */
+export ledger settlements: Map<Bytes<32>, Settlement>;
+/**
+ * Per offer: the revocation count when one of its licences was last revoked. A verifier
+ * checks only the offer it asked about, so revocations on other offers (or spam on an
+ * attacker's own offer) never hold up its presentations.
+ */
+export ledger offerRevokedAt: Map<Bytes<32>, Uint<64>>;
+/** The revocation count at the last seal: an offer's revocations are sealed once offerRevokedAt <= this. */
+export ledger sealedRevocations: Uint<64>;
 
 export ledger lastSealTime: Uint<64>;
 /** When the trees that only grow (offers, notes, receipts) last had their old roots retired. */
@@ -147,13 +177,10 @@ export ledger lastSale: Bytes<32>;
 export ledger lastNote: Bytes<32>;
 export ledger lastNullifier: Bytes<32>;
 export ledger lastReceipt: Bytes<32>;
-/** The last settlement's units plus unitsMask(viewKey, changeNote): readable with the viewing key only. */
-export ledger lastUnitsMasked: Field;
 export ledger lastPresentation: Bytes<32>;
 export ledger lastPresentationHolder: Bytes<32>;
 export ledger lastPresentationRoot: MerkleTreeDigest;
 export ledger lastPresentationReceiptRoot: MerkleTreeDigest;
-export ledger lastPresentationUnsealed: Boolean;
 
 constructor() {
   protocolVersion = 2;
@@ -462,6 +489,7 @@ export circuit revokeLicense(license: Bytes<32>): [] {
   clearLicense(k, id, o);
   unsealedChanges = true;
   revocationSeq.increment(1);
+  offerRevokedAt.insert(id, revocationSeq.read());
 }
 
 export circuit clearEnded(license: Bytes<32>): [] {
@@ -481,6 +509,9 @@ export circuit removeEnded(offer: Bytes<32>): [] {
   assert(blockTimeGte(o.expires), "That offer has not ended");
   assert(o.live == 0, "Clear that offer's ended licences first");
   offers.remove(id);
+  if (offerRevokedAt.member(id)) {
+    offerRevokedAt.remove(id);
+  }
 }
 
 /**
@@ -502,6 +533,7 @@ export circuit sealRevocations(bound: Uint<64>): [] {
     lastSlowSealTime = t;
   }
   lastSealTime = t;
+  sealedRevocations = revocationSeq.read();
   unsealedChanges = false;
   rootsSinceSeal = false;
   sealSeq.increment(1);
@@ -577,7 +609,7 @@ export circuit settle(): [] {
   const r = disclose(receiptLeaf(receiptCommit(view, settlePeriod()), op.offer, units));
   receipts.insert(r);
   lastReceipt = r;
-  lastUnitsMasked = disclose((units as Field) + unitsMask(view, change));
+  settlements.insert(change, Settlement { receipt: r, unitsMasked: disclose((units as Field) + unitsMask(view, change)) });
   settleSeq.increment(1);
 }
 
@@ -614,7 +646,6 @@ export circuit proveLicense(period: Bytes<32>, minUnits: Uint<64>, validAt: Uint
   }
   presentationSeq.increment(1);
   lastPresentationRoot = root;
-  lastPresentationUnsealed = unsealedChanges;
   lastPresentationHolder = disclose(holderTag(secret, offer, scope));
   lastPresentation = disclose(presentationTag(offer, period, minUnits, v, scope, challenge));
 }

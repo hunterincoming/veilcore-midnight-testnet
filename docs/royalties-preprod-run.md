@@ -1,17 +1,18 @@
-# Royalties contract: the preprod test run (Hunter, about 1 to 1.5 hours)
+# Royalties contract: the preprod test run (Hunter, about 1.5 hours)
 
-The first live run of the royalties contract, on preprod, with two wallets: one plays the
-breeder, one the grower. It tests the thing no test here can: that a payment goes from one
-real wallet, through the contract, to another real wallet, in one transaction. Nothing here
-touches mainnet or real money.
+The first live run of the royalties contract (version 2), on preprod, with two wallets:
+window A plays the breeder, window B the grower. It tests what no test here can: that a
+purchase and a top-up move real money from one wallet, through the contract, to another, in
+one transaction, and that a private settlement and a presentation go through on a real
+network. Nothing here touches mainnet or real money.
 
 **You need:** Docker running; the Mac; your preprod private-state password; the preprod test
 wallet (seed 2) for the breeder; a second preprod wallet for the grower (step 4 makes one if
-you don't have one); a scrap of paper; any small file to stand in for licence terms (a text
-file on your Desktop is fine).
+you don't have one); a scrap of paper; a small file to stand in for licence terms.
 
-Two Terminal windows run side by side. Window A is the breeder, window B the grower. Window
-B keeps its saved state in its own folder (`VEILCORE_HOME`), so the two don't collide.
+Two Terminal windows side by side. Window B keeps its saved state in its own folder
+(`VEILCORE_HOME`), so the two don't collide. Files the windows hand each other go on the
+Desktop: the offer card, the licence card, the top-up request and the licence requests.
 
 ## Once, before starting (about 10 minutes)
 
@@ -26,111 +27,111 @@ B keeps its saved state in its own folder (`VEILCORE_HOME`), so the two don't co
    compact compile src/veilcore-royalties.compact ./src/managed/veilcore-royalties
    cd ../bboard-cli
    ```
-   The compile makes the royalties contract's keys. It downloads some files the first time.
-   It should end without an error.
+   The compile makes the royalties contract's keys. It downloads some files the first time
+   and should end without an error.
 2. Make a terms file: `echo "TEST licence terms, preprod only" > ~/Desktop/test-terms.txt`
 
 ## Breeder, window A
 
 3. `npm run preprod-remote`. Password, wallet menu `2`, paste seed 2. Wait for the sync.
-   - When it asks deploy or join: **join** `72fe33436d424fcf247919c8e2f0de224175cc55061739be0ebffb2d650f2f73`
+   - Deploy or join: **join** `72fe33436d424fcf247919c8e2f0de224175cc55061739be0ebffb2d650f2f73`
      (the practice contract from 7 October).
-   - Main menu `1`: anchor a record. Follow the prompts. Write the recovery secret on the
-     scrap paper (test only).
-   - Main menu `50`: deploy the royalties contract. Type `yes`. **Write down the address it
-     prints.** About 10 to 20 minutes.
-   - Main menu `53`: post an offer.
-     - Terms file: `~/Desktop/test-terms.txt`
-     - Token: Enter (NIGHT)
-     - Price: `1`
-     - Royalty per unit: `0.1`
-     - How many: `3`
-     - Days: `30`
-     - Revoke: `y`
-     - Wallet: Enter
-     - Then `yes`.
+   - `1`: anchor a record. Write the recovery secret on the scrap paper (test only).
+   - `50`: deploy the royalties contract. Type `yes`. **Write down the address.** About 10 to
+     20 minutes.
+   - `53`: post an offer. Terms file `~/Desktop/test-terms.txt`; token Enter (NIGHT); price
+     `1`; royalty per unit `0.1`; how many `3`; days `30`; revoke `y`; wallet Enter; `yes`;
+     offer card `~/Desktop/offer-card.json`.
    - **Write down the offer id and the admin secret** on the scrap paper.
 
 ## Grower, window B
 
-4. Open a second Terminal window:
+4. A second Terminal window:
    ```
    mkdir -p ~/veilcore-grower
    cd ~/Desktop/veilcore/bboard-cli
    VEILCORE_HOME=~/veilcore-grower npm run preprod-remote
    ```
    Password: any new one for this test (16+ characters). If it asks you to type MOVE for an
-   old store, don't: press Ctrl+C and tell Claude (window B must not use window A's folder).
-   - Wallet: `2` with a second preprod seed that already has tNIGHT, if you have one. If not,
-     `1` makes a new wallet: write its seed on the scrap paper and send it tNIGHT from the
-     preprod faucet at the address it shows. A new wallet needs about 10 minutes after the
-     funds arrive before it can pay fees. If the buy below fails with a fee or DUST error,
-     wait 10 minutes and try again.
-   - **Write down the NIGHT balance it shows**, for checking later.
-   - Join the same main contract (`72fe…` as above).
-   - `51`: join the royalties contract (the address from step 3).
-   - `54`: list offers. You should see yours: price 1 NIGHT, royalty 0.1, 3 left.
-   - `55`: buy. Paste the offer id, then `yes`. **Write down the licence key it prints.**
-   - `56`: pay a royalty. Offer id, period `TEST-1`, units `10`, then `yes`. It sends 1 NIGHT.
-
-## Breeder again, window A
-
-5. A proof can't be made straight after your own purchase, because it would point at that
-   purchase. So the breeder makes one more sale and payment first. That also tests a second
-   buyer:
-   - `55`: buy one licence from your own offer.
-   - `56`: pay a royalty: period `TEST-1`, units `3`.
-   - `59`: make a licence request.
-     - Offer id: as before.
-     - Period: `TEST-1`
-     - At least `5` units
-     - Scope: Enter
-     - File: `~/Desktop/request.json`
-
-## Grower, window B
-
-6. `60`: answer the request. File `~/Desktop/request.json`; at the units question, press Enter.
-   **Copy the transaction id it prints.**
+   old store, don't: press Ctrl+C and tell Claude.
+   - Wallet: `2` with a second preprod seed that has tNIGHT, if you have one. If not, `1`
+     makes one: write its seed on the scrap paper, send it tNIGHT from the preprod faucet,
+     and allow about 10 minutes after the funds arrive before it can pay fees.
+   - **Write down the NIGHT balance it shows.**
+   - Join the same main contract (`72fe…`), then `51`: join the royalties contract (step 3's
+     address).
+   - `54`: list offers. Expect yours: price 1 NIGHT, "rate in the offer card (private)", 3 left.
+   - `58`: buy. Offer card `~/Desktop/offer-card.json`. It shows the rate 0.1 from the card.
+     `yes`. Licence card: `~/Desktop/licence-card.json`.
+   - `60`: make a top-up request. Offer id; file `~/Desktop/topup.json`.
+   - `59`: top up your own credit: offer id, `0.5`, `yes`.
 
 ## Breeder, window A
 
-7. `61`: check the answer. File `~/Desktop/request.json`, then the transaction id. Expect
+5. The breeder pays the grower's top-up request (playing a grain buyer), then makes a
+   purchase and top-up of its own, so the grower's settlement is not the newest of its kind:
+   - `65`: pay a top-up request. File `~/Desktop/topup.json`, amount `1`, `yes`.
+   - `58`: buy one licence from your own offer, card `~/Desktop/offer-card.json`, `yes`,
+     licence card `~/Desktop/breeder-licence.json`.
+   - `59`: top up your own credit: offer id, `0.3`, `yes`.
+
+## Grower, window B
+
+6. - `61`: record credit someone paid: offer id, `1`. Expect "credit 1.500000 NIGHT".
+   - `62`: settle. Offer id, period `TEST-1`, units `5`, `yes`. Expect `Settled`. (5 × 0.1 =
+     0.5 is spent from credit; no money moves.)
+   - `63`: show credit and settlements. Expect credit 1.000000 and "settled TEST-1: 5".
+
+## Breeder, window A
+
+7. - `55`: read your licensees' settlements. Cards `~/Desktop/licence-card.json`, periods
+     `TEST-1`. **Expect `period TEST-1  units 5`.** This is the breeder reading private books.
+   - `66`: make a licence request. Offer id; period `TEST-1`; at least `3`; one-off scope:
+     Enter; file `~/Desktop/request.json`.
+
+## Grower, window B
+
+8. `64`: answer it, file `~/Desktop/request.json`. It will say your own settlement is still
+   the newest and ask whether to send anyway: type `yes` (this tests that prompt). **Copy the
+   transaction id it prints.**
+
+## Breeder, window A
+
+9. `67`: check the answer. File `~/Desktop/request.json`, then the transaction id. Expect
    `ACCEPTED`.
-8. `63`: revoke the grower's licence. Paste the licence key from step 4, press Enter at the
-   admin secret (this computer posted the offer), then `yes`.
-9. If step 8 said `Revoked and sealed`, skip this step. If it said older proofs keep working
-   until the next seal, run `64`. If `64` says "possible from" a time, wait until then and run
-   it again, until it says `Sealed` or `Nothing waiting for a seal`.
-10. `59` again: a new request (same answers, file `~/Desktop/request2.json`).
+10. `57`: revoke the grower's licence. The licence key is the `licence` line in
+    `~/Desktop/licence-card.json` (open it in TextEdit). Admin secret: Enter. `yes`.
+11. If it said `Revoked and sealed`, skip this. Otherwise run `68` until it says `Sealed`
+    (if it says "possible from" a time, wait until then).
+12. `66` again: same answers, file `~/Desktop/request2.json`.
 
 ## Grower, window B
 
-11. `60` with `~/Desktop/request2.json`. Expect it to be **refused** (the licence is revoked).
-12. `0` to exit. To see the new balance, start it once more the same way
-    (`VEILCORE_HOME=~/veilcore-grower npm run preprod-remote`) and read the NIGHT balance it
-    shows, then `0`.
+13. `64` with `~/Desktop/request2.json`. Expect it to be **refused** (no live licence).
+14. `0` to exit. Start once more the same way, read the NIGHT balance, then `0`.
 
 ## Breeder, window A
 
-13. `0` to exit. Close both windows. Shred the scrap paper. You can delete `~/veilcore-grower`.
+15. `0` to exit. Close both windows. Shred the scrap paper. Delete `~/veilcore-grower` and the
+    Desktop files from this run.
 
 ## Paste back to Claude
 
 - The royalties contract address and the offer id.
-- The last 30 lines of each window after steps 4, 6, 7 and 11.
-- The grower's NIGHT balance before and after. The tool shows it in the smallest unit
-  (1 NIGHT = 1,000,000), so expect about 2,000,000 lower: 1 NIGHT for the licence and 1 for
-  the royalty. Fees are paid in DUST, not NIGHT.
+- The last 30 lines of each window after steps 4, 6, 7, 8, 9 and 13.
+- The grower's NIGHT balance before and after. Expect about 1,500,000 lower (in the smallest
+  unit): 1 NIGHT for the licence and 0.5 for its own top-up. Fees are paid in DUST.
 
-Nothing in those is secret. Do not paste the admin secret, the wallet seeds or the recovery
-secret.
+Nothing in those is secret. Do not paste the admin secret, the wallet seeds, the recovery
+secret, or the card files (the offer card holds the private rate; the licence card lets
+anyone read that licence's settlements).
 
 ## If something goes differently
 
-- **Deploy stops partway (step 3):** don't choose `50` again. Restart, join the main contract,
-  choose `52`, and give it the address.
-- **Buy or pay fails with a balance or "imbalanced" error:** stop and paste the last 30 lines.
-  That is the payment path this run exists to test.
-- **Step 6 refused with "Nobody else has bought or changed a licence since your purchase":**
-  step 5 didn't land yet. Wait a minute and try again.
+- **Deploy stops partway (step 3):** don't choose `50` again. Restart, join the main
+  contract, choose `52`, and give it the address.
+- **Buy or top-up fails with a balance or "imbalanced" error:** stop and paste the last 30
+  lines. That is the payment path this run exists to test.
+- **Step 6 settle says your own purchase or credit note is still the newest:** step 5 hasn't
+  landed yet. Wait a minute and try again (answer `no` to "send anyway").
 - **Any other error:** stop and paste the last 30 lines.

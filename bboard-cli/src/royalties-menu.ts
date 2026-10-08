@@ -290,11 +290,14 @@ export const handleRoyaltiesChoice = async (choice: string, c: RoyaltiesMenuCont
           .map((s) => s.trim())
           .filter((s) => s !== '');
         for (const p of periods) periodBytes(p);
-        c.logger.info('Reading every settlement on the contract. This can take a minute.');
-        const found = await api.readSettlements(cards, periods);
-        if (found.length === 0) c.logger.info('None of those licensees has settled any of those periods yet.');
+        const { found, refused } = await api.readSettlements(cards, periods);
+        for (const r of refused) c.logger.error(`Skipped a card for licence ${short(r.card.licence)}: ${r.why}`);
+        if (found.length === 0) c.logger.info('None of those licensees has settled anything yet.');
         for (const s of found)
-          c.logger.info(`licence ${short(s.licence)}  period ${s.period}  units ${s.units}  (offer ${short(s.offer)})`);
+          c.logger.info(
+            `licence ${short(s.licence)}  ${s.period === undefined ? 'a period NOT in your list' : `period ${s.period}`}` +
+              `  units ${s.units}  (offer ${short(s.offer)})`,
+          );
         const missing = cards.flatMap((card) =>
           periods
             .filter((p) => !found.some((f) => f.licence === card.licence && f.period === p))
@@ -446,15 +449,17 @@ export const handleRoyaltiesChoice = async (choice: string, c: RoyaltiesMenuCont
         const period = await ask(c, 'A settled period to ask for (label, blank for none): ');
         if (period !== '') periodBytes(period);
         const minUnits = period === '' ? 0n : await askWhole(c, 'For at least how many units: ', 0n);
-        const scopeTyped = await ask(
-          c,
-          'Your scope (64 hex you reuse to spot the same licence twice; Enter for a new one): ',
-        );
-        const scope =
-          scopeTyped === '' ? undefined : Uint8Array.from(Buffer.from(scopeTyped.replace(/^0x/, ''), 'hex'));
-        if (scope !== undefined && (scope.length !== 32 || scope.every((x) => x === 0)))
-          throw new RoyaltiesInputError('A scope is 64 hex characters, not all zero.');
-        const req = newPresentationRequest({ contract: api.deployedContractAddress, offer, period, minUnits, scope });
+        const fresh = (
+          await ask(c, 'Use a one-off scope that cannot be matched to your other requests? (y/N): ')
+        ).toLowerCase();
+        const req = fresh.startsWith('y')
+          ? newPresentationRequest({ contract: api.deployedContractAddress, offer, period, minUnits })
+          : await api.presentationRequest({ offer, period, minUnits });
+        if (!fresh.startsWith('y'))
+          c.logger.info(
+            'Your usual scope for this offer: if one licence answers you for several growers, you will see the ' +
+              'same holder tag each time.',
+          );
         const out = await ask(c, 'Write the request to file (path): ');
         writePrivate(out, req);
         c.logger.info(

@@ -23,8 +23,8 @@
 
 import { type ContractAddress, sampleSigningKey } from '@midnight-ntwrk/midnight-js-protocol/compact-runtime';
 import { type StateValue } from '@midnight-ntwrk/midnight-js-protocol/onchain-runtime';
+import { createHash } from 'node:crypto';
 import { type Logger } from 'pino';
-import { firstValueFrom, filter, scan, timeout } from 'rxjs';
 import {
   createCircuitMaintenanceTxInterfaces,
   createUnprovenDeployTx,
@@ -106,6 +106,8 @@ export type LicenceCard = {
   readonly licence: string;
   readonly viewKey: string;
   readonly spendKey: string;
+  /** The licence's end date (part of its key), so the card checks out after the offer is removed. */
+  readonly expires?: string;
 };
 
 /** What a licensee gives whoever tops up their credit: the offer card and a code naming nobody. */
@@ -136,7 +138,8 @@ export type PresentationVerdict = {
 export type SettlementReading = {
   readonly licence: string;
   readonly offer: string;
-  readonly period: string;
+  /** The period label, if it was one of those asked about (a label can be checked, not read back). */
+  readonly period?: string;
   readonly units: bigint;
   readonly receipt: string;
 };
@@ -206,14 +209,14 @@ const normalised = (r: PresentationRequest): PresentationRequest => {
 };
 
 /**
- * The time a top-up says the offer is open until: a whole UTC day, so it names no offer,
- * at least a day ahead and no later than the offer's end.
+ * The time a top-up says the offer is open until: always the start of the day after
+ * tomorrow (UTC), the same for every top-up that day, so it names no offer. Undefined when
+ * the offer ends before then: top-ups close for an offer's last two days, since any other
+ * value would point at its end date. Credit already held still settles.
  */
-export const roundedValidUntil = (expires: bigint, now = nowSeconds()): bigint => {
+export const roundedValidUntil = (expires: bigint, now = nowSeconds()): bigint | undefined => {
   const dayAfterTomorrow = (now / DAY + 2n) * DAY;
-  const lastWholeDay = (expires / DAY) * DAY;
-  const v = dayAfterTomorrow < lastWholeDay ? dayAfterTomorrow : lastWholeDay;
-  return v > now ? v : expires;
+  return expires >= dayAfterTomorrow ? dayAfterTomorrow : undefined;
 };
 
 /** Whether a record can stand behind an offer, read from the main VeilCore contract now. */
@@ -397,67 +400,67 @@ export class RoyaltiesAPI {
     return { ...tx, ...(await this.seal()) };
   }
 
-  /** A licence card checked against the chain: its keys must make a licence sold from its offer. */
+  /**
+   * A licence card checked against the chain: its keys must make a licence sold from its
+   * offer. Works after the offer is removed too, from the end date on the card.
+   */
   async checkLicenceCard(card: LicenceCard): Promise<void> {
     if (card.kind !== 'veilcore-licence-card') throw new Error('That is not a licence card.');
     if (card.contract.toLowerCase() !== this.deployedContractAddress.toLowerCase())
       throw new Error('That licence card is for another royalties contract.');
     const l = await this.currentLedger();
     const offer = unhex(card.offer);
-    if (!l.offers.member(offer)) throw new Error('That licence card names no offer on this contract.');
-    const key = R.licenseKey(
-      R.licenseCommit(unhex(card.viewKey), unhex(card.spendKey), offer),
-      offer,
-      l.offers.lookup(offer).expires,
-    );
+    const expires =
+      card.expires !== undefined
+        ? BigInt(card.expires)
+        : l.offers.member(offer)
+          ? l.offers.lookup(offer).expires
+          : undefined;
+    if (expires === undefined)
+      throw new Error('That licence card has no end date and its offer is gone: ask the licensee for a new card.');
+    const key = R.licenseKey(R.licenseCommit(unhex(card.viewKey), unhex(card.spendKey), offer), offer, expires);
     if (hex(key) !== card.licence.toLowerCase())
       throw new Error("That licence card's keys do not make its licence key: it is not the licensee's real card.");
     if (!l.everSold.member(key)) throw new Error('No licence with that key was ever sold on this contract.');
   }
 
   /**
-   * Every settlement on this contract made under one of `cards`, for one of `periods`.
-   * Reads each state the contract has had (midnight-js, from the start), so it finds every
-   * settlement, not only the latest.
+   * Every settlement on this contract made under one of `cards`. The contract keeps each
+   * settlement (its masked units and receipt), so this reads the current state only and
+   * misses none. A settlement whose period is not among `periods` is still reported, with
+   * no period: the label cannot be read back, only checked. Cards that fail their check
+   * are skipped and listed in `refused`; the same licence twice is read once.
    */
   async readSettlements(
     cards: readonly LicenceCard[],
     periods: readonly string[],
-    timeoutMs = 120_000,
-  ): Promise<SettlementReading[]> {
-    for (const c of cards) await this.checkLicenceCard(c);
-    const target = (await this.currentLedger()).settleSeq;
-    if (target === 0n) return [];
-    const seen = await firstValueFrom(
-      this.providers.publicDataProvider.contractStateObservable(this.deployedContractAddress, { type: 'all' }).pipe(
-        scan(
-          (acc: { last: bigint; settles: RoyaltiesLedger[] }, state) => {
-            const l = royaltiesLedger(state.data);
-            return l.settleSeq > acc.last
-              ? { last: l.settleSeq, settles: [...acc.settles, l] }
-              : { ...acc, last: l.settleSeq };
-          },
-          { last: 0n, settles: [] },
-        ),
-        filter((acc) => acc.last >= target),
-        timeout(timeoutMs),
-      ),
-    );
-    const out: SettlementReading[] = [];
-    for (const l of seen.settles) {
-      for (const card of cards) {
-        const view = unhex(card.viewKey);
-        const units = (l.lastUnitsMasked - R.unitsMask(view, l.lastNote) + FIELD_MODULUS) % FIELD_MODULUS;
-        if (units === 0n || units >= 1n << 64n) continue;
-        const offer = unhex(card.offer);
-        const period = periods.find(
-          (p) => hex(R.receiptLeaf(R.receiptCommit(view, periodBytes(p)), offer, units)) === hex(l.lastReceipt),
-        );
-        if (period !== undefined)
-          out.push({ licence: card.licence, offer: card.offer, period, units, receipt: hex(l.lastReceipt) });
+  ): Promise<{ readonly found: SettlementReading[]; readonly refused: readonly { card: LicenceCard; why: string }[] }> {
+    const ok: LicenceCard[] = [];
+    const refused: { card: LicenceCard; why: string }[] = [];
+    for (const c of cards) {
+      if (ok.some((x) => x.licence.toLowerCase() === c.licence.toLowerCase())) continue;
+      try {
+        await this.checkLicenceCard(c);
+        ok.push(c);
+      } catch (e) {
+        refused.push({ card: c, why: e instanceof Error ? e.message : String(e) });
       }
     }
-    return out;
+    const labels = periods.map((p) => ({ p, bytes: periodBytes(p) }));
+    const found: SettlementReading[] = [];
+    for (const [change, st] of (await this.currentLedger()).settlements) {
+      for (const card of ok) {
+        const view = unhex(card.viewKey);
+        const units = (st.unitsMasked - R.unitsMask(view, change) + FIELD_MODULUS) % FIELD_MODULUS;
+        if (units === 0n || units >= 1n << 64n) continue;
+        const offer = unhex(card.offer);
+        const leafFor = (b: Uint8Array): string => hex(R.receiptLeaf(R.receiptCommit(view, b), offer, units));
+        const period = labels.find((x) => leafFor(x.bytes) === hex(st.receipt))?.p;
+        found.push({ licence: card.licence, offer: card.offer, period, units, receipt: hex(st.receipt) });
+        break;
+      }
+    }
+    return { found, refused };
   }
 
   // ─────────────────────────────────────────── licensee: licence and credit
@@ -510,13 +513,18 @@ export class RoyaltiesAPI {
       mine: [...(h.mine ?? []), hex(license)].slice(-512),
     }));
     const tx = await this.call('buyLicense', { licenseSecret: secret }, (c) => c.callTx.buyLicense(offer, slot));
-    return { ...tx, license, licenceCard: this.cardFor(secret, offer, license) };
+    return { ...tx, license, licenceCard: this.cardFor(secret, offer, license, o.expires) };
   }
 
   /** The licence card for this client's live licence from `offer`, to hand the breeder again. */
   async licenceCard(offer: Uint8Array): Promise<LicenceCard> {
     const lic = await this.licenceFor(offer);
-    return this.cardFor(unhex(lic.secret), offer, licenceKeyOf(unhex(lic.secret), offer, BigInt(lic.expires)));
+    return this.cardFor(
+      unhex(lic.secret),
+      offer,
+      licenceKeyOf(unhex(lic.secret), offer, BigInt(lic.expires)),
+      BigInt(lic.expires),
+    );
   }
 
   /** A top-up request for someone else to pay: the offer card and a fresh code. */
@@ -547,7 +555,11 @@ export class RoyaltiesAPI {
     checkOfferCard(req.card, o);
     const op = openingOf(req.card);
     const until = roundedValidUntil(op.expires);
-    if (until <= nowSeconds()) throw new Error('That offer has ended. Nothing was sent.');
+    if (until === undefined)
+      throw new Error(
+        'That offer ends within two days, so top-ups for it are closed (one now would show which offer it is). ' +
+          'Credit already held can still be settled. Nothing was sent.',
+      );
     return this.call(
       'topUp',
       { opening: op, code: unhex(req.code), rate: { rate: BigInt(req.card.rate), salt: unhex(req.card.rateSalt) } },
@@ -579,6 +591,7 @@ export class RoyaltiesAPI {
     const codes = (h0.codes ?? []).filter(
       (c) => c.offer === card.offer && (nonceHex === undefined || c.nonce === nonceHex.toLowerCase()),
     );
+    let alreadyRecorded = false;
     for (const code of codes) {
       const note: NoteOpening = { nonce: unhex(code.nonce), amount };
       for (const { lic, key } of lics) {
@@ -586,7 +599,10 @@ export class RoyaltiesAPI {
         const cm = noteOf(unhex(lic.secret), note.nonce, openingOf(card), amount);
         if (!l.noteSeen.member(cm)) continue;
         // Recording the same credit twice changes nothing (and never revives a spent note).
-        if ((h0.notes ?? []).some((x) => x.offer === card.offer && sameNote(x, note))) return note;
+        if ((h0.notes ?? []).some((x) => x.offer === card.offer && sameNote(x, note))) {
+          alreadyRecorded = true;
+          continue;
+        }
         await this.updateHeld((h) => ({
           ...h,
           notes: [
@@ -598,7 +614,11 @@ export class RoyaltiesAPI {
         return note;
       }
     }
-    throw new Error(`No credit of exactly ${amount} has landed for your top-up codes on that offer yet.`);
+    throw new Error(
+      alreadyRecorded
+        ? `Every top-up of exactly ${amount} that landed for your codes on that offer is already recorded.`
+        : `No credit of exactly ${amount} has landed for your top-up codes on that offer yet.`,
+    );
   }
 
   /**
@@ -683,7 +703,37 @@ export class RoyaltiesAPI {
 
   // ─────────────────────────────────────────── presentations
 
-  /** Answer a verifier's request (rule 2: never while the latest sale, note or receipt is yours). */
+  /**
+   * A presentation request from this verifier. Its scope is the same every time this
+   * verifier asks about the same offer (made from a seed kept in this client's store), so
+   * one licence answering for several growers shows the same holder tag each time. The
+   * cost: anyone on chain can also see that equal tags repeat.
+   */
+  async presentationRequest(args: {
+    readonly offer: Uint8Array;
+    readonly period?: string;
+    readonly minUnits?: bigint;
+    readonly validForSeconds?: number;
+  }): Promise<PresentationRequest> {
+    let seed = (await this.held()).verifierSeed;
+    if (seed === undefined) {
+      const fresh = hex(utils.randomBytes(32));
+      seed = fresh;
+      await this.updateHeld((h) => ({ ...h, verifierSeed: h.verifierSeed ?? fresh }));
+      seed = (await this.held()).verifierSeed ?? fresh;
+    }
+    const scope = createHash('sha256')
+      .update('veilcore:royalties:v2:verifier-scope')
+      .update(unhex(seed))
+      .update(args.offer)
+      .digest();
+    return newPresentationRequest({ ...args, contract: this.deployedContractAddress, scope: Uint8Array.from(scope) });
+  }
+
+  /**
+   * Answer a verifier's request with a licence held here that is live past the time asked
+   * and, if a period is asked, has a settlement on chain covering it (rule 2 applies).
+   */
   async prove(
     request: PresentationRequest,
     opts: { readonly units?: bigint; readonly evenIfLinkable?: boolean } = {},
@@ -692,29 +742,41 @@ export class RoyaltiesAPI {
     if (req.contract !== this.deployedContractAddress.toLowerCase())
       throw new Error('That request is for another royalties contract. Nothing was sent.');
     const offer = unhex(req.offer);
-    const lic = await this.licenceFor(offer);
     const validAt = BigInt(req.validAt);
     if (validAt <= nowSeconds()) throw new Error('That request has expired: ask the verifier for a new one.');
-    if (BigInt(lic.expires) <= validAt) throw new Error('Your licence ends before the time the verifier asks about.');
+    const live = (await this.liveLicences(offer)).filter((x) => BigInt(x.expires) > validAt);
+    if (live.length === 0)
+      throw new Error('This client holds no licence from that offer that is live at the time the verifier asks about.');
     const period = unhex(req.period);
-    await this.assertNotLatest(isZero(period) ? ['sale'] : ['sale', 'receipt'], opts);
+    let lic = live[live.length - 1];
     let units: bigint | undefined;
     if (!isZero(period)) {
-      // Settlements under this licence, for this period, that are in the receipt tree.
-      const view = R.viewKey(unhex(lic.secret), offer);
-      const leafOf = (u: bigint): string => hex(R.receiptLeaf(R.receiptCommit(view, period), offer, u));
-      const mine = (await this.settlements(offer)).filter(
-        (r) => hex(periodBytes(r.period)) === req.period && leafOf(BigInt(r.units)) === r.leaf,
-      );
-      units = opts.units;
-      if (units !== undefined && !mine.some((r) => BigInt(r.units) === units))
-        throw new Error(`No settlement of exactly ${units} unit(s) for that period under this licence.`);
-      if (opts.units === undefined)
-        for (const r of mine) if (units === undefined || BigInt(r.units) > units) units = BigInt(r.units);
-      if (units === undefined) throw new Error('No settlement on chain under this licence for that period.');
-      if (units < BigInt(req.minUnits))
+      // A licence with a settlement on chain for this period covering what is asked
+      // (the most units, unless told which), newest licence first.
+      const held = (await this.settlements(offer)).filter((r) => hex(periodBytes(r.period)) === req.period);
+      const pick = [...live].reverse().flatMap((l) => {
+        const view = R.viewKey(unhex(l.secret), offer);
+        const leafOf = (u: bigint): string => hex(R.receiptLeaf(R.receiptCommit(view, period), offer, u));
+        const us = held
+          .filter((r) => leafOf(BigInt(r.units)) === r.leaf)
+          .map((r) => BigInt(r.units))
+          .filter((u) => (opts.units === undefined ? true : u === opts.units))
+          .sort((a, b) => (a > b ? -1 : a < b ? 1 : 0));
+        return us.length > 0 ? [{ l, u: us[0] }] : [];
+      });
+      if (pick.length === 0)
+        throw new Error(
+          opts.units === undefined
+            ? 'No settlement on chain for that period under a licence held here.'
+            : `No settlement of exactly ${opts.units} unit(s) for that period under a licence held here.`,
+        );
+      const best = pick.reduce((a, b) => (b.u > a.u ? b : a));
+      if (best.u < BigInt(req.minUnits))
         throw new Error('Your settlement for that period covers fewer units than asked.');
+      lic = best.l;
+      units = best.u;
     }
+    await this.assertNotLatest(isZero(period) ? ['sale'] : ['sale', 'receipt'], opts);
     return this.call(
       'proveLicense',
       {
@@ -728,7 +790,10 @@ export class RoyaltiesAPI {
     );
   }
 
-  /** The verifier checks the licensee's transaction against the request it made. */
+  /**
+   * The verifier checks the licensee's transaction against the request it made. Only
+   * revocations on the offer asked about matter (the contract tracks them per offer).
+   */
   async verifyPresentation(
     request: PresentationRequest,
     txId: string,
@@ -744,15 +809,18 @@ export class RoyaltiesAPI {
       ['proveLicense'],
       'That transaction is not a single presentation on this royalties contract.',
     );
+    const offer = unhex(req.offer);
     const cells = royaltiesLedger(found.state.data);
     const expected = R.presentationTag(
-      unhex(req.offer),
+      offer,
       unhex(req.period),
       BigInt(req.minUnits),
       BigInt(req.validAt),
       unhex(req.scope),
       unhex(req.challenge),
     );
+    const revokedAt = (l: RoyaltiesLedger): bigint =>
+      l.offerRevokedAt.member(offer) ? l.offerRevokedAt.lookup(offer) : 0n;
     const lines: string[] = [];
     const tagOk = hex(cells.lastPresentation) === hex(expected);
     lines.push(
@@ -762,22 +830,22 @@ export class RoyaltiesAPI {
           : `ok     A live licence from that offer, and that period settled for at least ${req.minUnits} unit(s).`
         : 'FAILED This transaction does not answer your request (another offer, period, time, scope or challenge).',
     );
-    if (cells.lastPresentationUnsealed)
+    const unsealed = revokedAt(cells) > cells.sealedRevocations;
+    if (unsealed)
       lines.push(
-        'WAIT   A revocation was waiting for a seal when this was proved. Ask again after the next seal ' +
-          `(at most ${SEAL_INTERVAL_SECONDS / 60} minutes after the last one) before relying on it.`,
+        'WAIT   A licence from this offer was revoked and not yet sealed when this was proved. Ask again after the ' +
+          `next seal (at most ${SEAL_INTERVAL_SECONDS / 60} minutes after the last one) before relying on it.`,
       );
-    const revokedSince = (await this.currentLedger()).revocationSeq > cells.revocationSeq;
+    const revokedSince = revokedAt(await this.currentLedger()) > revokedAt(cells);
     if (revokedSince)
-      lines.push('WAIT   A licence on this contract has been revoked since this was proved. Ask for a new answer.');
+      lines.push('WAIT   A licence from this offer has been revoked since this was proved. Ask for a new answer.');
     lines.push(
-      `holder ${hex(cells.lastPresentationHolder)} (repeats if the same licence is shown to you again in this scope)`,
+      `holder ${hex(cells.lastPresentationHolder)} (repeats if the same licence answers you again in this scope)`,
     );
-    return {
-      accepted: tagOk && !cells.lastPresentationUnsealed && !revokedSince,
-      lines,
-      holder: hex(cells.lastPresentationHolder),
-    };
+    lines.push(
+      'note   This shows that someone holding a live licence answered, not that the person in front of you holds it.',
+    );
+    return { accepted: tagOk && !unsealed && !revokedSince, lines, holder: hex(cells.lastPresentationHolder) };
   }
 
   // ─────────────────────────────────────────── upkeep
@@ -829,8 +897,9 @@ export class RoyaltiesAPI {
 
   // ─────────────────────────────────────────── plumbing
 
-  private cardFor(secret: Uint8Array, offer: Uint8Array, license: Uint8Array): LicenceCard {
+  private cardFor(secret: Uint8Array, offer: Uint8Array, license: Uint8Array, expires: bigint): LicenceCard {
     return {
+      expires: String(expires),
       kind: 'veilcore-licence-card',
       contract: this.deployedContractAddress.toLowerCase(),
       offer: hex(offer),
@@ -871,8 +940,9 @@ export class RoyaltiesAPI {
       if (mine.has(hex(leaf)))
         throw new WouldLinkError(
           `${opts.afterOwnMerge === true ? 'Your credit was merged into one note. ' : ''}Your own ${what} is still ` +
-            `the newest on chain, so anyone watching could guess this proof is yours. Waiting for someone else's next ` +
-            `${next} hides it among theirs. Nothing was sent.`,
+            `the newest on chain, so anyone watching could guess this proof is yours. After someone else's next ` +
+            `${next} it could be theirs as well; the more people use the contract, the better that hides it. ` +
+            'Nothing was sent.',
         );
     }
   }
@@ -956,15 +1026,20 @@ export class RoyaltiesAPI {
     return unhex(s);
   }
 
-  /** The newest licence held for `offer` that the chain shows live (or, `allowEnded`, ended but not cleared). */
-  private async licenceFor(offer: Uint8Array, allowEnded = false): Promise<HeldLicence> {
+  /** Licences held for `offer` that the chain shows live (or, `allowEnded`, ended but not cleared), oldest first. */
+  private async liveLicences(offer: Uint8Array, allowEnded = false): Promise<HeldLicence[]> {
     const l = await this.currentLedger();
-    const live = (await this.held()).licences.filter(
+    return (await this.held()).licences.filter(
       (x) =>
         x.offer === hex(offer) &&
         l.licenseOffer.member(licenceKeyOf(unhex(x.secret), offer, BigInt(x.expires))) &&
         (allowEnded || BigInt(x.expires) > nowSeconds()),
     );
+  }
+
+  /** The newest licence held for `offer` that the chain shows live (or, `allowEnded`, ended but not cleared). */
+  private async licenceFor(offer: Uint8Array, allowEnded = false): Promise<HeldLicence> {
+    const live = await this.liveLicences(offer, allowEnded);
     if (live.length === 0)
       throw new Error(
         'This client holds no live licence from that offer (none bought here, revoked, ended or never landed).',

@@ -66,6 +66,15 @@ type OfferOpts = {
   expires?: bigint;
 };
 
+/** The masked units of the settlement that made the latest note. */
+const masked = (sim: RoyaltiesSimulator): bigint =>
+  sim.state.settlements.lookup(sim.state.lastNote).unitsMasked;
+
+/** Whether a revocation on `offer` is still waiting for a seal. */
+const offerUnsealed = (sim: RoyaltiesSimulator, offer: Uint8Array): boolean =>
+  sim.state.offerRevokedAt.member(offer) &&
+  sim.state.offerRevokedAt.lookup(offer) > sim.state.sealedRevocations;
+
 const post = (sim: RoyaltiesSimulator, o: OfferOpts = {}): Uint8Array =>
   sim.call(
     { record: o.record ?? BREEDER },
@@ -510,14 +519,26 @@ describe("credit: private settlement", () => {
     const { sim, offer, note } = funded();
     const view = R.viewKey(LIC, offer);
     settleAs(sim, offer, note, P1, 30n);
-    const m1 = sim.state.lastUnitsMasked;
+    const m1 = masked(sim);
     const c1 = sim.state.lastNote;
     expect(unmask(m1, view, c1)).toBe(30n);
     expect(unmask(m1, R.viewKey(OTHER, offer), c1)).not.toBe(30n);
     settleAs(sim, offer, changeOf(sim, offer, note, 80n), P1, 13n);
-    const m2 = sim.state.lastUnitsMasked;
+    const m2 = masked(sim);
     expect(unmask(m2, view, sim.state.lastNote)).toBe(13n);
     expect((m1 - m2 + FIELD) % FIELD).not.toBe(17n);
+  });
+
+  it("M1: every settlement stays readable, not only the latest", () => {
+    const { sim, offer, note } = funded();
+    const view = R.viewKey(LIC, offer);
+    settleAs(sim, offer, note, P1, 30n);
+    const c1 = sim.state.lastNote;
+    settleAs(sim, offer, changeOf(sim, offer, note, 80n), P2, 13n);
+    expect(sim.state.settlements.size()).toBe(2n);
+    const first = sim.state.settlements.lookup(c1);
+    expect(unmask(first.unitsMasked, view, c1)).toBe(30n);
+    expect(hex(first.receipt)).toBe(hex(R.receiptLeaf(R.receiptCommit(view, P1), offer, 30n)));
   });
 
   it("refuses more units than the note covers, a wrong rate, and zero units", () => {
@@ -749,9 +770,32 @@ describe("revocation, ending and seals", () => {
     expect(sim.pathFor(LIC, offer, EXPIRES)).toBeUndefined();
     expect(() => buy(sim, offer)).toThrow(/already bought/);
     prove(sim, who(offer));
-    expect(sim.state.lastPresentationUnsealed).toBe(true);
+    expect(offerUnsealed(sim, offer)).toBe(true);
     sim.call({}, "sealRevocations", sim.now + 100n);
+    expect(offerUnsealed(sim, offer)).toBe(false);
     expect(() => prove(sim, who(offer))).toThrow(/No live licence/);
+  });
+
+  it("H1: a revocation on another offer (say, an attacker revoking their own) holds up no one else's presentations", () => {
+    const { sim, offer } = withOffer();
+    buy(sim, offer);
+    const spam = post(sim, { record: OTHER, nonce: b(52), admin: ADMIN2 });
+    buy(sim, spam, LIC2);
+    sim.advance(700n);
+    sim.call({ admin: ADMIN2 }, "revokeLicense", keyOf(spam, LIC2));
+    prove(sim, who(offer));
+    expect(offerUnsealed(sim, spam)).toBe(true);
+    expect(offerUnsealed(sim, offer)).toBe(false);
+  });
+
+  it("a removed offer leaves no revocation entry behind", () => {
+    const { sim, offer } = withOffer({ expires: T0 + 1000n });
+    buy(sim, offer);
+    sim.call({ admin: ADMIN }, "revokeLicense", keyOf(offer, LIC, T0 + 1000n));
+    expect(sim.state.offerRevokedAt.member(offer)).toBe(true);
+    sim.advance(2000n);
+    sim.call({}, "removeEnded", offer);
+    expect(sim.state.offerRevokedAt.member(offer)).toBe(false);
   });
 
   it("a presentation proved before a revocation is rejected if it lands after the seal", () => {
@@ -883,9 +927,9 @@ describe("attacks from the reviews, kept as regressions", () => {
   it("X3: two settlements of one period do not publish their units difference", () => {
     const { sim, offer, note } = funded();
     settleAs(sim, offer, note, P1, 30n);
-    const m1 = sim.state.lastUnitsMasked;
+    const m1 = masked(sim);
     settleAs(sim, offer, changeOf(sim, offer, note, 80n), P1, 13n);
-    expect((m1 - sim.state.lastUnitsMasked + FIELD) % FIELD).not.toBe(17n);
+    expect((m1 - masked(sim) + FIELD) % FIELD).not.toBe(17n);
   });
 
   it("X7: a removed offer's id cannot come back with other terms", () => {

@@ -6,7 +6,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, it } from 'vitest';
-import { from } from 'rxjs';
 import { type CircuitContext, createCircuitContext, createConstructorContext } from '@midnight-ntwrk/compact-runtime';
 import { pureCircuits as C } from '../../contract/src/managed/veilcore/contract/index.js';
 import { Contract } from '../../contract/src/managed/veilcore-royalties/contract/index.js';
@@ -31,7 +30,6 @@ type Ctx = CircuitContext<RoyaltiesPrivateState>;
 /** One chain: the royalties contract in the simulator, the main contract beside it. */
 class Chain {
   ctx: Ctx;
-  states: unknown[] = [];
   n = 0;
   /** The next call fails before it lands. */
   failNext = false;
@@ -43,7 +41,6 @@ class Chain {
     const c = new Contract<RoyaltiesPrivateState>(royaltiesWitnesses);
     const init = c.initialState(createConstructorContext(emptyRoyaltiesPrivateState(), COIN));
     this.ctx = createCircuitContext(ROYALTIES, COIN, init.currentContractState, emptyRoyaltiesPrivateState());
-    this.states.push(this.ctx.currentQueryContext.state);
   }
 
   get ledger() {
@@ -65,7 +62,6 @@ class Chain {
               ? (this.main as unknown as { ctx: Ctx }).ctx.currentQueryContext.state
               : this.ctx.currentQueryContext.state,
         }),
-      contractStateObservable: () => from(this.states.map((data) => ({ data }))),
     };
     const callTx = new Proxy(
       {},
@@ -94,7 +90,6 @@ class Chain {
     const circuits = c.impureCircuits as unknown as Record<string, (ctx: Ctx, ...a: unknown[]) => { context: Ctx }>;
     const r = circuits[name](ctx, ...args);
     this.ctx = r.context;
-    this.states.push(this.ctx.currentQueryContext.state);
     store.set(royaltiesPrivateStateKey, r.context.currentPrivateState);
     this.n++;
     if (this.timeoutAfterLanding) {
@@ -149,11 +144,11 @@ describe('the royalties client, end to end on the simulator', () => {
     chain.failNext = true;
     await expect(g1.api.buyLicense(card, MAIN)).rejects.toThrow(/test/);
 
-    // A payer tops up g1 without learning who g1 is; g1 records it. Twice changes nothing.
+    // A payer tops up g1 without learning who g1 is; g1 records it. Twice is refused and changes nothing.
     const req = await g1.api.topUpRequest(offer);
     await payer.api.payTopUp(req, 100n);
     await g1.api.claimTopUp(offer, undefined, 100n);
-    await g1.api.claimTopUp(offer, undefined, 100n);
+    await expect(g1.api.claimTopUp(offer, undefined, 100n)).rejects.toThrow(/already recorded/);
     expect(await g1.api.credit(offer)).toBe(100n);
     await g1.api.topUpOwn(offer, 60n);
     expect(await g1.api.credit(offer)).toBe(160n);
@@ -187,19 +182,42 @@ describe('the royalties client, end to end on the simulator', () => {
 
     // Nothing on chain names the period, the units or the rate: the breeder reads them
     // with the licence cards.
-    const books = await breeder.api.readSettlements([b1.licenceCard, b2.licenceCard], ['2026-Q4', '2027-Q1']);
-    expect(books.map((s) => [s.licence === b1.licenceCard.licence ? 'g1' : 'g2', s.period, s.units])).toEqual([
-      ['g1', '2026-Q4', 20n],
-      ['g1', '2027-Q1', 19n],
-      ['g2', '2026-Q4', 7n],
-    ]);
-    // A stranger's cards read nothing: a card whose keys do not make its licence is refused.
-    await expect(
-      breeder.api.readSettlements([{ ...b1.licenceCard, viewKey: b2.licenceCard.viewKey }], ['2026-Q4']),
-    ).rejects.toThrow(/not the licensee's real card/);
+    const who = (l: string): string => (l === b1.licenceCard.licence ? 'g1' : 'g2');
+    // The contract's map has no order; compare as sorted rows.
+    const rows = (xs: unknown[][]): string[] => xs.map((x) => x.map(String).join(' ')).sort();
+    const books = await breeder.api.readSettlements(
+      [b1.licenceCard, b2.licenceCard, b1.licenceCard],
+      ['2026-Q4', '2027-Q1'],
+    );
+    expect(rows(books.found.map((s) => [who(s.licence), s.period, s.units]))).toEqual(
+      rows([
+        ['g1', '2026-Q4', 20n],
+        ['g1', '2027-Q1', 19n],
+        ['g2', '2026-Q4', 7n],
+      ]),
+    );
+    // A period the breeder did not list is still reported, without its label.
+    const partial = await breeder.api.readSettlements([b1.licenceCard], ['2026-Q4']);
+    expect(rows(partial.found.map((s) => [s.period, s.units]))).toEqual(
+      rows([
+        ['2026-Q4', 20n],
+        [undefined, 19n],
+      ]),
+    );
+    // A card whose keys do not make its licence is skipped, and the others are still read.
+    const forged = await breeder.api.readSettlements(
+      [{ ...b1.licenceCard, viewKey: b2.licenceCard.viewKey }, b2.licenceCard],
+      ['2026-Q4'],
+    );
+    expect(forged.refused[0].why).toMatch(/not the licensee's real card/);
+    expect(forged.found.map((s) => who(s.licence))).toEqual(['g2']);
 
     // A buyer asks g1 to prove a live licence and at least 10 units settled for 2027-Q1.
-    const ask = newPresentationRequest({ contract: ROYALTIES, offer, period: '2027-Q1', minUnits: 10n });
+    // A verifier's requests about one offer share a scope; another verifier's do not.
+    const verifier = chain.party();
+    const ask = await verifier.api.presentationRequest({ offer, period: '2027-Q1', minUnits: 10n });
+    expect((await verifier.api.presentationRequest({ offer })).scope).toBe(ask.scope);
+    expect((await chain.party().api.presentationRequest({ offer })).scope).not.toBe(ask.scope);
     await g2.api.topUpOwn(offer, 1n);
     await g1.api.prove(ask);
     expect(hex(chain.ledger.lastPresentation)).toBe(
@@ -219,7 +237,19 @@ describe('the royalties client, end to end on the simulator', () => {
     const tooMany = newPresentationRequest({ contract: ROYALTIES, offer, period: '2027-Q1', minUnits: 20n });
     await expect(g1.api.prove(tooMany)).rejects.toThrow(/fewer units/);
 
+    // Two top-up requests, each paid the same amount, are both recorded.
+    const r1 = await g1.api.topUpRequest(offer);
+    const r2 = await g1.api.topUpRequest(offer);
+    const before = await g1.api.credit(offer);
+    await payer.api.payTopUp(r1, 5n);
+    await payer.api.payTopUp(r2, 5n);
+    await g1.api.claimTopUp(offer, undefined, 5n);
+    await g1.api.claimTopUp(offer, undefined, 5n);
+    await expect(g1.api.claimTopUp(offer, undefined, 5n)).rejects.toThrow(/already recorded/);
+    expect(await g1.api.credit(offer)).toBe(before + 10n);
+
     // No call left its input in a store.
-    for (const p of [breeder, g1, g2, payer]) expect(p.store.get(royaltiesPrivateStateKey)?.input ?? {}).toEqual({});
+    for (const p of [breeder, g1, g2, payer, verifier])
+      expect(p.store.get(royaltiesPrivateStateKey)?.input ?? {}).toEqual({});
   });
 });

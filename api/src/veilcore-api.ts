@@ -34,10 +34,16 @@ import {
 } from '@midnight-ntwrk/midnight-js-contracts';
 import { combineLatest, map, from, defer, type Observable } from 'rxjs';
 import { toHex } from '@midnight-ntwrk/midnight-js-utils';
-import { assertDeploymentRecordCurrent, assertJoinAllowed } from './deploy-guard.js';
+import { assertDeploymentRecordCurrent, assertJoinAllowed, resolveNetwork } from './deploy-guard.js';
 import { FIRST_FRAGMENT, addMissingKeys, deployInFragments, unknownCircuits } from './deploy-fragments.js';
 import { retireMaintenanceAuthorityProvably } from './maintenance.js';
-import { callState, presentationWithTime } from './presentation-lookup.js';
+import { type LookupCheck, presentationWithTime, singleCallState } from './presentation-lookup.js';
+import {
+  type AuthorityReport,
+  ContractStateMismatchError,
+  checkContractState,
+  pinnedVerifierKeys,
+} from './state-check.js';
 import { checkStartingState } from './starting-state.js';
 import * as utils from './utils/index.js';
 import {
@@ -466,32 +472,60 @@ export class VeilcoreAPI {
   }
 
   /**
-   * As a verifier, check a licence presentation (design.md rule 5). `txId` is what the
-   * licensee gave you; it must be a successful proveLicense call on this contract, and
-   * the check is made on the state right after it (presentation-lookup.ts).
+   * Rule 8: check an ownership proof the holder made for your challenge. On mainnet the
+   * state at the proof and the state now must both carry the pinned build's verifier keys
+   * (state-check.ts); `check` adds a second indexer or a required authority counter.
    */
-  /** Rule 8: check an ownership proof the holder made for your challenge. */
   async checkOwnership(
     indexerUri: string,
     txId: string,
     record: Uint8Array,
     challenge: Uint8Array,
-  ): Promise<ReturnType<typeof acceptOwnership>> {
+    check: LookupCheck = {},
+  ): Promise<ReturnType<typeof acceptOwnership> & { readonly authority?: AuthorityReport }> {
+    const req = this.lookupCheck(check);
+    let found: Awaited<ReturnType<typeof singleCallState>>;
+    try {
+      found = await singleCallState(
+        indexerUri,
+        this.deployedContractAddress,
+        txId,
+        ['proveOwnership'],
+        'That transaction is not a single proveOwnership call on this contract.',
+        undefined,
+        req,
+      );
+    } catch (e) {
+      if (e instanceof ContractStateMismatchError)
+        return { accepted: false, reason: e.message, authority: e.authority };
+      throw e;
+    }
     // The state now as well as the state after the proof: if the proving commitment is
     // no longer the head (rotated, or recovered away from a thief), the proof is refused.
-    return acceptOwnership(
-      await callState(indexerUri, this.deployedContractAddress, txId, 'proveOwnership'),
-      record,
-      challenge,
-      await this.currentLedger(),
-    );
+    const nowState = await this.providers.publicDataProvider.queryContractState(this.deployedContractAddress);
+    if (nowState === null) throw new Error('the VeilCore contract has no state at its address');
+    try {
+      checkContractState(nowState, req, 'the current state');
+    } catch (e) {
+      if (e instanceof ContractStateMismatchError)
+        return { accepted: false, reason: e.message, authority: e.authority };
+      throw e;
+    }
+    const v = acceptOwnership(Veilcore.ledger(found.state.data), record, challenge, Veilcore.ledger(nowState.data));
+    return { ...v, authority: found.authority };
   }
 
   /**
+   * As a verifier, check a licence presentation (design.md rule 5). `txId` is what the
+   * licensee gave you; it must be a successful proveLicense call on this contract, and
+   * the check is made on the state right after it (presentation-lookup.ts).
+   *
    * `issuedAt` is when the verifier issued `challenge` (its challenge book). The
    * presentation is also refused when the indexer gives no time for it, when it landed
    * before the challenge was issued, or when it is older than MAX_PRESENTATION_AGE_MS
    * (verify.ts, acceptPresentationAt): it shows the licence was live when presented, not now.
+   * On mainnet the state must carry the pinned build's verifier keys; the maintenance
+   * authority at that transaction comes back with the verdict.
    */
   async checkPresentation(
     indexerUri: string,
@@ -499,13 +533,37 @@ export class VeilcoreAPI {
     issuer: Uint8Array,
     challenge: Uint8Array,
     issuedAt?: number,
-  ): Promise<ReturnType<typeof acceptPresentationAt>> {
-    const found = await presentationWithTime(indexerUri, this.deployedContractAddress, txId);
-    return acceptPresentationAt(found.ledger, issuer, challenge, {
+    check: LookupCheck = {},
+  ): Promise<ReturnType<typeof acceptPresentationAt> & { readonly authority?: AuthorityReport }> {
+    let found: Awaited<ReturnType<typeof presentationWithTime>>;
+    try {
+      found = await presentationWithTime(
+        indexerUri,
+        this.deployedContractAddress,
+        txId,
+        undefined,
+        this.lookupCheck(check),
+      );
+    } catch (e) {
+      if (e instanceof ContractStateMismatchError)
+        return { accepted: false, reason: e.message, authority: e.authority };
+      throw e;
+    }
+    const v = acceptPresentationAt(found.ledger, issuer, challenge, {
       landedAt: found.blockTime,
       blockHeight: found.blockHeight,
       issuedAt,
     });
+    return { ...v, authority: found.authority };
+  }
+
+  /**
+   * What a verification lookup requires here: on mainnet, the pinned build's verifier
+   * keys, always (a caller cannot turn that off); elsewhere, whatever the caller asks.
+   */
+  private lookupCheck(check: LookupCheck): LookupCheck {
+    if (resolveNetwork() !== 'mainnet') return check;
+    return { ...check, verifierKeys: check.verifierKeys ?? pinnedVerifierKeys('veilcore') };
   }
 
   // ─────────────────────────────────────────────────────────── plumbing

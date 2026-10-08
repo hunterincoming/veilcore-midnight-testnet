@@ -14,7 +14,9 @@ does not exist yet.
 
 VeilCore is one Midnight contract, `contract/src/veilcore.compact`, that records:
 
-1. **Records.** Who held a genetic record, and when, without disclosing the genetics.
+1. **Records.** That a genetic record existed by a date, and who controls its identity
+   now, without disclosing the genetics. Evidence of prior possession of the record, not
+   ownership.
 2. **Licences.** Rights granted against a record, presentable to a verifier without
    naming the licence or the licensee.
 3. **Lineage.** Parentage both holders agreed to, and obligations (royalties, use
@@ -81,7 +83,7 @@ A record secret is 32 random bytes held by the record's holder. Its commitment i
 - A commitment **may act only while it is its identity's head**. The identity of any
   commitment is `originFor(x)`: `originOf(x)` if set, else `x`.
 - A rotation or recovery target must have no history, so two identities never merge.
-- **Only an anchored identity acts as a record holder**: ownership proofs, DNA pairing,
+- **Only an anchored identity acts as a record holder**: control proofs, DNA pairing,
   issuing licences and lineage all require one. (Licensees, sealing, batch roots and
   recovery act without a record.) An unanchored commitment therefore has no events to
   carry into an identity it is later rotated into, and an anchored one can never be a
@@ -108,8 +110,8 @@ every rotation and recovery, and a retired secret controls nothing.
 | Circuit | Effect |
 |---|---|
 | `anchor(recoveryCommitment)` | Anchors the caller's record. Refuses the zero commitment and the zero secret's commitment. |
-| `proveOwnership(challenge)` | Publishes the caller's live record in `lastOwnershipProof` and the verifier's challenge in `lastOwnershipChallenge`, so the proof answers one verifier (rule 8). The interval since its anchor is the evidence of prior possession. |
-| `pairDna(dnaCommitment)` | Records any non-zero 32-byte value the holder chooses against the caller's record. It is the holder's own statement that a report belongs to the record; the contract cannot check it. |
+| `proveOwnership(challenge)` | Publishes the caller's live record in `lastOwnershipProof` and the verifier's challenge in `lastOwnershipChallenge`, so the proof answers one verifier (rule 8). It shows present control of the record's identity, and only that: not ownership, and not who held it before. The identity's anchor date says nothing about who holds it now, or about any content: a holder can anchor, then rotate to a buyer, and on chain a sale looks like a key rotation. Treat any rotation or recovery since the anchor as a possible change of hands. Content is dated only by its own commitment's anchor (its batch root, or its pairing). |
+| `pairDna(dnaCommitment)` | Records any non-zero 32-byte value the holder chooses against the caller's record. It is the holder's own statement that a report belongs to the record; the contract cannot check it. A pairing shows the record was paired with that value by that block, nothing more. Once paired, the value is public: anyone watching can pair the same value to a record of their own, and can front-run a pairing still waiting to land. So which of two pairings of the same raw report hash came first is not evidence of who had the report first. |
 | `rotateRecordSecret(newRecord)` | Moves the identity; the caller must hold the new secret. Anchored identities only. At most 16 since the anchor or the last recovery. |
 | `recoverRecordSecret(origin, newRecord, newRecoveryCommitment)` | Moves the identity with the recovery secret, whoever holds the head. At most 16 per identity; each one resets the rotation count. |
 | `replaceRecoveryCommitment(origin, new)` | Replaces a recovery secret that may have leaked. |
@@ -284,7 +286,7 @@ refuses a presentation older than an hour (`MAX_PRESENTATION_AGE_MS`), because i
 the licence was live when presented, not since. The CLI's option 27 uses it.
 "Use each challenge once" is implemented by `ChallengeBook` with `acceptPresentationOnce`
 and `acceptOwnershipOnce`: a challenge is accepted once, only for the kind it was issued
-for (licence or ownership), and only within 7 days of issue. The CLI keeps the book
+for (licence or control proof), and only within 7 days of issue. The CLI keeps the book
 encrypted under `~/.veilcore/challenges`, one file per network
 (`bboard-cli/src/challenge-file.ts`). The tests exercise each rule
 (`rules-coverage-round11.test.ts` among them).
@@ -331,27 +333,33 @@ encrypted under `~/.veilcore/challenges`, one file per network
    `lastProposedObligation`, `lastProposedAgainst` and `lastProposedBy` only by
    `proposeObligation`.
 7. **Batch roots are not possession.** `anchorBatch` is unauthenticated.
-8. **Ownership proofs.** Send the holder a fresh 32-byte random challenge and use it once.
+8. **Control proofs** (`proveOwnership`, a name the live contract keeps). A proof shows that
+   whoever answered controls the identity's live record now: prior possession of the record,
+   not ownership, and not who held it before (see `proveOwnership` above). Send the holder a
+   fresh 32-byte random challenge and use it once.
    The holder gives you the transaction id of a `proveOwnership(challenge)` call. Look
    it up as in rule 5 (successful, its only call on this contract) and accept only if
    `lastOwnershipChallenge` is your challenge and `lastOwnershipProof` is the live,
    anchored head of the identity you asked about (`acceptOwnership`;
    `VeilcoreAPI.checkOwnership`). Never accept a proof made for someone else's challenge:
    anyone can point you at the real holder's. The challenge becomes public with the
-   proof, so never use one challenge for both an ownership proof and a licence
+   proof, so never use one challenge for both a control proof and a licence
    presentation: published, it would let anyone recognise the presentation's tag and
    name its issuer. Also read the current state and refuse the proof if the proving
    commitment is no longer its identity's head: a proof made with a stolen secret is
-   then refused once the owner has recovered (`acceptOwnership` with its `now`
-   argument; `checkOwnership` always passes it). An ownership proof publishes the
+   then refused once the holder has recovered (`acceptOwnership` with its `now`
+   argument; `checkOwnership` always passes it). A control proof publishes the
    record's commitment. Like a presentation, a proof shows that the holder of the secret
    answered your challenge, not that the party in front of you is that holder: a
    middleman can relay it. Answer challenges only from the party you are dealing with.
 
 ## Trust model
 
+Everything under "Proven by the contract" holds for the circuits as deployed. The
+maintenance key can change the circuits ("Assumed" below, and "Governance").
+
 **Proven by the contract**
-- A record's holder knew its secret when anchoring, proving ownership, or acting.
+- A record's holder knew its secret when anchoring, proving control, or acting.
 - A retired commitment can do nothing.
 - A licence presentation came from someone holding the secret of a licence from the
   named issuer that was in the tree at a root the contract still accepted. On its own
@@ -363,6 +371,14 @@ encrypted under `~/.veilcore/challenges`, one file per network
 - A presentation came from someone holding a live licence from the named issuer.
 
 **Assumed, and stated plainly**
+- **The maintenance key holder does not abuse it.** As long as the key exists,
+  whoever holds it can add or replace circuits, and a new circuit can write any ledger
+  entry. So the key holder could rewrite any identity's head or recovery commitment (take
+  over any identity), insert licences for any issuer, add or remove obligations and parent
+  edges, or remove circuit keys so circuits stop working. It cannot backdate block time,
+  and every change is visible on chain. Today one key does this, on paper in two copies,
+  one per founder, so either founder's copy alone is enough. The plan to move it to a
+  two-of-two or two-of-three committee is pending (`docs/maintenance-policy.md`).
 - **Record contents are the holder's assertion.** The chain proves when a claim was made
   and that it has not changed, not that the genetics are what the holder says.
 - **A parent edge is an agreement, not a genetic test.** It proves both holders said
@@ -416,13 +432,25 @@ with the published fingerprints, AND checks the address against the deployment r
 
 midnight-js always installs a maintenance authority on deployment. It can add and remove
 verifier keys, so it can repair or disable any circuit, and a key for a new circuit could
-rewrite state: whoever holds it controls the contract. VeilCore keeps it for launch, held offline by the deployer (the client shows it before
+rewrite state: whoever holds it controls the contract. In plain terms, the key holder can:
+
+- add or replace circuits, which could rewrite any identity's head or recovery commitment
+  (take over any identity);
+- insert licences for any issuer;
+- add or remove obligations and parent edges;
+- remove circuit keys, so those circuits can no longer be called.
+
+It cannot backdate block time, and every change is visible on chain. Today it is one key,
+on paper in two copies, one held by each founder: either copy alone can do all of the
+above. Moving it to a two-of-two or two-of-three committee is planned and pending.
+
+VeilCore keeps it for launch, held offline by the deployer (the client shows it before
 deploying and never writes it to disk: it is held in memory for the deploy, and typed from
 paper whenever it is needed again), and
 keeps it under `docs/maintenance-policy.md` (approved by both founders, 6 and 7 October 2026): no retirement
 date, because Midnight network upgrades can require verifier-key updates; every use
-announced ahead and published with fingerprints; custody moving to a two-of-three
-committee with an independent holder. Retiring stays possible through
+announced ahead and published with fingerprints; custody planned to move to a committee
+(pending). Retiring stays possible through
 `VeilcoreAPI.retireMaintenanceAuthority`, which since round D replaces the authority with
 an empty committee (`retireMaintenanceAuthorityProvably`, api/src/maintenance.ts, as the
 claims contract does): no key can satisfy it, no replacement key is made or stored, and
@@ -434,9 +462,10 @@ offline copy. Option 32 shows the record secret; do not confuse them). Holders s
 - **What a thief does before recovery stands.** Someone holding an identity's current
   secret acts as that identity until recovery: they can revoke its licences, accept
   obligations on it (including ones owed to themselves), and confirm parentage.
-  Recovery stops them from then on; it does not undo those acts, and no one can remove a
+  Recovery stops them from then on; it does not undo those acts, and no circuit removes a
   confirmed edge. Disputes of that kind are for the parties and, while it is held, the
-  maintenance authority, which could add a remedy circuit. Keep secrets on devices you
+  maintenance key holder, who could add a circuit that does (see Governance: the same
+  power could remove a true edge). Keep secrets on devices you
   control and the recovery secret offline.
 - **Licence activity is public apart from presentations.** Issue, countersign, approve
   and revoke publish the licence key and the issuing record; a transfer proposal and its
@@ -557,7 +586,7 @@ compiled contract, in the style of Midnight's examples (`veilcore-simulator.ts`)
 
 | Suite | Covers |
 |---|---|
-| `records.test.ts` | Anchoring, ownership, rotation, recovery; recovery against a thief who keeps rotating |
+| `records.test.ts` | Anchoring, control proofs, rotation, recovery; recovery against a thief who keeps rotating |
 | `licences.test.ts` | Lifecycle, forgery through transfer, squatting, starvation of revocation, sealing and its rate limit, slot contention |
 | `lineage.test.ts` | Consent, release by beneficiary only, survival across rotation and recovery, identity merging, the verifier walk |
 | `interface.test.ts` | Published vectors, protocol version, the circuit list, no secret or caller record as an argument |

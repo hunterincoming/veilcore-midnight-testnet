@@ -72,8 +72,10 @@ Each piece is a known construction, not an invention:
 ## What is public, and what can still link
 
 Public: who pays at a licence purchase and a top-up, the breeder's wallet, the token, the
-amount, the offer at a purchase, and which circuit each transaction calls (and its fee-paying
-wallet). A top-up shows a rounded "open until" time (always the start of the day after
+amount, the offer at a purchase, and which circuit each transaction calls. Fees are paid in
+DUST, which Midnight's docs call shielded, but they do not say whether a fee payment can be
+tied to the wallet behind it; that is to be confirmed against the ledger spec before we claim
+either way. A top-up shows a rounded "open until" time (always the start of the day after
 tomorrow, UTC) so it names no offer; for the same reason top-ups close one to two days
 before an offer ends. A breeder with one royalty offer per wallet and token gets no cover from that.
 

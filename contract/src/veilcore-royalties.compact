@@ -70,7 +70,8 @@
 // licensee who tops up from the wallet that bought the licence links the two. Clients
 // wait for someone else's transaction before proving, which helps only as much as there
 // are others; privacy grows with use. Also public: which circuit each transaction calls
-// (and its fee-paying wallet); whether a presentation asked about a period; the time the
+// (whether the DUST fee payment can be tied to a wallet is not stated in Midnight's docs:
+// to be confirmed before relying on it); whether a presentation asked about a period; the time the
 // verifier asked for; equal holder tags; that a merge spent two notes of one owner; top-up
 // amounts (unrounded ones can hint at the rate); and a refused proof tells a verifier
 // something about the units. Units are declared by the licensee; checking them against

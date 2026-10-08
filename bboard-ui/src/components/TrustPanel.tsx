@@ -8,6 +8,7 @@ import ScheduleIcon from '@mui/icons-material/ScheduleOutlined';
 import ScienceIcon from '@mui/icons-material/ScienceOutlined';
 import GroupIcon from '@mui/icons-material/GroupOutlined';
 import { TEAL } from '../config/theme';
+import { THIS_SITE } from '../config/copy';
 
 const POINTS = [
   {
@@ -18,7 +19,7 @@ const POINTS = [
   {
     icon: <ScienceIcon />,
     title: 'A paired report can be compared later',
-    body: 'Pairing saves your lab report’s fingerprint with the record, as your statement, so a fresh test of the material can later be compared with it. When you pair through VeilCore’s contract on Midnight, the report’s fingerprint is dated too; this web demo doesn’t do that yet.',
+    body: `Pairing saves your lab report’s fingerprint with the record, as your statement, so a fresh test of the material can later be compared with it. When you pair through VeilCore’s contract on Midnight, the report’s fingerprint is dated too; ${THIS_SITE} doesn’t do that yet.`,
   },
   {
     icon: <GroupIcon />,

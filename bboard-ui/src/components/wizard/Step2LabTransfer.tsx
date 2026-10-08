@@ -9,6 +9,7 @@ import ScienceIcon from '@mui/icons-material/ScienceOutlined';
 import { getRecord } from '../../veilcore/records';
 import { createLicense, sealAgreement, type LicenseTerms } from '../../veilcore/licenses';
 import { AgreementTermsFields, emptyTermsFor, type SetTerm } from '../licensing/LicenseTermsFields';
+import { THIS_SITE } from '../../config/copy';
 
 export const Step2LabTransfer: React.FC<{
   recordId: string;
@@ -59,8 +60,8 @@ export const Step2LabTransfer: React.FC<{
 
       <Alert icon={<ScienceIcon />} severity="info" variant="outlined">
         This puts the terms on the record before the material leaves your hands. It&apos;s custody, not a sale: no
-        royalty, no fee. In this web demo, agreements are simulated: the lab doesn&apos;t sign anything here, and
-        nothing is sent to Midnight.
+        royalty, no fee. In {THIS_SITE}, agreements are simulated: the lab doesn&apos;t sign anything here, and nothing
+        is sent to Midnight.
       </Alert>
 
       <AgreementTermsFields type="lab-transfer" terms={t} set={set} />

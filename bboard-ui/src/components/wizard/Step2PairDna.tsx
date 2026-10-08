@@ -13,6 +13,7 @@ import { fingerprintFile, shortFingerprint } from '../../veilcore/commitment';
 import { getRecord, pairDna, conflictsFor, type StrainRecord } from '../../veilcore/records';
 import { FingerprintReveal } from './FingerprintReveal';
 import { Dropzone } from './Dropzone';
+import { THIS_SITE } from '../../config/copy';
 
 const MChip = motion(Chip);
 
@@ -90,7 +91,7 @@ export const Step2PairDna: React.FC<{
         )}
         <Alert severity="success" variant="outlined">
           Paired. Your lab report&apos;s fingerprint is saved with the record, as your statement that this report
-          belongs to it. It is not a check of the genetics, and in this web demo the pairing isn&apos;t dated yet.
+          belongs to it. It is not a check of the genetics, and in {THIS_SITE} the pairing isn&apos;t dated yet.
         </Alert>
         <Box>
           <Button variant="contained" size="large" onClick={onDone}>
@@ -120,8 +121,8 @@ export const Step2PairDna: React.FC<{
 
       <Alert icon={<ScienceIcon />} severity="info" variant="outlined">
         VeilCore doesn&apos;t test DNA: you pair the report your testing lab gave you. It&apos;s read and fingerprinted
-        on your device; the file is never uploaded. Its fingerprint and file name are saved with your record. In this
-        web demo the pairing isn&apos;t dated yet; on VeilCore&apos;s contract it is.
+        on your device; the file is never uploaded. Its fingerprint and file name are saved with your record. In{' '}
+        {THIS_SITE} the pairing isn&apos;t dated yet; on VeilCore&apos;s contract it is.
       </Alert>
 
       <Dropzone

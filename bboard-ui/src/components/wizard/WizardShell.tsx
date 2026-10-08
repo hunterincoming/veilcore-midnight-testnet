@@ -22,6 +22,7 @@ import { AppHeader } from '../AppHeader';
 import { getLicense, agreementRows, agreementType, AGREEMENT_LABEL } from '../../veilcore/licenses';
 import { getRecord } from '../../veilcore/records';
 import { TEAL } from '../../config/theme';
+import { AGREEMENT_RECORDED, THIS_SITE } from '../../config/copy';
 
 const Row: React.FC<{ k: string; v: string }> = ({ k, v }) => (
   <Stack direction="row" spacing={2} sx={{ justifyContent: 'space-between' }}>
@@ -80,7 +81,7 @@ export const WizardShell: React.FC = () => {
               {record ? <b>{record.strainName}</b> : 'Your record'} is sealed, and its lab and DNA files stayed on your
               device
               {license
-                ? '. The agreement is attached to the record; in this web demo, signing is simulated. VeilCore records what is owed; payment happens between you.'
+                ? `. The agreement is attached to the record; in ${THIS_SITE}, signing is simulated. VeilCore records what is owed; payment happens between you.`
                 : '. It is dated when its batch is anchored; its verify page shows when that has happened.'}
             </Typography>
           </Box>
@@ -88,7 +89,7 @@ export const WizardShell: React.FC = () => {
           {license && type ? (
             <Paper sx={{ p: { xs: 2.5, md: 3 }, textAlign: 'left', border: `1px solid ${TEAL}55` }}>
               <Typography variant="overline" sx={{ display: 'block', mb: 1.5 }}>
-                Recorded in this demo · {AGREEMENT_LABEL[type]}
+                {AGREEMENT_RECORDED} · {AGREEMENT_LABEL[type]}
               </Typography>
               <Stack spacing={1}>
                 {agreementRows(license).map((r) => (

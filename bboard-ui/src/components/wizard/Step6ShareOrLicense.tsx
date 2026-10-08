@@ -33,7 +33,7 @@ import { canonicalUrl } from '../../config/network';
 import { AgreementTermsFields, emptyTermsFor, type SetTerm } from '../licensing/LicenseTermsFields';
 import { LicenseStateChip } from '../licensing/LicenseStateChip';
 import { TEAL } from '../../config/theme';
-import { AGREEMENTS_SIMULATED } from '../../config/copy';
+import { AGREEMENTS_SIMULATED, AGREEMENT_RECORDED, SIMULATED_TAG, THIS_SITE } from '../../config/copy';
 
 /** The two choice cards: real buttons, so a keyboard reaches them. */
 const CHOICE = {
@@ -142,7 +142,9 @@ export const Step6ShareOrLicense: React.FC<{
 
         <Paper sx={{ p: { xs: 2.5, md: 3 }, border: `1px solid ${TEAL}55` }}>
           <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
-            <Typography variant="overline">Recorded in this demo · {AGREEMENT_LABEL[type]}</Typography>
+            <Typography variant="overline">
+              {AGREEMENT_RECORDED} · {AGREEMENT_LABEL[type]}
+            </Typography>
             <LicenseStateChip license={license} />
           </Stack>
           <Stack spacing={1}>
@@ -196,9 +198,9 @@ export const Step6ShareOrLicense: React.FC<{
             Copy link
           </Button>
           <Button variant="contained" onClick={() => void onCountersign()}>
-            Mark active myself (demo)
+            Mark active myself {SIMULATED_TAG}
           </Button>
-          <Chip size="small" variant="outlined" label="Simulated in this web demo" />
+          <Chip size="small" variant="outlined" label={`Simulated in ${THIS_SITE}`} />
         </Stack>
         <Typography variant="caption" color="text.secondary">
           The link opens only in your own browser for now: the other party cannot load or sign it from theirs yet.

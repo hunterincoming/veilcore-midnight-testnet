@@ -16,7 +16,7 @@ import ScienceIcon from '@mui/icons-material/ScienceOutlined';
 
 export const WalletBadge: React.FC<{ network: string }> = ({ network }) => (
   <Stack direction="row" spacing={1}>
-    <Chip size="small" icon={<ScienceIcon />} variant="outlined" label={network === 'mainnet' ? 'Web demo' : 'Demo'} />
+    <Chip size="small" icon={<ScienceIcon />} variant="outlined" label={network === 'mainnet' ? 'Web app' : 'Demo'} />
     <Chip
       size="small"
       icon={<BoltIcon />}

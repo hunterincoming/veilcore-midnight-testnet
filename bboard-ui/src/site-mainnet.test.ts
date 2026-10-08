@@ -246,6 +246,13 @@ describe('the mainnet strings', () => {
     expect(key(true, false)).toMatch(/The claims contract has no maintenance key/);
     expect(key(false, true)).not.toMatch(/claims contract/i);
   });
+  it('never call the site a demo: records sealed on the mainnet site are real', () => {
+    for (const claims of [true, false])
+      for (const policy of [true, false]) {
+        const o = mainnetStrings({ claimsOnMainnet: claims, policyApproved: policy });
+        for (const [k, v] of Object.entries(o)) expect(v.match(/\bdemos?\b/i)?.[0], k).toBeUndefined();
+      }
+  });
   it('say records are anchored by hand for now, never that dating simply happens', () => {
     for (const claims of [true, false]) {
       const o = mainnetStrings({ claimsOnMainnet: claims, policyApproved: false });
@@ -437,6 +444,29 @@ describe('builds', () => {
       expect(mainnet['/']).toContain(dated['m.post0.text']);
     });
 
+    it('the mainnet site calls records real, never a demo; only licenses and lab agreements are simulated', () => {
+      // Records sealed on the mainnet site are anchored there, so nothing calls the site a
+      // demo or asks for made-up details. "demonstrated" is not "demo".
+      for (const p of PAGES) {
+        expect(mainnet[p].match(/\bdemos?\b/i)?.[0], p).toBeUndefined();
+        expect(mainnet[p].match(/made-up details|use made-up data/i)?.[0], p).toBeUndefined();
+      }
+      expect(mainnet['/']).toMatch(
+        /Records sealed on this site are real records; licenses and lab agreements here are still simulated\./,
+      );
+      expect(mainnet['/']).toMatch(/Make a record/);
+      expect(mainnet['/privacy']).toMatch(/Site privacy/);
+      expect(mainnet['/privacy']).toMatch(/Once anchored, it is permanent: nobody, including us, can delete it\./);
+      expect(mainnet['/privacy']).toMatch(
+        /We can delete what our server holds for your records: email hunter@veilcore\.org/,
+      );
+      expect(mainnet['/licenses']).toMatch(/Simulated in this web app/);
+      for (const p of ['/records', '/licenses', '/new']) expect(mainnet[p], p).toMatch(/Web app/);
+      // The test-network site is still a demo, and says so.
+      expect(preprod['/']).toMatch(/Try the demo/);
+      expect(preprod['/privacy']).toMatch(/Use made-up data/);
+    });
+
     it('a record anchored on Preview still shows as Preview, with its warning, on the mainnet site', () => {
       // The registry now answers priorPossession: false for it (only a mainnet anchor
       // counts), with anchored: true and the anchor's network; the page reads those.
@@ -458,10 +488,10 @@ describe('builds', () => {
       expect(mainnet['/']).toMatch(/licenses and lab agreements are simulated/i);
       for (const p of ['/records', '/licenses', '/new']) {
         expect(mainnet[p], p).toMatch(/Main network/);
-        expect(mainnet[p], p).toMatch(/Web demo/);
+        expect(mainnet[p], p).toMatch(/Web app/);
       }
       expect(mainnet['/privacy']).toMatch(/Dated on Midnight's main network/);
-      expect(mainnet['/licenses']).toMatch(/Simulated in this web demo/);
+      expect(mainnet['/licenses']).toMatch(/Simulated in this web app/);
       expect(mainnet['/verify/example']).toMatch(/Example: a made-up record\./);
       expect(mainnet['/verify/example']).toMatch(/Midnight’s main network/);
     });

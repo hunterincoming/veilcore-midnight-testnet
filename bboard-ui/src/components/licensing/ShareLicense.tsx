@@ -27,6 +27,7 @@ import ShareIcon from '@mui/icons-material/IosShareOutlined';
 import { exportCertificate, type LicenseGrant } from '../../veilcore/license-certificate';
 import type { License } from '../../veilcore/licenses';
 import { TEAL } from '../../config/theme';
+import { THIS_SITE } from '../../config/copy';
 
 /** Named after what the recipient learns, not the field revealed. */
 const GRANTS: { key: LicenseGrant; label: string; why: string }[] = [
@@ -78,7 +79,7 @@ export const ShareLicense: React.FC<{ license: License }> = ({ license }) => {
               </Typography>
               <Typography variant="body2" color="text.secondary">
                 That this license exists, its current state, the record it was issued against, and whether it carries an
-                obligation on declared offspring: the license&apos;s public side. In this web demo the license itself is
+                obligation on declared offspring: the license&apos;s public side. In {THIS_SITE} the license itself is
                 simulated, so this file is for trying the format.
               </Typography>
             </Box>

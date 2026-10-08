@@ -33,7 +33,7 @@ import { AppHeader } from '../AppHeader';
 import { LicenseStateChip } from './LicenseStateChip';
 import { ShareLicense } from './ShareLicense';
 import { AgreementTypeChip } from './AgreementTypeChip';
-import { AGREEMENTS_SIMULATED } from '../../config/copy';
+import { AGREEMENTS_SIMULATED, SIMULATED_TAG } from '../../config/copy';
 
 const money = (n: number) => `$${n.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
 
@@ -218,7 +218,7 @@ export const LicenseDetail: React.FC = () => {
                   Copy link
                 </Button>
                 <Button component={RouterLink} to={`/license/${encodeURIComponent(license.id)}/sign`} variant="text">
-                  Open the counter-sign page (demo)
+                  Open the counter-sign page {SIMULATED_TAG}
                 </Button>
                 <Button color="error" variant="text" onClick={onRevoke}>
                   Revoke

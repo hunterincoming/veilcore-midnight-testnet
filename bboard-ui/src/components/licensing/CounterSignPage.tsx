@@ -23,7 +23,7 @@ import {
 } from '../../veilcore/licenses';
 import { TEAL } from '../../config/theme';
 import { startRecordSync } from '../../veilcore/records';
-import { AGREEMENTS_SIMULATED, LICENSE_PROOF_NOTE } from '../../config/copy';
+import { AGREEMENTS_SIMULATED, LICENSE_PROOF_NOTE, SIMULATED_TAG, THIS_SITE } from '../../config/copy';
 
 const Line: React.FC<{ k: string; v: string }> = ({ k, v }) => (
   <Stack direction="row" spacing={2} sx={{ justifyContent: 'space-between' }}>
@@ -74,7 +74,7 @@ export const CounterSignPage: React.FC = () => {
               <Chip size="small" variant="outlined" label={AGREEMENT_LABEL[agreementType(license)]} />
             </Stack>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2.5 }}>
-              Read the terms below. In this web demo it becomes active when it is counter-signed here.
+              Read the terms below. In {THIS_SITE} it becomes active when it is counter-signed here.
             </Typography>
 
             <Stack spacing={1}>
@@ -106,7 +106,9 @@ export const CounterSignPage: React.FC = () => {
                   cryptographic signature and not a qualified (eIDAS) electronic signature.
                 </Typography>
                 <Button variant="contained" size="large" onClick={() => void countersignLicense(license.id)}>
-                  {issuerHere === false ? 'Review complete — sign & accept' : 'Mark active as the issuer (demo)'}
+                  {issuerHere === false
+                    ? 'Review complete — sign & accept'
+                    : `Mark active as the issuer ${SIMULATED_TAG}`}
                 </Button>
               </Stack>
             )}

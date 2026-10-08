@@ -25,6 +25,7 @@ import { LicensingHub } from './components/licensing/LicensingHub';
 import { SaveProblemBar } from './components/SaveProblemBar';
 import { startRecordSync } from './veilcore/records';
 import { startLicenseSync } from './veilcore/licenses';
+import { IS_MAINNET } from './config/network';
 
 /** Pages where someone is using the app, as opposed to reading about it. */
 const APP_PAGE = /^\/(new|records|record\/|licenses|license\/)/;
@@ -72,7 +73,7 @@ const withLayout = (el: React.ReactNode) => <AppLayout>{el}</AppLayout>;
 /** The browser tab's title for each page; the home page keeps the one in index.html. */
 const PAGE_TITLES: [RegExp, string][] = [
   [/^\/founders/, 'Founders'],
-  [/^\/privacy/, 'Demo privacy'],
+  [/^\/privacy/, IS_MAINNET ? 'Site privacy' : 'Demo privacy'],
   [/^\/verify\/example/, 'Example record'],
   [/^\/verify/, 'Check a record'],
   [/^\/records/, 'Your records'],

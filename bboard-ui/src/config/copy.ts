@@ -21,7 +21,7 @@ export const CLAIMS_WHERE = CLAIMS_ON_MAINNET
 /** What the contract can do for licenses that this website cannot. */
 export const LICENSE_PROOF_NOTE = `Proving that a license is live, without showing its terms, is done by VeilCore’s contract on ${
   IS_MAINNET ? 'Midnight’s main network' : 'Midnight'
-}. That needs a wallet, which this website doesn’t use, so it doesn’t offer it and won’t pretend to.`;
+}. That needs a wallet, which this website doesn’t use, so it doesn’t offer it.`;
 
 /** The one line every simulated agreement screen carries. */
 export const AGREEMENTS_SIMULATED =

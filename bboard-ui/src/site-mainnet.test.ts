@@ -463,7 +463,7 @@ describe('builds', () => {
       expect(mainnet['/privacy']).toMatch(/Dated on Midnight's main network/);
       expect(mainnet['/licenses']).toMatch(/Simulated in this web demo/);
       expect(mainnet['/verify/example']).toMatch(/Example: a made-up record\./);
-      expect(mainnet['/verify/example']).toMatch(/Midnight mainnet/);
+      expect(mainnet['/verify/example']).toMatch(/Midnight’s main network/);
     });
 
     it('the preprod site still says test network', () => {

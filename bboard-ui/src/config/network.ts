@@ -27,7 +27,7 @@ export const isTestNetwork = (n: string = NETWORK): boolean => n !== 'mainnet';
 export const networkLabel = (n: string = NETWORK): string => {
   switch (n) {
     case 'mainnet':
-      return 'Midnight mainnet';
+      return 'Midnight’s main network';
     case 'preprod':
       return 'Midnight preprod (test network)';
     case 'preview':

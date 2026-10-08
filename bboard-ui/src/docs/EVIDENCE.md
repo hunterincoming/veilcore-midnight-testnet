@@ -8,7 +8,7 @@ Version 0.1 - August 2026, revised October 2026 - draft for comment
 
 ## Summary
 
-VeilCore is a records system for plant genetics - plant varieties, breeding lines, seed lots, cultures. It lets a holder establish four things that are ordinarily difficult or impossible to establish without disclosing the material itself:
+VeilCore is a records system for plant and animal genetics - plant varieties, breeding lines, seed lots, cultures, animal lines. It lets a holder establish four things that are ordinarily difficult or impossible to establish without disclosing the material itself:
 
 **That they held it, from a date.** Provable to a third party, without revealing what "it" is.
 

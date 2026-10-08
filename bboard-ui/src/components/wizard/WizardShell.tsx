@@ -1,7 +1,7 @@
 // WizardShell — the persistent frame: brand hook, the always-visible 6-step progress path,
 // and one animated step on screen at a time. The order follows how a breeder actually
 // operates: seal it → (send it to a lab) → (the report comes back) → certificate → choose
-// what strangers see → share or license. The lab and DNA steps are skippable; a completion recap
+// what others see → share or license. The lab and DNA steps are skippable; a completion recap
 // closes it out. This is the primary guided path — the dashboard/record page stay the fast
 // path for returning users.
 // SPDX-License-Identifier: Apache-2.0
@@ -198,7 +198,7 @@ export const WizardShell: React.FC = () => {
           </Box>
         </Typography>
         <Typography variant="body1" color="text.secondary" sx={{ maxWidth: 640, mx: 'auto' }}>
-          Seal it, pair your lab report, choose what strangers see, then share or license it.
+          Seal it, pair your lab report, choose what others see, then share or license it.
         </Typography>
       </Box>
 

@@ -88,7 +88,7 @@ export const SettlementStatus: React.FC<{ record: StrainRecord }> = ({ record })
         </Button>
         {reported && proof.anchor?.txHash && explorer && (
           <Button size="small" variant="text" startIcon={<LinkIcon />} href={explorer} target="_blank" rel="noopener">
-            Open the {networkLabel(network)} explorer
+            Open the explorer for {networkLabel(network)}
           </Button>
         )}
       </Stack>

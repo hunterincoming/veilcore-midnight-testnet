@@ -35,7 +35,7 @@ const common: Overlay = {
   'm.faq.3a':
     "It's built to be evidence, and our note for lawyers says what a record proves and what it doesn't. Records are now anchored on Midnight's main network, in batches. Once a record's batch is anchored, the date shows the record existed by then; what that's worth in a dispute is for the court to weigh.",
   'm.stat2.b': 'Main network',
-  'm.foot.about': "An evidentiary record format for plant and animal genetics, dated on Midnight's main network.",
+  'm.foot.about': "An open record format for plant and animal genetics, dated on Midnight's main network.",
   'm.get.2b':
     "Licenses and lab agreements attach to the record. A licensee can prove they hold a live license without showing which one. An obligation on a parent, such as a royalty, shows on every offspring both holders confirmed; VeilCore records it and doesn't collect it. Built into the contract on Midnight's main network; simulated in the web demo.",
   'm.demo.lede':
@@ -52,7 +52,7 @@ const common: Overlay = {
     "This note covers the demo on this site. Records you seal here go into batches that we anchor on Midnight's main network.",
   'm.privacy.stored.title': 'Stored on our server',
   'm.privacy.stored.text':
-    "What you type and what the app computes from it: cultivar and breeder names, species if you enter one, dates, notes, reference numbers, parents, fingerprints of records, photos and lab reports, lab report file names, agreement terms and counterparties, material you send to a lab (who it is addressed to, and the quantity), and, for labs, the public signing key and the attestations they publish. Also your holder key, which the app sends with every save so the server can find your records. The server is VeilCore's registry, hosted on Railway.",
+    "What you type and what the app computes from it: cultivar and breeder names, species if you enter one, dates, notes, reference numbers, parents, fingerprints of records, fingerprints of photos and lab reports (only the fingerprints, never the files), lab report file names, agreement terms and counterparties, material you send to a lab (who it is addressed to, and the quantity), and, for labs, the public signing key and the attestations they publish. Also your holder key, which the app sends with every save so the server can find your records. The server is VeilCore's registry, hosted on Railway.",
   'm.privacy.test.title': "Dated on Midnight's main network",
   'm.privacy.test.text':
     "Your record's fingerprint goes into a batch, and we anchor the batch on Midnight's main network, by hand for now, so it can take a while. Only the batch's fingerprint goes on the network, never what you typed. A date on the network can't be taken back, even if we delete your data from our server.",
@@ -84,11 +84,13 @@ const claimsPending: Overlay = {
 export const DATED_POSTS: readonly StringKey[] = ['m.post0.text', 'm.post2.title', 'm.post2.text'];
 
 const KEY_HOLDERS =
-  "The founders hold a maintenance key for VeilCore's main contract on Midnight. It can change how the contract works from then on. It cannot rewrite records already anchored in the network's history.";
+  "One maintenance key, kept on paper, with a copy held by each founder, can change how VeilCore's main contract on Midnight works from then on. It cannot rewrite records already anchored in the network's history.";
 const CLAIMS_NO_KEY = ' The claims contract has no maintenance key: nobody, including us, can change it.';
 
 /** Who can change the contracts. "Decided" only when the policy's status line says APPROVED. */
 const keyStrings = (claimsOnMainnet: boolean, policyApproved: boolean): Overlay => ({
+  // Both contracts are shown once the claims address is pinned; otherwise the title stays singular.
+  ...(claimsOnMainnet ? { 'm.status.keyTitle': 'Who can change the contracts.' } : {}),
   'm.status.keyText':
     KEY_HOLDERS +
     (policyApproved

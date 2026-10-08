@@ -256,7 +256,7 @@ export const Step3Certificate: React.FC<{ recordId: string; onDone: () => void; 
           Download data (JSON)
         </Button>
         <Button variant="contained" onClick={onDone}>
-          Continue: choose what strangers see
+          Continue: choose what others see
         </Button>
       </Stack>
 

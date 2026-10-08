@@ -149,7 +149,7 @@ export const exportCertificate = async (l: License, grants: LicenseGrant[]): Pro
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `${l.id}.licence.json`;
+  a.download = `${l.id}.license.json`;
   a.click();
   URL.revokeObjectURL(url);
 };

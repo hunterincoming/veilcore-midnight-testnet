@@ -60,7 +60,7 @@ const mainnetBuild = (mode: string, command: string) => {
 const DESCRIPTION = {
   test: 'An open record format for plant and animal genetics. Seal a record on your own computer; only its fingerprint is dated on Midnight. Pre-launch: tested on a Midnight test network, no independent audit yet.',
   mainnet:
-    "An open record format for plant and animal genetics. Seal a record on your own computer; only its fingerprint is dated, on Midnight's main network. Free to check. No independent audit yet.",
+    "An open record format for plant and animal genetics. Seal a record on your own computer; only its fingerprint is dated, on Midnight's main network. Free to check, no account.",
 };
 
 const siteDescription = (mode: string): Plugin => ({

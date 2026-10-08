@@ -1,6 +1,6 @@
 # The VeilCore Record Format
 
-**A specification for evidence of prior possession of plant genetic material**
+**A specification for evidence of prior possession of plant and animal genetic material**
 
 Version 0.1 - August 2026, revised October 2026
 
@@ -10,7 +10,7 @@ Version 0.1 - August 2026, revised October 2026
 
 This is a draft specification, published for comment. It describes a record format and a verification procedure. It is not a description of a product.
 
-**The format is open.** Anyone may implement it. There is no licence fee, no certification requirement, and no dependency on any company for the format to function. Three implementations - in TypeScript, Python and Rust - pass the same 100 conformance vectors. All three have the same author, so they show the vectors hold across languages, not that a third party can implement the format from this document alone. The evidence for that is narrower: a language model given only §§5–5.5, with no code and no vectors, wrote batch construction that reproduced every published batch root and inclusion vector. An implementation by an unrelated party is the test this document most needs. The vectors cover canonicalisation, commitment computation, inclusion proofs, rejections, attestation payloads and field sets; corrections and resolution are implemented in the reference implementation and are not yet part of the vector set.
+**The format is open.** Anyone may implement it. There is no licence fee, no certification requirement, and no dependency on any company for the format to function. Three implementations - in TypeScript, Python and Rust - pass the same 100 conformance vectors. All three have the same author, so they show the vectors hold across languages, not that a third party can implement the format from this document alone. An implementation by an unrelated party is the test this document most needs. The vectors cover canonicalisation, commitment computation, inclusion proofs, rejections, attestation payloads and field sets; corrections and resolution are implemented in the reference implementation and are not yet part of the vector set.
 
 **Verification is free and requires no account, permanently.** This is a design constraint rather than a pricing decision: a record whose verification can be withheld is not evidence.
 

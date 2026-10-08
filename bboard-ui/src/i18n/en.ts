@@ -41,7 +41,7 @@ export const en = {
   'm.stat2.b': 'Test network',
   'm.stat2.s': "Both contracts tested end to end on Midnight's preprod test network. Not on the main network yet.",
   'm.foot.about':
-    'An evidentiary record format for plant and animal genetics. Designed to anchor on Midnight; testing on a Midnight test network.',
+    'An open record format for plant and animal genetics. Designed to anchor on Midnight; testing on a Midnight test network.',
   'm.for.2p':
     "Breeders want to use their markers to show a variety is distinct, and treat those markers as trade secrets. A VeilCore claim proves one fact about them without showing the rest. No examining office or certifier accepts it yet; we've written to some to ask what they would need.",
   // End of the network wording.
@@ -64,24 +64,24 @@ export const en = {
   'm.hero.bredByDefault': 'Your name here',
   'm.hero.demoLabel': 'Live fingerprint demo',
   'm.hero.note':
-    'Type in either box; nothing is sent. The mint line is the fingerprint, the part that goes on Midnight. Nobody can work back from it to what you typed.',
+    'Type in either box; nothing is sent. The green line is the fingerprint, the part that goes on Midnight. Nobody can work back from it to what you typed.',
 
   // Phones only: the note in one line.
-  'm.hero.noteShort': 'Only the mint line goes on Midnight.',
+  'm.hero.noteShort': 'Only the green line goes on Midnight.',
 
   'm.for.label': "What it's for",
-  'm.for.title1': 'Most genetics disputes come down to one question:',
+  'm.for.title1': 'Many genetics disputes come down to one question:',
   'm.for.title2': 'what did you have, and when?',
   'm.for.lede':
     "Notebooks and files are dated by whoever keeps them, so they're easy to doubt. Registering the material itself means handing over what you're protecting. VeilCore gives your record a date nobody can backdate, and the genetics stay with you.",
   'm.for.1t': 'A cutting walks out the door.',
   'm.for.1p':
-    "Seal a record and pair its DNA report. If the plant turns up under another name, a lab can compare a new test with your report. On the contract, pairing dates the report's fingerprint on Midnight, so your record shows you had that report by then. In this web demo the pairing is saved with your record but not yet dated. VeilCore doesn't test DNA.",
+    "Seal a record and pair its DNA report. If the plant turns up under another name, a lab can compare a new test with your report. When you pair through VeilCore's contract on Midnight, the report's fingerprint is dated too, so your record shows you had that report by then. In this web demo the pairing is saved with your record but not yet dated. VeilCore doesn't test DNA.",
   'm.for.2t': 'Variety protection and certification.',
   'm.for.2link': 'How a claim works →',
   'm.for.3t': "Material in a lab's hands.",
   'm.for.3p':
-    "Put terms on material before it ships: what it's for, no propagation, return or destroy it after. On the contract, the lab confirms receipt with its own key, so the record shows a second party, which protects the lab as much as the client. In the web demo this is simulated.",
+    "Put terms on material before it ships: what it's for, no propagation, return or destroy it after. Through VeilCore's contract on Midnight, the lab confirms receipt with its own key, so the record shows a second party, which protects the lab as much as the client. In the web demo this is simulated.",
   'm.for.4t': 'Signing test results.',
   'm.for.4p':
     "The signature covers the exact report file and the record it's about, so it can't be moved or kept on an edited copy. Only the lab can withdraw it. VeilCore records who signed; it doesn't vouch for the result.",
@@ -101,7 +101,8 @@ export const en = {
   'm.step2.text': 'Done on your computer. Lab files and genetic data files never leave it.',
   'm.step3.n': '03 · Anchor',
   'm.step3.title': 'Get a date',
-  'm.step3.text': 'Only the fingerprint goes on Midnight. The date is the block it lands in, not a date we choose.',
+  'm.step3.text':
+    'Only the fingerprint goes on Midnight, in a batch with others. The date is the block the batch lands in, not a date we choose.',
   'm.step4.n': '04 · Verify',
   'm.step4.title': 'Show it later',
   'm.step4.text': 'Give it to a buyer, examiner or court. They can check it, free, with no account.',
@@ -162,7 +163,7 @@ export const en = {
   'm.open.1link': 'All three implementations →',
   'm.open.2t': "Your record doesn't need us.",
   'm.open.2p':
-    'Anyone holding the record and its inclusion proof can check it with SHA-256, the open spec and a read of the Midnight network, even if VeilCore is gone.',
+    'Anyone holding the record and its inclusion proof (a small file showing the record is in an anchored batch) can check it with SHA-256, the open spec and a read of the Midnight network, even if VeilCore is gone.',
   'm.open.3t': "We don't vouch for results.",
   'm.open.3p':
     "A record shows which key signed it, the name and accreditor registered with that key, and whether we've checked that the key belongs to that name. Whoever checks it decides what that's worth.",
@@ -177,7 +178,7 @@ export const en = {
   'm.faq.title2': 'people ask.',
   'm.faq.1q': 'What stops someone logging my cultivar?',
   'm.faq.1a':
-    "Once records are anchored, anyone can check which was anchored first. Pair your lab report, so a later test can be compared with it. When you send material out, the receiver confirms it with their own key. A record is evidence, not a registration: it doesn't settle anything against someone who never logged anything.",
+    "Once records are anchored, anyone can check which was anchored first. Pair your lab report, so a later test can be compared with it. When you send material out, the receiver confirms it with their own key. A record is evidence, not a registration: it shows what you had and when, but doesn't settle a dispute on its own.",
   'm.faq.2q': 'Do I need crypto or a wallet?',
   'm.faq.2a':
     'No. Making a record in the demo and checking any record need no wallet, no sign-up and nothing to buy. Your browser keeps a random key that finds your demo records on our server. The fingerprint goes on Midnight, a blockchain built for privacy. You never deal with it directly.',
@@ -190,9 +191,9 @@ export const en = {
   'm.faq.4link2': 'Integration guide →',
   'm.faq.5q': 'What if VeilCore disappears?',
   'm.faq.5a':
-    "Records you've kept a copy of still check. The spec is open, the TypeScript, Python and Rust code is published, and checking needs SHA-256, the record's inclusion proof and a read of the Midnight network. A one-click download of everything we hold for you is coming.",
+    "Records you've kept a copy of still check. The spec is open, the TypeScript, Python and Rust code is published, and checking needs SHA-256, the record's inclusion proof (a small file showing it's in an anchored batch) and a read of the Midnight network. A one-click download of everything we hold for you is coming.",
   'm.faq.6q': 'What does it cost?',
-  'm.faq.6a': 'Checking a record is free, always.',
+  'm.faq.6a': 'Making a record on this site costs nothing today. Checking a record is free, always.',
 
   'm.demo.label': 'Demo',
   'm.demo.title1': 'Pick how you',
@@ -239,7 +240,7 @@ export const en = {
   'm.post1.tag': 'Format',
   'm.post1.title': 'Three implementations, one answer',
   'm.post1.text':
-    'A differential test found our TypeScript, Python and Rust implementations disagreeing on some numbers. Fixed: they now agree on every one of 81,000 inputs, and 55 conformance vectors pin it.',
+    'A differential test found our TypeScript, Python and Rust implementations disagreeing on some numbers. Fixed: they now agree on every one of 81,000 inputs, and 55 shared test vectors check for it.',
   'm.post2.date': '2 Oct 2026',
   'm.post2.tag': 'Contract',
   'm.post2.title': "A full run on Midnight's test network",
@@ -249,7 +250,7 @@ export const en = {
   'm.status.label': 'Where this is',
   'm.status.title1': 'Straight about',
   'm.status.title2': 'where we are.',
-  'm.status.lede': "We'd rather say this now than have it come out later.",
+  'm.status.lede': "What is done, and what isn't yet.",
   'm.stat1.b': '100 / 100',
   'm.stat1.s':
     'shared test vectors passed in TypeScript, Python and Rust on GitHub (one author wrote all three; TypeScript is on npm as 0.15.0)',
@@ -265,7 +266,7 @@ export const en = {
   'm.addr.explorer': 'Look them up on midnightexplorer.com (run by TexLabs) →',
   'm.status.keyTitle': 'Who can change the contract.',
   'm.status.keyText':
-    "The founders hold a maintenance key for VeilCore's contract on Midnight. It can change how the contract works from then on. It cannot rewrite records already anchored in the network's history. Every use is announced publicly, under a written maintenance policy.",
+    "One maintenance key, kept on paper, with a copy held by each founder, can change how VeilCore's contract on Midnight works from then on. It cannot rewrite records already anchored in the network's history. Every use is announced publicly, under a written maintenance policy.",
   'm.status.keyLink': 'Read the maintenance policy →',
 
   'm.contact.label': 'Get in touch',
@@ -296,7 +297,7 @@ export const en = {
   'm.verify.lede':
     'Enter the record identifier printed on a certificate or shared with you. You will see what its holder chose to disclose, and whether it is intact.',
   'm.verify.what':
-    "A VeilCore record is a fingerprint of a description of genetic material, dated once it's anchored, published without the genetics. Checking one is free and needs no account.",
+    "A VeilCore record describes genetic material without including the genetics. Only its fingerprint is published, and it gets a date once it's anchored on Midnight. Checking one is free and needs no account.",
   'm.verify.home': 'What is VeilCore? →',
   'm.verify.field': 'Record identifier',
   'm.verify.go': 'Check it',
@@ -312,19 +313,19 @@ export const en = {
     "Makoto (Mako) Steiner is VeilCore's co-founder and CEO, leading commercial strategy, fundraising, and outreach to institutions and investors worldwide.",
   'm.mako.bio2': 'He studied Environmental Studies at Denison University and is based in Tokyo.',
   'm.mako.leads': 'Japan|EU|Standards bodies|Business development',
-  'm.mako.also': 'Midnight Nightforce Leader (Japan) · Build Club, Cohort 1',
+  'm.mako.also': 'Midnight Nightforce Leader (Japan) · Midnight Build Club, Cohort 1',
   'm.mako.languages': 'English · Japanese',
   'm.hunter.bio1':
     "Hunter Roberts is VeilCore's co-founder and COO, leading product and the VeilCore protocol, from the record format to the contract on Midnight. He leads VeilCore's outreach to US institutions, including seed certification, standards and plant-variety bodies.",
   'm.hunter.bio2':
     "He comes from hands-on plant work, including breeding and tissue culture, and is building Chunk's Trees, a cultivation facility in New Jersey.",
   'm.hunter.leads': 'United States|Protocol & spec|Engineering',
-  'm.hunter.also': 'Midnight Nightforce Leader (US) · Build Club, Cohort 1',
+  'm.hunter.also': 'Midnight Nightforce Leader (US) · Midnight Build Club, Cohort 1',
   'm.founders.band1': "Talk to us. We'd",
   'm.founders.band2': 'rather hear where it fails',
   'm.founders.band3': 'than be told it works.',
   'm.founders.bandText':
-    "If you run a breeding programme, a lab, a seed certification agency or a plant-rights body, we'd like to talk. The format is free to implement and free to verify.",
+    "If you run a breeding program, a lab, a seed certification agency or a plant-rights body, we'd like to talk. The format is free to implement and free to verify.",
   'm.founders.emailBoth': 'Email both founders',
   'm.portraitOf': 'Portrait of {name}',
 
@@ -335,7 +336,7 @@ export const en = {
     "This note covers the demo on this site. It is a test, on Midnight's test network. Please use made-up data.",
   'm.privacy.stored.title': 'Stored on our test server',
   'm.privacy.stored.text':
-    "What you type and what the app computes from it: cultivar and breeder names, species if you enter one, dates, notes, reference numbers, parents, fingerprints of records, photos and lab reports, lab report file names, agreement terms and counterparties, material you send to a lab (who it is addressed to, and the quantity), and, for labs, the public signing key and the attestations they publish. Also your holder key, which the app sends with every save so the server can find your records. The server is VeilCore's test registry, hosted on Railway.",
+    "What you type and what the app computes from it: cultivar and breeder names, species if you enter one, dates, notes, reference numbers, parents, fingerprints of records, fingerprints of photos and lab reports (only the fingerprints, never the files), lab report file names, agreement terms and counterparties, material you send to a lab (who it is addressed to, and the quantity), and, for labs, the public signing key and the attestations they publish. Also your holder key, which the app sends with every save so the server can find your records. The server is VeilCore's test registry, hosted on Railway.",
   'm.privacy.local.title': 'Never leaves your browser',
   'm.privacy.local.text':
     'Genetic data, lab and DNA report files, and photos. The app reads them in your browser to compute their fingerprints. The files themselves are never uploaded.',

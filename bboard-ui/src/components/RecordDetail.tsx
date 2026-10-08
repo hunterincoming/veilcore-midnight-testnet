@@ -260,7 +260,7 @@ export const RecordDetail: React.FC = () => {
             {/* The grant is kept on the registry, so it has to be changeable after the
                 wizard, not only during it. */}
             <Button variant="outlined" startIcon={<ShareIcon />} onClick={() => setMode('share')}>
-              What strangers see
+              What others see
             </Button>
           </Stack>
           {exportError && (

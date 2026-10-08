@@ -1199,7 +1199,7 @@ describe.skipIf(!haveBrowser)('browser: built site under the production headers'
         },
       );
       await pg.goto(`${origin}/record/VEIL-A`, { waitUntil: 'networkidle' });
-      await pg.getByRole('button', { name: 'What strangers see' }).click();
+      await pg.getByRole('button', { name: 'What others see' }).click();
       await pg.getByLabel('Parent cultivar names').check();
       await pg.getByRole('button', { name: /Save this choice/ }).click();
       if (refuse) {

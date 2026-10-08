@@ -6,8 +6,8 @@ use. If you are looking for the format itself, read [SPEC.md](SPEC.md).
 ## What this is, and what it is not
 
 **This is not a service you sign up for.** There is no account, no API key, and no server
-you have to reach. Your software computes a commitment locally and that is the whole
-dependency.
+you have to reach. Your software computes a commitment locally. To give it a date, the
+commitment needs an anchor on Midnight, made by you or by a registry you use.
 
 **Your system stays your system.** Your identifiers, your database, your workflow. A
 commitment is one field added to a record you already create.
@@ -29,13 +29,10 @@ makes it fixed, which is the thing a court, a customs officer, or a buyer can wo
 ## The smallest useful integration
 
 ```
-git clone https://github.com/hunterincoming/veilcore-sdk
-cd veilcore-sdk && npm install && npm run build
+npm install veilcore-records
 ```
 
-The npm release (`veilcore-records` 0.13.0) lags this repository and predates the
-October 2026 number and string rules; until 0.14 or later is published, clone and build
-as above, then depend on the built package (for example `npm install ../veilcore-sdk`).
+Version 0.15.0 or later includes the October 2026 number and string rules.
 
 ```js
 import { computeCommitment, newNonce } from 'veilcore-records';
@@ -61,8 +58,8 @@ That is a working integration. Everything below makes it more useful.
 ## The four things worth adding, in order
 
 **1. Store the nonce.** It is part of what the commitment covers. A record whose nonce is
-lost can never be verified again, by anyone, including you. This is the single most
-common way to get this wrong.
+lost can never be verified again, by anyone, including you. It is the easiest thing to
+get wrong.
 
 **2. Sign what you attest to.** If your users issue reports about someone else's material,
 sign them. An unsigned attestation is a claim your system recorded; a signed one is a

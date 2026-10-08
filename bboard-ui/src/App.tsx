@@ -69,28 +69,57 @@ const AppLayout: React.FC<React.PropsWithChildren> = ({ children }) => {
 
 const withLayout = (el: React.ReactNode) => <AppLayout>{el}</AppLayout>;
 
+/** The browser tab's title for each page; the home page keeps the one in index.html. */
+const PAGE_TITLES: [RegExp, string][] = [
+  [/^\/founders/, 'Founders'],
+  [/^\/privacy/, 'Demo privacy'],
+  [/^\/verify\/example/, 'Example record'],
+  [/^\/verify/, 'Check a record'],
+  [/^\/records/, 'Your records'],
+  [/^\/docs\/spec/, 'The record format'],
+  [/^\/docs\/evidence/, 'Records in evidence'],
+  [/^\/docs\/integrate/, 'Integrating VeilCore'],
+  [/^\/implementations/, 'Implementations'],
+  [/^\/new/, 'New record'],
+  [/^\/record\//, 'Record'],
+  [/^\/licenses?(\/|$)/, 'Agreements'],
+];
+const HOME_TITLE = typeof document === 'undefined' ? '' : document.title;
+
+const PageTitle: React.FC = () => {
+  const { pathname } = useLocation();
+  useEffect(() => {
+    const page = PAGE_TITLES.find(([re]) => re.test(pathname))?.[1];
+    document.title = page ? `${page} · VeilCore` : HOME_TITLE;
+  }, [pathname]);
+  return null;
+};
+
 const App: React.FC = () => (
-  <Routes>
-    {/* A stranger arriving from a specification or a government submission needs
+  <>
+    <PageTitle />
+    <Routes>
+      {/* A stranger arriving from a specification or a government submission needs
         somewhere to understand what this is. The dashboard assumes you already do. */}
-    <Route path="/" element={<Home />} />
-    <Route path="/founders" element={<Founders />} />
-    <Route path="/privacy" element={<Privacy />} />
-    <Route path="/verify" element={<VerifyLookup />} />
-    <Route path="/records" element={withLayout(<Dashboard />)} />
-    {/* Documents read here rather than in a code repository. */}
-    <Route path="/docs/:doc" element={withLayout(<DocPage />)} />
-    <Route path="/implementations" element={withLayout(<Implementations />)} />
-    <Route path="/new" element={withLayout(<WizardShell />)} />
-    <Route path="/record/:id" element={withLayout(<RecordDetail />)} />
-    <Route path="/record/:id/license" element={withLayout(<TermsBuilder />)} />
-    <Route path="/licenses" element={withLayout(<LicensingHub />)} />
-    <Route path="/license/:id" element={withLayout(<LicenseDetail />)} />
-    <Route path="/license/:id/sign" element={<CounterSignPage />} />
-    {/* A made-up record, labelled as one, for a visitor with no record id yet. */}
-    <Route path="/verify/example" element={<VerifyExample />} />
-    <Route path="/verify/:id" element={<VerifyPage />} />
-  </Routes>
+      <Route path="/" element={<Home />} />
+      <Route path="/founders" element={<Founders />} />
+      <Route path="/privacy" element={<Privacy />} />
+      <Route path="/verify" element={<VerifyLookup />} />
+      <Route path="/records" element={withLayout(<Dashboard />)} />
+      {/* Documents read here rather than in a code repository. */}
+      <Route path="/docs/:doc" element={withLayout(<DocPage />)} />
+      <Route path="/implementations" element={withLayout(<Implementations />)} />
+      <Route path="/new" element={withLayout(<WizardShell />)} />
+      <Route path="/record/:id" element={withLayout(<RecordDetail />)} />
+      <Route path="/record/:id/license" element={withLayout(<TermsBuilder />)} />
+      <Route path="/licenses" element={withLayout(<LicensingHub />)} />
+      <Route path="/license/:id" element={withLayout(<LicenseDetail />)} />
+      <Route path="/license/:id/sign" element={<CounterSignPage />} />
+      {/* A made-up record, labelled as one, for a visitor with no record id yet. */}
+      <Route path="/verify/example" element={<VerifyExample />} />
+      <Route path="/verify/:id" element={<VerifyPage />} />
+    </Routes>
+  </>
 );
 
 export default App;

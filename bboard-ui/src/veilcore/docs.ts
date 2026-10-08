@@ -23,7 +23,7 @@ import integratingMd from '../docs/INTEGRATING.md?raw';
 export const DOCS_VERSION = '0.15.0';
 
 /** The exact SDK commit the documents were copied from, so "Source" opens the same text. */
-export const DOCS_COMMIT = '17e69beb42dd1e86163cf83565521aca085c5af3';
+export const DOCS_COMMIT = 'c8a36999ae2e638ffe81c448756e2af8828fb006';
 export const REPO_VIEW = `https://github.com/hunterincoming/veilcore-sdk/blob/${DOCS_COMMIT}`;
 
 export const DOCS: Record<string, { file: string; md: string; title: string; blurb: string }> = {
@@ -32,7 +32,7 @@ export const DOCS: Record<string, { file: string; md: string; title: string; blu
     md: specMd,
     title: 'The record format',
     blurb:
-      'The specification. Record structure, canonical serialisation, anchoring, corrections, attester identity, resolution across registries, and verification.',
+      'The specification. Record structure, canonical serialization, anchoring, corrections, attester identity, resolution across registries, and verification.',
   },
   evidence: {
     file: 'EVIDENCE.md',

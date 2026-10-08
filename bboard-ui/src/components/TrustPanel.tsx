@@ -13,12 +13,12 @@ const POINTS = [
   {
     icon: <ScheduleIcon />,
     title: 'An earlier record beats a later one',
-    body: 'Once records are anchored, anyone can check which was anchored first. Before that, a record’s time is its device’s clock. It doesn’t settle anything against someone who never logged anything: a record is evidence, not a registration.',
+    body: 'Once records are anchored, anyone can check which was anchored first. Before that, a record’s time is its device’s clock. A record is evidence, not a registration: it shows what you had and when, but doesn’t settle a dispute on its own.',
   },
   {
     icon: <ScienceIcon />,
     title: 'A paired report can be compared later',
-    body: 'Pairing saves your lab report’s fingerprint with the record, as your statement, so a fresh test of the material can later be compared with it. In this web demo the pairing isn’t dated yet; on the contract it is.',
+    body: 'Pairing saves your lab report’s fingerprint with the record, as your statement, so a fresh test of the material can later be compared with it. When you pair through VeilCore’s contract on Midnight, the report’s fingerprint is dated too; this web demo doesn’t do that yet.',
   },
   {
     icon: <GroupIcon />,
@@ -37,7 +37,7 @@ export const TrustPanel: React.FC = () => (
       cultivar?”
     </Typography>
     <Typography variant="body2" color="text.secondary" sx={{ mb: 2.5 }}>
-      Fair question. Three things make a VeilCore record hard to fake, not just easy to write:
+      Three things make a VeilCore record hard to fake:
     </Typography>
     <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }}>
       {POINTS.map((p) => (

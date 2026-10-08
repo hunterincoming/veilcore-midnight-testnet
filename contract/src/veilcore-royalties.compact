@@ -40,13 +40,15 @@
 // with a single royalty offer per wallet and token has no such cover. Each note has its own
 // nullifier, so a code reused for top-ups of different amounts makes several spendable
 // notes (the same code, offer and amount twice is refused before anything is paid). The
-// payer opens the rate too, so no credit is ever sold that nothing could settle against.
+// payer never sees the rate: every non-zero rate commitment was opened to a rate above
+// zero when its offer was posted (offer leaves are only made there), so no credit is ever
+// sold that nothing could settle against.
 //
 // SETTLEMENT. Needs the licence in the licence tree (a revocation takes effect at the
-// next seal, as for presentations). The licensee spends a note (its nullifier is
-// unlinkable to the note without the licensee's key), proves units x rate <= its value
-// against the offer's rate commitment (a zero rate is refused), keeps the change as a
-// new note whose nonce comes from the spent note's nullifier, and records a receipt leaf
+// seal that retires the tree's old roots, within the hour, as for presentations). The
+// licensee spends a note (its nullifier is unlinkable to the note without the licensee's
+// key), proves units x rate <= its value against the offer's rate commitment (a zero
+// rate is refused), keeps the change as a new note whose nonce comes from the spent note's nullifier, and records a receipt leaf
 // bound to the offer, the period (through the viewing key), the units and the change note
 // (so no two settlements share a receipt). Each settlement of a licence is numbered
 // (settleTag(viewKey, n), unique), so the breeder looks its settlements up directly and
@@ -55,7 +57,9 @@
 // settlements share a pad and only the breeder reads them; every settlement is kept in
 // `settlements`, so none is missed. Settling is allowed for at least 30 days after the
 // offer ends (it moves no money; nobody can clear the licence sooner, and a licence cannot
-// be revoked after its end, so those 30 days cannot be cut short). Credit left when a licence ends or is
+// be revoked after its end). A REVOCABLE licence can still lose those 30 days: its admin
+// may revoke it up to the last second before the end, and a revoked licence settles
+// nothing more, so its last season goes unsettled. Credit left when a licence ends or is
 // revoked stays where it is: the breeder already holds that money, and the terms say
 // whether any is refunded.
 //
@@ -95,8 +99,12 @@
 // as veilcore.compact's commit() hashes it. Whether that record is the live head of an
 // anchored identity is read from veilcore.compact off chain (ledger 8 has no calls
 // between contracts). An offer id is never reused. REVOCATION follows veilcore.compact.
-// SEALS: a seal retires the licence tree's old roots only when a revocation is waiting, and
-// every tree's at most daily (to bound history), so nobody can void proofs in flight at will.
+// SEALS: a seal retires the licence tree's old roots when a revocation is waiting, at most
+// once an hour (REVOCATION_SEAL_INTERVAL), and every tree's at most daily (to bound
+// history). Retiring roots voids proofs made against them that are still in flight, so
+// anyone who can revoke a licence (on an offer of their own, say) can void in-flight
+// proofs at most once an hour, plus the daily seal; the client then proves once more. A
+// revocation waits up to an hour for its seal, and verifiers wait with it.
 //
 // WHAT CAN STILL LINK. Every root a proof uses is public. A chain of them can link a
 // presentation to a settlement, a settlement to the top-up that made its note, and the
@@ -258,6 +266,8 @@ export ledger linkSeq: Counter;
 export ledger lastLink: Bytes<32>;
 
 export ledger lastSealTime: Uint<64>;
+/** When a revocation last retired the licence tree's old roots: at most once every REVOCATION_SEAL_INTERVAL. */
+export ledger lastRevocationReset: Uint<64>;
 /** When the trees that only grow (offers, notes, receipts) last had their old roots retired. */
 export ledger lastSlowSealTime: Uint<64>;
 export ledger unsealedChanges: Boolean;
@@ -316,6 +326,11 @@ witness settleIndex(): Uint<64>;
 
 circuit SEAL_INTERVAL(): Uint<64> { return 600; }
 circuit SEAL_SLACK(): Uint<64> { return 300; }
+/**
+ * Revocations retire the licence tree's old roots at most hourly: each such seal voids every
+ * settle and presentation in flight, and anyone can revoke a licence of their own offer.
+ */
+circuit REVOCATION_SEAL_INTERVAL(): Uint<64> { return 3600; }
 /** Trees that only grow have old roots retired at most daily, only to bound their history. */
 circuit SLOW_SEAL_INTERVAL(): Uint<64> { return 86400; }
 circuit LICENSE_SLOTS(): Uint<64> { return 16777216; }
@@ -678,7 +693,7 @@ circuit provenOffer(): ProvenOffer {
  * Spend a credit note of the offer whose leaf is `leaf`: proved present, nullifier
  * published. Returns the nullifier, from which the change note's nonce is made.
  */
-circuit spendNote(secret: Bytes<32>, nk: Bytes<32>, spend: Bytes<32>, leaf: Bytes<32>, n: NoteOpening,
+circuit spendNote(nk: Bytes<32>, spend: Bytes<32>, leaf: Bytes<32>, n: NoteOpening,
                   path: MerkleTreePath<32, Bytes<32>>): Bytes<32> {
   const note = noteCommit(topUpCode(spend, n.nonce), leaf, n.amount);
   assert(disclose(path.leaf == note), "That credit note is not yours");
@@ -842,29 +857,39 @@ export circuit removeEnded(offer: Bytes<32>): [] {
 
 /**
  * Retire old roots: of the licence tree when a revocation is waiting (so revoked licences
- * stop proving), and of every tree at most daily (only to bound their history). A seal
- * after mere sales or top-ups retires nothing, so nobody can void everyone's proofs in
- * flight at will. Anyone may call it once the block time is SEAL_INTERVAL past the last.
+ * stop proving), at most once every REVOCATION_SEAL_INTERVAL, and of every tree at most
+ * daily (only to bound their history). Retiring roots voids proofs in flight, so this is
+ * how often anyone can do that. A seal after mere sales or top-ups retires nothing. A seal
+ * within the hour after the last revocation-triggered retirement leaves the revocation
+ * waiting (unsealedChanges stays set, sealedRevocations does not move), so verifiers keep
+ * waiting. Anyone may call it once the block time is SEAL_INTERVAL past the last seal, or
+ * as soon as a waiting revocation is due (so a seal that did nothing cannot delay it).
  */
 export circuit sealRevocations(bound: Uint<64>): [] {
   const t = disclose(bound);
   assert(unsealedChanges || rootsSinceSeal, "Nothing has changed the trees since the last seal");
-  assert(blockTimeGte((lastSealTime + SEAL_INTERVAL()) as Uint<64>), "Too soon since the last seal");
+  const revocationDue = unsealedChanges &&
+                        blockTimeGte((lastRevocationReset + REVOCATION_SEAL_INTERVAL()) as Uint<64>);
+  assert(revocationDue || blockTimeGte((lastSealTime + SEAL_INTERVAL()) as Uint<64>), "Too soon since the last seal");
   assert(blockTimeLt(t), "That time is not ahead of the block time");
   assert(t >= SEAL_SLACK() && blockTimeGte((t - SEAL_SLACK()) as Uint<64>), "That time is too far ahead");
-  if (unsealedChanges) {
+  const daily = blockTimeGte((lastSlowSealTime + SLOW_SEAL_INTERVAL()) as Uint<64>);
+  if (revocationDue || daily) {
     licenses.resetHistory();
+    // Every revocation so far is sealed: the trees no longer hold a root with a revoked licence.
+    sealedRevocations = revocationSeq.read();
+    unsealedChanges = false;
   }
-  if (blockTimeGte((lastSlowSealTime + SLOW_SEAL_INTERVAL()) as Uint<64>)) {
-    licenses.resetHistory();
+  if (revocationDue) {
+    lastRevocationReset = t;
+  }
+  if (daily) {
     offerLeaves.resetHistory();
     notes.resetHistory();
     receipts.resetHistory();
     lastSlowSealTime = t;
   }
   lastSealTime = t;
-  sealedRevocations = revocationSeq.read();
-  unsealedChanges = false;
   rootsSinceSeal = false;
   sealSeq.increment(1);
 }
@@ -877,7 +902,8 @@ export circuit sealRevocations(bound: Uint<64>): [] {
  * offer is proved privately: the public learns only that it is one of `payTo`'s offers in
  * `color` that takes royalties and is open until at least `validUntil` (a time the client
  * rounds, so it names no offer). Allowed until 30 days after the offer ends, so the last
- * season can be paid for.
+ * season can be paid for. The payer never sees the rate: postOffer already proved that the
+ * offer's rate commitment opens to a rate above zero.
  */
 export circuit topUp(payTo: UserAddress, color: Bytes<32>, amount: Uint<64>, validUntil: Uint<64>): [] {
   const po = provenOffer();
@@ -886,10 +912,7 @@ export circuit topUp(payTo: UserAddress, color: Bytes<32>, amount: Uint<64>, val
   const w = disclose(payTo);
   const c = disclose(color);
   assert(disclose(op.payTo == w.bytes && op.color == c), "That offer pays another wallet or token");
-  const ro = rateOpening();
   assert(disclose(op.rateCommit != default<Bytes<32>>), "That offer takes no royalties through this contract");
-  assert(disclose(rateCommit(ro.rate, ro.salt) == op.rateCommit && ro.rate > 0),
-         "That is not the offer's royalty rate, or it is zero: nothing could ever settle against this credit");
   const v = disclose(validUntil);
   assert(blockTimeLt(v), "The time the offer must be open until is already past");
   assert(disclose(op.expires + SETTLE_GRACE() >= v), "That offer's 30 days after its end are over by then");
@@ -910,9 +933,8 @@ export circuit topUpSplit(offer: Bytes<32>, amount: Uint<64>): [] {
   const o = anyOffer(id);
   assert(o.split, "That offer's ancestors take no share: use topUp, which does not name the offer");
   assert(blockTimeLt((o.expires + SETTLE_GRACE()) as Uint<64>), "That offer's 30 days after its end are over");
-  const ro = rateOpening();
-  assert(disclose(rateCommit(ro.rate, ro.salt) == o.rateCommit && ro.rate > 0),
-         "That is not the offer's royalty rate, or it is zero: nothing could ever settle against this credit");
+  // postOffer proved the rate commitment opens to a rate above zero; the payer never sees the rate.
+  assert(o.rateCommit != default<Bytes<32>>, "That offer takes no royalties through this contract");
   const a = disclose(amount);
   assert(a > 0, "A top-up must be more than zero");
   addNote(disclose(noteCommit(topUpCodeWitness(),
@@ -931,8 +953,8 @@ export circuit mergeNotes(): [] {
   // Each key is hashed once and reused: every hash here is a SHA-256, about 4,400 proof rows.
   const sk = spendKey(secret, op.offer);
   const nk = nullifierKey(secret);
-  const nf = spendNote(secret, nk, sk, leaf, n1, notePath());
-  spendNote(secret, nk, sk, leaf, n2, secondNotePath());
+  const nf = spendNote(nk, sk, leaf, n1, notePath());
+  spendNote(nk, sk, leaf, n2, secondNotePath());
   const total = (n1.amount as Uint<128>) + (n2.amount as Uint<128>);
   assert(disclose(total < 18446744073709551616), "Those notes together are too large for one note");
   addNote(disclose(noteCommit(topUpCode(sk, changeNonceFor(secret, nf)), leaf, total as Uint<64>)));
@@ -958,7 +980,7 @@ export circuit settle(): [] {
   assert(disclose(rateCommit(ro.rate, ro.salt) == op.rateCommit && op.rateCommit != default<Bytes<32>> && ro.rate > 0),
          "That is not the offer's royalty rate");
   const n = noteOpening();
-  const nf = spendNote(secret, nullifierKey(secret), sk, leaf, n, notePath());
+  const nf = spendNote(nullifierKey(secret), sk, leaf, n, notePath());
   const units = settleUnits();
   assert(disclose(units > 0), "A settlement covers at least one unit");
   const owed = (units * ro.rate) as Uint<128>;

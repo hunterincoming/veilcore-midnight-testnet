@@ -126,14 +126,13 @@ const topUp = (
   nonce: Uint8Array,
   license = LIC,
   validUntil = sim.now + DAY,
-  rate = RATE,
 ) => {
   const op = openingOf(sim, offer);
+  // No rate: the payer never sees it (postOffer proved the commitment opens to one above zero).
   return sim.call(
     {
       opening: op,
       code: R.topUpCode(R.spendKey(license, offer), nonce),
-      rate: { rate, salt: SALT },
     },
     "topUp",
     { bytes: op.payTo },
@@ -418,7 +417,7 @@ describe("credit: top-ups", () => {
     const op = openingOf(sim, offer);
     const code = R.topUpCode(R.spendKey(LIC, offer), b(51));
     const p = sim.prove(
-      { opening: op, code, rate: RO },
+      { opening: op, code },
       "topUp",
       WALLET,
       NIGHT,
@@ -451,7 +450,7 @@ describe("credit: top-ups", () => {
       until: bigint,
     ) =>
       sim.call(
-        { opening: op, code, rate: RO },
+        { opening: op, code },
         "topUp",
         { bytes: payTo },
         color,
@@ -929,7 +928,7 @@ describe("attacks from the reviews, kept as regressions", () => {
       rate: 1n,
       admin: OTHER,
     });
-    topUp(sim, mine, 1000n, b(51), LIC, sim.now + DAY, 1n);
+    topUp(sim, mine, 1000n, b(51), LIC, sim.now + DAY);
     expect(() =>
       settleAs(sim, offer, { nonce: b(51), amount: 1000n }, P1, 1n),
     ).toThrow(/not yours|not on chain/);
@@ -942,7 +941,7 @@ describe("attacks from the reviews, kept as regressions", () => {
     expect(
       appears(
         sim.prove(
-          { opening: op, code, rate: RO },
+          { opening: op, code },
           "topUp",
           WALLET,
           NIGHT,
@@ -1030,9 +1029,11 @@ describe("attacks from the reviews, kept as regressions", () => {
     expect(() => withOffer({ rate: 0n })).toThrow(
       /does not open to a rate above zero/,
     );
+    // So a top-up needs no rate opening (the payer never sees the rate), and every offer
+    // leaf it can prove came from postOffer.
     const { sim, offer } = withOffer();
-    expect(() =>
-      topUp(sim, offer, 500n, b(51), LIC, sim.now + DAY, 5n),
-    ).toThrow(/royalty rate/);
+    buy(sim, offer);
+    topUp(sim, offer, 500n, b(51));
+    expect(sim.state.topUpSeq).toBe(1n);
   });
 });

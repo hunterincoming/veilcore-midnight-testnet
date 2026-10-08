@@ -11,7 +11,7 @@ import {
   type Caller,
 } from "./royalties-simulator.js";
 import { pureCircuits as V } from "../managed/veilcore/contract/index.js";
-import { licenceKeyOf, noteOf } from "../royalties.js";
+import { changeNonceOf, licenceKeyOf, noteOf } from "../royalties.js";
 
 const hex = (b: Uint8Array): string => Buffer.from(b).toString("hex");
 const b = (n: number): Uint8Array<ArrayBuffer> => {
@@ -91,7 +91,6 @@ const topUp = (
     {
       opening: opening(sim, offer),
       code: R.topUpCode(R.spendKey(license, offer), n),
-      rate: RO,
     },
     "topUp",
     { bytes: opening(sim, offer).payTo },
@@ -228,6 +227,110 @@ describe("seals", () => {
     );
     sim.call({}, "sealRevocations", sim.now + 100n);
     expect(() => sim.land(q)).toThrow();
+  });
+
+  it("a revocation retires licence roots at most once an hour: revoking your own licence cannot void proofs every 10 minutes", () => {
+    // Round 7: Eve posts a cheap offer, buys from herself, revokes and seals. Each such seal
+    // used to void every settle and presentation in flight, every 600 s.
+    const sim = new RoyaltiesSimulator();
+    const offer = post(sim);
+    buy(sim, offer);
+    topUp(sim, offer, 400n, b(51));
+    const EVE = b(41);
+    const eves = sim.call(
+      { record: b(40), rate: RO },
+      "postOffer",
+      b(140),
+      R.adminCommit(EVE),
+      b(20),
+      NIGHT,
+      1n,
+      R.rateCommit(RATE, SALT),
+      { bytes: b(42) },
+      100n,
+      EXPIRES,
+      true,
+    ).result as Uint8Array;
+    const eveLeaf = (n: number) => licenceKeyOf(b(60 + n), eves, EXPIRES);
+    sim.call({}, "sealRevocations", sim.now + 100n); // the first seal is the daily one
+    const op = opening(sim, offer);
+    let note: { nonce: Uint8Array; amount: bigint } = { nonce: b(51), amount: 400n };
+    const inFlight = (n: number) => ({
+      s: sim.prove({ license: LIC, opening: op, note, rate: RO, period: b(70 + n), units: 1n }, "settle"),
+      p: sim.prove(who(offer), "proveLicense", NIGHT, 0n, sim.now + HOUR, SCOPE, true),
+    });
+    // Cycle 0: the first revocation does retire the licence roots: in-flight proofs fail.
+    sim.advance(700n);
+    sim.call({ license: b(60) }, "buyLicense", eves, sim.freeSlot());
+    let f = inFlight(0);
+    sim.call({ admin: EVE }, "revokeLicense", eveLeaf(0));
+    sim.call({}, "sealRevocations", sim.now + 100n);
+    expect(() => sim.land(f.s)).toThrow();
+    expect(() => sim.land(f.p)).toThrow();
+    expect(sim.state.unsealedChanges).toBe(false);
+    const resetAt = sim.state.lastRevocationReset;
+    // Cycles 1 to 4, ten minutes apart, all within the hour: the seals go through but retire
+    // nothing, the revocation stays waiting (verifiers keep waiting), and every proof lands.
+    for (let n = 1; n <= 4; n++) {
+      sim.advance(700n);
+      sim.call({ license: b(60 + n) }, "buyLicense", eves, sim.freeSlot());
+      f = inFlight(n);
+      sim.call({ admin: EVE }, "revokeLicense", eveLeaf(n));
+      const sealedBefore = sim.state.sealedRevocations;
+      sim.call({}, "sealRevocations", sim.now + 100n);
+      expect(sim.state.unsealedChanges).toBe(true);
+      expect(sim.state.sealedRevocations).toBe(sealedBefore);
+      expect(sim.state.offerRevokedAt.lookup(eves) > sim.state.sealedRevocations).toBe(true);
+      sim.land(f.s);
+      sim.land(f.p);
+      note = { nonce: changeNonceOf(LIC, note.nonce, op, note.amount), amount: note.amount - RATE };
+      expect(sim.state.settleSeq).toBe(BigInt(n));
+      expect(sim.state.lastRevocationReset).toBe(resetAt);
+    }
+    // Just before the hour, a seal still retires nothing. It cannot push back the one that
+    // is due: an hour after the last retirement, a seal goes through at once (it skips the
+    // 600 s wait) and seals the waiting revocations.
+    sim.advance(resetAt + HOUR - sim.now - 150n);
+    sim.call({}, "sealRevocations", sim.now + 100n);
+    expect(sim.state.unsealedChanges).toBe(true);
+    sim.advance(160n);
+    expect(sim.now < sim.state.lastSealTime + 600n).toBe(true);
+    sim.call({}, "sealRevocations", sim.now + 100n);
+    expect(sim.state.unsealedChanges).toBe(false);
+    expect(sim.state.sealedRevocations).toBe(sim.state.revocationSeq);
+    expect(sim.state.lastRevocationReset > resetAt).toBe(true);
+    // The revoked licences no longer prove.
+    expect(() =>
+      sim.call(
+        { offer: eves, expires: EXPIRES, license: b(61), challenge: CH },
+        "proveLicense",
+        NIGHT,
+        0n,
+        sim.now + HOUR,
+        SCOPE,
+        true,
+      ),
+    ).toThrow(/No live licence/);
+  }, 60_000);
+
+  it("the daily seal also seals a waiting revocation, without counting as the hourly one", () => {
+    const sim = new RoyaltiesSimulator();
+    const offer = post(sim);
+    buy(sim, offer);
+    buy(sim, offer, LIC2);
+    buy(sim, offer, b(12));
+    sim.call({}, "sealRevocations", sim.now + 100n); // daily, due again at T0 + 100 + DAY
+    sim.advance(DAY - 600n);
+    sim.call({ admin: ADMIN }, "revokeLicense", licenceKeyOf(LIC2, offer, EXPIRES));
+    sim.call({}, "sealRevocations", sim.now + 100n); // the hourly revocation seal
+    const resetAt = sim.state.lastRevocationReset;
+    expect(resetAt).toBe(sim.now + 100n);
+    sim.advance(700n); // within the hour, but the daily seal is due
+    sim.call({ admin: ADMIN }, "revokeLicense", licenceKeyOf(b(12), offer, EXPIRES));
+    sim.call({}, "sealRevocations", sim.now + 100n);
+    expect(sim.state.unsealedChanges).toBe(false);
+    expect(sim.state.sealedRevocations).toBe(sim.state.revocationSeq);
+    expect(sim.state.lastRevocationReset).toBe(resetAt);
   });
 });
 

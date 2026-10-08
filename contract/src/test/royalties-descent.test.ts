@@ -536,7 +536,6 @@ describe("royalty top-ups with ancestors' shares", () => {
         {
           opening,
           code: code(L, offer, b(61)),
-          rate: { rate: RATE, salt: SALT },
         },
         "topUp",
         W.C,
@@ -546,7 +545,7 @@ describe("royalty top-ups with ancestors' shares", () => {
       ),
     ).toThrow(/topUpSplit/);
     const moved = sim.call(
-      { code: code(L, offer, b(61)), rate: { rate: RATE, salt: SALT } },
+      { code: code(L, offer, b(61)) },
       "topUpSplit",
       offer,
       500n,
@@ -587,7 +586,7 @@ describe("royalty top-ups with ancestors' shares", () => {
     const offer = post(sim, A, W.A);
     expect(() =>
       sim.call(
-        { code: b(62), rate: { rate: RATE, salt: SALT } },
+        { code: b(62) },
         "topUpSplit",
         offer,
         500n,
@@ -595,15 +594,15 @@ describe("royalty top-ups with ancestors' shares", () => {
     ).toThrow(/use topUp/);
   });
 
-  it("topUpSplit needs the offer's real rate, so no credit is sold that cannot settle", () => {
+  it("topUpSplit needs no rate (the payer never sees it): a split offer's rate commitment was opened at posting", () => {
+    // A record whose ancestors take a share must post with a rate, and postOffer refuses a
+    // commitment that does not open to a rate above zero: no credit is sold that cannot settle.
     const { sim, offer } = setup();
     expect(() =>
-      sim.call(
-        { code: b(63), rate: { rate: RATE + 1n, salt: SALT } },
-        "topUpSplit",
-        offer,
-        500n,
-      ),
-    ).toThrow(/royalty rate/);
+      sim.call({ record: C, rate: { rate: 0n, salt: SALT } }, "postOffer", b(90), R.adminCommit(b(91)), b(92),
+        NIGHT, 1000n, R.rateCommit(0n, SALT), W.C, 5n, T0 + YEAR, false),
+    ).toThrow(/does not open to a rate above zero/);
+    sim.call({ code: b(63) }, "topUpSplit", offer, 500n);
+    expect(sim.state.topUpSeq).toBe(1n);
   });
 });

@@ -427,6 +427,8 @@ describe('royalties on offspring, through the client', () => {
     // Q's parentage is confirmed with no terms at all: shown as taking nothing, not refused.
     chain.main.call(as(Q), 'proposeParent', C.commit(P));
     chain.main.call(as(P), 'confirmParent', C.commit(Q));
+    // Q's own client finalises without a link to P (P set no terms), with a warning, not a refusal.
+    await other.api.finaliseStack(Q, MAIN);
     const plain = await other.api.postOffer(Q, t(new Uint8Array(32).fill(53)), MAIN);
     const ped = await grower.api.pedigreeIn(MAIN, C.commit(Q));
     expect(ped.ok && ped.warnings.some((w) => /takes nothing/.test(w))).toBe(true);

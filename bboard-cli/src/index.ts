@@ -32,6 +32,7 @@ import {
 import { type ClaimsPrivateState } from '../../contract/src/claims.js';
 import { CLAIMS_MENU, type ClaimsMenuContext, handleClaimsChoice } from './claims-menu';
 import { ROYALTIES_MENU, type RoyaltiesMenuContext, handleRoyaltiesChoice } from './royalties-menu';
+import { royaltiesPureCircuits } from '../../contract/src/royalties.js';
 import {
   type RoyaltiesProviders,
   type RoyaltiesPrivateStateId,
@@ -744,9 +745,29 @@ const mainLoop = async (
             tx(await api.proposeParent(await ask32(rli, "Parent's record (hex): ")));
             logger.info("Proposed. The edge exists once the parent's holder confirms.");
             break;
-          case '17':
-            tx(await api.confirmParent(await ask32(rli, "Child's record (hex): ")));
+          case '17': {
+            const childRecord = await ask32(rli, "Child's record (hex): ");
+            const mine = await royalties.recordSecret();
+            if (royalties.api !== undefined && mine !== undefined) {
+              const agreed = await royalties.api.agreedDescent(
+                royalties.mainAddress,
+                childRecord,
+                royaltiesPureCircuits.recordCommit(mine),
+              );
+              if (!agreed) {
+                logger.info(
+                  'No descent terms are agreed with this child in the royalties contract. Once you confirm, it can ' +
+                    'sell offspring that pay you nothing: confirm its link (71) first if you want terms.',
+                );
+                if ((await rli.question('Type yes to confirm the parentage anyway: ')).trim().toLowerCase() !== 'yes') {
+                  logger.info('Nothing was sent.');
+                  break;
+                }
+              }
+            }
+            tx(await api.confirmParent(childRecord));
             break;
+          }
           case '18':
             tx(await api.withdrawParent());
             break;

@@ -476,8 +476,7 @@ circuit withCarried(t: ShareToken, id: Bytes<32>, minGenerations: Uint<8>): Shar
   if (carried(id, minGenerations) == noLink()) {
     return t;
   }
-  const l = links.lookup(id);
-  return withToken(t, l.share > 0, l.color);
+  return withToken(t, shareAt(id) > 0, links.lookup(id).color);
 }
 
 /** A place in a parent's chart, carried one generation further only if its link still runs there. */
@@ -496,7 +495,7 @@ circuit carriedWeight(id: Bytes<32>, minGenerations: Uint<8>, quarters: Uint<8>)
   if (carried(id, minGenerations) == noLink()) {
     return 0;
   }
-  return (links.lookup(id).share * quarters) as Uint<32>;
+  return (shareAt(id) * quarters) as Uint<32>;
 }
 
 /** What a child inherits through a link to this parent's chart, in quarter basis points. */

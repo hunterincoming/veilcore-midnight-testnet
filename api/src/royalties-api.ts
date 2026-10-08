@@ -321,13 +321,12 @@ export const pedigreeStanding = (
         return `record ${short(r)} uses a pedigree chart of another identity`;
       const pid = identityOf(main, l.parent);
       named.push(hex(pid));
-      if (
-        main.recoveriesOf.member(pid) &&
-        main.recoveriesOf.lookup(pid).read() > 0n &&
-        hex(headOfIdentity(main, pid)) !== hex(l.parent)
-      )
+      if (hex(headOfIdentity(main, pid)) !== hex(l.parent))
         warnings.push(
-          `parent record ${short(l.parent)} has since been recovered from theft: its link may have been made by the thief`,
+          main.recoveriesOf.member(pid) && main.recoveriesOf.lookup(pid).read() > 0n
+            ? `parent record ${short(l.parent)} has since been recovered from theft: its link may have been made by the thief`
+            : `parent record ${short(l.parent)} is no longer its identity's current record (a key change since): ` +
+                'its link stands, but check it was made before the change',
         );
     }
     for (const n of named)
@@ -479,6 +478,17 @@ export class RoyaltiesAPI {
     return pedigreeStanding(veilcoreLedger(state.data), await this.currentLedger(), record);
   }
 
+  /** Whether a confirmed descent link exists from `child`'s identity to `parent`'s (read with the main contract). */
+  async agreedDescent(mainAddress: ContractAddress, child: Uint8Array, parent: Uint8Array): Promise<boolean> {
+    const state = await this.providers.publicDataProvider.queryContractState(mainAddress);
+    if (state === null || state === undefined) return false;
+    const main = veilcoreLedger(state.data);
+    const [c, p] = [hex(identityOf(main, child)), hex(identityOf(main, parent))];
+    return [...(await this.currentLedger()).links].some(
+      ([, k]) => k.confirmed && hex(identityOf(main, k.child)) === c && hex(identityOf(main, k.parent)) === p,
+    );
+  }
+
   /** A record's pedigree chart on this contract. */
   async chart(record: Uint8Array): Promise<ChartPlace[]> {
     return chartOf(await this.currentLedger(), record);
@@ -555,12 +565,21 @@ export class RoyaltiesAPI {
             'A parentage proposal of this record is still waiting in the VeilCore contract. Posting now would make ' +
               '"no ancestors" final forever: link and finalise first. Nothing was sent.',
           );
+        const agreedElsewhere =
+          main !== undefined &&
+          [...before.links].some(([, k]) => k.confirmed && hex(identityOf(main, k.child)) === hex(id));
+        if (agreedElsewhere)
+          throw new Error(
+            'Your identity agreed descent terms here under another record: finalise that record and take over its ' +
+              'chart (adoptStack) before posting, or buyers will refuse this offer forever. Nothing was sent.',
+          );
         if (main?.parentsOf.member(id) && main.parentsOf.lookup(id).size() > 0n)
           this.logger?.warn(
             'This record has confirmed parents but no links here: posting makes that final, and they take nothing.',
           );
       }
     }
+    if (before.stacks.member(record)) assertNoLinkEndingSoon(before, record);
     const split = chartSplits(before, record);
     if (split && t.rate === 0n)
       throw new Error(
@@ -1079,11 +1098,21 @@ export class RoyaltiesAPI {
       const found = [...l.links].find(
         ([, k]) => k.confirmed && hex(k.child) === hex(child) && hex(identityOf(main, k.parent)) === hex(p),
       );
-      if (found === undefined)
+      if (found !== undefined) {
+        chosen.push(found[0]);
+        continue;
+      }
+      // A link agreed under an earlier record of this identity cannot be used from this one.
+      const elsewhere = [...l.links].some(
+        ([, k]) =>
+          k.confirmed && hex(identityOf(main, k.child)) === hex(id) && hex(identityOf(main, k.parent)) === hex(p),
+      );
+      if (elsewhere)
         throw new Error(
-          `Parent ${hex(p).slice(0, 10)} is confirmed in the VeilCore contract but has no confirmed link here. Nothing was sent.`,
+          `Parent ${hex(p).slice(0, 10)} agreed terms with an earlier record of yours: finalise that record and take ` +
+            'over its chart (adoptStack) instead. Nothing was sent.',
         );
-      chosen.push(found[0]);
+      this.logger?.warn(`Parent ${hex(p).slice(0, 10)} set no terms here: it will take nothing from this variety.`);
     }
     const [a, b] = [chosen[0] ?? ZERO32(), chosen[1] ?? ZERO32()];
     return this.call('finaliseStack', { recordSecret: childSecret }, (c) => c.callTx.finaliseStack(a, b));

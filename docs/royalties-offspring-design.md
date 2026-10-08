@@ -47,7 +47,7 @@ only the parent's separate payee key can move where it is paid.
 | fee | A fixed amount per licence the new variety sells, paid to direct parents only. The livestock certificate. |
 | share | Basis points of the new variety's licence prices and royalty top-ups, at most 50%. |
 | generations | How far the share follows: 1 to 3. |
-| until | When the link ends. Ended links pay nothing and no longer count. |
+| until | When the link ends. Ended links pay nothing, and no longer count toward the cap, the token rule or the split. An offer posted while a share still ran keeps naming itself on top-ups; a new offer posted after it ended does not. |
 | token | What the fee and share are paid in. |
 | payee | The wallet, and the key that may move it. |
 
@@ -101,15 +101,20 @@ check:
    never uses this contract, is shown as "takes nothing here", not refused, so one absent
    ancestor cannot strand every descendant.
 3. The same for every ancestor in the chart, three generations up.
-4. A warning when a parent record has since been recovered from theft.
+4. A warning when a parent record is no longer its identity's current record: stronger
+   when it was recovered from theft (its link may have been made by the thief).
 5. Before paying, the buyer or payer sees every place in the chart: who, what share,
    what fee, until when.
 6. A payment within ten minutes of a link's end date is refused, since block time and
    the client's clock could disagree.
 
 The child's own client refuses to make its ancestors final while a parentage proposal is
-waiting in the main contract, and picks exactly the links for the parents the main
-contract confirms.
+waiting in the main contract. It includes the link for every main-contract parent that
+agreed terms; a parent that set none is left out with a warning (it takes nothing). If a
+parent agreed terms with an earlier record of the same identity, it refuses and points to
+taking over that record's chart. Posting refuses to lock in an empty chart in that case.
+A parent confirming parentage in the main contract (menu 17) is warned when no terms are
+agreed with that child here.
 
 ## What it can and cannot do (say it plainly)
 
@@ -117,7 +122,9 @@ contract confirms.
   licence and every split top-up, automatically. Neither side can change them, and nobody
   has to read anyone's books.
 - **The child sets the price and the royalty rate.** A low price or a low rate lowers
-  every share. The fee per licence is the floor an ancestor can rely on.
+  every share. The fee per licence is the floor an ancestor can rely on. Shares round down,
+  so a very small payment (under ten units at 10%) pays an ancestor nothing: less than one
+  unit per place per payment.
 - **Not on chain: declaring.** A breeder can anchor a new variety with no parents, or
   confirm "sock" parents from records they control (which also takes the two parent
   places, and the 50%). Clients show the pedigree; DNA evidence catches the rest, as it
@@ -138,9 +145,9 @@ contract confirms.
 - **Not yet run on a real network.** A purchase with a full chart and fees in other tokens
   makes up to 16 payments in one transaction; that has run only on the simulator.
 
-## Circuit sizes (rows; the limit is 131,072)
+## Circuit sizes (rows, measured with `zkir mock-compile` from compiler 0.31.1 on 8 Oct 2026; the limit is 2^17 = 131,072)
 
-buyLicense 34,525 · topUpSplit 32,534 · topUp 34,156 · settle 113,837 · confirmLink 25,112
+buyLicense 34,525 · topUpSplit 32,534 · topUp 34,156 · settle 113,837 · confirmLink 26,600
 · postOffer 29,749 · finaliseStack 9,063 · proposeLink 9,554.
 
 ## Review rounds

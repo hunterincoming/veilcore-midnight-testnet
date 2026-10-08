@@ -110,9 +110,19 @@ Desktop: the offer card, the licence card, the top-up request and the licence re
 13. `64` with `~/Desktop/request2.json`. Expect it to be **refused** (no live licence). This
     refusal comes from the grower's own client, which sees the revocation; the contract's own
     refusal of a revoked licence is covered by the tests, not by this run.
-## Part 2: royalties on offspring (about 30 minutes, optional)
+If you are doing part 2 (royalties on offspring), do it now: see "Part 2" below, then come
+back to step 14.
 
-The grower now plays the breeder of a new variety bred from yours. The breeder's
+14. `0` to exit. Start once more the same way, read the NIGHT balance, then `0`.
+
+## Breeder, window A
+
+15. `0` to exit. Close both windows. Shred the scrap paper. Delete `~/veilcore-grower` and the
+    Desktop files from this run.
+
+## Part 2: royalties on offspring (about 30 minutes, optional, before step 14)
+
+Do this after step 13, before exiting either window. The grower now plays the breeder of a new variety bred from yours. The breeder's
 variety (window A) is the parent.
 
 - **Window A:** `31` (show your record). **Write down "Your record".** Then `69` (offer
@@ -133,13 +143,6 @@ variety (window A) is the parent.
   wallet, 0.2 comes back to it (its 10% share and its fee), and 0.9 goes to window B's.
 - **Window B:** `73` (show a variety's pedigree chart) with your own record. Expect
   "Pedigree: matches the VeilCore contract."
-
-14. `0` to exit. Start once more the same way, read the NIGHT balance, then `0`.
-
-## Breeder, window A
-
-15. `0` to exit. Close both windows. Shred the scrap paper. Delete `~/veilcore-grower` and the
-    Desktop files from this run.
 
 ## Paste back to Claude
 

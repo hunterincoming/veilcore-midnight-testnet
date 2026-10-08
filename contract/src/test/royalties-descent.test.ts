@@ -395,6 +395,25 @@ describe("what neither side can do", () => {
     expect(() => confirm(sim2, E, D)).not.toThrow();
   });
 
+  it("an ended ancestor link no longer counts toward the cap or the token when a child confirms", () => {
+    const sim = new RoyaltiesSimulator();
+    finalise(sim, A);
+    finalise(
+      sim,
+      B,
+      link(sim, B, A, W.A, {
+        color: STABLE,
+        share: 5000n,
+        generations: 2n,
+        until: T0 + 10n * DAY,
+      }),
+    );
+    sim.advance(11n * DAY);
+    // A's link has ended: C may take its shares in NIGHT, and the full 50% is free again.
+    propose(sim, C, B, { color: NIGHT, share: 5000n, payTo: W.B });
+    expect(() => confirm(sim, B, C)).not.toThrow();
+  });
+
   it("an offer whose ancestors take a royalty share must take royalties through the contract", () => {
     const sim = new RoyaltiesSimulator();
     finalise(sim, B);

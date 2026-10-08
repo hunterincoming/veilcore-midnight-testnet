@@ -1,8 +1,9 @@
 # Royalties contract: design, sources and limits
 
-**Status: DRAFT, version 2, 8 October 2026. Not deployed anywhere.** Contract:
+**Status: DRAFT, protocol 3, 8 October 2026. Not deployed anywhere.** Contract:
 `contract/src/veilcore-royalties.compact`. Client: `api/src/royalties-api.ts`. Menu: options
-50 to 68 in `bboard-cli`. Tests: `contract/src/test/royalties*.test.ts` (the contract) and
+50 to 76 in `bboard-cli`. Royalties on offspring (protocol 3) have their own design:
+`docs/royalties-offspring-design.md`. Tests: `contract/src/test/royalties*.test.ts` (the contract) and
 `bboard-cli/src/royalties-journey.test.ts` (the real client, end to end, on the simulator).
 The two live mainnet contracts are not changed by any of this.
 
@@ -174,9 +175,9 @@ on-chain licensing projects, the academic papers, and Midnight's own code.
   costs its sender a transaction. Ended licences and offers can be cleared by anyone.
 - **The breeder's scan grows with use:** every settlement on the contract × every licence
   card. Fine at hundreds of growers; a large breeder would need an index later.
-- **No refunds, transfers or royalties on offspring yet.** Offspring royalties come later, on
-  Story Protocol's model of paying direct parents only
-  ([Story](https://docs.story.foundation/concepts/royalty-module/liquid-relative-percentage.md)).
+- **No refunds or transfers.** Royalties on offspring are built (protocol 3,
+  `docs/royalties-offspring-design.md`): a new variety's ancestors are paid their agreed
+  share of every licence and split top-up, in the same transaction.
 - **No standard terms format yet.** Next: fixed fields in the style of Story's PIL.
 
 ## Before mainnet

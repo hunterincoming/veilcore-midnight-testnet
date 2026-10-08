@@ -288,11 +288,14 @@ export type PedigreeStanding =
   | { readonly ok: false; readonly why: string };
 
 /**
- * Rule 4 (descent): a record's pedigree chart names, identity for identity, exactly the
- * parents the main VeilCore contract confirms for it NOW, and so does every ancestor's,
- * up to three generations. A confirmed parent left out of the chart (or one named that the
- * main contract does not confirm) means refuse. Warns when a parent record has since been
- * recovered from theft, since links it confirmed may have been made by the thief.
+ * Rule 4 (descent), for a record and every ancestor in its chart, up to three generations:
+ * - every parent the chart names must be a parent the main VeilCore contract confirms for
+ *   it now (refuse otherwise: a parent nobody confirmed);
+ * - a confirmed parent the chart leaves out is refused if the two agreed terms here (a
+ *   confirmed link the child chose not to include), and otherwise shown as "takes nothing
+ *   here" (a parent that never set terms, or never uses this contract, strands nobody).
+ * Warns when a parent record has since been recovered from theft, since links it
+ * confirmed may have been made by the thief.
  */
 export const pedigreeStanding = (
   main: MainLedger,
@@ -305,10 +308,10 @@ export const pedigreeStanding = (
   const check = (r: Uint8Array, d: number): string | undefined => {
     const id = identityOf(main, r);
     const confirmed = main.parentsOf.member(id) ? [...main.parentsOf.lookup(id)].map(hex).sort() : [];
-    if (!roy.stacks.member(r))
-      return confirmed.length === 0
-        ? undefined
-        : `record ${short(r)} has parents confirmed in the VeilCore contract, but its ancestors are not final here`;
+    if (!roy.stacks.member(r)) {
+      if (confirmed.length > 0) warnings.push(`record ${short(r)} has parents but no chart here: they take nothing`);
+      return undefined;
+    }
     const chart = roy.stacks.lookup(r);
     const named: string[] = [];
     for (const lid of chart.slice(0, 2)) {
@@ -327,9 +330,18 @@ export const pedigreeStanding = (
           `parent record ${short(l.parent)} has since been recovered from theft: its link may have been made by the thief`,
         );
     }
-    named.sort();
-    if (named.length !== confirmed.length || named.some((x, i) => x !== confirmed[i]))
-      return `record ${short(r)}'s pedigree chart does not name the parents the VeilCore contract confirms for it`;
+    for (const n of named)
+      if (!confirmed.includes(n))
+        return `record ${short(r)}'s pedigree chart names a parent the VeilCore contract does not confirm for it`;
+    for (const p of confirmed) {
+      if (named.includes(p)) continue;
+      const agreed = [...roy.links].some(
+        ([, k]) => k.confirmed && hex(identityOf(main, k.child)) === hex(id) && hex(identityOf(main, k.parent)) === p,
+      );
+      if (agreed)
+        return `record ${short(r)}'s pedigree chart leaves out a parent it agreed terms with (it does not name the parents it owes)`;
+      warnings.push(`parent ${p.slice(0, 10)} of record ${short(r)} takes nothing through this contract`);
+    }
     if (d > 1)
       for (const lid of chart.slice(0, 2)) {
         if (isZero(lid)) continue;
@@ -366,9 +378,27 @@ export const chartOf = (roy: RoyaltiesLedger, record: Uint8Array): ChartPlace[] 
     });
 };
 
+/** Refuse a payment within ten minutes of a link's end: block time and this clock could disagree. */
+const assertNoLinkEndingSoon = (roy: RoyaltiesLedger, record: Uint8Array): void => {
+  const now = nowSeconds();
+  for (const p of chartOf(roy, record))
+    if (p.until > now - 600n && p.until < now + 600n)
+      throw new Error(
+        'An ancestor link of this variety ends within ten minutes: try again after it ends. Nothing was sent.',
+      );
+};
+
 const chartSplits = (roy: RoyaltiesLedger, record: Uint8Array): boolean =>
   roy.stacks.member(record) &&
-  roy.stacks.lookup(record).some((lid) => !isZero(lid) && roy.links.member(lid) && roy.links.lookup(lid).share > 0n);
+  roy.stacks
+    .lookup(record)
+    .some(
+      (lid) =>
+        !isZero(lid) &&
+        roy.links.member(lid) &&
+        roy.links.lookup(lid).share > 0n &&
+        roy.links.lookup(lid).until > nowSeconds(),
+    );
 
 export type OfferView = RoyaltyOffer & { readonly id: Uint8Array };
 
@@ -516,6 +546,20 @@ export class RoyaltiesAPI {
       const ped = await this.pedigreeIn(mainAddress, record);
       if (before.stacks.member(record) && !ped.ok)
         throw new Error(`Buyers would refuse this offer: ${ped.why}. Nothing was sent.`);
+      if (!before.stacks.member(record)) {
+        const state = await this.providers.publicDataProvider.queryContractState(mainAddress);
+        const main = state ? veilcoreLedger(state.data) : undefined;
+        const id = main ? identityOf(main, record) : record;
+        if (main?.pendingParentOf.member(id))
+          throw new Error(
+            'A parentage proposal of this record is still waiting in the VeilCore contract. Posting now would make ' +
+              '"no ancestors" final forever: link and finalise first. Nothing was sent.',
+          );
+        if (main?.parentsOf.member(id) && main.parentsOf.lookup(id).size() > 0n)
+          this.logger?.warn(
+            'This record has confirmed parents but no links here: posting makes that final, and they take nothing.',
+          );
+      }
     }
     const split = chartSplits(before, record);
     if (split && t.rate === 0n)
@@ -674,6 +718,7 @@ export class RoyaltiesAPI {
     const ped = await this.pedigreeIn(mainAddress, o.record);
     if (!ped.ok) throw new Error(`Refused: ${ped.why}. Nothing was sent.`);
     for (const w of ped.warnings) this.logger?.warn(w);
+    assertNoLinkEndingSoon(await this.currentLedger(), o.record);
     const secret = utils.randomBytes(32);
     const license = licenceKeyOf(secret, offer, o.expires);
     const slot = await this.freeSlot();
@@ -737,6 +782,7 @@ export class RoyaltiesAPI {
       if (!ped.ok) throw new Error(`Refused: ${ped.why}. Nothing was sent.`);
       for (const w of ped.warnings) this.logger?.warn(w);
     }
+    assertNoLinkEndingSoon(await this.currentLedger(), o.record);
     if (o.split) {
       // The ancestors take a share: this top-up names the offer, and pays each share in the same call.
       if (o.expires <= nowSeconds()) throw new Error('That offer has ended. Nothing was sent.');
@@ -991,9 +1037,20 @@ export class RoyaltiesAPI {
       throw new Error('That link does not carry terms you offered on this computer. Nothing was sent.');
     if (!l.stacks.member(parent))
       throw new Error(
-        'Finalise your own ancestors first (or post an offer, which finalises an empty chart). Nothing was sent.',
+        'Finalise your own ancestors first (a variety with no parents: post an offer, or finalise an empty chart). ' +
+          'Nothing was sent.',
       );
-    return this.call('confirmLink', { recordSecret: parentSecret }, (c) => c.callTx.confirmLink(child));
+    // The contract confirms only these exact terms, so a link changed after this check is refused on chain.
+    const termsHash = R.linkTermsHash(
+      unhex(t.color),
+      BigInt(t.fee),
+      BigInt(t.share),
+      BigInt(t.generations),
+      BigInt(t.until),
+      unhex(t.payTo),
+      link.payee,
+    );
+    return this.call('confirmLink', { recordSecret: parentSecret }, (c) => c.callTx.confirmLink(child, termsHash));
   }
 
   /**
@@ -1151,6 +1208,7 @@ export class RoyaltiesAPI {
     request: PresentationRequest,
     txId: string,
     indexerUri: string,
+    mainAddress?: ContractAddress,
   ): Promise<PresentationVerdict> {
     const req = normalised(request);
     if (req.contract !== this.deployedContractAddress.toLowerCase())
@@ -1215,6 +1273,15 @@ export class RoyaltiesAPI {
     lines.push(
       'note   This shows that someone holding a live licence answered, not that the person in front of you holds it.',
     );
+    if (mainAddress !== undefined && (await this.currentLedger()).offers.member(offer)) {
+      const ped = await this.pedigreeIn(mainAddress, (await this.offer(offer)).record);
+      lines.push(
+        ped.ok
+          ? "note   The variety's pedigree matches the VeilCore contract."
+          : `note   The variety's pedigree does NOT match the VeilCore contract: ${ped.why}.`,
+      );
+      for (const w of ped.ok ? ped.warnings : []) lines.push(`note   ${w}`);
+    }
     return { accepted: tagOk && !unsealed && !revokedSince, lines, holder };
   }
 

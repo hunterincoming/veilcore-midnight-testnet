@@ -77,11 +77,28 @@ const propose = (
     R.payeeCommit(PAYEE),
   ).result as Uint8Array<ArrayBuffer>;
 
+/** The parent confirms exactly the terms now on the link. */
 const confirm = (
   sim: RoyaltiesSimulator,
   parent: Uint8Array,
   child: Uint8Array,
-) => sim.call({ record: parent }, "confirmLink", rec(child));
+) => {
+  const l = sim.state.links.lookup(R.linkId(rec(child), rec(parent)));
+  return sim.call(
+    { record: parent },
+    "confirmLink",
+    rec(child),
+    R.linkTermsHash(
+      l.color,
+      l.fee,
+      l.share,
+      l.generations,
+      l.until,
+      l.payTo.bytes,
+      l.payee,
+    ),
+  );
+};
 
 const finalise = (
   sim: RoyaltiesSimulator,
@@ -241,13 +258,17 @@ describe("descent links: terms both holders agreed", () => {
     expect(paid(moved, NIGHT, W.C)).toBe(800n);
   });
 
-  it("shares round up for the ancestor and never exceed the payment", () => {
+  it("shares round down, so the ancestors never take more than agreed", () => {
     const sim = new RoyaltiesSimulator();
     finalise(sim, B);
-    finalise(sim, C, link(sim, C, B, W.B, { share: 1n }));
+    finalise(sim, C, link(sim, C, B, W.B, { share: 15n }));
     const moved = buy(sim, post(sim, C, W.C, { price: 999n }));
-    expect(paid(moved, NIGHT, W.B)).toBe(1n);
+    expect(paid(moved, NIGHT, W.B)).toBe(1n); // 0.15% of 999 is 1.4985
     expect(paid(moved, NIGHT, W.C)).toBe(998n);
+    const up = Array.from({ length: 14 }, (_, i) => (i === 0 ? 2n : 0n));
+    expect(() =>
+      buy(sim, post(sim, C, W.C, { price: 999n }), { split: up }),
+    ).toThrow(/rounded down/);
   });
 });
 
@@ -350,6 +371,90 @@ describe("what neither side can do", () => {
     expect(() => sim.call({ record: C }, "withdrawLink", rec(B))).toThrow(
       /No unconfirmed link/,
     );
+  });
+
+  it("shares in two tokens are refused when the second link is confirmed, not discovered later", () => {
+    const sim = new RoyaltiesSimulator();
+    finalise(sim, A);
+    finalise(
+      sim,
+      B,
+      link(sim, B, A, W.A, { color: STABLE, share: 100n, generations: 2n }),
+    );
+    propose(sim, C, B, { color: NIGHT, share: 1000n, payTo: W.B });
+    expect(() => confirm(sim, B, C)).toThrow(/two tokens/);
+    // Two parents asking for shares in different tokens: the second confirmation is refused.
+    const sim2 = new RoyaltiesSimulator();
+    finalise(sim2, B);
+    finalise(sim2, E);
+    link(sim2, C, B, W.B, { color: STABLE, share: 100n });
+    propose(sim2, C, E, { color: NIGHT, share: 100n, payTo: W.E });
+    expect(() => confirm(sim2, E, C)).toThrow(/two tokens/);
+    // A fee-only link in another token is fine.
+    propose(sim2, D, E, { color: NIGHT, share: 0n, fee: 5n, payTo: W.E });
+    expect(() => confirm(sim2, E, D)).not.toThrow();
+  });
+
+  it("an offer whose ancestors take a royalty share must take royalties through the contract", () => {
+    const sim = new RoyaltiesSimulator();
+    finalise(sim, B);
+    finalise(sim, C, link(sim, C, B, W.B, { share: 1000n }));
+    expect(() =>
+      sim.call(
+        { record: C },
+        "postOffer",
+        b(99),
+        R.adminCommit(ADMIN),
+        b(20),
+        NIGHT,
+        1000n,
+        ZERO,
+        W.C,
+        5n,
+        T0 + YEAR,
+        true,
+      ),
+    ).toThrow(/must take royalties/);
+  });
+
+  it("once every ancestor's share has ended, new offers keep the private top-up", () => {
+    const sim = new RoyaltiesSimulator();
+    finalise(sim, B);
+    finalise(
+      sim,
+      C,
+      link(sim, C, B, W.B, { share: 1000n, until: T0 + 10n * DAY }),
+    );
+    const first = post(sim, C, W.C);
+    expect(sim.state.offers.lookup(first).split).toBe(true);
+    sim.advance(11n * DAY);
+    const later = post(sim, C, W.C);
+    expect(sim.state.offers.lookup(later).split).toBe(false);
+  });
+
+  it("a parent confirms only the exact terms it names; a record that proposed and withdrew can still post", () => {
+    const sim = new RoyaltiesSimulator();
+    finalise(sim, B);
+    propose(sim, C, B, { share: 1000n, payTo: W.B });
+    expect(() =>
+      sim.call(
+        { record: B },
+        "confirmLink",
+        rec(C),
+        R.linkTermsHash(
+          NIGHT,
+          0n,
+          2000n,
+          2n,
+          T0 + YEAR,
+          W.B.bytes,
+          R.payeeCommit(PAYEE),
+        ),
+      ),
+    ).toThrow(/not the ones you are confirming/);
+    sim.call({ record: C }, "withdrawLink", rec(B));
+    const posted = post(sim, C, W.C);
+    expect(sim.state.offers.member(posted)).toBe(true);
   });
 
   it("only the payee key moves where a link is paid; the child never can", () => {

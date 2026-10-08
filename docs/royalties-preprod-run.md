@@ -110,6 +110,30 @@ Desktop: the offer card, the licence card, the top-up request and the licence re
 13. `64` with `~/Desktop/request2.json`. Expect it to be **refused** (no live licence). This
     refusal comes from the grower's own client, which sees the revocation; the contract's own
     refusal of a revoked licence is covered by the tests, not by this run.
+## Part 2: royalties on offspring (about 30 minutes, optional)
+
+The grower now plays the breeder of a new variety bred from yours. The breeder's
+variety (window A) is the parent.
+
+- **Window A:** `31` (show your record). **Write down "Your record".** Then `69` (offer
+  terms for varieties bred from yours): token Enter; fee `0.1`; share `10`; generations
+  `2`; days `30`; wallet Enter; file `~/Desktop/terms.json`.
+- **Window B:** `1` (anchor your record: the new variety; write its recovery secret on the
+  scrap paper). **Write down the "Anchored record".** Then `70` (propose a link) with
+  `~/Desktop/terms.json`, `yes`. Then `16` (propose a parent) with window A's record.
+- **Window A:** `71` (confirm the new variety's link) with window B's record, `yes`. Then
+  `17` (confirm a child) with window B's record.
+- **Window B:** `72` (make your variety's ancestors final), `yes`. Expect it to show
+  "parent …: 10% … to …". Then `53` (post an offer): terms file
+  `~/Desktop/test-terms.txt`; token Enter; price `1`; royalty `0.1`; how many `3`; days
+  `30`; revoke `y`; wallet Enter; `yes`; offer card `~/Desktop/offer-card-2.json`.
+- **Window A:** `58` (buy) with `~/Desktop/offer-card-2.json`. Before asking, it should
+  list the parent (your own record) taking 10% plus a 0.1 NIGHT fee. `yes`; licence card
+  `~/Desktop/licence-card-2.json`. In that one transaction: 1.1 NIGHT leaves window A's
+  wallet, 0.2 comes back to it (its 10% share and its fee), and 0.9 goes to window B's.
+- **Window B:** `73` (show a variety's pedigree chart) with your own record. Expect
+  "Pedigree: matches the VeilCore contract."
+
 14. `0` to exit. Start once more the same way, read the NIGHT balance, then `0`.
 
 ## Breeder, window A
@@ -122,7 +146,11 @@ Desktop: the offer card, the licence card, the top-up request and the licence re
 - The royalties contract address and the offer id.
 - The last 30 lines of each window after steps 4, 6, 7, 8, 9 and 13.
 - The grower's NIGHT balance before and after. Expect about 1,500,000 lower (in the smallest
-  unit): 1 NIGHT for the licence and 0.5 for its own top-up. Fees are paid in DUST.
+  unit): 1 NIGHT for the licence and 0.5 for its own top-up. If you did part 2, expect about
+  600,000 lower instead, since window B also received 0.9 NIGHT from window A's purchase.
+  Fees are paid in DUST.
+- If you did part 2: the last 30 lines of window A after its purchase, and of window B
+  after `72` and `73`.
 
 Nothing in those is secret. Do not paste the admin secret, the wallet seeds, the recovery
 secret, or the card files (the offer card holds the private rate; the licence card lets

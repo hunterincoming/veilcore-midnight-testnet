@@ -188,7 +188,7 @@ const isEmpty = (b: Uint8Array): boolean => b.every((x) => x === 0);
 
 /**
  * What each place in `record`'s chart is owed from a payment of `total` in `color` at
- * time `now`: the share rounded up, or 0 (an empty place, no share, another token, or
+ * time `now`: the share rounded down, or 0 (an empty place, no share, another token, or
  * a link past its end). Exactly what the contract checks in paySplit.
  */
 export const splitAmountsFor = (
@@ -207,8 +207,7 @@ export const splitAmountsFor = (
     const l = ledger.links.lookup(id);
     if (l.share === 0n || hex(l.color) !== hex(color) || l.until <= now)
       return 0n;
-    const d = placeDenominator(i);
-    return (total * l.share + d - 1n) / d;
+    return (total * l.share) / placeDenominator(i);
   });
 };
 

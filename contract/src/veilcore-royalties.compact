@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // PUBLIC MONEY, PRIVATE BOOKS. Money only ever moves in two places, both public, both
-// straight from payer to breeder in one call (the contract holds nothing): buying a
-// licence, and topping up royalty credit. Settling a period's royalty against that credit
+// passed straight through in one call (the contract holds nothing): buying a licence, and
+// topping up royalty credit. It goes to the breeder, and to the variety's ancestors when
+// it has any (OFFSPRING below). Settling a period's royalty against that credit
 // moves no money, and publishes nothing that says which offer, which licensee, which
 // period, how many units or at what rate. The breeder reads all of that for their own
 // licensees with each licensee's viewing key. A buyer, processor or regulator checks
@@ -30,7 +31,8 @@
 // wallet, the token, the amount and a rounded time the offer is open until (clients always
 // send the start of the day after tomorrow, UTC, and stop top-ups before an offer's last
 // two days), and not which of that wallet's royalty offers in that token it is, nor the
-// licensee. A breeder with a single royalty offer per wallet and token has no such cover. Each note has its own
+// licensee (except for an offer whose ancestors take a share: see OFFSPRING). A breeder
+// with a single royalty offer per wallet and token has no such cover. Each note has its own
 // nullifier, so a code reused for top-ups of different amounts makes several spendable
 // notes (the same code, offer and amount twice is refused before anything is paid). The
 // payer opens the rate too, so no credit is ever sold that nothing could settle against.
@@ -57,6 +59,23 @@
 // keeps one scope sees the same holder tag each time one licence answers it. Revocations
 // are tracked per offer, so a verifier waits only for a seal after a revocation on the
 // offer it asked about.
+//
+// OFFSPRING (protocol 3). A new variety's breeder proposes a descent link to a parent
+// record with exact terms (a fee per licence, a share of licence prices and royalty
+// top-ups, how many generations it follows, an end date, a token, a payee); the parent
+// confirms those exact terms, after its own ancestors are final. Neither side can change
+// them afterwards. The child then makes its ancestors final once, as a pedigree chart of
+// link ids in fixed places: 2 parents, 4 grandparents, 8 great-grandparents, each place
+// carried from the parent's chart only while its link still runs that far. A share is
+// paid in full to a parent, half to a grandparent, a quarter to a great-grandparent,
+// rounded down; all shares together are capped at half, checked when each link is
+// confirmed; all must be owed in one token, also checked then. Every licence sale pays
+// each share and each parent's fee in the same call. An offer whose ancestors take a
+// royalty share must take royalties through the contract, and is topped up through
+// topUpSplit, which NAMES the offer (which variety, how much); others keep the private
+// topUp. Settling and presenting are unchanged. Declaring parents is not enforced here:
+// clients check each chart against the main contract's confirmed parents
+// (docs/royalties-offspring-design.md).
 //
 // ONE RECORD, TWO CONTRACTS. The breeder proves the record by its secret, hashed exactly
 // as veilcore.compact's commit() hashes it. Whether that record is the live head of an
@@ -110,6 +129,12 @@ export struct OfferOpening {
   split: Boolean,
 }
 
+/** The token a chart's shares are owed in, once one is known. */
+export struct ShareToken {
+  known: Boolean,
+  color: Bytes<32>,
+}
+
 /**
  * A descent link: the terms a child variety owes a parent variety, proposed by the
  * child's holder and confirmed by the parent's. Never changed once confirmed, never
@@ -153,7 +178,7 @@ export struct RateOpening {
 
 // ─────────────────────────────────────────────────────────────── state
 
-/** Protocol version of every hash below (their tags read "veilcore:royalties:v2:..."). */
+/** Protocol version 3. Hash tags read "veilcore:royalties:v2:..." where unchanged since version 2, "v3" where new or changed. */
 export sealed ledger protocolVersion: Uint<16>;
 
 export ledger offers: Map<Bytes<32>, Offer>;
@@ -202,6 +227,8 @@ export ledger linksConfirmed: Map<Bytes<32>, Uint<8>>;
 export ledger linksPending: Map<Bytes<32>, Uint<8>>;
 /** Child record -> its confirmed links' shares, inherited ones included, in quarter basis points (cap 5000 x 4). */
 export ledger linkWeight: Map<Bytes<32>, Uint<32>>;
+/** Child record -> the token every share in its chart is owed in (set by the first link that brings one). */
+export ledger shareTokenOf: Map<Bytes<32>, Bytes<32>>;
 export ledger linkSeq: Counter;
 export ledger lastLink: Bytes<32>;
 
@@ -331,6 +358,15 @@ export circuit linkId(child: Bytes<32>, parent: Bytes<32>): Bytes<32> {
   return persistentHash<Vector<3, Bytes<32>>>([pad(32, "veilcore:royalties:v3:link"), child, parent]);
 }
 
+/** Every term of a link, as the parent's confirmation names them: confirming binds exactly these. */
+export circuit linkTermsHash(color: Bytes<32>, fee: Uint<64>, share: Uint<16>, generations: Uint<8>,
+                             until: Uint<64>, payTo: Bytes<32>, payee: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<8, Bytes<32>>>([
+    pad(32, "veilcore:royalties:v3:terms"), color, u64(fee), u64(share as Uint<64>), u64(generations as Uint<64>),
+    u64(until), payTo, payee,
+  ]);
+}
+
 /** The key that may move a link's payee. */
 export circuit payeeCommit(secret: Bytes<32>): Bytes<32> {
   return persistentHash<Vector<2, Bytes<32>>>([pad(32, "veilcore:royalties:v3:payee"), secret]);
@@ -411,12 +447,37 @@ circuit passThrough(color: Bytes<32>, amount: Uint<128>, to: UserAddress): [] {
 
 circuit noLink(): Bytes<32> { return default<Bytes<32>>; }
 
-/** A link's share in basis points, or 0 for an empty place. */
+/** A link's share in basis points while it runs, or 0 for an empty place or an ended link. */
 circuit shareAt(id: Bytes<32>): Uint<16> {
   if (id == noLink()) {
     return 0;
   }
-  return links.lookup(id).share;
+  const l = links.lookup(id);
+  if (blockTimeLt(l.until)) {
+    return l.share;
+  }
+  return 0;
+}
+
+circuit unknownToken(): ShareToken { return ShareToken { known: false, color: default<Bytes<32>> }; }
+
+/** Add one share's token to what is known: all shares in a chart must be owed in one token. */
+circuit withToken(t: ShareToken, hasShare: Boolean, color: Bytes<32>): ShareToken {
+  if (!hasShare) {
+    return t;
+  }
+  assert(!t.known || t.color == color,
+         "This link's shares would be owed in two tokens: no offer could ever be posted. Agree one token");
+  return ShareToken { known: true, color: color };
+}
+
+/** The token of a carried place's share, folded into `t`. */
+circuit withCarried(t: ShareToken, id: Bytes<32>, minGenerations: Uint<8>): ShareToken {
+  if (carried(id, minGenerations) == noLink()) {
+    return t;
+  }
+  const l = links.lookup(id);
+  return withToken(t, l.share > 0, l.color);
 }
 
 /** A place in a parent's chart, carried one generation further only if its link still runs there. */
@@ -461,7 +522,7 @@ circuit chartSplits(st: Vector<14, Bytes<32>>): Boolean {
 
 /**
  * Pay `total` of `color`: each ancestor its share (the client supplies each amount,
- * checked here to be the share rounded up), the rest to `payTo`. In one call, holding
+ * checked here to be the share rounded down), the rest to `payTo`. In one call, holding
  * nothing. A place past its end date, with no share, or in another token, gets nothing.
  */
 circuit paySplit(st: Vector<14, Bytes<32>>, color: Bytes<32>, total: Uint<64>, payTo: UserAddress): [] {
@@ -476,9 +537,10 @@ circuit paySplit(st: Vector<14, Bytes<32>>, color: Bytes<32>, total: Uint<64>, p
       const l = links.lookup(id);
       if (l.share > 0 && l.color == color && blockTimeLt(l.until)) {
         // A parent's share in basis points; a grandparent's half of it; a great-grandparent's a quarter.
+        // Rounded down, so the ancestors together never take more than the agreed cap.
         const d = (i < 2 ? 10000 : (i < 6 ? 20000 : 40000)) as Uint<16>;
         const want = total * l.share;
-        assert(a * d >= want && a * d < want + d, "That is not the ancestor's share, rounded up");
+        assert(a * d <= want && want < a * d + d, "That is not the ancestor's share, rounded down");
         if (a > 0) {
           sendUnshielded(color, a as Uint<128>, right<ContractAddress, UserAddress>(l.payTo));
         }
@@ -595,7 +657,8 @@ export circuit postOffer(nonce: Bytes<32>, admin: Bytes<32>, terms: Bytes<32>, c
   const w = disclose(payTo);
   // A record with no links finalises an empty chart here. One with links must finalise first.
   if (!stacks.member(record)) {
-    assert(!linksConfirmed.member(record) && !linksPending.member(record),
+    assert((!linksConfirmed.member(record) || linksConfirmed.lookup(record) == 0) &&
+           (!linksPending.member(record) || linksPending.lookup(record) == 0),
            "This record has descent links: finalise its ancestors (finaliseStack) before posting");
     stacks.insert(record, noStack());
   }
@@ -604,10 +667,13 @@ export circuit postOffer(nonce: Bytes<32>, admin: Bytes<32>, terms: Bytes<32>, c
     const lid = st[i];
     if (lid != noLink()) {
       const l = links.lookup(lid);
-      assert(l.share == 0 || l.color == c, "An ancestor's share is owed in another token: post this offer in that token");
+      assert(shareAt(lid) == 0 || l.color == c,
+             "An ancestor's share is owed in another token: post this offer in that token");
     }
   }
   const sp = chartSplits(st);
+  assert(!sp || r != default<Bytes<32>>,
+         "This record's ancestors take a share of royalties, so its offers must take royalties through the contract");
   offers.insert(id, Offer {
     record: record, admin: a, terms: t, color: c, price: p, rateCommit: r, payTo: w,
     remaining: n, live: 0, expires: e, revocable: disclose(revocable), open: true, split: sp,
@@ -863,13 +929,15 @@ export circuit withdrawLink(parent: Bytes<32>): [] {
  * final first, so the child knows everything it takes on, and the parent has no later
  * step to withhold. Refused if the child's ancestors would take more than half.
  */
-export circuit confirmLink(child: Bytes<32>): [] {
+export circuit confirmLink(child: Bytes<32>, terms: Bytes<32>): [] {
   const parent = disclose(recordCommit(recordSecret()));
   const c = disclose(child);
   const id = disclose(linkId(c, parent));
   assert(links.member(id), "No link proposed from that record to yours");
   const l = links.lookup(id);
   assert(!l.confirmed, "That link is already confirmed");
+  assert(disclose(terms) == linkTermsHash(l.color, l.fee, l.share, l.generations, l.until, l.payTo.bytes, l.payee),
+         "That link's terms are not the ones you are confirming");
   assert(stacks.member(parent), "Finalise your own record's ancestors first (finaliseStack, or post an offer)");
   assert(!stacks.member(c), "That record's ancestors are already final");
   assert(blockTimeLt(l.until), "That link has already ended");
@@ -879,6 +947,15 @@ export circuit confirmLink(child: Bytes<32>): [] {
   const own = (l.share * 4) as Uint<32>;
   const weight = (before + own + inheritedWeight(stacks.lookup(parent))) as Uint<32>;
   assert(weight <= MAX_LINK_WEIGHT(), "With this link the record's ancestors would take more than half");
+  // Every share the child's chart could hold must be owed in one token, or it could never post an offer.
+  const st = stacks.lookup(parent);
+  const t0 = shareTokenOf.member(c) ? ShareToken { known: true, color: shareTokenOf.lookup(c) } : unknownToken();
+  const t1 = withToken(t0, l.share > 0, l.color);
+  const t2 = withCarried(withCarried(t1, st[0], 2), st[1], 2);
+  const t3 = withCarried(withCarried(withCarried(withCarried(t2, st[2], 3), st[3], 3), st[4], 3), st[5], 3);
+  if (t3.known) {
+    shareTokenOf.insert(c, t3.color);
+  }
   links.insert(id, Link { ...l, confirmed: true });
   linksConfirmed.insert(c, (confirmed + 1) as Uint<8>);
   linksPending.insert(c, (linksPending.lookup(c) - 1) as Uint<8>);

@@ -514,7 +514,12 @@ export const handleRoyaltiesChoice = async (choice: string, c: RoyaltiesMenuCont
       case '67': {
         const api = needApi(c);
         const req = readRequest(await ask(c, 'Your request file (path): '));
-        const v = await api.verifyPresentation(req, await ask(c, "The grower's transaction id: "), c.indexerUri);
+        const v = await api.verifyPresentation(
+          req,
+          await ask(c, "The grower's transaction id: "),
+          c.indexerUri,
+          c.mainAddress,
+        );
         for (const l of v.lines) c.logger.info(l);
         c.logger.info(v.accepted ? 'ACCEPTED.' : 'NOT ACCEPTED (see above).');
         return true;

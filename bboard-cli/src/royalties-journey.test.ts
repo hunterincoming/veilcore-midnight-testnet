@@ -376,15 +376,16 @@ describe('royalties on offspring, through the client', () => {
     expect(await grower.api.credit(posted.offer)).toBe(160n);
   });
 
-  it('buyers refuse a variety whose chart leaves out a parent the main contract confirms', async () => {
+  it('buyers refuse a variety that leaves out a parent it agreed terms with; a parent with no terms takes nothing', async () => {
     const chain = new Chain();
     const parent = chain.party();
     const child = chain.party();
+    const other = chain.party();
     const grower = chain.party();
     const P = secret('hider-parent');
     const K = secret('hider-child');
-    chain.main.call(as(P), 'anchor', C.recoveryCommit(secret('hider-parent-rcv')));
-    chain.main.call(as(K), 'anchor', C.recoveryCommit(secret('hider-child-rcv')));
+    const Q = secret('no-terms-child');
+    for (const x of [P, K, Q]) chain.main.call(as(x), 'anchor', C.recoveryCommit(secret(`rcv-${hex(x).slice(0, 6)}`)));
     const expires = now() + 365n * 86400n;
     const t = (payTo: Uint8Array) => ({
       terms: new Uint8Array(32).fill(3),
@@ -397,10 +398,38 @@ describe('royalties on offspring, through the client', () => {
       revocable: true,
     });
     await parent.api.postOffer(P, t(new Uint8Array(32).fill(51)), MAIN);
-    // The child posts first (an empty chart), then gets its parentage confirmed for marketing.
-    const posted = await child.api.postOffer(K, t(new Uint8Array(32).fill(52)), MAIN);
+
+    // K agrees 10% with P, both confirm, then K finalises a chart that leaves P out.
+    const card = await parent.api.linkTerms(P, {
+      color: NIGHT_COLOR,
+      fee: 0n,
+      share: 1000n,
+      generations: 1n,
+      until: expires,
+      payTo: new Uint8Array(32).fill(51),
+    });
+    await child.api.proposeLink(K, card);
+    await parent.api.confirmLink(P, C.commit(K));
     chain.main.call(as(K), 'proposeParent', C.commit(P));
     chain.main.call(as(P), 'confirmParent', C.commit(K));
-    await expect(grower.api.buyLicense(posted.card, MAIN)).rejects.toThrow(/does not name the parents/);
+    const raw = child.api as unknown as {
+      call: (
+        n: string,
+        i: unknown,
+        f: (c: { callTx: Record<string, (...a: unknown[]) => unknown> }) => unknown,
+      ) => Promise<unknown>;
+    };
+    const none = new Uint8Array(32);
+    await raw.call('finaliseStack', { recordSecret: K }, (c) => c.callTx.finaliseStack(none, none));
+    const hidden = await child.api.postOffer(K, t(new Uint8Array(32).fill(52)), undefined);
+    await expect(grower.api.buyLicense(hidden.card, MAIN)).rejects.toThrow(/leaves out a parent it agreed terms with/);
+
+    // Q's parentage is confirmed with no terms at all: shown as taking nothing, not refused.
+    chain.main.call(as(Q), 'proposeParent', C.commit(P));
+    chain.main.call(as(P), 'confirmParent', C.commit(Q));
+    const plain = await other.api.postOffer(Q, t(new Uint8Array(32).fill(53)), MAIN);
+    const ped = await grower.api.pedigreeIn(MAIN, C.commit(Q));
+    expect(ped.ok && ped.warnings.some((w) => /takes nothing/.test(w))).toBe(true);
+    await grower.api.buyLicense(plain.card, MAIN);
   });
 });

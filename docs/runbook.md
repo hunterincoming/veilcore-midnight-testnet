@@ -241,7 +241,8 @@ table, which must stay as it is.
 - Both founders have decided the maintenance key question (`docs/maintenance-policy.md`,
   approved 6 and 7 October): one key, two paper copies, no retirement date, the claims
   contract with none. Done.
-- **CHECK WITH CLAUDE BEFORE MAINNET:** deployment record revision 4 is filed and names
+- Deployment record revision 4 filed 7 October: midnight-improvement-proposals pull
+  request #373. Earlier wording, kept for the record: deployment record revision 4 is filed and names
   the fingerprints in `docs/fingerprints.md`. The 16 September correction promised it
   would be filed before any mainnet deployment. The CLI refuses to deploy until you
   declare revision 4 (step 6), but it cannot check that the record was really filed.

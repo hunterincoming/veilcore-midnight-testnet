@@ -22,7 +22,7 @@ the evening of 5 October (kept outside the repo).
 - **Partner kit:** `@veilcore/contracts` 0.1.0 on npm and the key release `zk-r4` published
   6 October; partner-check passed 23 of 23 on preprod (`docs/partner-check-run-6oct.md`).
 - **Mako:** sent the three maintenance decisions on 6 October, about 21:45 New York time.
-- **Neither contract is on mainnet.** Deployment record revision 4 is not filed.
+- **Both contracts are on mainnet (8 October 2026).** VeilCore `a04de0a2…2347`, claims `ef763eb4…070d` (authority retired). Revision 4 filed as midnight-improvement-proposals #373; the addresses go in as an update to it.
 
 ## Blockers: before the mainnet deploy
 
@@ -47,10 +47,10 @@ the evening of 5 October (kept outside the repo).
 
 | # | What |
 |---|---|
-| M1 | **Pin both addresses.** `MAINNET_VEILCORE_ADDRESS` and `MAINNET_CLAIMS_ADDRESS` in `api/src/deploy-guard.ts` are empty on purpose. After the deploy Claude sets them in a reviewed commit and Hunter runs `git pull`. Until then every mainnet join is refused |
-| M2 | **Registry to mainnet.** `VEILCORE_ANCHOR_NETWORK` and `VEILCORE_ANCHOR_CONTRACT` on Railway still name `preview` and `f75d42dc…` (27 September, before the merge). On the day: `mainnet` and the new main contract address. Decide who anchors mainnet batches: the demo service's anchorer is not deployed, so today it is by hand (CLI option 29, then the operator's `POST /batches/:id/anchor`) |
-| M3 | **Website to mainnet.** Built (branch `site-mainnet`, 6 October): the site's network wording comes from the build mode, not hand edits. `npm run deploy:mainnet` builds `--mode mainnet` and refuses unless `MAINNET_VEILCORE_ADDRESS` is pinned and the registry's `/.well-known` anchors on mainnet at that address; the site shows both addresses. Hunter runs it after M1 and M2: `docs/mainnet-day-site.md`. Still on the day: the vendored SPEC/EVIDENCE/INTEGRATING (from the SDK) say test network; the mainnet site shows a note above them until an SDK docs update is vendored |
-| M4 | **Publish the deployment details.** Revision 4 is filed before the deploy (B2). After it, fill *Mainnet deployment* in the record (both addresses, both deploy transaction ids, the claims retirement transaction, the date, the pin commit) and file that upstream as an addendum to revision 4 |
+| M1 | **Pin both addresses.** `MAINNET_VEILCORE_ADDRESS` and `MAINNET_CLAIMS_ADDRESS` in `api/src/deploy-guard.ts` are empty on purpose. After the deploy Claude sets them in a reviewed commit and Hunter runs `git pull`. Until then every mainnet join is refused | **Done 8 Oct** (`5722fdb`): VeilCore `a04de0a2…2347`, claims `ef763eb4…070d`.
+| M2 | **Registry to mainnet.** `VEILCORE_ANCHOR_NETWORK` and `VEILCORE_ANCHOR_CONTRACT` on Railway still name `preview` and `f75d42dc…` (27 September, before the merge). On the day: `mainnet` and the new main contract address. Decide who anchors mainnet batches: the demo service's anchorer is not deployed, so today it is by hand (CLI option 29, then the operator's `POST /batches/:id/anchor`) | **Done 8 Oct:** Railway `VEILCORE_ANCHOR_NETWORK=mainnet`, `VEILCORE_ANCHOR_CONTRACT=a04de0a2…2347`; the site preflight confirmed the registry's /.well-known.
+| M3 | **Website to mainnet.** Built (branch `site-mainnet`, 6 October): the site's network wording comes from the build mode, not hand edits. `npm run deploy:mainnet` builds `--mode mainnet` and refuses unless `MAINNET_VEILCORE_ADDRESS` is pinned and the registry's `/.well-known` anchors on mainnet at that address; the site shows both addresses. Hunter runs it after M1 and M2: `docs/mainnet-day-site.md`. Still on the day: the vendored SPEC/EVIDENCE/INTEGRATING (from the SDK) say test network; the mainnet site shows a note above them until an SDK docs update is vendored | **Done 8 Oct, about 07:31:** `npm run deploy:mainnet`; veilcore.org is the mainnet site.
+| M4 | **Publish the deployment details.** Revision 4 is filed before the deploy (B2). After it, fill *Mainnet deployment* in the record (both addresses, both deploy transaction ids, the claims retirement transaction, the date, the pin commit) and file that upstream as an addendum to revision 4 | **Filled in our copy 8 Oct;** to add to pull request #373 (Hunter).
 
 ## After launch, or not blocking the contract deploy
 
@@ -187,7 +187,7 @@ three runnable examples (lab, breeder licence, claims).
 | P2 | First live run: `npm run partner-check` on preprod (wallet seed 2): checks all 87 key files against the record first (stops before any transaction if one differs), then 23 checks through the public package only | **Done 6 Oct: PASSED, 23 of 23** on preprod (`docs/partner-check-run-6oct.md`) |
 | P3 | Keys published: `npm run keys:stage -w @veilcore/contracts` on the Mac that built them, then every file in `partner-kit/zk-release/` uploaded to ONE GitHub release tagged `zk-r4` (the package's default keys URL). Every client checks every file against the fingerprints, so the host need not be trusted | **Done 6 Oct.** Release `zk-r4` published with 87 files and SHA256SUMS; GitHub's own SHA-256 of every file matches `docs/fingerprints.md` (checked 6 Oct, 87 of 87) |
 | P4 | npm: create the `@veilcore` organisation on npmjs.com (the scope does not exist yet; the name `@veilcore/contracts` is free), set `"private": false`, publish from a tagged commit | **Done 6 Oct.** npm organisation `veilcore` created; `@veilcore/contracts` 0.1.0 published from main `962fb73` (preprod only: the mainnet pins are empty, so mainnet joins are refused until 0.2.0 after M1) |
-| P5 | Mainnet day: the package takes `MAINNET_VEILCORE_ADDRESS` / `MAINNET_CLAIMS_ADDRESS` from `api/src/deploy-guard.ts`, so pinning them (M1) pins the package too; rebuild and publish after M1 | Waits on M1 |
+| P5 | Mainnet day: the package takes `MAINNET_VEILCORE_ADDRESS` / `MAINNET_CLAIMS_ADDRESS` from `api/src/deploy-guard.ts`, so pinning them (M1) pins the package too; rebuild and publish after M1 | **Done 8 Oct:** `@veilcore/contracts` 0.2.0 published, mainnet by default. npm dropped the `veilcore-keys` bin entry on publish (as in 0.1.0); fix in 0.2.1 |
 | P6 | Local chain for partners (`partner-kit/local`, `local:deploy`) | Written; not run here (no Docker in this environment). First run: Hunter or CI |
 | P7 | Fee sponsorship (VeilCore pays a partner's fees) | **Not offered**, said so in PARTNERS.md. v1 is the partner's own DUST, or VeilCore operating on their behalf |
 

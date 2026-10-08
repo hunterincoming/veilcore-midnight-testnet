@@ -91,26 +91,33 @@ class Client {
 describe("the client's witnesses, through a whole licensee journey", () => {
   it("buy, top up, settle twice, merge, and present a settled period", () => {
     const k = new Client();
-    const offer = k.run({ recordSecret: b(1) }, (c, ctx) =>
-      c.impureCircuits.postOffer(
-        ctx,
-        b(50),
-        R.adminCommit(b(5)),
-        b(20),
-        NIGHT,
-        1000n,
-        R.rateCommit(RATE, SALT),
-        { bytes: b(40) },
-        3n,
-        EXPIRES,
-        true,
-      ),
+    const offer = k.run(
+      { recordSecret: b(1), rate: { rate: RATE, salt: SALT } },
+      (c, ctx) =>
+        c.impureCircuits.postOffer(
+          ctx,
+          b(50),
+          R.adminCommit(b(5)),
+          b(20),
+          NIGHT,
+          1000n,
+          R.rateCommit(RATE, SALT),
+          { bytes: b(40) },
+          3n,
+          EXPIRES,
+          true,
+        ),
     ) as Uint8Array;
     const lic = b(10);
     k.run(
       {
         licenseSecret: lic,
-        split: { record: R.recordCommit(b(1)), color: NIGHT, total: 1000n, now: T0 },
+        split: {
+          record: R.recordCommit(b(1)),
+          color: NIGHT,
+          total: 1000n,
+          now: T0,
+        },
       },
       (c, ctx) => c.impureCircuits.buyLicense(ctx, offer, 5n),
     );
@@ -145,6 +152,7 @@ describe("the client's witnesses, through a whole licensee journey", () => {
       note: { nonce: Uint8Array; amount: bigint },
       period: string,
       units: bigint,
+      index: bigint,
     ) =>
       k.run(
         {
@@ -157,10 +165,11 @@ describe("the client's witnesses, through a whole licensee journey", () => {
             .fill(0)
             .map((_, i) => Buffer.from(period).at(i) ?? 0),
           units,
+          index,
         },
         (c, ctx) => c.impureCircuits.settle(ctx),
       );
-    settle({ nonce: b(51), amount: 100n }, "2026-Q4", 20n);
+    settle({ nonce: b(51), amount: 100n }, "2026-Q4", 20n, 0n);
     const change = { nonce: changeNonceOf(lic, b(51), op, 100n), amount: 20n };
     expect(k.ledger.noteSeen.member(noteOf(lic, change.nonce, op, 20n))).toBe(
       true,
@@ -179,7 +188,8 @@ describe("the client's witnesses, through a whole licensee journey", () => {
       nonce: changeNonceOf(lic, change.nonce, op, 20n),
       amount: 120n,
     };
-    settle(merged, "2027-Q1", 30n);
+    settle(merged, "2027-Q1", 30n, 1n);
+    const q1Change = k.ledger.lastNote;
 
     const q1 = new Uint8Array(32);
     q1.set(Buffer.from("2027-Q1"));
@@ -195,12 +205,13 @@ describe("the client's witnesses, through a whole licensee journey", () => {
         challenge: b(60),
         period: q1,
         units: 30n,
+        change: q1Change,
       },
       (c, ctx) =>
-        c.impureCircuits.proveLicense(ctx, q1, 25n, T0 + 3600n, b(80)),
+        c.impureCircuits.proveLicense(ctx, q1, 25n, T0 + 3600n, b(80), true),
     );
     expect(hex(k.ledger.lastPresentation)).toBe(
-      hex(R.presentationTag(offer, q1, 25n, T0 + 3600n, b(80), b(60))),
+      hex(R.presentationTag(offer, q1, 25n, T0 + 3600n, b(80), b(60), true)),
     );
     expect(k.ctx.currentPrivateState.input).toEqual({});
   });

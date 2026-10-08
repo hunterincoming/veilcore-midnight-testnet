@@ -6,133 +6,19 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, it } from 'vitest';
-import { type CircuitContext, createCircuitContext, createConstructorContext } from '@midnight-ntwrk/compact-runtime';
 import { pureCircuits as C } from '../../contract/src/managed/veilcore/contract/index.js';
-import { Contract } from '../../contract/src/managed/veilcore-royalties/contract/index.js';
+import { royaltiesPureCircuits as R } from '../../contract/src/royalties.js';
 import {
-  type RoyaltiesPrivateState,
-  emptyRoyaltiesPrivateState,
-  royaltiesLedger,
-  royaltiesPureCircuits as R,
-  royaltiesWitnesses,
-} from '../../contract/src/royalties.js';
-import {
+  AlreadyDoneError,
   NIGHT_COLOR,
-  RoyaltiesAPI,
   chartOf,
   WouldLinkError,
   newPresentationRequest,
   revocationVerdict,
 } from '../../api/src/royalties-api.js';
-import { type RoyaltiesProviders, royaltiesPrivateStateKey } from '../../api/src/royalties-types.js';
-import { VeilcoreSimulator, as, secret } from '../../contract/src/test/veilcore-simulator.js';
-
-const ROYALTIES = 'aa'.repeat(32);
-const MAIN = 'bb'.repeat(32);
-const COIN = '0'.repeat(64);
-const now = (): bigint => BigInt(Math.floor(Date.now() / 1000));
-const hex = (b: Uint8Array): string => Buffer.from(b).toString('hex');
-type Ctx = CircuitContext<RoyaltiesPrivateState>;
-
-/** One chain: the royalties contract in the simulator, the main contract beside it. */
-class Chain {
-  ctx: Ctx;
-  n = 0;
-  /** The next call fails before it lands. */
-  failNext = false;
-  /** The next call lands, then the client is told it timed out. */
-  timeoutAfterLanding = false;
-  readonly main = new VeilcoreSimulator();
-  /** What the last call paid out, by token and recipient. */
-  lastSpends: Array<[string, string, bigint]> = [];
-  private spendTotals = new Map<string, bigint>();
-
-  /** What `wallet` received of `color` in the last call. */
-  paid(color: Uint8Array, wallet: Uint8Array): bigint {
-    return this.lastSpends
-      .filter(([t, to]) => t === hex(color) && to.includes(hex(wallet)))
-      .reduce((a, [, , v]) => a + v, 0n);
-  }
-
-  constructor() {
-    const c = new Contract<RoyaltiesPrivateState>(royaltiesWitnesses);
-    const init = c.initialState(createConstructorContext(emptyRoyaltiesPrivateState(), COIN));
-    this.ctx = createCircuitContext(ROYALTIES, COIN, init.currentContractState, emptyRoyaltiesPrivateState());
-  }
-
-  get ledger() {
-    return royaltiesLedger(this.ctx.currentQueryContext.state);
-  }
-
-  party(): { api: RoyaltiesAPI; store: Map<string, RoyaltiesPrivateState> } {
-    const store = new Map<string, RoyaltiesPrivateState>();
-    const privateStateProvider = {
-      setContractAddress: () => undefined,
-      get: (k: string) => Promise.resolve(store.get(k) ?? null),
-      set: (k: string, v: RoyaltiesPrivateState) => Promise.resolve(void store.set(k, v)),
-    };
-    const publicDataProvider = {
-      queryContractState: (addr: string) =>
-        Promise.resolve({
-          data:
-            addr === MAIN
-              ? (this.main as unknown as { ctx: Ctx }).ctx.currentQueryContext.state
-              : this.ctx.currentQueryContext.state,
-        }),
-    };
-    const callTx = new Proxy(
-      {},
-      {
-        get:
-          (_t, name: string) =>
-          async (...args: unknown[]) =>
-            this.call(name, store, args),
-      },
-    );
-    const deployed = { deployTxData: { public: { contractAddress: ROYALTIES } }, callTx };
-    const providers = { privateStateProvider, publicDataProvider } as unknown as RoyaltiesProviders;
-    const Api = RoyaltiesAPI as unknown as new (d: unknown, p: RoyaltiesProviders) => RoyaltiesAPI;
-    return { api: new Api(deployed, providers), store };
-  }
-
-  // A failed circuit throws before anything lands, as a rejected submission would.
-  private call(name: string, store: Map<string, RoyaltiesPrivateState>, args: unknown[]) {
-    if (this.failNext) {
-      this.failNext = false;
-      return Promise.reject(new Error('submission failed (test)'));
-    }
-    const c = new Contract<RoyaltiesPrivateState>(royaltiesWitnesses);
-    this.ctx.currentQueryContext.block = { ...this.ctx.currentQueryContext.block, secondsSinceEpoch: now() };
-    const ctx: Ctx = { ...this.ctx, currentPrivateState: store.get(royaltiesPrivateStateKey)! };
-    const circuits = c.impureCircuits as unknown as Record<string, (ctx: Ctx, ...a: unknown[]) => { context: Ctx }>;
-    const r = circuits[name](ctx, ...args);
-    this.ctx = r.context;
-    const fx = r.context.currentQueryContext.effects as unknown as {
-      claimedUnshieldedSpends: Map<[{ raw: string }, unknown], bigint>;
-    };
-    const totals = new Map<string, bigint>();
-    for (const [[t, to], v] of fx.claimedUnshieldedSpends) {
-      const k = JSON.stringify([t.raw, JSON.stringify(to)]);
-      totals.set(k, (totals.get(k) ?? 0n) + v);
-    }
-    this.lastSpends = [...totals]
-      .map(([k, v]) => {
-        const [t, to] = JSON.parse(k) as [string, string];
-        return [t, to, v - (this.spendTotals.get(k) ?? 0n)] as [string, string, bigint];
-      })
-      .filter(([, , v]) => v !== 0n);
-    this.spendTotals = totals;
-    store.set(royaltiesPrivateStateKey, r.context.currentPrivateState);
-    this.n++;
-    if (this.timeoutAfterLanding) {
-      this.timeoutAfterLanding = false;
-      return Promise.reject(new Error('timed out waiting for the transaction (test)'));
-    }
-    return Promise.resolve({
-      public: { txId: `tx${this.n}`, txHash: `h${this.n}`, blockHeight: this.n, nextContractState: null },
-    });
-  }
-}
+import { royaltiesPrivateStateKey } from '../../api/src/royalties-types.js';
+import { as, secret } from '../../contract/src/test/veilcore-simulator.js';
+import { Chain, MAIN, ROYALTIES, hex, now } from './royalties-test-chain.js';
 
 describe('the royalties client, end to end on the simulator', () => {
   it('offer, buy, top up, settle in private, merge, read the books, present', async () => {
@@ -172,9 +58,11 @@ describe('the royalties client, end to end on the simulator', () => {
     const b2 = await g2.api.buyLicense(card, MAIN);
     await breeder.api.checkLicenceCard(b1.licenceCard);
 
-    // A purchase that never lands leaves a licence in g1's store that the chain never saw.
+    // A second purchase from the same offer is refused unless asked for (one that timed out
+    // may have landed). One that never lands leaves a licence in g1's store the chain never saw.
+    await expect(g1.api.buyLicense(card, MAIN)).rejects.toThrow(AlreadyDoneError);
     chain.failNext = true;
-    await expect(g1.api.buyLicense(card, MAIN)).rejects.toThrow(/test/);
+    await expect(g1.api.buyLicense(card, MAIN, { again: true })).rejects.toThrow(/test/);
 
     // A payer tops up g1 without learning who g1 is; g1 records it. Twice is refused and changes nothing.
     const req = await g1.api.topUpRequest(offer);
@@ -261,6 +149,7 @@ describe('the royalties client, end to end on the simulator', () => {
           BigInt(ask.validAt),
           Buffer.from(ask.scope, 'hex'),
           Buffer.from(ask.challenge, 'hex'),
+          true,
         ),
       ),
     );
@@ -376,7 +265,7 @@ describe('royalties on offspring, through the client', () => {
     expect(await grower.api.credit(posted.offer)).toBe(160n);
   });
 
-  it('buyers refuse a variety that leaves out a parent it agreed terms with; a parent with no terms takes nothing', async () => {
+  it('a variety cannot leave out a parent it agreed terms with; a parent with no terms takes nothing', async () => {
     const chain = new Chain();
     const parent = chain.party();
     const child = chain.party();
@@ -399,7 +288,8 @@ describe('royalties on offspring, through the client', () => {
     });
     await parent.api.postOffer(P, t(new Uint8Array(32).fill(51)), MAIN);
 
-    // K agrees 10% with P, both confirm, then K finalises a chart that leaves P out.
+    // K agrees 10% with P, both confirm. K cannot finalise a chart that leaves P out: the
+    // contract demands every confirmed link.
     const card = await parent.api.linkTerms(P, {
       color: NIGHT_COLOR,
       fee: 0n,
@@ -420,9 +310,13 @@ describe('royalties on offspring, through the client', () => {
       ) => Promise<unknown>;
     };
     const none = new Uint8Array(32);
-    await raw.call('finaliseStack', { recordSecret: K }, (c) => c.callTx.finaliseStack(none, none));
-    const hidden = await child.api.postOffer(K, t(new Uint8Array(32).fill(52)), undefined);
-    await expect(grower.api.buyLicense(hidden.card, MAIN)).rejects.toThrow(/leaves out a parent it agreed terms with/);
+    await expect(
+      raw.call('finaliseStack', { recordSecret: K }, (c) => c.callTx.finaliseStack(none, none)),
+    ).rejects.toThrow(/Name every confirmed link/);
+    await child.api.finaliseStack(K, MAIN);
+    const linked = await child.api.postOffer(K, t(new Uint8Array(32).fill(52)), MAIN);
+    await grower.api.buyLicense(linked.card, MAIN);
+    expect(chain.paid(NIGHT_COLOR, new Uint8Array(32).fill(51))).toBe(100n);
 
     // Q's parentage is confirmed with no terms at all: shown as taking nothing, not refused.
     chain.main.call(as(Q), 'proposeParent', C.commit(P));

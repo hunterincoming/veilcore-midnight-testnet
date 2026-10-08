@@ -5,7 +5,13 @@
 import { describe, expect, it } from 'vitest';
 import { setNetworkId } from '@midnight-ntwrk/midnight-js-network-id';
 import { pureCircuits as C } from '../../contract/src/managed/veilcore/contract/index.js';
-import { newPresentationRequest, periodBytes, recordStanding, roundedValidUntil } from '../../api/src/royalties-api.js';
+import {
+  newPresentationRequest,
+  periodBytes,
+  recordStanding,
+  roundedValidUntil,
+  standingVerdict,
+} from '../../api/src/royalties-api.js';
 import { assertRoyaltiesDeployAllowed, assertRoyaltiesJoinAllowed } from '../../api/src/deploy-guard.js';
 import { VeilcoreSimulator, as, secret } from '../../contract/src/test/veilcore-simulator.js';
 
@@ -30,7 +36,10 @@ describe('which records may stand behind an offer', () => {
     expect(recordStanding(sim.state, C.commit(A))).toEqual({
       ok: false,
       why: 'moved',
+      recovered: false,
     });
+    // An offer already sold carries on (its licensees cannot move): top-ups only warn.
+    expect(standingVerdict(recordStanding(sim.state, C.commit(A))).refuse).toBeUndefined();
     expect(recordStanding(sim.state, C.commit(B))).toEqual({ ok: true });
   });
 
@@ -50,7 +59,10 @@ describe('which records may stand behind an offer', () => {
     expect(recordStanding(sim.state, C.commit(A))).toEqual({
       ok: false,
       why: 'moved',
+      recovered: true,
     });
+    // The offer may be the thief's: top-ups and verifiers refuse it too.
+    expect(standingVerdict(recordStanding(sim.state, C.commit(A))).refuse).toMatch(/recovered from theft/);
     expect(recordStanding(sim.state, C.commit(NEW))).toEqual({ ok: true });
   });
 });
@@ -110,8 +122,12 @@ describe('the time a top-up says its offer is open until', () => {
     expect(roundedValidUntil(start + 2n * DAY + 1n, now)).toBe(start + 2n * DAY);
     expect(roundedValidUntil(start + 2n * DAY, now)).toBe(start + 2n * DAY);
   });
-  it('is nothing (top-ups closed) when the offer ends before then, so no top-up names an end date', () => {
-    expect(roundedValidUntil(start + 2n * DAY - 1n, now)).toBeUndefined();
-    expect(roundedValidUntil(now + 3600n, now)).toBeUndefined();
+  it('runs until 30 days after the offer ends, so its last season can be paid for', () => {
+    expect(roundedValidUntil(now + 3600n, now)).toBe(start + 2n * DAY);
+    expect(roundedValidUntil(start + 2n * DAY - 30n * DAY, now)).toBe(start + 2n * DAY);
+  });
+  it('is nothing (top-ups closed) when those 30 days end before then, so no top-up names an end date', () => {
+    expect(roundedValidUntil(start + 2n * DAY - 30n * DAY - 1n, now)).toBeUndefined();
+    expect(roundedValidUntil(now - 30n * DAY, now)).toBeUndefined();
   });
 });

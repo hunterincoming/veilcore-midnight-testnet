@@ -2,11 +2,12 @@
 
 **Status: BUILT on the test-network royalties contract, protocol 3, 8 October 2026. Not
 deployed anywhere.** Contract: `contract/src/veilcore-royalties.compact`. Client:
-`api/src/royalties-api.ts`. Menu options 69 to 76. Tests:
-`contract/src/test/royalties-descent.test.ts` (21) and the client end to end in
-`bboard-cli/src/royalties-journey.test.ts`. The live mainnet contracts are not changed.
+`api/src/royalties-api.ts`. Menu options 69 to 76 and 81. Tests:
+`contract/src/test/royalties-descent.test.ts` (22), `royalties-hardening.test.ts`, the client
+end to end in `bboard-cli/src/royalties-journey.test.ts`, and each attack on the client in
+`bboard-cli/src/royalties-attacks.test.ts`. The live mainnet contracts are not changed.
 
-The design was attacked three times before any code, and the built code once more, all
+The design was attacked three times before any code, and the built code twice more, all
 by separate AI review agents (not a human or an outside audit). What each round found is
 at the end.
 
@@ -39,8 +40,10 @@ enforced. That is what this copies.
 **1. A descent link carries its own terms.** The new variety's breeder proposes a link to
 a parent record, with exact terms; the parent's holder confirms those exact terms (the
 confirmation names a hash of every term, so a link changed in between is refused).
-Nothing binds until confirmed. Once confirmed, nothing changes and nothing is removed;
-only the parent's separate payee key can move where it is paid.
+Nothing binds until confirmed. Once confirmed, the child can change nothing and nothing is
+removed. The parent's separate payee key can move where it is paid, or LOWER the terms (a
+smaller share or fee, an earlier end: a protection that ended, a dispute settled), never
+raise them, and at most once in 30 days, so it cannot stall the child's sales at will.
 
 | Term | Meaning |
 |---|---|
@@ -51,8 +54,13 @@ only the parent's separate payee key can move where it is paid.
 | token | What the fee and share are paid in. |
 | payee | The wallet, and the key that may move it. |
 
-The parent writes the terms (menu 69 makes a terms card); the child proposes exactly
-those (70); the parent's client confirms only terms it made (71).
+The parent writes the terms (menu 69 makes a terms card, optionally naming the child's
+record, so no other record can use it); the child proposes exactly those (70), after its
+client shows the parent's record, the token and what the parent's own chart passes down,
+and refuses a card whose parent is not the one the child proposed in the main contract;
+the parent's client confirms only terms it made (71). The child's client also refuses a
+card whose parent record is no longer its identity's current record (after a key change or
+a recovery from theft, whoever holds the old secret could still confirm, and be paid).
 
 **2. A pedigree chart, flattened once.** When its links are confirmed, the child makes
 its ancestors final (72), once and forever. The contract builds the chart from data it
@@ -68,7 +76,9 @@ Rules the contract enforces:
 - A parent must have finalised its own ancestors before confirming a child, so the child
   sees everything it takes on, and the parent has no later step to withhold.
 - No link can be proposed or confirmed once the child is final, and the child cannot
-  finalise while a link is still waiting.
+  finalise while a link is still waiting. Finalising must name EVERY confirmed link: a
+  parent's agreed terms cannot be left out. A record that has links cannot take over another
+  record's chart instead.
 - At most two confirmed parents.
 - **All shares together at most 50%**, checked when each link is confirmed, counting what
   the parent's chart passes down. Whoever confirms second sees the whole picture.
@@ -94,27 +104,35 @@ Ledger 8 has no calls between contracts, so the royalties contract cannot see th
 contract's pedigree. Clients check it at purchase and top-up, and show it in a verifier's
 check:
 
-1. **Every parent a chart names must be a parent the main contract confirms.** Otherwise
-   refuse.
+1. **A parent a chart names that the main contract does not confirm is shown as a
+   warning** (with what it takes). It is paid out of this variety's price, plus its fee on
+   top, which the buyer sees before paying. It is not refused: a confirmed link can never
+   be dropped, so refusing would strand the variety for good, and nobody else is harmed.
 2. **A confirmed parent left out of the chart is refused if the two agreed terms here**
    (the child chose to leave out a confirmed link). A parent that never set terms, or
    never uses this contract, is shown as "takes nothing here", not refused, so one absent
    ancestor cannot strand every descendant.
 3. The same for every ancestor in the chart, three generations up.
 4. A warning when a parent record is no longer its identity's current record: stronger
-   when it was recovered from theft (its link may have been made by the thief).
+   when it was recovered from theft (its link may have been made by the thief). An offer
+   whose OWN record was recovered from theft is refused at top-ups and in a verifier's check
+   (the offer may be the thief's).
 5. Before paying, the buyer or payer sees every place in the chart: who, what share,
    what fee, until when.
 6. A payment within ten minutes of a link's end date is refused, since block time and
    the client's clock could disagree.
 
-The child's own client refuses to make its ancestors final while a parentage proposal is
-waiting in the main contract. It includes the link for every main-contract parent that
-agreed terms; a parent that set none is left out with a warning (it takes nothing). If a
+The child's own client shows the chart before making its ancestors final (72), and
+refuses while a parentage proposal is waiting in the main contract. It stops, and asks the
+child to type FINAL, when a confirmed link's parent is not a parent the main contract
+confirms (a parent can confirm the link and then never confirm the parentage: refusing
+outright would let it hold the child up forever) or was since recovered from theft. A
+main-contract parent that set no terms is left out with a warning (it takes nothing). If a
 parent agreed terms with an earlier record of the same identity, it refuses and points to
 taking over that record's chart. Posting refuses to lock in an empty chart in that case.
 A parent confirming parentage in the main contract (menu 17) is warned when no terms are
-agreed with that child here.
+agreed with that child here, when the child's chart leaves them out, or when this run has
+not joined the royalties contract to check.
 
 ## What it can and cannot do (say it plainly)
 
@@ -142,13 +160,17 @@ agreed with that child here.
   links with their own payee; clients warn about links from records later recovered from
   theft, but the contract cannot undo them, just as the main contract cannot undo
   parentage a thief confirmed.
+- **A link confirmed by mistake is permanent for that record.** If a child proposed on a
+  card from the wrong party and it was confirmed, the way out is a key change in the main
+  contract: the new record has no links and links afresh (its offers are new offers).
 - **Not yet run on a real network.** A purchase with a full chart and fees in other tokens
   makes up to 16 payments in one transaction; that has run only on the simulator.
 
 ## Circuit sizes (rows, measured with `zkir mock-compile` from compiler 0.31.1 on 8 Oct 2026; the limit is 2^17 = 131,072)
 
-buyLicense 34,525 · topUpSplit 32,534 · topUp 34,156 · settle 113,837 · confirmLink 26,600
-· postOffer 29,749 · finaliseStack 9,063 · proposeLink 9,554.
+buyLicense 38,905 · topUpSplit 32,715 · topUp 34,532 · settle 126,364 (96%) · confirmLink
+27,033 · postOffer 35,039 · finaliseStack 9,374 · proposeLink 9,557 · movePayee 4,964 ·
+relaxLink 4,956.
 
 ## Review rounds
 
@@ -171,6 +193,19 @@ buyLicense 34,525 · topUpSplit 32,534 · topUp 34,156 · settle 113,837 · conf
   an empty chart (client refuses); rounding up could break the 50% cap (now rounds down);
   confirmation now binds a hash of the exact terms; ended links no longer count; a margin
   near end dates.
+- **Round 5 (four attackers at once, see `docs/royalties-design.md`):** a child could
+  finalise leaving out a confirmed link (now refused on chain); a parent's payee key could
+  stall a child's sales by moving at will (now once in 30 days; terms can only be lowered);
+  a terms card naming a stranger as parent was never shown (now shown, checked against the
+  main contract's parent proposal, and a card can name its child); a split too small to pay
+  each ancestor at least one unit was silently zero for them (refused); the buyer was told
+  the price but the parent's fee is paid on top (the total per token is now shown).
+- **Round 5, checking the fixes:** a thief holding a parent's OLD record (after the owner
+  recovered it) could still write terms and confirm, and be paid forever (the child's
+  client now refuses a parent record that is not its identity's current one); a parent
+  could confirm the link but never the parentage and so stop the child ever finalising
+  (now a typed FINAL, not a refusal); the warnings about a non-parent or a stolen record
+  came only after the buyer said yes (now shown, with their own yes, before).
 
 ## Sources
 

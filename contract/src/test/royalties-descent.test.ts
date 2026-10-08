@@ -134,7 +134,7 @@ const post = (
   o: { color?: Uint8Array; price?: bigint } = {},
 ) =>
   sim.call(
-    { record },
+    { record, rate: { rate: RATE, salt: SALT } },
     "postOffer",
     b(150 + ++nonce),
     R.adminCommit(ADMIN),
@@ -360,7 +360,9 @@ describe("what neither side can do", () => {
     finalise(sim, E);
     finalise(sim, A);
     const lDB = link(sim, D, B, W.B);
-    expect(() => finalise(sim, C, lDB)).toThrow(/not a confirmed link/);
+    expect(() => finalise(sim, C, lDB)).toThrow(
+      /not a confirmed link|Name every confirmed link/,
+    );
     propose(sim, C, B, { payTo: W.B });
     confirm(sim, B, C);
     link(sim, C, E, W.E, { share: 100n });
@@ -482,10 +484,10 @@ describe("what neither side can do", () => {
     const l = link(sim, C, B, W.B, { share: 1000n });
     finalise(sim, C, l);
     const offer = post(sim, C, W.C);
-    expect(() => sim.call({ admin: C }, "movePayee", l, W.C)).toThrow(
+    expect(() => sim.call({ admin: C }, "movePayee", l, W.C, sim.now)).toThrow(
       /payee key/,
     );
-    sim.call({ admin: PAYEE }, "movePayee", l, W.E);
+    sim.call({ admin: PAYEE }, "movePayee", l, W.E, sim.now);
     const moved = buy(sim, offer);
     expect(paid(moved, NIGHT, W.E)).toBe(100n);
     expect(paid(moved, NIGHT, W.B)).toBe(0n);

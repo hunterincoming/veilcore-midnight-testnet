@@ -150,8 +150,8 @@ const removeOnExit = (p: string): (() => void) => {
 /**
  * Copy the live entries of `oldDir` that belong to `storeName` into a NEW store at
  * `newDir` (which must not exist yet): the main private state with its one-call secrets
- * zeroed, the claims contract's private state and keys as they are, and NOT the main
- * contract's signing keys. Deleted entries are not live, so they do not come across.
+ * zeroed, the claims and royalties contracts' private state and keys as they are, and NOT
+ * the main contract's signing keys. Deleted entries are not live, so they do not come across.
  *
  * `oldDir` itself is never opened: LevelDB rewrites a folder when it opens it (it replays
  * the log into a new table and may compact), which would change, and could silently
@@ -289,7 +289,15 @@ const copyLiveEntries = async (
         if (l !== undefined && l.inner === METADATA_KEY)
           salts.set(l.scoped, Buffer.from((JSON.parse(v) as { salt: string }).salt, 'hex'));
       }
-      const wanted = new Set([storeName, `${storeName}-claims`, `${storeName}-claims-signing-keys`]);
+      // The royalties store holds offer admin secrets, licence secrets and credit notes:
+      // leaving it behind would strand them. Its one-call input is already written as zeros.
+      const wanted = new Set([
+        storeName,
+        `${storeName}-claims`,
+        `${storeName}-claims-signing-keys`,
+        `${storeName}-royalties`,
+        `${storeName}-royalties-signing-keys`,
+      ]);
       let copied = 0;
       let keysLeftOut = 0;
       for (const [k, v] of entries) {

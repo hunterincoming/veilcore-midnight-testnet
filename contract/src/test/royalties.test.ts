@@ -77,7 +77,7 @@ const offerUnsealed = (sim: RoyaltiesSimulator, offer: Uint8Array): boolean =>
 
 const post = (sim: RoyaltiesSimulator, o: OfferOpts = {}): Uint8Array =>
   sim.call(
-    { record: o.record ?? BREEDER },
+    { record: o.record ?? BREEDER, rate: { rate: o.rate ?? RATE, salt: SALT } },
     "postOffer",
     o.nonce ?? NONCE,
     R.adminCommit(o.admin ?? ADMIN),
@@ -201,7 +201,23 @@ const prove = (
   minUnits = 0n,
   validAt = sim.now + HOUR,
   scope = SCOPE,
-) => sim.call(caller, "proveLicense", period, minUnits, validAt, scope);
+  live = true,
+) => sim.call(caller, "proveLicense", period, minUnits, validAt, scope, live);
+
+/** The receipt a licence's settlement of (period, units) left on chain, found by its change note. */
+const receiptOf = (
+  sim: RoyaltiesSimulator,
+  license: Uint8Array,
+  offer: Uint8Array,
+  period: Uint8Array,
+  units: bigint,
+): Uint8Array => {
+  const commit = R.receiptCommit(R.viewKey(license, offer), period);
+  for (const [change, st] of sim.state.settlements)
+    if (hex(R.receiptLeaf(commit, offer, units, change)) === hex(st.receipt))
+      return st.receipt;
+  return new Uint8Array(32);
+};
 
 /** Whether `needle` appears anywhere in a transcript / effects object. */
 const appears = (
@@ -449,8 +465,9 @@ describe("credit: top-ups", () => {
       /another wallet or token/,
     );
     expect(() => go(WALLET.bytes, NIGHT, 5n, sim.now)).toThrow(/already past/);
-    expect(() => go(WALLET.bytes, NIGHT, 5n, EXPIRES + 1n)).toThrow(
-      /ends before/,
+    // Top-ups run until 30 days after the end, so the last season can be paid for; not later.
+    expect(() => go(WALLET.bytes, NIGHT, 5n, EXPIRES + GRACE + 1n)).toThrow(
+      /30 days after its end/,
     );
     expect(() => go(WALLET.bytes, NIGHT, 0n, sim.now + DAY)).toThrow(
       /more than zero/,
@@ -512,7 +529,14 @@ describe("credit: private settlement", () => {
       hex(noteOf(LIC, change.nonce, openingOf(sim, offer), change.amount)),
     );
     expect(hex(sim.state.lastReceipt)).toBe(
-      hex(R.receiptLeaf(R.receiptCommit(view, P1), offer, 30n)),
+      hex(
+        R.receiptLeaf(
+          R.receiptCommit(view, P1),
+          offer,
+          30n,
+          sim.state.lastNote,
+        ),
+      ),
     );
   });
 
@@ -539,7 +563,9 @@ describe("credit: private settlement", () => {
     expect(sim.state.settlements.size()).toBe(2n);
     const first = sim.state.settlements.lookup(c1);
     expect(unmask(first.unitsMasked, view, c1)).toBe(30n);
-    expect(hex(first.receipt)).toBe(hex(R.receiptLeaf(R.receiptCommit(view, P1), offer, 30n)));
+    expect(hex(first.receipt)).toBe(
+      hex(R.receiptLeaf(R.receiptCommit(view, P1), offer, 30n, c1)),
+    );
   });
 
   it("refuses more units than the note covers, a wrong rate, and zero units", () => {
@@ -616,14 +642,54 @@ describe("credit: private settlement", () => {
     settleAs(sim, offer, merged, P1, 60n);
   });
 
-  it("settling still works after an offer closes; top-ups stop when it ends", () => {
+  it("settling still works after an offer closes; top-ups run 30 days past the end, then stop", () => {
     const { sim, offer, note } = funded({ expires: T0 + 2n * DAY });
     sim.call({ admin: ADMIN }, "closeOffer", offer);
     settleAs(sim, offer, note, P1, 5n);
     sim.advance(2n * DAY);
-    expect(() => topUp(sim, offer, 10n, b(60))).toThrow(
-      /already past|ends before/,
+    // The last season can still be paid for after the end...
+    topUp(sim, offer, 10n, b(60), LIC, sim.now + DAY);
+    // ...but not once the 30 days are over.
+    sim.advance(GRACE);
+    expect(() => topUp(sim, offer, 10n, b(61), LIC, sim.now + DAY)).toThrow(
+      /30 days after its end/,
     );
+  });
+
+  it("E2: the last season, settled after the licence ended, can still be proved (without asking for a live licence)", () => {
+    const { sim, offer, note } = funded({ expires: T0 + 2n * DAY });
+    sim.advance(3n * DAY);
+    settleAs(sim, offer, note, P1, 5n);
+    expect(() =>
+      prove(
+        sim,
+        who(offer, { period: P1, units: 5n, expires: T0 + 2n * DAY }),
+        P1,
+        5n,
+      ),
+    ).toThrow(/ends at or before/);
+    prove(
+      sim,
+      who(offer, { period: P1, units: 5n, expires: T0 + 2n * DAY }),
+      P1,
+      5n,
+      sim.now + HOUR,
+      SCOPE,
+      false,
+    );
+    expect(sim.state.presentationSeq).toBe(1n);
+    // Without a period, a presentation must ask for a live licence.
+    expect(() =>
+      prove(
+        sim,
+        who(offer, { expires: T0 + 2n * DAY }),
+        NIGHT,
+        0n,
+        sim.now + HOUR,
+        SCOPE,
+        false,
+      ),
+    ).toThrow(/must ask for a live licence/);
   });
 });
 
@@ -634,10 +700,10 @@ describe("presentations", () => {
     const at = sim.now + HOUR;
     prove(sim, who(offer));
     expect(hex(sim.state.lastPresentation)).toBe(
-      hex(R.presentationTag(offer, NIGHT, 0n, at, SCOPE, CH)),
+      hex(R.presentationTag(offer, NIGHT, 0n, at, SCOPE, CH, true)),
     );
     expect(hex(sim.state.lastPresentationHolder)).toBe(
-      hex(R.holderTag(LIC, offer, SCOPE)),
+      hex(R.holderTag(R.presentKey(LIC, offer), offer, SCOPE)),
     );
   });
 
@@ -664,9 +730,7 @@ describe("presentations", () => {
     settleAs(sim, offer, { nonce: b(51), amount: 200n }, P1, 30n, {
       license: LIC2,
     });
-    const theirs = sim.receiptPathFor(
-      R.receiptLeaf(R.receiptCommit(R.viewKey(LIC2, offer), P1), offer, 30n),
-    )!;
+    const theirs = sim.receiptPathFor(receiptOf(sim, LIC2, offer, P1, 30n))!;
     expect(() =>
       prove(
         sim,
@@ -687,12 +751,9 @@ describe("presentations", () => {
       1n,
       sim.now + HOUR,
       SCOPE,
+      true,
     );
-    const leaf = R.receiptLeaf(
-      R.receiptCommit(R.viewKey(LIC, offer), P1),
-      offer,
-      30n,
-    );
+    const leaf = receiptOf(sim, LIC, offer, P1, 30n);
     for (const secretish of [
       keyOf(offer),
       offer,
@@ -810,6 +871,7 @@ describe("revocation, ending and seals", () => {
       0n,
       sim.now + HOUR,
       SCOPE,
+      true,
     );
     sim.call({ admin: ADMIN }, "revokeLicense", keyOf(offer));
     sim.call({}, "sealRevocations", sim.now + 100n);
@@ -963,11 +1025,11 @@ describe("attacks from the reviews, kept as regressions", () => {
     settleAs(sim, offer, note, P1, 5n, { expires: T0 + DAY });
   });
 
-  it("N5: a top-up must open a non-zero rate, so no credit is sold that nothing could settle", () => {
-    const zero = withOffer({ rate: 0n });
-    expect(() =>
-      topUp(zero.sim, zero.offer, 500n, b(51), LIC, zero.sim.now + DAY, 0n),
-    ).toThrow(/zero/);
+  it("N5: a rate commitment must open to a rate above zero, so no credit is sold that nothing could settle", () => {
+    // Refused when the offer is posted, before anyone could pay into it.
+    expect(() => withOffer({ rate: 0n })).toThrow(
+      /does not open to a rate above zero/,
+    );
     const { sim, offer } = withOffer();
     expect(() =>
       topUp(sim, offer, 500n, b(51), LIC, sim.now + DAY, 5n),

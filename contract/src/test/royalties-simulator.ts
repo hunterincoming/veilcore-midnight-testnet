@@ -59,6 +59,13 @@ export type Caller = {
    * simulator works it out from the offer and amount the call names, as a client would.
    */
   split?: bigint[];
+  /** For a presentation by a delegate: the presentation key and spending key instead of the licence secret. */
+  present?: Uint8Array;
+  spend?: Uint8Array;
+  /** For a paid-up presentation: the settlement's change note (found automatically if left out). */
+  change?: Uint8Array;
+  /** For a settle: which settlement of the licence this is (the next free one if left out). */
+  index?: bigint;
 };
 
 /** The token movements one call asks for, by raw colour (hex). */
@@ -328,6 +335,25 @@ export class RoyaltiesSimulator {
       noteOf(lic(), n.nonce, offerOf(), n.amount);
     const licOffer = (): Uint8Array => who.offer ?? offerOf().offer;
     const licExpires = (): bigint => who.expires ?? offerOf().expires;
+    const presentOf = (offer: Uint8Array): Uint8Array =>
+      who.present ?? R.presentKey(lic(), offer);
+    /** The change note of the settlement whose receipt matches (period, units) under this licence. */
+    const changeOf = (offer: Uint8Array): Uint8Array => {
+      if (who.change !== undefined) return who.change;
+      const commit = R.receiptCommit(
+        R.viewOf(presentOf(offer)),
+        need(who.period, "the period"),
+      );
+      const units = need(who.units, "the receipt's units");
+      for (const [change, st] of this.state.settlements)
+        if (
+          Buffer.from(R.receiptLeaf(commit, offer, units, change)).equals(
+            Buffer.from(st.receipt),
+          )
+        )
+          return change;
+      return ZERO;
+    };
     return new Contract<Record<string, never>>({
       recordSecret: (c) => [
         c.privateState,
@@ -349,7 +375,14 @@ export class RoyaltiesSimulator {
         need(who.units, "the receipt's units"),
       ],
       licensePath: (c) => {
-        const leaf = licenceKeyOf(lic(), licOffer(), licExpires());
+        const leaf =
+          who.present !== undefined && who.spend !== undefined
+            ? R.licenseKey(
+                R.licenseCommit(R.viewOf(who.present), who.spend, licOffer()),
+                licOffer(),
+                licExpires(),
+              )
+            : licenceKeyOf(lic(), licOffer(), licExpires());
         return [
           c.privateState,
           who.path ??
@@ -361,11 +394,12 @@ export class RoyaltiesSimulator {
         const offer = need(who.offer, "the offer");
         const leaf = R.receiptLeaf(
           R.receiptCommit(
-            R.viewKey(lic(), offer),
+            R.viewOf(presentOf(offer)),
             need(who.period, "the period"),
           ),
           offer,
           need(who.units, "the receipt's units"),
+          changeOf(offer),
         );
         return [
           c.privateState,
@@ -379,7 +413,7 @@ export class RoyaltiesSimulator {
           c.privateState,
           who.offerPath ??
             this.state.offerLeaves.findPathForLeaf(leaf) ??
-            stubPath(leaf, 20),
+            stubPath(leaf, 32),
         ];
       },
       topUpCodeWitness: (c) => [
@@ -412,6 +446,25 @@ export class RoyaltiesSimulator {
         c.privateState,
         need(who.split, "the split amounts"),
       ],
+      presentationKey: (c) => [
+        c.privateState,
+        presentOf(need(who.offer, "the offer")),
+      ],
+      licenceSpendKey: (c) => [
+        c.privateState,
+        who.spend ?? R.spendKey(lic(), need(who.offer, "the offer")),
+      ],
+      receiptChange: (c) => [
+        c.privateState,
+        changeOf(need(who.offer, "the offer")),
+      ],
+      settleIndex: (c) => {
+        if (who.index !== undefined) return [c.privateState, who.index];
+        const view = R.viewKey(lic(), offerOf().offer);
+        let n = 0n;
+        while (this.state.settlementByTag.member(R.settleTag(view, n))) n++;
+        return [c.privateState, n];
+      },
     });
   }
 }

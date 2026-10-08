@@ -45,6 +45,16 @@ export type RoyaltyInput = {
   readonly note2?: Royalties.NoteOpening;
   readonly rate?: Royalties.RateOpening;
   /**
+   * A presentation can be made with the presentation key and the public spending key
+   * instead of the licence secret (a delegate who answers buyers but cannot spend).
+   */
+  readonly present?: Uint8Array;
+  readonly spend?: Uint8Array;
+  /** The change note of the settlement a presentation shows. */
+  readonly change?: Uint8Array;
+  /** Which settlement of this licence a settle is (0, 1, 2 ...). */
+  readonly index?: bigint;
+  /**
    * A split payment (licence purchase or topUpSplit): the record whose ancestors are
    * paid, the token, the amount, and the time to judge links' end dates by. The witness
    * works out each ancestor's amount from the ledger (splitAmountsFor).
@@ -80,6 +90,8 @@ export type HeldReceipt = {
   readonly period: string;
   readonly units: string;
   readonly leaf: string;
+  /** Its change note (part of the receipt leaf), needed to present it. */
+  readonly change?: string;
 };
 
 /** The parts of an offer card a party keeps (api/src/royalties-api.ts OfferCard). */
@@ -93,6 +105,7 @@ export type HeldOfferCard = {
   readonly expires: string;
   readonly rate: string;
   readonly rateSalt: string;
+  readonly split?: boolean;
 };
 
 /** The terms of a descent link, as hex and decimal strings (api/src/royalties-api.ts LinkTermsCard). */
@@ -107,6 +120,8 @@ export type HeldLinkTerms = {
   readonly until: string;
   readonly payTo: string;
   readonly payee: string;
+  /** The child record these terms are for, if the parent named one: any other child is refused. */
+  readonly child?: string;
 };
 
 /** What a party keeps between calls. All hex or decimal strings, so the store needs no custom types. */
@@ -128,7 +143,12 @@ export type RoyaltiesHeld = {
    * Descent terms this party offered as a parent, by payee commitment (hex): the terms it
    * will confirm, and the payee key that may move where they are paid.
    */
-  readonly linkTerms?: Readonly<Record<string, { readonly terms: HeldLinkTerms; readonly payeeSecret: string }>>;
+  readonly linkTerms?: Readonly<
+    Record<
+      string,
+      { readonly terms: HeldLinkTerms; readonly payeeSecret: string }
+    >
+  >;
   /** A verifier's seed for its scopes: the same offer always gets the same scope from this verifier. */
   readonly verifierSeed?: string;
   /** Holder tags that answered this verifier, per offer, with when: a repeat is flagged. */
@@ -284,11 +304,22 @@ export const royaltiesWitnesses: W = {
   licensePath: ({ privateState, ledger }: Ctx) => {
     const i = privateState.input;
     const offer = need(i.offer ?? i.opening?.offer, "the offer");
-    const leaf = licenceKeyOf(
-      need(i.licenseSecret, "the licence secret"),
-      offer,
-      need(i.expires ?? i.opening?.expires, "the licence's end date"),
+    const expires = need(
+      i.expires ?? i.opening?.expires,
+      "the licence's end date",
     );
+    const leaf =
+      i.present !== undefined && i.spend !== undefined
+        ? C.licenseKey(
+            C.licenseCommit(C.viewOf(i.present), i.spend, offer),
+            offer,
+            expires,
+          )
+        : licenceKeyOf(
+            need(i.licenseSecret, "the licence secret"),
+            offer,
+            expires,
+          );
     return [
       privateState,
       ledger.licenses.findPathForLeaf(leaf) ?? absentPath(leaf, 24),
@@ -297,13 +328,14 @@ export const royaltiesWitnesses: W = {
   receiptPath: ({ privateState, ledger }: Ctx) => {
     const i = privateState.input;
     const offer = need(i.offer, "the offer");
+    const present =
+      i.present ??
+      C.presentKey(need(i.licenseSecret, "the licence secret"), offer);
     const leaf = C.receiptLeaf(
-      C.receiptCommit(
-        C.viewKey(need(i.licenseSecret, "the licence secret"), offer),
-        need(i.period, "the period"),
-      ),
+      C.receiptCommit(C.viewOf(present), need(i.period, "the period")),
       offer,
       need(i.units, "the receipt's units"),
+      need(i.change, "the settlement's change note"),
     );
     return [
       privateState,
@@ -320,7 +352,7 @@ export const royaltiesWitnesses: W = {
     );
     return [
       privateState,
-      ledger.offerLeaves.findPathForLeaf(leaf) ?? absentPath(leaf, 20),
+      ledger.offerLeaves.findPathForLeaf(leaf) ?? absentPath(leaf, 32),
     ];
   },
   topUpCodeWitness: ({ privateState }: Ctx) => [
@@ -372,6 +404,31 @@ export const royaltiesWitnesses: W = {
   settleUnits: ({ privateState }: Ctx) => [
     privateState,
     need(privateState.input.units, "the units"),
+  ],
+  presentationKey: ({ privateState }: Ctx) => {
+    const i = privateState.input;
+    const offer = need(i.offer, "the offer");
+    return [
+      privateState,
+      i.present ??
+        C.presentKey(need(i.licenseSecret, "the licence secret"), offer),
+    ];
+  },
+  licenceSpendKey: ({ privateState }: Ctx) => {
+    const i = privateState.input;
+    const offer = need(i.offer, "the offer");
+    return [
+      privateState,
+      i.spend ?? C.spendKey(need(i.licenseSecret, "the licence secret"), offer),
+    ];
+  },
+  receiptChange: ({ privateState }: Ctx) => [
+    privateState,
+    need(privateState.input.change, "the settlement's change note"),
+  ],
+  settleIndex: ({ privateState }: Ctx) => [
+    privateState,
+    need(privateState.input.index, "the settlement number"),
   ],
   splitAmounts: ({ privateState, ledger }: Ctx) => {
     const s = need(privateState.input.split, "the split payment");

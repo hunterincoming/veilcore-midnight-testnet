@@ -51,7 +51,7 @@ import { sampleSigningKey } from '@midnight-ntwrk/midnight-js-protocol/compact-r
 import { TestEnvironment } from '@midnight-ntwrk/testkit-js';
 import { MidnightWalletProvider, SavedProgressNotOpenedError } from './midnight-wallet-provider';
 import { randomBytes } from '../../api/src/utils';
-import { assertFinishAllowed } from '../../api/src/deploy-guard';
+import { RECORD_NOT_REQUIRED, assertFinishAllowed } from '../../api/src/deploy-guard';
 import { showSecret } from './secret-out';
 import { unshieldedToken } from '@midnight-ntwrk/midnight-js-protocol/ledger';
 import { syncWallet, waitForUnshieldedFunds } from './wallet-utils';
@@ -748,21 +748,30 @@ const mainLoop = async (
           case '17': {
             const childRecord = await ask32(rli, "Child's record (hex): ");
             const mine = await royalties.recordSecret();
-            if (royalties.api !== undefined && mine !== undefined) {
-              const agreed = await royalties.api.agreedDescent(
-                royalties.mainAddress,
-                childRecord,
-                royaltiesPureCircuits.recordCommit(mine),
+            const agreed =
+              royalties.api === undefined || mine === undefined
+                ? 'unknown'
+                : await royalties.api.agreedDescent(
+                    royalties.mainAddress,
+                    childRecord,
+                    royaltiesPureCircuits.recordCommit(mine),
+                  );
+            // Royalties run on test networks only: elsewhere there is nothing to check.
+            const royaltiesHere = RECORD_NOT_REQUIRED.has(resolveNetwork() ?? '');
+            if (agreed !== 'agreed' && (agreed !== 'unknown' || royaltiesHere)) {
+              logger.info(
+                agreed === 'unknown'
+                  ? 'This run has not joined a royalties contract (51), so it cannot check whether descent terms are ' +
+                      'agreed with this child. Once you confirm, it can sell offspring that pay you nothing.'
+                  : agreed === 'left-out'
+                    ? 'You agreed descent terms with this child, but its pedigree chart does not pay them: confirming ' +
+                      'makes buyers refuse its offers, and it pays you nothing either way.'
+                    : 'No descent terms are agreed with this child in the royalties contract. Once you confirm, it can ' +
+                      'sell offspring that pay you nothing: confirm its link (71) first if you want terms.',
               );
-              if (!agreed) {
-                logger.info(
-                  'No descent terms are agreed with this child in the royalties contract. Once you confirm, it can ' +
-                    'sell offspring that pay you nothing: confirm its link (71) first if you want terms.',
-                );
-                if ((await rli.question('Type yes to confirm the parentage anyway: ')).trim().toLowerCase() !== 'yes') {
-                  logger.info('Nothing was sent.');
-                  break;
-                }
+              if ((await rli.question('Type yes to confirm the parentage anyway: ')).trim().toLowerCase() !== 'yes') {
+                logger.info('Nothing was sent.');
+                break;
               }
             }
             tx(await api.confirmParent(childRecord));

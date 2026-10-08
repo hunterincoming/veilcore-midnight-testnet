@@ -1023,10 +1023,12 @@ describe('D-1 FIXED: join checks the starting state, and on mainnet the pinned a
   });
 
   it('mainnet: no join while no address is pinned; only the pinned one once it is; deploy and finish are not joins by address', async () => {
-    expect(MAINNET_VEILCORE_ADDRESS).toBe(''); // empty until the deploy, by design
+    expect(MAINNET_VEILCORE_ADDRESS).toBe('a04de0a2684f3713276325649540c7278ffd07cba8b014e7489844f319a02347'); // pinned 8 Oct 2026
     setNetworkId('mainnet');
     const { providers, writes } = chain(genuineDeployState());
-    await expect(VeilcoreAPI.join(providers as never, ADDR, silent)).rejects.toThrow(/pins no address yet/);
+    await expect(VeilcoreAPI.join(providers as never, ADDR, silent)).rejects.toThrow(
+      /the VeilCore contract is a04de0a2/,
+    );
     expect(writes).toEqual([]);
     expect(() => assertJoinAllowed(ADDR, silent, 'cd'.repeat(32))).toThrow(/the VeilCore contract is cdcd/);
     expect(assertJoinAllowed(ADDR.toUpperCase(), silent, `0x${ADDR}`)).toBe('pinned');

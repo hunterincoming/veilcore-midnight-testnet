@@ -115,8 +115,8 @@ export const PREPROD_ADDRESSES: Readonly<Record<ContractKind, string>> = {
 };
 
 /**
- * VeilCore's contracts on mainnet, as the filed deployment record names them. Empty
- * until the mainnet deploy; until then, nothing on mainnet is accepted as VeilCore's.
+ * VeilCore's contracts on mainnet, as the deployment record names them (deployed 8 October
+ * 2026; pinned in api/src/deploy-guard.ts). On mainnet nothing else is accepted as VeilCore's.
  */
 export const MAINNET_ADDRESSES: Readonly<Record<ContractKind, string>> = {
   veilcore: MAINNET_VEILCORE_ADDRESS,

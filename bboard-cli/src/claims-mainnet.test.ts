@@ -282,11 +282,14 @@ describe('joining the claims contract on mainnet: the pinned address only', () =
     };
   };
 
-  it('no join while no address is pinned; nothing is read or written', async () => {
-    expect(MAINNET_CLAIMS_ADDRESS).toBe(''); // empty until the claims deploy, by design
+  it('only the pinned address joins; any other is refused and nothing is read or written', async () => {
+    expect(MAINNET_CLAIMS_ADDRESS).toBe('ef763eb4ad1846b716dbfa90c00560a9a943ffb4d1fc638b0707df5adefd070d'); // pinned 8 Oct 2026
     const p = providers();
     await expect(ClaimsAPI.join(p.providers as never, ADDR, silent)).rejects.toThrow(
-      /Refusing to join a VeilCore claims contract on mainnet: this build pins no address yet \(MAINNET_CLAIMS_ADDRESS/,
+      /Refusing to join abab.*the VeilCore claims contract is ef763eb4/,
+    );
+    expect(() => assertClaimsJoinAllowed(ADDR, silent, '')).toThrow(
+      /this build pins no address yet \(MAINNET_CLAIMS_ADDRESS/,
     );
     expect(p.set).not.toHaveBeenCalled();
   });
@@ -300,7 +303,7 @@ describe('joining the claims contract on mainnet: the pinned address only', () =
 
   it("the two pins are separate: the main contract's address does not open the claims contract", () => {
     expect(assertJoinAllowed(ADDR, silent, ADDR)).toBe('pinned');
-    expect(() => assertClaimsJoinAllowed(ADDR, silent)).toThrow(/MAINNET_CLAIMS_ADDRESS/);
+    expect(() => assertClaimsJoinAllowed(ADDR, silent)).toThrow(/the VeilCore claims contract is ef763eb4/);
   });
 
   it("a deploy's own join, and finishing a deploy, are not joins by address", async () => {
@@ -390,7 +393,7 @@ describe('CLI options 34-36 on mainnet', () => {
       providers: { privateStateProvider: { setContractAddress: () => undefined } },
       rli: { question: async () => ADDR },
     });
-    await expect(handleClaimsChoice('35', m.ctx)).rejects.toThrow(/pins no address yet/);
+    await expect(handleClaimsChoice('35', m.ctx)).rejects.toThrow(/the VeilCore claims contract is ef763eb4/);
     expect(m.lines.join('\n')).toMatch(/All 21 claims build artefacts match/);
   });
 });

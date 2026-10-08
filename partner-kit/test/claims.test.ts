@@ -52,11 +52,12 @@ describe('sealing a field set', () => {
 });
 
 describe('joining the claims contract', () => {
-  it('is refused on mainnet while no address is pinned, before anything is read', async () => {
+  it('on mainnet, any address but the pinned one is refused before anything is read', async () => {
     setNetworkId('mainnet');
     const conn = { ...chain.conn, network: 'mainnet' as const };
-    await expect(VeilCoreClaims.join(conn)).rejects.toThrow(/No claims contract is pinned for mainnet/);
-    await expect(VeilCoreClaims.join(conn, { address: CLAIMS_ADDR })).rejects.toThrow(/is pinned/);
+    await expect(VeilCoreClaims.join(conn, { address: CLAIMS_ADDR })).rejects.toThrow(
+      /on mainnet the VeilCore claims contract is ef763eb4/,
+    );
     expect(chainLog).toHaveLength(0);
   });
 

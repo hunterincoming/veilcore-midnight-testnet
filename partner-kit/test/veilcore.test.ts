@@ -45,13 +45,16 @@ describe('joining', () => {
     expect(chainLog).toHaveLength(0);
   });
 
-  it('on mainnet, refuses before anything is read while no address is pinned', async () => {
+  it('on mainnet, refuses any address but the pinned one before anything is read; with none given, uses the pin', async () => {
     setNetworkId('mainnet');
     const conn = { ...chain.conn, network: 'mainnet' as const };
     const spy = vi.spyOn(conn.providers.veilcore.publicDataProvider, 'queryContractState');
-    await expect(VeilCore.join(conn)).rejects.toThrow(/No VeilCore contract is pinned for mainnet/);
-    await expect(VeilCore.join(conn, { address: VEILCORE_ADDR })).rejects.toThrow(/no VeilCore contract is pinned/);
+    await expect(VeilCore.join(conn, { address: VEILCORE_ADDR })).rejects.toThrow(
+      /on mainnet the VeilCore contract is a04de0a2.*Nothing was read or sent/,
+    );
     expect(spy).not.toHaveBeenCalled();
+    // No address: the pinned mainnet contract, which this local stand-in chain does not have.
+    await expect(VeilCore.join(conn)).rejects.toThrow(/no contract at a04de0a2/);
   });
 
   it('joins a contract that started from the constructor and has every circuit', async () => {
@@ -98,8 +101,11 @@ describe('a laboratory: anchor, prove possession, timestamp a batch, pair a repo
   it('a verifier helper refuses an address that is not the one it was told', async () => {
     await expect(readLedger({ ...read(), address: 'ef'.repeat(32) })).rejects.toThrow(/no contract at/);
     await expect(readLedger({ network: 'mainnet', indexer: chain.endpoints.indexer })).rejects.toThrow(
-      /No VeilCore contract is pinned for mainnet/,
+      /no contract at a04de0a2/,
     );
+    await expect(
+      readLedger({ network: 'mainnet', indexer: chain.endpoints.indexer, address: 'ef'.repeat(32) }),
+    ).rejects.toThrow(/on mainnet the VeilCore contract is a04de0a2/);
   });
 });
 

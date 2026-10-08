@@ -107,8 +107,12 @@ describe("the client's witnesses, through a whole licensee journey", () => {
       ),
     ) as Uint8Array;
     const lic = b(10);
-    k.run({ licenseSecret: lic }, (c, ctx) =>
-      c.impureCircuits.buyLicense(ctx, offer, 5n),
+    k.run(
+      {
+        licenseSecret: lic,
+        split: { record: R.recordCommit(b(1)), color: NIGHT, total: 1000n, now: T0 },
+      },
+      (c, ctx) => c.impureCircuits.buyLicense(ctx, offer, 5n),
     );
     expect(hex(k.ledger.lastSale)).toBe(hex(licenceKeyOf(lic, offer, EXPIRES)));
 
@@ -118,6 +122,7 @@ describe("the client's witnesses, through a whole licensee journey", () => {
       color: NIGHT,
       rateCommit: R.rateCommit(RATE, SALT),
       expires: EXPIRES,
+      split: false,
     };
     const rate = { rate: RATE, salt: SALT };
     const topUp = (nonce: Uint8Array, amount: bigint) =>

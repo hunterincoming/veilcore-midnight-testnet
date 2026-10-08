@@ -19,6 +19,7 @@ import {
 import {
   NIGHT_COLOR,
   RoyaltiesAPI,
+  chartOf,
   WouldLinkError,
   newPresentationRequest,
   revocationVerdict,
@@ -42,6 +43,16 @@ class Chain {
   /** The next call lands, then the client is told it timed out. */
   timeoutAfterLanding = false;
   readonly main = new VeilcoreSimulator();
+  /** What the last call paid out, by token and recipient. */
+  lastSpends: Array<[string, string, bigint]> = [];
+  private spendTotals = new Map<string, bigint>();
+
+  /** What `wallet` received of `color` in the last call. */
+  paid(color: Uint8Array, wallet: Uint8Array): bigint {
+    return this.lastSpends
+      .filter(([t, to]) => t === hex(color) && to.includes(hex(wallet)))
+      .reduce((a, [, , v]) => a + v, 0n);
+  }
 
   constructor() {
     const c = new Contract<RoyaltiesPrivateState>(royaltiesWitnesses);
@@ -96,6 +107,21 @@ class Chain {
     const circuits = c.impureCircuits as unknown as Record<string, (ctx: Ctx, ...a: unknown[]) => { context: Ctx }>;
     const r = circuits[name](ctx, ...args);
     this.ctx = r.context;
+    const fx = r.context.currentQueryContext.effects as unknown as {
+      claimedUnshieldedSpends: Map<[{ raw: string }, unknown], bigint>;
+    };
+    const totals = new Map<string, bigint>();
+    for (const [[t, to], v] of fx.claimedUnshieldedSpends) {
+      const k = JSON.stringify([t.raw, JSON.stringify(to)]);
+      totals.set(k, (totals.get(k) ?? 0n) + v);
+    }
+    this.lastSpends = [...totals]
+      .map(([k, v]) => {
+        const [t, to] = JSON.parse(k) as [string, string];
+        return [t, to, v - (this.spendTotals.get(k) ?? 0n)] as [string, string, bigint];
+      })
+      .filter(([, , v]) => v !== 0n);
+    this.spendTotals = totals;
     store.set(royaltiesPrivateStateKey, r.context.currentPrivateState);
     this.n++;
     if (this.timeoutAfterLanding) {
@@ -270,5 +296,111 @@ describe('the royalties client, end to end on the simulator', () => {
     // No call left its input in a store.
     for (const p of [breeder, g1, g2, payer, verifier])
       expect(p.store.get(royaltiesPrivateStateKey)?.input ?? {}).toEqual({});
+  });
+});
+
+describe('royalties on offspring, through the client', () => {
+  it('a parent sets terms, the child links and finalises, and growers pay the ancestor automatically', async () => {
+    const chain = new Chain();
+    const parent = chain.party();
+    const child = chain.party();
+    const grower = chain.party();
+    const payer = chain.party();
+    const P = secret('offspring-parent');
+    const K = secret('offspring-child');
+    const recP = C.commit(P);
+    const recK = C.commit(K);
+    chain.main.call(as(P), 'anchor', C.recoveryCommit(secret('offspring-parent-rcv')));
+    chain.main.call(as(K), 'anchor', C.recoveryCommit(secret('offspring-child-rcv')));
+    const terms = new Uint8Array(32).fill(3);
+    const wP = new Uint8Array(32).fill(41);
+    const wK = new Uint8Array(32).fill(42);
+    const expires = now() + 365n * 86400n;
+    const offerTerms = (payTo: Uint8Array) => ({
+      terms,
+      color: NIGHT_COLOR,
+      price: 1000n,
+      rate: 4n,
+      payTo,
+      count: 5n,
+      expires,
+      revocable: true,
+    });
+
+    // The parent's own variety: posting finalises an empty chart, so it can confirm children.
+    await parent.api.postOffer(P, offerTerms(wP), MAIN);
+
+    // The parent offers terms for varieties bred from it: 10% for two generations, 25 per licence.
+    const card = await parent.api.linkTerms(P, {
+      color: NIGHT_COLOR,
+      fee: 25n,
+      share: 1000n,
+      generations: 2n,
+      until: expires,
+      payTo: wP,
+    });
+
+    // The child proposes them. A child that alters them is refused by the parent's client.
+    await child.api.proposeLink(K, { ...card, share: '10' });
+    await expect(parent.api.confirmLink(P, recK)).rejects.toThrow(/terms you offered/);
+    await child.api.withdrawLink(K, recP);
+    await child.api.proposeLink(K, card);
+
+    // Parentage in the main contract, then the link, then the child's chart is final.
+    chain.main.call(as(K), 'proposeParent', recP);
+    chain.main.call(as(P), 'confirmParent', recK);
+    await expect(child.api.finaliseStack(K, MAIN)).rejects.toThrow(/still waiting for its parent/);
+    await parent.api.confirmLink(P, recK);
+    await child.api.finaliseStack(K, MAIN);
+    expect(chartOf(chain.ledger, recK).map((p) => [p.generation, p.effectiveShare, p.fee])).toEqual([[1, 1000, 25n]]);
+
+    // The child's offer takes royalties and carries the split.
+    const posted = await child.api.postOffer(K, offerTerms(wK), MAIN);
+    expect(posted.card.split).toBe(true);
+
+    // A grower buys: the parent gets 10% of the price and its fee, in the same transaction.
+    await grower.api.buyLicense(posted.card, MAIN);
+    expect(chain.paid(NIGHT_COLOR, wP)).toBe(100n + 25n);
+    expect(chain.paid(NIGHT_COLOR, wK)).toBe(900n);
+
+    // A processor tops up the grower's credit: the parent gets 10% of that too.
+    const req = await grower.api.topUpRequest(posted.offer);
+    await payer.api.payTopUp(req, 200n, MAIN);
+    expect(chain.paid(NIGHT_COLOR, wP)).toBe(20n);
+    expect(chain.paid(NIGHT_COLOR, wK)).toBe(180n);
+
+    // The credit is ordinary private credit: recorded, then settled privately.
+    await grower.api.claimTopUp(posted.offer, undefined, 200n);
+    expect(await grower.api.credit(posted.offer)).toBe(200n);
+    await grower.api.settle(posted.offer, '2027-Q1', 10n, { evenIfLinkable: true });
+    expect(await grower.api.credit(posted.offer)).toBe(160n);
+  });
+
+  it('buyers refuse a variety whose chart leaves out a parent the main contract confirms', async () => {
+    const chain = new Chain();
+    const parent = chain.party();
+    const child = chain.party();
+    const grower = chain.party();
+    const P = secret('hider-parent');
+    const K = secret('hider-child');
+    chain.main.call(as(P), 'anchor', C.recoveryCommit(secret('hider-parent-rcv')));
+    chain.main.call(as(K), 'anchor', C.recoveryCommit(secret('hider-child-rcv')));
+    const expires = now() + 365n * 86400n;
+    const t = (payTo: Uint8Array) => ({
+      terms: new Uint8Array(32).fill(3),
+      color: NIGHT_COLOR,
+      price: 1000n,
+      rate: 4n,
+      payTo,
+      count: 5n,
+      expires,
+      revocable: true,
+    });
+    await parent.api.postOffer(P, t(new Uint8Array(32).fill(51)), MAIN);
+    // The child posts first (an empty chart), then gets its parentage confirmed for marketing.
+    const posted = await child.api.postOffer(K, t(new Uint8Array(32).fill(52)), MAIN);
+    chain.main.call(as(K), 'proposeParent', C.commit(P));
+    chain.main.call(as(P), 'confirmParent', C.commit(K));
+    await expect(grower.api.buyLicense(posted.card, MAIN)).rejects.toThrow(/does not name the parents/);
   });
 });

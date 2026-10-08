@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 /**
- * Main menu options 50 to 68: the royalties contract, version 2 (contract/src/veilcore-royalties.compact).
+ * Main menu options 50 to 76: the royalties contract, protocol 3 (contract/src/veilcore-royalties.compact).
  * Test networks only until it is approved for mainnet (api/src/deploy-guard.ts).
  *
  * Four roles, four kinds of file handed between them:
@@ -26,12 +26,15 @@ import {
   type PresentationRequest,
   RoyaltiesAPI,
   type TopUpRequest,
+  type ChartPlace,
+  type LinkTermsCard,
   WouldLinkError,
   newPresentationRequest,
   periodBytes,
 } from '../../api/src/royalties-api.js';
 import { assertRoyaltiesDeployAllowed } from '../../api/src/deploy-guard.js';
 import { type RoyaltiesProviders } from '../../api/src/royalties-types.js';
+import { royaltiesPureCircuits } from '../../contract/src/royalties.js';
 import { showSecret } from './secret-out.js';
 
 export const ROYALTIES_MENU = `
@@ -46,7 +49,14 @@ export const ROYALTIES_MENU = `
  56. Close an offer                       64. Answer a licence request
  57. Revoke a licence                     Payer: 65. Pay a top-up request
  Verifier: 66. Make a licence request     67. Check an answer
- 68. Seal and tidy up (anyone)`;
+ 68. Seal and tidy up (anyone)
+ Royalties on offspring (a new variety bred from a licensed one)
+ Parent breeder                           Breeder of the new variety
+ 69. Offer terms for varieties bred from yours (writes a terms card)
+ 71. Confirm a new variety's link         70. Propose a link on a parent's terms card
+ 74. Move where a link pays you           72. Make your variety's ancestors final
+ Anyone: 73. Show a variety's pedigree chart and who it pays
+ 75. Take over your earlier record's chart (after a key change)   76. Withdraw an unconfirmed link`;
 
 export type RoyaltiesMenuContext = {
   readonly rli: Interface;
@@ -217,6 +227,28 @@ const readCards = (typed: string): LicenceCard[] => {
   return cards;
 };
 
+/** Who a payment of `total` pays, place by place (`total` 10000 shows shares as basis points). */
+const showChart = (
+  c: RoyaltiesMenuContext,
+  places: readonly ChartPlace[],
+  total: bigint,
+  color: Uint8Array,
+  withFees = true,
+): void => {
+  if (places.length === 0) return;
+  const gen = ['', 'parent', 'grandparent', 'great-grandparent'];
+  for (const p of places) {
+    const share = (total * BigInt(Math.round(p.effectiveShare * 100))) / 1_000_000n;
+    const sameToken = p.color === hex(color);
+    c.logger.info(
+      `  ${gen[p.generation]} ${short(p.parent)}: ${p.effectiveShare / 100}%` +
+        (sameToken && total !== 10000n ? ` (about ${showAmount(share, color)})` : '') +
+        (withFees && p.fee > 0n ? ` + fee ${showAmount(p.fee, Uint8Array.from(Buffer.from(p.color, 'hex')))}` : '') +
+        ` to ${short(p.payTo)}, until ${day(p.until)}`,
+    );
+  }
+};
+
 /**
  * Run a private proof. If the client would rather wait (your own transaction is still the
  * newest, so a watcher could guess this one is yours), say so and let the user choose.
@@ -242,7 +274,7 @@ const linkable = async <T>(
   }
 };
 
-/** Handle a main-menu choice 50-68. Returns false for any other choice. */
+/** Handle a main-menu choice 50-76. Returns false for any other choice. */
 export const handleRoyaltiesChoice = async (choice: string, c: RoyaltiesMenuContext): Promise<boolean> => {
   try {
     switch (choice) {
@@ -349,9 +381,8 @@ export const handleRoyaltiesChoice = async (choice: string, c: RoyaltiesMenuCont
         c.logger.info(describeOffer(o));
         if (o.rateCommit.some((x) => x !== 0))
           c.logger.info(`Royalty rate in your offer card: ${showAmount(BigInt(card.rate), o.color)} per unit.`);
-        c.logger.info(
-          `Buying sends ${showAmount(o.price, o.color)} from this wallet to the breeder's wallet in the same transaction.`,
-        );
+        c.logger.info(`Buying sends ${showAmount(o.price, o.color)} from this wallet in the same transaction.`);
+        showChart(c, await api.chart(o.record), o.price, o.color);
         if (!(await askYes(c, 'Buy one licence from this offer?'))) return (c.logger.info('Nothing was sent.'), true);
         const r = await api.buyLicense(card, c.mainAddress);
         const out = await ask(c, 'Write your licence card for the breeder to (path): ');
@@ -442,9 +473,16 @@ export const handleRoyaltiesChoice = async (choice: string, c: RoyaltiesMenuCont
         );
         const o = await api.offer(Uint8Array.from(Buffer.from(req.card.offer, 'hex')));
         const amount = await askAmount(c, 'Amount to pay', o.color);
-        if (!(await askYes(c, `Send ${showAmount(amount, o.color)} to the breeder's wallet for this licensee?`)))
+        if (o.split) {
+          c.logger.info(
+            "This variety's ancestors take a share of royalties, so this top-up names the offer on chain (which " +
+              'variety, how much). Each share is paid in the same transaction:',
+          );
+          showChart(c, await api.chart(o.record), amount, o.color, false);
+        }
+        if (!(await askYes(c, `Send ${showAmount(amount, o.color)} for this licensee?`)))
           return (c.logger.info('Nothing was sent.'), true);
-        const r = await api.payTopUp(req, amount);
+        const r = await api.payTopUp(req, amount, c.mainAddress);
         c.logger.info(`Paid. Transaction ${r.txHash}. Tell the licensee the exact amount, so they can record it.`);
         return true;
       }
@@ -493,6 +531,132 @@ export const handleRoyaltiesChoice = async (choice: string, c: RoyaltiesMenuCont
         );
         const t = await api.clearEnded();
         c.logger.info(`Cleared ${t.licences} ended licence(s) and ${t.offers} ended offer(s).`);
+        return true;
+      }
+      case '69': {
+        const api = needApi(c);
+        const recordSecret = await c.recordSecret();
+        if (recordSecret === undefined)
+          throw new RoyaltiesInputError('This run acts as no record. Use one you hold (41) first.');
+        c.logger.info(
+          'These are the terms a new variety bred from yours owes you. Its breeder proposes them and you confirm; ' +
+            'once confirmed, neither side can change them.',
+        );
+        const tokenTyped = await ask(c, 'Token the fee and share are paid in (Enter for NIGHT, or 64 hex): ');
+        const color =
+          tokenTyped === '' ? NIGHT_COLOR : Uint8Array.from(Buffer.from(tokenTyped.replace(/^0x/, ''), 'hex'));
+        if (color.length !== 32) throw new RoyaltiesInputError('A token type is 64 hex characters.');
+        const fee = await askAmount(c, 'Fee per licence the new variety sells (0 for none)', color, true);
+        const shareTyped = await ask(
+          c,
+          'Share of its licence price and royalty top-ups, in percent (0 to 50, e.g. 10 or 2.5): ',
+        );
+        const m = /^(\d{1,2})(?:\.(\d{1,2}))?$/.exec(shareTyped);
+        if (m === null) throw new RoyaltiesInputError('That is not a percentage from 0 to 50.');
+        const share = BigInt(m[1]) * 100n + BigInt((m[2] ?? '').padEnd(2, '0') || '0');
+        if (share > 5000n) throw new RoyaltiesInputError('A share is at most 50%.');
+        const generations = await askWhole(c, 'How many generations it follows (1 to 3; halves each generation): ');
+        const days = await askWhole(c, 'Ends in how many days: ');
+        const payTo = await askWallet(c);
+        const card = await api.linkTerms(recordSecret, {
+          color,
+          fee,
+          share,
+          generations,
+          until: BigInt(Math.floor(Date.now() / 1000)) + days * 86400n,
+          payTo,
+        });
+        const out = await ask(c, 'Write the terms card to (path): ');
+        writePrivate(out, card);
+        c.logger.info(
+          "Written. Give it to the new variety's breeder. Confirm their link with 71 once they propose it, and " +
+            'confirm the parentage in the VeilCore contract only after that. The key that can move where you are ' +
+            'paid (74) is kept on this computer.',
+        );
+        return true;
+      }
+      case '70': {
+        const api = needApi(c);
+        const recordSecret = await c.recordSecret();
+        if (recordSecret === undefined)
+          throw new RoyaltiesInputError('This run acts as no record. Use one you hold (41) first.');
+        const card = readKind<LinkTermsCard>(await ask(c, "The parent's terms card (path): "), 'veilcore-link-terms');
+        c.logger.info(
+          `Terms: ${Number(card.share) / 100}% of your licence prices and royalty top-ups, for ${card.generations} ` +
+            `generation(s); fee ${showAmount(BigInt(card.fee), Uint8Array.from(Buffer.from(card.color, 'hex')))} per ` +
+            `licence; until ${day(BigInt(card.until))}; paid to ${short(card.payTo)}.`,
+        );
+        if (!(await askYes(c, 'Propose a link on these terms?'))) return (c.logger.info('Nothing was sent.'), true);
+        const r = await api.proposeLink(recordSecret, card);
+        c.logger.info(`Proposed. Link ${hex(r.link)}. Also propose the parentage in the VeilCore contract.`);
+        return true;
+      }
+      case '71': {
+        const api = needApi(c);
+        const recordSecret = await c.recordSecret();
+        if (recordSecret === undefined)
+          throw new RoyaltiesInputError('This run acts as no record. Use one you hold (41) first.');
+        const child = await ask32(c, "The new variety's record (hex): ");
+        if (!(await askYes(c, 'Confirm this link on your terms? It can never be changed.')))
+          return (c.logger.info('Nothing was sent.'), true);
+        await api.confirmLink(recordSecret, child);
+        c.logger.info('Confirmed. Now confirm the parentage in the VeilCore contract too.');
+        return true;
+      }
+      case '72': {
+        const api = needApi(c);
+        const recordSecret = await c.recordSecret();
+        if (recordSecret === undefined)
+          throw new RoyaltiesInputError('This run acts as no record. Use one you hold (41) first.');
+        c.logger.info(
+          "This makes your variety's ancestors final, from the parents the VeilCore contract confirms. It can never " +
+            'be changed: no link can be added later.',
+        );
+        if (!(await askYes(c, 'Make them final?'))) return (c.logger.info('Nothing was sent.'), true);
+        await api.finaliseStack(recordSecret, c.mainAddress);
+        const rec = royaltiesPureCircuits.recordCommit(recordSecret);
+        showChart(c, await api.chart(rec), 10000n, NIGHT_COLOR, false);
+        return true;
+      }
+      case '73': {
+        const api = needApi(c);
+        const record = await ask32(c, "The variety's record (hex): ");
+        const places = await api.chart(record);
+        if (places.length === 0) c.logger.info('No ancestors are paid by this record (or its chart is not final yet).');
+        else showChart(c, places, 10000n, NIGHT_COLOR, false);
+        const ped = await api.pedigreeIn(c.mainAddress, record);
+        c.logger.info(ped.ok ? 'Pedigree: matches the VeilCore contract.' : `Pedigree: REFUSED, ${ped.why}.`);
+        if (ped.ok) for (const w of ped.warnings) c.logger.info(`Warning: ${w}`);
+        return true;
+      }
+      case '74': {
+        const api = needApi(c);
+        const link = await ask32(c, 'Link id (hex): ');
+        const payTo = await askWallet(c);
+        if (!(await askYes(c, 'Move where this link pays?'))) return (c.logger.info('Nothing was sent.'), true);
+        await api.movePayee(link, payTo);
+        c.logger.info('Moved.');
+        return true;
+      }
+      case '75': {
+        const api = needApi(c);
+        const recordSecret = await c.recordSecret();
+        if (recordSecret === undefined)
+          throw new RoyaltiesInputError('This run acts as no record. Use one you hold (41) first.');
+        const earlier = await ask32(c, 'Your earlier record (hex): ');
+        if (!(await askYes(c, "Take over that record's chart, unchanged?")))
+          return (c.logger.info('Nothing was sent.'), true);
+        await api.adoptStack(recordSecret, earlier, c.mainAddress);
+        c.logger.info('Done.');
+        return true;
+      }
+      case '76': {
+        const api = needApi(c);
+        const recordSecret = await c.recordSecret();
+        if (recordSecret === undefined)
+          throw new RoyaltiesInputError('This run acts as no record. Use one you hold (41) first.');
+        await api.withdrawLink(recordSecret, await ask32(c, "The parent's record (hex): "));
+        c.logger.info('Withdrawn.');
         return true;
       }
       default:

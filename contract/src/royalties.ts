@@ -15,6 +15,7 @@ import * as Royalties from "./managed/veilcore-royalties/contract/index.js";
 
 export type {
   Offer as RoyaltyOffer,
+  Link as DescentLink,
   OfferOpening,
   NoteOpening,
   RateOpening,
@@ -43,6 +44,17 @@ export type RoyaltyInput = {
   readonly note?: Royalties.NoteOpening;
   readonly note2?: Royalties.NoteOpening;
   readonly rate?: Royalties.RateOpening;
+  /**
+   * A split payment (licence purchase or topUpSplit): the record whose ancestors are
+   * paid, the token, the amount, and the time to judge links' end dates by. The witness
+   * works out each ancestor's amount from the ledger (splitAmountsFor).
+   */
+  readonly split?: {
+    readonly record: Uint8Array;
+    readonly color: Uint8Array;
+    readonly total: bigint;
+    readonly now: bigint;
+  };
 };
 
 /** A licence this party bought: its secret (one per licence) and end date. */
@@ -83,6 +95,20 @@ export type HeldOfferCard = {
   readonly rateSalt: string;
 };
 
+/** The terms of a descent link, as hex and decimal strings (api/src/royalties-api.ts LinkTermsCard). */
+export type HeldLinkTerms = {
+  readonly kind: "veilcore-link-terms";
+  readonly contract: string;
+  readonly parent: string;
+  readonly color: string;
+  readonly fee: string;
+  readonly share: string;
+  readonly generations: string;
+  readonly until: string;
+  readonly payTo: string;
+  readonly payee: string;
+};
+
 /** What a party keeps between calls. All hex or decimal strings, so the store needs no custom types. */
 export type RoyaltiesHeld = {
   /** Offer id -> the admin secret this party runs it with. */
@@ -98,10 +124,17 @@ export type RoyaltiesHeld = {
     readonly nonce: string;
   }[];
   readonly notes?: readonly HeldNote[];
+  /**
+   * Descent terms this party offered as a parent, by payee commitment (hex): the terms it
+   * will confirm, and the payee key that may move where they are paid.
+   */
+  readonly linkTerms?: Readonly<Record<string, { readonly terms: HeldLinkTerms; readonly payeeSecret: string }>>;
   /** A verifier's seed for its scopes: the same offer always gets the same scope from this verifier. */
   readonly verifierSeed?: string;
   /** Holder tags that answered this verifier, per offer, with when: a repeat is flagged. */
-  readonly seenHolders?: Readonly<Record<string, readonly { readonly holder: string; readonly at: string }[]>>;
+  readonly seenHolders?: Readonly<
+    Record<string, readonly { readonly holder: string; readonly at: string }[]>
+  >;
   /** Licence keys, notes and receipts this party put on chain: never prove while one is the latest. */
   readonly mine?: readonly string[];
 };
@@ -145,7 +178,39 @@ const absentPath = (leaf: Uint8Array, depth: number) => ({
 });
 
 export const offerLeafOf = (o: Royalties.OfferOpening): Uint8Array =>
-  C.offerLeaf(o.offer, o.payTo, o.color, o.rateCommit, o.expires);
+  C.offerLeaf(o.offer, o.payTo, o.color, o.rateCommit, o.expires, o.split);
+
+/** Places in a pedigree chart, and the share denominator at each (basis points, halved per generation). */
+export const CHART_PLACES = 14;
+export const placeDenominator = (i: number): bigint =>
+  i < 2 ? 10000n : i < 6 ? 20000n : 40000n;
+const isEmpty = (b: Uint8Array): boolean => b.every((x) => x === 0);
+
+/**
+ * What each place in `record`'s chart is owed from a payment of `total` in `color` at
+ * time `now`: the share rounded up, or 0 (an empty place, no share, another token, or
+ * a link past its end). Exactly what the contract checks in paySplit.
+ */
+export const splitAmountsFor = (
+  ledger: Royalties.Ledger,
+  record: Uint8Array,
+  color: Uint8Array,
+  total: bigint,
+  now: bigint,
+): bigint[] => {
+  const chart = ledger.stacks.member(record)
+    ? ledger.stacks.lookup(record)
+    : Array.from({ length: CHART_PLACES }, () => new Uint8Array(32));
+  const hex = (b: Uint8Array): string => Buffer.from(b).toString("hex");
+  return chart.map((id, i) => {
+    if (isEmpty(id) || !ledger.links.member(id)) return 0n;
+    const l = ledger.links.lookup(id);
+    if (l.share === 0n || hex(l.color) !== hex(color) || l.until <= now)
+      return 0n;
+    const d = placeDenominator(i);
+    return (total * l.share + d - 1n) / d;
+  });
+};
 
 /** The note a licence secret, nonce, offer and amount make. */
 export const noteOf = (
@@ -309,6 +374,13 @@ export const royaltiesWitnesses: W = {
     privateState,
     need(privateState.input.units, "the units"),
   ],
+  splitAmounts: ({ privateState, ledger }: Ctx) => {
+    const s = need(privateState.input.split, "the split payment");
+    return [
+      privateState,
+      splitAmountsFor(ledger, s.record, s.color, s.total, s.now),
+    ];
+  },
 };
 
 export const CompiledVeilcoreRoyalties = CompiledContract.make<

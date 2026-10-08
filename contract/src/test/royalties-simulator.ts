@@ -22,6 +22,7 @@ import {
   ledger,
   pureCircuits,
 } from "../managed/veilcore-royalties/contract/index.js";
+import { splitAmountsFor } from "../royalties.js";
 
 export const R = pureCircuits;
 const COIN = "0".repeat(64);
@@ -53,6 +54,11 @@ export type Caller = {
   note2?: NoteOpening;
   notePath2?: MerkleTreePath<Uint8Array>;
   rate?: RateOpening;
+  /**
+   * For a split payment (buyLicense, topUpSplit): each place's amount. Left out, the
+   * simulator works it out from the offer and amount the call names, as a client would.
+   */
+  split?: bigint[];
 };
 
 /** The token movements one call asks for, by raw colour (hex). */
@@ -103,7 +109,7 @@ export const stubPath = (
 });
 
 export const offerLeafOf = (o: OfferOpening): Uint8Array =>
-  R.offerLeaf(o.offer, o.payTo, o.color, o.rateCommit, o.expires);
+  R.offerLeaf(o.offer, o.payTo, o.color, o.rateCommit, o.expires, o.split);
 
 /** The note a licensee's secret, nonce, offer and amount make. */
 export const noteOf = (
@@ -205,10 +211,9 @@ export class RoyaltiesSimulator {
     ...args: Args<N>
   ): { result: unknown; moved: Movements } {
     this.setTime(this.ctx);
-    const fn = this.contract(who).impureCircuits[circuit] as (
-      c: Ctx,
-      ...a: unknown[]
-    ) => { context: Ctx; result: unknown };
+    const fn = this.contract(this.withSplit(who, circuit, args)).impureCircuits[
+      circuit
+    ] as (c: Ctx, ...a: unknown[]) => { context: Ctx; result: unknown };
     const r = fn(this.ctx, ...args);
     const moved = this.diff(
       r.context.currentQueryContext.effects as unknown as Effects,
@@ -224,7 +229,9 @@ export class RoyaltiesSimulator {
     ...args: Args<N>
   ): Proved {
     this.setTime(this.ctx);
-    const fn = this.contract(who).impureCircuits[circuit] as (
+    const fn = this.contract(this.withSplit(who, circuit, args)).impureCircuits[
+      circuit
+    ] as (
       c: Ctx,
       ...a: unknown[]
     ) => { context: Ctx; proofData: { publicTranscript: unknown } };
@@ -287,6 +294,24 @@ export class RoyaltiesSimulator {
     };
     this.seen = { inputs, outputs, spends };
     return moved;
+  }
+
+  /** The split amounts a client would supply for a purchase or split top-up. */
+  private withSplit(who: Caller, circuit: string, args: unknown[]): Caller {
+    if (who.split !== undefined) return who;
+    const l = this.state;
+    const offer = args[0] as Uint8Array;
+    if (
+      (circuit !== "buyLicense" && circuit !== "topUpSplit") ||
+      !l.offers.member(offer)
+    )
+      return who;
+    const o = l.offers.lookup(offer);
+    const total = circuit === "buyLicense" ? o.price : (args[1] as bigint);
+    return {
+      ...who,
+      split: splitAmountsFor(l, o.record, o.color, total, this.now),
+    };
   }
 
   private setTime(ctx: Ctx): void {
@@ -383,6 +408,10 @@ export class RoyaltiesSimulator {
       rateOpening: (c) => [c.privateState, need(who.rate, "the rate opening")],
       settlePeriod: (c) => [c.privateState, need(who.period, "the period")],
       settleUnits: (c) => [c.privateState, need(who.units, "the units")],
+      splitAmounts: (c) => [
+        c.privateState,
+        need(who.split, "the split amounts"),
+      ],
     });
   }
 }

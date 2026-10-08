@@ -96,6 +96,8 @@ export struct Offer {
   expires: Uint<64>,
   revocable: Boolean,
   open: Boolean,
+  /** Whether the record's ancestors take a share of royalties: then top-ups go through topUpSplit, which names the offer. */
+  split: Boolean,
 }
 
 /** What a top-up or settlement knows about its offer, privately. */
@@ -105,6 +107,30 @@ export struct OfferOpening {
   color: Bytes<32>,
   rateCommit: Bytes<32>,
   expires: Uint<64>,
+  split: Boolean,
+}
+
+/**
+ * A descent link: the terms a child variety owes a parent variety, proposed by the
+ * child's holder and confirmed by the parent's. Never changed once confirmed, never
+ * removed. Only the payee key may move where it is paid.
+ */
+export struct Link {
+  child: Bytes<32>,
+  parent: Bytes<32>,
+  /** The token the fee and share are paid in. */
+  color: Bytes<32>,
+  /** Paid per licence the child sells, to a direct parent only. */
+  fee: Uint<64>,
+  /** Basis points of the child's licence price and royalty top-ups; halves with each generation further. */
+  share: Uint<16>,
+  /** How many generations the share follows, 1 to 3. */
+  generations: Uint<8>,
+  until: Uint<64>,
+  payTo: UserAddress,
+  /** payeeCommit(secret) of the key that may move payTo. */
+  payee: Bytes<32>,
+  confirmed: Boolean,
 }
 
 /** A credit note's private half. */
@@ -161,6 +187,24 @@ export ledger offerRevokedAt: Map<Bytes<32>, Uint<64>>;
 /** The revocation count at the last seal: an offer's revocations are sealed once offerRevokedAt <= this. */
 export ledger sealedRevocations: Uint<64>;
 
+/** Descent links, by linkId(child, parent). */
+export ledger links: Map<Bytes<32>, Link>;
+/**
+ * A record's ancestors, as a pedigree chart of link ids: positions 0-1 its own links
+ * (parents), 2-5 its parents' links (grandparents), 6-13 their parents' links. A link
+ * appears only while it still has generations to run at that depth; an empty place is
+ * all zero. Set once (finaliseStack or adoptStack), never changed or removed.
+ */
+export ledger stacks: Map<Bytes<32>, Vector<14, Bytes<32>>>;
+/** Child record -> links confirmed for it (at most 2). */
+export ledger linksConfirmed: Map<Bytes<32>, Uint<8>>;
+/** Child record -> links proposed and not yet confirmed or withdrawn (at most 4). */
+export ledger linksPending: Map<Bytes<32>, Uint<8>>;
+/** Child record -> its confirmed links' shares, inherited ones included, in quarter basis points (cap 5000 x 4). */
+export ledger linkWeight: Map<Bytes<32>, Uint<32>>;
+export ledger linkSeq: Counter;
+export ledger lastLink: Bytes<32>;
+
 export ledger lastSealTime: Uint<64>;
 /** When the trees that only grow (offers, notes, receipts) last had their old roots retired. */
 export ledger lastSlowSealTime: Uint<64>;
@@ -185,7 +229,7 @@ export ledger lastPresentationRoot: MerkleTreeDigest;
 export ledger lastPresentationReceiptRoot: MerkleTreeDigest;
 
 constructor() {
-  protocolVersion = 2;
+  protocolVersion = 3;
 }
 
 witness recordSecret(): Bytes<32>;
@@ -208,6 +252,8 @@ witness secondNotePath(): MerkleTreePath<32, Bytes<32>>;
 witness rateOpening(): RateOpening;
 witness settlePeriod(): Bytes<32>;
 witness settleUnits(): Uint<64>;
+/** For a split payment: each place's amount, worked out by the client and checked here. */
+witness splitAmounts(): Vector<14, Uint<64>>;
 
 circuit SEAL_INTERVAL(): Uint<64> { return 600; }
 circuit SEAL_SLACK(): Uint<64> { return 300; }
@@ -216,6 +262,10 @@ circuit SLOW_SEAL_INTERVAL(): Uint<64> { return 86400; }
 circuit LICENSE_SLOTS(): Uint<64> { return 16777216; }
 /** How long after an offer ends its licensees can still settle, before anyone may clear them. */
 circuit SETTLE_GRACE(): Uint<64> { return 2592000; }
+/** Ancestors take at most half: 5000 basis points, counted in quarter basis points. */
+circuit MAX_LINK_WEIGHT(): Uint<32> { return 20000; }
+circuit MAX_LINKS(): Uint<8> { return 2; }
+circuit MAX_PENDING_LINKS(): Uint<8> { return 4; }
 
 // ─────────────────────────────────────────────────────────────── hashes
 
@@ -265,10 +315,25 @@ export circuit rateCommit(rate: Uint<64>, salt: Bytes<32>): Bytes<32> {
 }
 
 export circuit offerLeaf(offer: Bytes<32>, payTo: Bytes<32>, color: Bytes<32>, rate: Bytes<32>,
-                         expires: Uint<64>): Bytes<32> {
-  return persistentHash<Vector<6, Bytes<32>>>([
-    pad(32, "veilcore:royalties:v2:offerleaf"), offer, payTo, color, rate, u64(expires),
+                         expires: Uint<64>, split: Boolean): Bytes<32> {
+  return persistentHash<Vector<7, Bytes<32>>>([
+    pad(32, "veilcore:royalties:v3:offerleaf"), offer, payTo, color, rate, u64(expires),
+    u64(split ? 1 : 0),
   ]);
+}
+
+circuit leafOf(op: OfferOpening): Bytes<32> {
+  return offerLeaf(op.offer, op.payTo, op.color, op.rateCommit, op.expires, op.split);
+}
+
+/** The id of the link from a child record to a parent record. */
+export circuit linkId(child: Bytes<32>, parent: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<3, Bytes<32>>>([pad(32, "veilcore:royalties:v3:link"), child, parent]);
+}
+
+/** The key that may move a link's payee. */
+export circuit payeeCommit(secret: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<2, Bytes<32>>>([pad(32, "veilcore:royalties:v3:payee"), secret]);
 }
 
 /** What a licensee hands whoever tops up their credit: it names neither the licensee nor the offer. */
@@ -342,6 +407,107 @@ circuit passThrough(color: Bytes<32>, amount: Uint<128>, to: UserAddress): [] {
   sendUnshielded(color, amount, right<ContractAddress, UserAddress>(to));
 }
 
+// ─────────────────────────────────────────────────────────────── descent helpers
+
+circuit noLink(): Bytes<32> { return default<Bytes<32>>; }
+
+/** A link's share in basis points, or 0 for an empty place. */
+circuit shareAt(id: Bytes<32>): Uint<16> {
+  if (id == noLink()) {
+    return 0;
+  }
+  return links.lookup(id).share;
+}
+
+/** A place in a parent's chart, carried one generation further only if its link still runs there. */
+circuit carried(id: Bytes<32>, minGenerations: Uint<8>): Bytes<32> {
+  if (id == noLink()) {
+    return noLink();
+  }
+  if (links.lookup(id).generations >= minGenerations) {
+    return id;
+  }
+  return noLink();
+}
+
+/** A carried place's weight, in quarter basis points (one generation further halves it). */
+circuit carriedWeight(id: Bytes<32>, minGenerations: Uint<8>, quarters: Uint<8>): Uint<32> {
+  if (carried(id, minGenerations) == noLink()) {
+    return 0;
+  }
+  return (links.lookup(id).share * quarters) as Uint<32>;
+}
+
+/** What a child inherits through a link to this parent's chart, in quarter basis points. */
+circuit inheritedWeight(st: Vector<14, Bytes<32>>): Uint<32> {
+  return (carriedWeight(st[0], 2, 2) + carriedWeight(st[1], 2, 2) + carriedWeight(st[2], 3, 1) +
+          carriedWeight(st[3], 3, 1) + carriedWeight(st[4], 3, 1) + carriedWeight(st[5], 3, 1)) as Uint<32>;
+}
+
+circuit noStack(): Vector<14, Bytes<32>> { return default<Vector<14, Bytes<32>>>; }
+
+/** The chart of the parent a link points to, or an empty chart for no link. */
+circuit parentChart(id: Bytes<32>): Vector<14, Bytes<32>> {
+  if (id == noLink()) {
+    return noStack();
+  }
+  return stacks.lookup(links.lookup(id).parent);
+}
+
+/** Whether any ancestor in a chart takes a share (then royalty top-ups must be split, and name the offer). */
+circuit chartSplits(st: Vector<14, Bytes<32>>): Boolean {
+  return fold((acc: Boolean, id: Bytes<32>) => acc || shareAt(id) > 0, false, st);
+}
+
+/**
+ * Pay `total` of `color`: each ancestor its share (the client supplies each amount,
+ * checked here to be the share rounded up), the rest to `payTo`. In one call, holding
+ * nothing. A place past its end date, with no share, or in another token, gets nothing.
+ */
+circuit paySplit(st: Vector<14, Bytes<32>>, color: Bytes<32>, total: Uint<64>, payTo: UserAddress): [] {
+  const amounts = splitAmounts();
+  receiveUnshielded(color, total as Uint<128>);
+  for (const i of 0..14) {
+    const id = st[i];
+    const a = disclose(amounts[i]);
+    if (id == noLink()) {
+      assert(a == 0, "Nothing is owed to an empty place");
+    } else {
+      const l = links.lookup(id);
+      if (l.share > 0 && l.color == color && blockTimeLt(l.until)) {
+        // A parent's share in basis points; a grandparent's half of it; a great-grandparent's a quarter.
+        const d = (i < 2 ? 10000 : (i < 6 ? 20000 : 40000)) as Uint<16>;
+        const want = total * l.share;
+        assert(a * d >= want && a * d < want + d, "That is not the ancestor's share, rounded up");
+        if (a > 0) {
+          sendUnshielded(color, a as Uint<128>, right<ContractAddress, UserAddress>(l.payTo));
+        }
+      } else {
+        assert(a == 0, "Nothing is owed to that place now");
+      }
+    }
+  }
+  const paid = disclose(fold((acc: Uint<128>, a: Uint<64>) => (acc + a) as Uint<128>, 0 as Uint<128>, amounts));
+  assert(paid <= total as Uint<128>, "The ancestors' shares come to more than the payment");
+  const rest = (total as Uint<128>) - paid;
+  if (rest > 0) {
+    sendUnshielded(color, rest, right<ContractAddress, UserAddress>(payTo));
+  }
+}
+
+/** Each parent's fee for one licence, in its own token, while its link runs. */
+circuit payFees(st: Vector<14, Bytes<32>>): [] {
+  for (const i of 0..2) {
+    const id = st[i];
+    if (id != noLink()) {
+      const l = links.lookup(id);
+      if (l.fee > 0 && blockTimeLt(l.until)) {
+        passThrough(l.color, l.fee as Uint<128>, l.payTo);
+      }
+    }
+  }
+}
+
 circuit clearLicense(k: Bytes<32>, id: Bytes<32>, o: Offer): [] {
   const s = licenseSlotOf.lookup(k);
   licenses.insertIndexDefault(s);
@@ -373,7 +539,7 @@ circuit provenLicence(secret: Bytes<32>, offer: Bytes<32>, expires: Uint<64>): M
 circuit provenOffer(): OfferOpening {
   const op = offerOpening();
   const path = offerPath();
-  assert(disclose(path.leaf == offerLeaf(op.offer, op.payTo, op.color, op.rateCommit, op.expires)),
+  assert(disclose(path.leaf == leafOf(op)),
          "That is not an offer on this contract");
   assert(offerLeaves.checkRoot(disclose(merkleTreePathRoot<20, Bytes<32>>(path))),
          "That is not an offer on this contract, or the path is stale");
@@ -427,12 +593,27 @@ export circuit postOffer(nonce: Bytes<32>, admin: Bytes<32>, terms: Bytes<32>, c
   const c = disclose(color);
   const r = disclose(rate);
   const w = disclose(payTo);
+  // A record with no links finalises an empty chart here. One with links must finalise first.
+  if (!stacks.member(record)) {
+    assert(!linksConfirmed.member(record) && !linksPending.member(record),
+           "This record has descent links: finalise its ancestors (finaliseStack) before posting");
+    stacks.insert(record, noStack());
+  }
+  const st = stacks.lookup(record);
+  for (const i of 0..14) {
+    const lid = st[i];
+    if (lid != noLink()) {
+      const l = links.lookup(lid);
+      assert(l.share == 0 || l.color == c, "An ancestor's share is owed in another token: post this offer in that token");
+    }
+  }
+  const sp = chartSplits(st);
   offers.insert(id, Offer {
     record: record, admin: a, terms: t, color: c, price: p, rateCommit: r, payTo: w,
-    remaining: n, live: 0, expires: e, revocable: disclose(revocable), open: true,
+    remaining: n, live: 0, expires: e, revocable: disclose(revocable), open: true, split: sp,
   });
   everPosted.insert(id);
-  offerLeaves.insert(offerLeaf(id, w.bytes, c, r, e));
+  offerLeaves.insert(offerLeaf(id, w.bytes, c, r, e, sp));
   rootsSinceSeal = true;
   lastOffer = id;
   return id;
@@ -469,7 +650,9 @@ export circuit buyLicense(offer: Bytes<32>, slot: Uint<64>): [] {
   const s = disclose(slot);
   assert(s < LICENSE_SLOTS(), "That slot is outside the licence tree");
   assert(!licenseAtSlot.member(s), "That slot is taken; pick another");
-  passThrough(o.color, o.price as Uint<128>, o.payTo);
+  const st = stacks.lookup(o.record);
+  paySplit(st, o.color, o.price, o.payTo);
+  payFees(st);
   offers.insert(id, Offer { ...o, remaining: (o.remaining - 1) as Uint<32>, live: (o.live + 1) as Uint<32> });
   everSold.insert(k);
   licenseOffer.insert(k, id);
@@ -549,6 +732,7 @@ export circuit sealRevocations(bound: Uint<64>): [] {
  */
 export circuit topUp(payTo: UserAddress, color: Bytes<32>, amount: Uint<64>, validUntil: Uint<64>): [] {
   const op = provenOffer();
+  assert(disclose(!op.split), "That offer's ancestors take a share: top it up with topUpSplit");
   const w = disclose(payTo);
   const c = disclose(color);
   assert(disclose(op.payTo == w.bytes && op.color == c), "That offer pays another wallet or token");
@@ -561,8 +745,29 @@ export circuit topUp(payTo: UserAddress, color: Bytes<32>, amount: Uint<64>, val
   assert(disclose(op.expires >= v), "That offer ends before that time");
   const a = disclose(amount);
   assert(a > 0, "A top-up must be more than zero");
-  addNote(disclose(noteCommit(topUpCodeWitness(), offerLeaf(op.offer, op.payTo, op.color, op.rateCommit, op.expires), a)));
+  addNote(disclose(noteCommit(topUpCodeWitness(), leafOf(op), a)));
   passThrough(c, a as Uint<128>, w);
+  topUpSeq.increment(1);
+}
+
+/**
+ * A top-up for an offer whose ancestors take a share of royalties. It names the offer,
+ * so it shows which variety is being paid for and how much; each ancestor's share and
+ * the rest go out in the same call. The credit note is as private as any other.
+ */
+export circuit topUpSplit(offer: Bytes<32>, amount: Uint<64>): [] {
+  const id = disclose(offer);
+  const o = anyOffer(id);
+  assert(o.split, "That offer's ancestors take no share: use topUp, which does not name the offer");
+  assertBefore(o.expires);
+  const ro = rateOpening();
+  assert(disclose(rateCommit(ro.rate, ro.salt) == o.rateCommit && ro.rate > 0),
+         "That is not the offer's royalty rate, or it is zero: nothing could ever settle against this credit");
+  const a = disclose(amount);
+  assert(a > 0, "A top-up must be more than zero");
+  addNote(disclose(noteCommit(topUpCodeWitness(),
+                              offerLeaf(id, o.payTo.bytes, o.color, o.rateCommit, o.expires, true), a)));
+  paySplit(stacks.lookup(o.record), o.color, a, o.payTo);
   topUpSeq.increment(1);
 }
 
@@ -570,7 +775,7 @@ export circuit topUp(payTo: UserAddress, color: Bytes<32>, amount: Uint<64>, val
 export circuit mergeNotes(): [] {
   const secret = licenseSecret();
   const op = offerOpening();
-  const leaf = offerLeaf(op.offer, op.payTo, op.color, op.rateCommit, op.expires);
+  const leaf = leafOf(op);
   const n1 = noteOpening();
   const n2 = secondNoteOpening();
   const nf = spendNote(secret, op.offer, leaf, n1, notePath());
@@ -590,7 +795,7 @@ export circuit mergeNotes(): [] {
 export circuit settle(): [] {
   const secret = licenseSecret();
   const op = provenOffer();
-  const leaf = offerLeaf(op.offer, op.payTo, op.color, op.rateCommit, op.expires);
+  const leaf = leafOf(op);
   provenLicence(secret, op.offer, licenceExpires());
   const ro = rateOpening();
   assert(disclose(rateCommit(ro.rate, ro.salt) == op.rateCommit && op.rateCommit != default<Bytes<32>> && ro.rate > 0),
@@ -610,6 +815,131 @@ export circuit settle(): [] {
   lastReceipt = r;
   settlements.insert(change, Settlement { receipt: r, unitsMasked: disclose((units as Field) + unitsMask(view, change)) });
   settleSeq.increment(1);
+}
+
+// ─────────────────────────────────────────────────────────────── descent
+
+/**
+ * The child's holder proposes a link to a parent record, with the exact terms. Nothing
+ * binds until the parent's holder confirms. Only before the child's ancestors are final.
+ */
+export circuit proposeLink(parent: Bytes<32>, color: Bytes<32>, fee: Uint<64>, share: Uint<16>,
+                           generations: Uint<8>, until: Uint<64>, payTo: UserAddress, payee: Bytes<32>): Bytes<32> {
+  const child = disclose(recordCommit(recordSecret()));
+  const p = disclose(parent);
+  assert(p != child && p != noLink(), "A link needs a parent record other than your own");
+  assert(!stacks.member(child), "Your record's ancestors are final: no new links");
+  const id = disclose(linkId(child, p));
+  assert(!links.member(id), "That link was already proposed");
+  const g = disclose(generations);
+  assert(g >= 1 && g <= 3, "A link runs for 1 to 3 generations");
+  const sh = disclose(share);
+  assert(sh <= 5000, "A share is at most 5000 basis points");
+  const u = disclose(until);
+  assert(blockTimeLt(u), "The link's end date must be in the future");
+  const pe = disclose(payee);
+  assert(pe != noLink(), "The payee key commitment cannot be empty");
+  const pending = linksPending.member(child) ? linksPending.lookup(child) : 0;
+  assert(pending < MAX_PENDING_LINKS(), "Too many links waiting; withdraw one first");
+  linksPending.insert(child, (pending + 1) as Uint<8>);
+  links.insert(id, Link {
+    child: child, parent: p, color: disclose(color), fee: disclose(fee), share: sh, generations: g,
+    until: u, payTo: disclose(payTo), payee: pe, confirmed: false,
+  });
+  return id;
+}
+
+/** The child's holder withdraws a link the parent has not confirmed. */
+export circuit withdrawLink(parent: Bytes<32>): [] {
+  const child = disclose(recordCommit(recordSecret()));
+  const id = disclose(linkId(child, disclose(parent)));
+  assert(links.member(id) && !links.lookup(id).confirmed, "No unconfirmed link from your record to that one");
+  links.remove(id);
+  linksPending.insert(child, (linksPending.lookup(child) - 1) as Uint<8>);
+}
+
+/**
+ * The parent's holder confirms a link on its terms. The parent's own ancestors must be
+ * final first, so the child knows everything it takes on, and the parent has no later
+ * step to withhold. Refused if the child's ancestors would take more than half.
+ */
+export circuit confirmLink(child: Bytes<32>): [] {
+  const parent = disclose(recordCommit(recordSecret()));
+  const c = disclose(child);
+  const id = disclose(linkId(c, parent));
+  assert(links.member(id), "No link proposed from that record to yours");
+  const l = links.lookup(id);
+  assert(!l.confirmed, "That link is already confirmed");
+  assert(stacks.member(parent), "Finalise your own record's ancestors first (finaliseStack, or post an offer)");
+  assert(!stacks.member(c), "That record's ancestors are already final");
+  assert(blockTimeLt(l.until), "That link has already ended");
+  const confirmed = linksConfirmed.member(c) ? linksConfirmed.lookup(c) : 0;
+  assert(confirmed < MAX_LINKS(), "That record already has two confirmed parents");
+  const before = linkWeight.member(c) ? linkWeight.lookup(c) : 0;
+  const own = (l.share * 4) as Uint<32>;
+  const weight = (before + own + inheritedWeight(stacks.lookup(parent))) as Uint<32>;
+  assert(weight <= MAX_LINK_WEIGHT(), "With this link the record's ancestors would take more than half");
+  links.insert(id, Link { ...l, confirmed: true });
+  linksConfirmed.insert(c, (confirmed + 1) as Uint<8>);
+  linksPending.insert(c, (linksPending.lookup(c) - 1) as Uint<8>);
+  linkWeight.insert(c, weight);
+  linkSeq.increment(1);
+  lastLink = id;
+}
+
+/**
+ * The child's holder makes its ancestors final, from at most two of its confirmed links
+ * (the client includes exactly the parents the main contract confirms). The chart is
+ * built from data the contract holds: the links, then each parent's chart one generation
+ * further, keeping only links that still run there. Once, forever.
+ */
+export circuit finaliseStack(first: Bytes<32>, second: Bytes<32>): [] {
+  const child = disclose(recordCommit(recordSecret()));
+  assert(!stacks.member(child), "Your record's ancestors are already final");
+  assert(!linksPending.member(child) || linksPending.lookup(child) == 0,
+         "A link of your record is still waiting for its parent: withdraw it or wait for the answer");
+  const l1 = disclose(first);
+  const l2 = disclose(second);
+  assert(l1 != noLink() || l2 == noLink(), "Name the first link before the second");
+  assert(l2 == noLink() || l1 != l2, "The two links must differ");
+  if (l1 != noLink()) {
+    assert(links.member(l1) && links.lookup(l1).confirmed && links.lookup(l1).child == child,
+           "The first link is not a confirmed link of your record");
+  }
+  if (l2 != noLink()) {
+    assert(links.member(l2) && links.lookup(l2).confirmed && links.lookup(l2).child == child,
+           "The second link is not a confirmed link of your record");
+  }
+  const a = parentChart(l1);
+  const b = parentChart(l2);
+  stacks.insert(child, [
+    l1, l2,
+    carried(a[0], 2), carried(a[1], 2), carried(b[0], 2), carried(b[1], 2),
+    carried(a[2], 3), carried(a[3], 3), carried(a[4], 3), carried(a[5], 3),
+    carried(b[2], 3), carried(b[3], 3), carried(b[4], 3), carried(b[5], 3),
+  ]);
+}
+
+/**
+ * A record that replaced an earlier one (a key rotation or recovery in the main
+ * contract) takes over its chart unchanged, with no parent asked again. The client
+ * accepts this only when the main contract shows both records are one identity.
+ */
+export circuit adoptStack(earlier: Bytes<32>): [] {
+  const record = disclose(recordCommit(recordSecret()));
+  const e = disclose(earlier);
+  assert(!stacks.member(record), "Your record's ancestors are already final");
+  assert(stacks.member(e), "That record's ancestors are not final");
+  stacks.insert(record, stacks.lookup(e));
+}
+
+/** The link's payee key moves where its fee and share are paid. Only the payee, never the child. */
+export circuit movePayee(link: Bytes<32>, payTo: UserAddress): [] {
+  const id = disclose(link);
+  assert(links.member(id), "No such link");
+  const l = links.lookup(id);
+  assert(disclose(payeeCommit(adminSecret()) == l.payee), "Only the link's payee key can move its payee");
+  links.insert(id, Link { ...l, payTo: disclose(payTo) });
 }
 
 // ─────────────────────────────────────────────────────────────── presentations

@@ -35,6 +35,7 @@ import {
   CompiledVeilcoreRoyalties,
   ROYALTIES_PROVABLE_CIRCUITS,
   type HeldLicence,
+  type HeldLinkTerms,
   type HeldReceipt,
   type NoteOpening,
   type OfferOpening,
@@ -96,6 +97,30 @@ export type OfferCard = {
   readonly expires: string;
   readonly rate: string;
   readonly rateSalt: string;
+  /** Whether the offer's ancestors take a share of royalties (then top-ups name the offer). Missing means no. */
+  readonly split?: boolean;
+};
+
+/**
+ * What a parent breeder hands the breeder of a new variety bred from theirs: the exact
+ * terms of the descent link they will confirm. The child proposes these; the parent's
+ * client confirms only a link whose terms match the card it made.
+ */
+export type LinkTermsCard = HeldLinkTerms;
+
+/** One place in a variety's pedigree chart, as a client shows it before anyone pays. */
+export type ChartPlace = {
+  readonly place: number;
+  /** 1 = parent, 2 = grandparent, 3 = great-grandparent. */
+  readonly generation: number;
+  readonly link: string;
+  readonly parent: string;
+  readonly payTo: string;
+  readonly color: string;
+  /** The share this place takes, in basis points (halved per generation beyond the parent). */
+  readonly effectiveShare: number;
+  readonly fee: bigint;
+  readonly until: bigint;
 };
 
 /** What a licensee gives the breeder with the signed terms: it lets the breeder read their settlements. */
@@ -150,6 +175,7 @@ export const openingOf = (c: OfferCard): OfferOpening => ({
   color: unhex(c.color),
   rateCommit: unhex(c.rateCommit),
   expires: BigInt(c.expires),
+  split: c.split === true,
 });
 
 /** Refuse an offer card that does not match the chain, or whose rate does not open its commitment. */
@@ -164,7 +190,8 @@ export const checkOfferCard = (card: OfferCard, onChain?: RoyaltyOffer): void =>
       hex(onChain.payTo.bytes) === card.payTo.toLowerCase() &&
       hex(onChain.color) === card.color.toLowerCase() &&
       hex(onChain.rateCommit) === card.rateCommit.toLowerCase() &&
-      onChain.expires === BigInt(card.expires);
+      onChain.expires === BigInt(card.expires) &&
+      onChain.split === (card.split === true);
     if (!same) throw new Error('That offer card does not match the offer on chain. Do not pay against it.');
   }
 };
@@ -250,6 +277,99 @@ export const recordStanding = (main: ReturnType<typeof veilcoreLedger>, record: 
   return live ? { ok: true } : { ok: false, why: 'moved' };
 };
 
+type MainLedger = ReturnType<typeof veilcoreLedger>;
+const identityOf = (main: MainLedger, r: Uint8Array): Uint8Array =>
+  main.originOf.member(r) ? main.originOf.lookup(r) : r;
+const headOfIdentity = (main: MainLedger, id: Uint8Array): Uint8Array =>
+  main.headOf.member(id) ? main.headOf.lookup(id) : id;
+
+export type PedigreeStanding =
+  | { readonly ok: true; readonly warnings: readonly string[] }
+  | { readonly ok: false; readonly why: string };
+
+/**
+ * Rule 4 (descent): a record's pedigree chart names, identity for identity, exactly the
+ * parents the main VeilCore contract confirms for it NOW, and so does every ancestor's,
+ * up to three generations. A confirmed parent left out of the chart (or one named that the
+ * main contract does not confirm) means refuse. Warns when a parent record has since been
+ * recovered from theft, since links it confirmed may have been made by the thief.
+ */
+export const pedigreeStanding = (
+  main: MainLedger,
+  roy: RoyaltiesLedger,
+  record: Uint8Array,
+  depth = 3,
+): PedigreeStanding => {
+  const warnings: string[] = [];
+  const short = (b: Uint8Array): string => hex(b).slice(0, 10);
+  const check = (r: Uint8Array, d: number): string | undefined => {
+    const id = identityOf(main, r);
+    const confirmed = main.parentsOf.member(id) ? [...main.parentsOf.lookup(id)].map(hex).sort() : [];
+    if (!roy.stacks.member(r))
+      return confirmed.length === 0
+        ? undefined
+        : `record ${short(r)} has parents confirmed in the VeilCore contract, but its ancestors are not final here`;
+    const chart = roy.stacks.lookup(r);
+    const named: string[] = [];
+    for (const lid of chart.slice(0, 2)) {
+      if (isZero(lid)) continue;
+      const l = roy.links.lookup(lid);
+      if (hex(identityOf(main, l.child)) !== hex(id))
+        return `record ${short(r)} uses a pedigree chart of another identity`;
+      const pid = identityOf(main, l.parent);
+      named.push(hex(pid));
+      if (
+        main.recoveriesOf.member(pid) &&
+        main.recoveriesOf.lookup(pid).read() > 0n &&
+        hex(headOfIdentity(main, pid)) !== hex(l.parent)
+      )
+        warnings.push(
+          `parent record ${short(l.parent)} has since been recovered from theft: its link may have been made by the thief`,
+        );
+    }
+    named.sort();
+    if (named.length !== confirmed.length || named.some((x, i) => x !== confirmed[i]))
+      return `record ${short(r)}'s pedigree chart does not name the parents the VeilCore contract confirms for it`;
+    if (d > 1)
+      for (const lid of chart.slice(0, 2)) {
+        if (isZero(lid)) continue;
+        const why = check(roy.links.lookup(lid).parent, d - 1);
+        if (why !== undefined) return why;
+      }
+    return undefined;
+  };
+  const why = check(record, depth);
+  return why === undefined ? { ok: true, warnings } : { ok: false, why };
+};
+
+/** A record's pedigree chart, place by place, for showing before anyone pays. */
+export const chartOf = (roy: RoyaltiesLedger, record: Uint8Array): ChartPlace[] => {
+  if (!roy.stacks.member(record)) return [];
+  return roy.stacks
+    .lookup(record)
+    .map((lid, place) => ({ lid, place }))
+    .filter(({ lid }) => !isZero(lid) && roy.links.member(lid))
+    .map(({ lid, place }) => {
+      const l = roy.links.lookup(lid);
+      const generation = place < 2 ? 1 : place < 6 ? 2 : 3;
+      return {
+        place,
+        generation,
+        link: hex(lid),
+        parent: hex(l.parent),
+        payTo: hex(l.payTo.bytes),
+        color: hex(l.color),
+        effectiveShare: Number(l.share) / 2 ** (generation - 1),
+        fee: place < 2 ? l.fee : 0n,
+        until: l.until,
+      };
+    });
+};
+
+const chartSplits = (roy: RoyaltiesLedger, record: Uint8Array): boolean =>
+  roy.stacks.member(record) &&
+  roy.stacks.lookup(record).some((lid) => !isZero(lid) && roy.links.member(lid) && roy.links.lookup(lid).share > 0n);
+
 export type OfferView = RoyaltyOffer & { readonly id: Uint8Array };
 
 export type OfferTerms = {
@@ -322,6 +442,18 @@ export class RoyaltiesAPI {
     return recordStanding(veilcoreLedger(state.data), record);
   }
 
+  /** Rule 4 against the main contract at `mainAddress` now. */
+  async pedigreeIn(mainAddress: ContractAddress, record: Uint8Array): Promise<PedigreeStanding> {
+    const state = await this.providers.publicDataProvider.queryContractState(mainAddress);
+    if (state === null || state === undefined) return { ok: false, why: `no VeilCore contract at ${mainAddress}` };
+    return pedigreeStanding(veilcoreLedger(state.data), await this.currentLedger(), record);
+  }
+
+  /** A record's pedigree chart on this contract. */
+  async chart(record: Uint8Array): Promise<ChartPlace[]> {
+    return chartOf(await this.currentLedger(), record);
+  }
+
   async held(): Promise<RoyaltiesHeld> {
     const ps = await this.providers.privateStateProvider.get(royaltiesPrivateStateKey);
     return { ...emptyRoyaltiesHeld(), ...(ps?.held ?? {}) };
@@ -370,6 +502,26 @@ export class RoyaltiesAPI {
     const nonce = utils.randomBytes(32);
     const offer = R.offerId(R.recordCommit(recordSecret), nonce);
     const rateCommit = t.rate === 0n ? ZERO32() : R.rateCommit(t.rate, rateSalt);
+    const before = await this.currentLedger();
+    const record = R.recordCommit(recordSecret);
+    if (
+      !before.stacks.member(record) &&
+      ((before.linksConfirmed.member(record) && before.linksConfirmed.lookup(record) > 0n) ||
+        (before.linksPending.member(record) && before.linksPending.lookup(record) > 0n))
+    )
+      throw new Error(
+        'This record has descent links: finalise its ancestors first (it cannot be changed afterwards). Nothing was sent.',
+      );
+    if (mainAddress !== undefined) {
+      const ped = await this.pedigreeIn(mainAddress, record);
+      if (before.stacks.member(record) && !ped.ok)
+        throw new Error(`Buyers would refuse this offer: ${ped.why}. Nothing was sent.`);
+    }
+    const split = chartSplits(before, record);
+    if (split && t.rate === 0n)
+      throw new Error(
+        "This record's ancestors take a share of royalties, so its offers must take royalties through the contract. Nothing was sent.",
+      );
     const card: OfferCard = {
       kind: 'veilcore-offer-card',
       contract: this.deployedContractAddress.toLowerCase(),
@@ -380,6 +532,7 @@ export class RoyaltiesAPI {
       expires: String(t.expires),
       rate: String(t.rate),
       rateSalt: hex(rateSalt),
+      split,
     };
     // Kept before the call, so an interrupted post still leaves the admin secret and card here.
     await this.updateHeld((h) => ({
@@ -518,6 +671,9 @@ export class RoyaltiesAPI {
             ? "That offer's record is not an anchored record in the VeilCore contract. Nothing was sent."
             : `No VeilCore contract at ${mainAddress} to check the record against. Nothing was sent.`,
       );
+    const ped = await this.pedigreeIn(mainAddress, o.record);
+    if (!ped.ok) throw new Error(`Refused: ${ped.why}. Nothing was sent.`);
+    for (const w of ped.warnings) this.logger?.warn(w);
     const secret = utils.randomBytes(32);
     const license = licenceKeyOf(secret, offer, o.expires);
     const slot = await this.freeSlot();
@@ -529,7 +685,11 @@ export class RoyaltiesAPI {
       licences: [...h.licences, { offer: hex(offer), secret: hex(secret), expires: String(o.expires) }],
       mine: [...(h.mine ?? []), hex(license)].slice(-512),
     }));
-    const tx = await this.call('buyLicense', { licenseSecret: secret }, (c) => c.callTx.buyLicense(offer, slot));
+    const tx = await this.call(
+      'buyLicense',
+      { licenseSecret: secret, split: { record: o.record, color: o.color, total: o.price, now: nowSeconds() } },
+      (c) => c.callTx.buyLicense(offer, slot),
+    );
     return { ...tx, license, licenceCard: this.cardFor(secret, offer, license, o.expires) };
   }
 
@@ -563,7 +723,7 @@ export class RoyaltiesAPI {
   }
 
   /** Pay a top-up request (anyone). The amount goes to the breeder's wallet in this transaction. */
-  async payTopUp(req: TopUpRequest, amount: bigint): Promise<TxRef> {
+  async payTopUp(req: TopUpRequest, amount: bigint, mainAddress?: ContractAddress): Promise<TxRef> {
     if (req.kind !== 'veilcore-topup-request') throw new Error('That is not a top-up request.');
     if (amount <= 0n) throw new Error('A top-up must be more than zero. Nothing was sent.');
     if (req.card.contract.toLowerCase() !== this.deployedContractAddress.toLowerCase())
@@ -571,16 +731,33 @@ export class RoyaltiesAPI {
     const o = await this.offer(unhex(req.card.offer));
     checkOfferCard(req.card, o);
     const op = openingOf(req.card);
+    const rate = { rate: BigInt(req.card.rate), salt: unhex(req.card.rateSalt) };
+    if (mainAddress !== undefined) {
+      const ped = await this.pedigreeIn(mainAddress, o.record);
+      if (!ped.ok) throw new Error(`Refused: ${ped.why}. Nothing was sent.`);
+      for (const w of ped.warnings) this.logger?.warn(w);
+    }
+    if (o.split) {
+      // The ancestors take a share: this top-up names the offer, and pays each share in the same call.
+      if (o.expires <= nowSeconds()) throw new Error('That offer has ended. Nothing was sent.');
+      return this.call(
+        'topUpSplit',
+        {
+          code: unhex(req.code),
+          rate,
+          split: { record: o.record, color: o.color, total: amount, now: nowSeconds() },
+        },
+        (c) => c.callTx.topUpSplit(op.offer, amount),
+      );
+    }
     const until = roundedValidUntil(op.expires);
     if (until === undefined)
       throw new Error(
         'That offer ends within two days, so top-ups for it are closed (one now would show which offer it is). ' +
           'Credit already held can still be settled. Nothing was sent.',
       );
-    return this.call(
-      'topUp',
-      { opening: op, code: unhex(req.code), rate: { rate: BigInt(req.card.rate), salt: unhex(req.card.rateSalt) } },
-      (c) => c.callTx.topUp({ bytes: op.payTo }, op.color, amount, until),
+    return this.call('topUp', { opening: op, code: unhex(req.code), rate }, (c) =>
+      c.callTx.topUp({ bytes: op.payTo }, op.color, amount, until),
     );
   }
 
@@ -716,6 +893,165 @@ export class RoyaltiesAPI {
     );
     await this.markSpent(card.offer, [spent]);
     return tx;
+  }
+
+  // ─────────────────────────────────────────── descent (royalties on offspring)
+
+  /**
+   * As a PARENT: make the terms card for a variety bred from your record. No transaction.
+   * The payee key is made here and kept; the child's breeder proposes exactly these terms.
+   */
+  async linkTerms(
+    parentSecret: Uint8Array,
+    t: {
+      readonly color: Uint8Array;
+      readonly fee: bigint;
+      readonly share: bigint;
+      readonly generations: bigint;
+      readonly until: bigint;
+      readonly payTo: Uint8Array;
+    },
+  ): Promise<LinkTermsCard> {
+    if (t.share < 0n || t.share > 5000n) throw new Error('A share is 0 to 5000 basis points (at most half).');
+    if (t.generations < 1n || t.generations > 3n) throw new Error('A link runs for 1 to 3 generations.');
+    if (t.fee < 0n) throw new Error('The fee cannot be negative.');
+    if (t.until <= nowSeconds()) throw new Error('The end date must be in the future.');
+    if (t.payTo.length !== 32) throw new Error('The payout wallet is a 32-byte unshielded address.');
+    const payeeSecret = utils.randomBytes(32);
+    const card: LinkTermsCard = {
+      kind: 'veilcore-link-terms',
+      contract: this.deployedContractAddress.toLowerCase(),
+      parent: hex(R.recordCommit(parentSecret)),
+      color: hex(t.color),
+      fee: String(t.fee),
+      share: String(t.share),
+      generations: String(t.generations),
+      until: String(t.until),
+      payTo: hex(t.payTo),
+      payee: hex(R.payeeCommit(payeeSecret)),
+    };
+    await this.updateHeld((h) => ({
+      ...h,
+      linkTerms: { ...h.linkTerms, [card.payee]: { terms: card, payeeSecret: hex(payeeSecret) } },
+    }));
+    return card;
+  }
+
+  /** As a CHILD: propose the link on the parent's terms card. Binds nothing until the parent confirms. */
+  async proposeLink(childSecret: Uint8Array, card: LinkTermsCard): Promise<TxRef & { readonly link: Uint8Array }> {
+    if (card.kind !== 'veilcore-link-terms') throw new Error('That is not a link terms card.');
+    if (card.contract.toLowerCase() !== this.deployedContractAddress.toLowerCase())
+      throw new Error('That terms card is for another royalties contract. Nothing was sent.');
+    const child = R.recordCommit(childSecret);
+    const l = await this.currentLedger();
+    if (l.stacks.member(child))
+      throw new Error("Your record's ancestors are already final: no new links. Nothing was sent.");
+    const tx = await this.call('proposeLink', { recordSecret: childSecret }, (c) =>
+      c.callTx.proposeLink(
+        unhex(card.parent),
+        unhex(card.color),
+        BigInt(card.fee),
+        BigInt(card.share),
+        BigInt(card.generations),
+        BigInt(card.until),
+        { bytes: unhex(card.payTo) },
+        unhex(card.payee),
+      ),
+    );
+    return { ...tx, link: R.linkId(child, unhex(card.parent)) };
+  }
+
+  /** As a CHILD: withdraw a link the parent has not confirmed. */
+  async withdrawLink(childSecret: Uint8Array, parent: Uint8Array): Promise<TxRef> {
+    return this.call('withdrawLink', { recordSecret: childSecret }, (c) => c.callTx.withdrawLink(parent));
+  }
+
+  /**
+   * As a PARENT: confirm a child's link, only if its terms are exactly a card you made.
+   * Your own ancestors must be final first (posting an offer finalises an empty chart).
+   */
+  async confirmLink(parentSecret: Uint8Array, child: Uint8Array): Promise<TxRef> {
+    const parent = R.recordCommit(parentSecret);
+    const l = await this.currentLedger();
+    const id = R.linkId(child, parent);
+    if (!l.links.member(id)) throw new Error('No link proposed from that record to yours. Nothing was sent.');
+    const link = l.links.lookup(id);
+    const mine = (await this.held()).linkTerms?.[hex(link.payee)];
+    const t = mine?.terms;
+    if (
+      t === undefined ||
+      t.parent !== hex(parent) ||
+      t.color !== hex(link.color) ||
+      BigInt(t.fee) !== link.fee ||
+      BigInt(t.share) !== link.share ||
+      BigInt(t.generations) !== link.generations ||
+      BigInt(t.until) !== link.until ||
+      t.payTo !== hex(link.payTo.bytes)
+    )
+      throw new Error('That link does not carry terms you offered on this computer. Nothing was sent.');
+    if (!l.stacks.member(parent))
+      throw new Error(
+        'Finalise your own ancestors first (or post an offer, which finalises an empty chart). Nothing was sent.',
+      );
+    return this.call('confirmLink', { recordSecret: parentSecret }, (c) => c.callTx.confirmLink(child));
+  }
+
+  /**
+   * As a CHILD: make your ancestors final, from exactly the parents the main VeilCore
+   * contract confirms for your record. Refused while a parentage proposal or a link is
+   * still waiting, or while a confirmed parent has no confirmed link. Cannot be undone.
+   */
+  async finaliseStack(childSecret: Uint8Array, mainAddress: ContractAddress): Promise<TxRef> {
+    const child = R.recordCommit(childSecret);
+    const state = await this.providers.publicDataProvider.queryContractState(mainAddress);
+    if (state === null || state === undefined)
+      throw new Error(`No VeilCore contract at ${mainAddress}. Nothing was sent.`);
+    const main = veilcoreLedger(state.data);
+    const l = await this.currentLedger();
+    if (l.stacks.member(child)) throw new Error("Your record's ancestors are already final.");
+    const id = identityOf(main, child);
+    if (main.pendingParentOf.member(id))
+      throw new Error(
+        'A parentage proposal of your record is still waiting in the VeilCore contract. Nothing was sent.',
+      );
+    if (l.linksPending.member(child) && l.linksPending.lookup(child) > 0n)
+      throw new Error('A link of your record is still waiting for its parent. Nothing was sent.');
+    const parents = main.parentsOf.member(id) ? [...main.parentsOf.lookup(id)] : [];
+    const chosen: Uint8Array[] = [];
+    for (const p of parents) {
+      const found = [...l.links].find(
+        ([, k]) => k.confirmed && hex(k.child) === hex(child) && hex(identityOf(main, k.parent)) === hex(p),
+      );
+      if (found === undefined)
+        throw new Error(
+          `Parent ${hex(p).slice(0, 10)} is confirmed in the VeilCore contract but has no confirmed link here. Nothing was sent.`,
+        );
+      chosen.push(found[0]);
+    }
+    const [a, b] = [chosen[0] ?? ZERO32(), chosen[1] ?? ZERO32()];
+    return this.call('finaliseStack', { recordSecret: childSecret }, (c) => c.callTx.finaliseStack(a, b));
+  }
+
+  /** A record that replaced `earlier` (same identity in the main contract) takes over its chart. */
+  async adoptStack(newSecret: Uint8Array, earlier: Uint8Array, mainAddress: ContractAddress): Promise<TxRef> {
+    const state = await this.providers.publicDataProvider.queryContractState(mainAddress);
+    if (state === null || state === undefined)
+      throw new Error(`No VeilCore contract at ${mainAddress}. Nothing was sent.`);
+    const main = veilcoreLedger(state.data);
+    if (hex(identityOf(main, R.recordCommit(newSecret))) !== hex(identityOf(main, earlier)))
+      throw new Error('Those two records are not one identity in the VeilCore contract. Nothing was sent.');
+    return this.call('adoptStack', { recordSecret: newSecret }, (c) => c.callTx.adoptStack(earlier));
+  }
+
+  /** As a PARENT: move where a link you confirmed is paid, with the payee key kept here. */
+  async movePayee(link: Uint8Array, payTo: Uint8Array): Promise<TxRef> {
+    const l = await this.currentLedger();
+    if (!l.links.member(link)) throw new Error('No such link. Nothing was sent.');
+    const kept = (await this.held()).linkTerms?.[hex(l.links.lookup(link).payee)];
+    if (kept === undefined) throw new Error("This computer does not hold that link's payee key. Nothing was sent.");
+    return this.call('movePayee', { adminSecret: unhex(kept.payeeSecret) }, (c) =>
+      c.callTx.movePayee(link, { bytes: payTo }),
+    );
   }
 
   // ─────────────────────────────────────────── presentations

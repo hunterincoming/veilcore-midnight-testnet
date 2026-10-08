@@ -114,6 +114,7 @@ const openingOf = (
     color: o.color,
     rateCommit: o.rateCommit,
     expires: o.expires,
+    split: o.split,
   };
 };
 
@@ -250,7 +251,7 @@ describe("one record, two contracts", () => {
     expect(hex(o.rateCommit)).toBe(hex(R.rateCommit(RATE, SALT)));
     expect(
       sim.state.offerLeaves.findPathForLeaf(
-        R.offerLeaf(offer, WALLET.bytes, NIGHT, o.rateCommit, EXPIRES),
+        R.offerLeaf(offer, WALLET.bytes, NIGHT, o.rateCommit, EXPIRES, false),
       ),
     ).toBeDefined();
   });

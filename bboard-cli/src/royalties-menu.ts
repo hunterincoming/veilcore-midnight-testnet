@@ -298,7 +298,12 @@ export const handleRoyaltiesChoice = async (choice: string, c: RoyaltiesMenuCont
             `licence ${short(s.licence)}  ${s.period === undefined ? 'a period NOT in your list' : `period ${s.period}`}` +
               `  units ${s.units}  (offer ${short(s.offer)})`,
           );
-        const missing = cards.flatMap((card) =>
+        const accepted = cards.filter(
+          (card, i) =>
+            !refused.some((r) => r.card === card) &&
+            cards.findIndex((x) => x.licence.toLowerCase() === card.licence.toLowerCase()) === i,
+        );
+        const missing = accepted.flatMap((card) =>
           periods
             .filter((p) => !found.some((f) => f.licence === card.licence && f.period === p))
             .map((p) => `${short(card.licence)} ${p}`),

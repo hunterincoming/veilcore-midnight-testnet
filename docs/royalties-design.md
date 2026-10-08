@@ -74,8 +74,8 @@ Each piece is a known construction, not an invention:
 Public: who pays at a licence purchase and a top-up, the breeder's wallet, the token, the
 amount, the offer at a purchase, and which circuit each transaction calls (and its fee-paying
 wallet). A top-up shows a rounded "open until" time (always the start of the day after
-tomorrow, UTC) so it names no offer; top-ups close for an offer's last two days for the same
-reason. A breeder with one royalty offer per wallet and token gets no cover from that.
+tomorrow, UTC) so it names no offer; for the same reason top-ups close one to two days
+before an offer ends. A breeder with one royalty offer per wallet and token gets no cover from that.
 
 Not public: at a settlement, the offer, the licensee, the period, the units and the rate. At
 a presentation, the licence and the offer (the verifier knows the offer it asked about).
@@ -84,8 +84,9 @@ What can still link, said plainly:
 
 1. **Timing and roots.** Every proof publishes the tree root it used. If your own transaction
    is the newest in that tree and you prove straight after, a watcher can guess the proof is
-   yours. The client waits by default until someone else's transaction of the same kind has
-   landed, and then lets you send anyway if you choose (it tells you what that risks). Waiting
+   yours. By default the client refuses until someone else's transaction of the same kind has
+   landed, and offers to send anyway (saying what that risks). Right after the client merges
+   two of your notes it always asks, since the merged note is then the newest. Waiting
    for one other transaction hides you among two, not among everyone. **Privacy grows with
    use:** on a quiet contract with three growers, it is weak. That is true of every
    shielded system.
@@ -182,8 +183,8 @@ on-chain licensing projects, the academic papers, and Midnight's own code.
 2. Proving keys generated and fingerprinted, as for the live contracts.
 3. The preprod run (`docs/royalties-preprod-run.md`). It confirms with real wallets that a
    purchase and a top-up move money from one wallet to another in one transaction. Still to
-   confirm on preprod: when a purchase or top-up fails on chain (a race for the last licence,
-   say), the payer's transfer fails with it.
+   confirm on preprod, separately from that run: when a purchase or top-up fails on chain (a
+   race for the last licence, say), the payer's transfer fails with it.
 4. A lawyer on money transmission and royalty collection, before real money moves.
 5. A new deployment record and filing for this contract. The filed record says no VeilCore
    circuit moves tokens; that stays true of the live contracts, not of this one.
@@ -204,11 +205,19 @@ None is a human or outside audit.
 - **Version 2, round 3 (contract and client together):** no blocker; no way found to settle
   without paying, spend twice, spend another's note, mint credit, use the wrong rate or forge
   a presentation. 1 high: one revocation anywhere stalled every presentation (now per offer;
-  test `H1`). 4 medium: the breeder could miss a settlement when two were in one transaction
-  (every settlement now kept, test `M1`); a second equal top-up could not be recorded; a
-  top-up near an offer's end named the offer; one licence could quietly vouch for many
-  growers (now a stable scope per verifier, and the limit stated). 5 low, all fixed or
-  stated above. Fixed and tested.
+  contract test `H1`; the client's check is tested on the simulator). 4 medium: the breeder
+  could miss a settlement when two were in one transaction (every settlement is now kept;
+  test `M1` checks two settlements stay readable, though the simulator runs them as separate
+  transactions); a second equal top-up could not be recorded (tested); a top-up near an
+  offer's end named the offer (tested); one licence could quietly vouch for many growers (a
+  stable scope per verifier, repeat answers flagged, and the limit stated). 5 low, fixed or
+  stated above.
+- **Version 2, round 4 (checking round 3's fixes):** all hold. 4 low: removing an ended offer
+  erased its revocation record, so a revoked answer could later read as accepted (the record
+  is now kept, and the verifier refuses to judge an answer for a removed offer); repeat
+  holder tags relied on the verifier's memory (now flagged by the client); the "wait for a
+  seal" message promised a seal nobody runs automatically (reworded: anyone can seal, menu
+  68); doc wording. Fixed.
 - **Found by running the real client end to end** (before round 3): one failed purchase made
   credit read zero; a settlement that landed but timed out lost its change; the
   wait-before-proving rule blocked on trees a proof does not use and could block the last

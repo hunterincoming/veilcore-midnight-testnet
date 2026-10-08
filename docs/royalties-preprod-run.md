@@ -86,8 +86,8 @@ Desktop: the offer card, the licence card, the top-up request and the licence re
 
 7. - `55`: read your licensees' settlements. Cards `~/Desktop/licence-card.json`, periods
      `TEST-1`. **Expect `period TEST-1  units 5`.** This is the breeder reading private books.
-   - `66`: make a licence request. Offer id; period `TEST-1`; at least `3`; one-off scope:
-     Enter; file `~/Desktop/request.json`.
+   - `66`: make a licence request. Offer id; period `TEST-1`; at least `3`; "one-off scope?"
+     Enter (that means no: your usual scope); file `~/Desktop/request.json`.
 
 ## Grower, window B
 
@@ -107,7 +107,9 @@ Desktop: the offer card, the licence card, the top-up request and the licence re
 
 ## Grower, window B
 
-13. `64` with `~/Desktop/request2.json`. Expect it to be **refused** (no live licence).
+13. `64` with `~/Desktop/request2.json`. Expect it to be **refused** (no live licence). This
+    refusal comes from the grower's own client, which sees the revocation; the contract's own
+    refusal of a revoked licence is covered by the tests, not by this run.
 14. `0` to exit. Start once more the same way, read the NIGHT balance, then `0`.
 
 ## Breeder, window A
@@ -125,6 +127,12 @@ Desktop: the offer card, the licence card, the top-up request and the licence re
 Nothing in those is secret. Do not paste the admin secret, the wallet seeds, the recovery
 secret, or the card files (the offer card holds the private rate; the licence card lets
 anyone read that licence's settlements).
+
+## Not covered by this run
+
+- A purchase or top-up that fails on chain (say, two buyers racing for the last licence):
+  that the payer's transfer fails with it. That needs two wallets submitting at once and is
+  a separate check before mainnet.
 
 ## If something goes differently
 

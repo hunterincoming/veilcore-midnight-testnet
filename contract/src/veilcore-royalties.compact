@@ -151,7 +151,8 @@ export ledger receipts: HistoricMerkleTree<32, Bytes<32>>;
  */
 export ledger settlements: Map<Bytes<32>, Settlement>;
 /**
- * Per offer: the revocation count when one of its licences was last revoked. A verifier
+ * Per offer: the revocation count when one of its licences was last revoked. Kept after
+ * the offer is removed, so a removal never hides a revocation from a verifier. A verifier
  * checks only the offer it asked about, so revocations on other offers (or spam on an
  * attacker's own offer) never hold up its presentations.
  */
@@ -509,9 +510,6 @@ export circuit removeEnded(offer: Bytes<32>): [] {
   assert(blockTimeGte(o.expires), "That offer has not ended");
   assert(o.live == 0, "Clear that offer's ended licences first");
   offers.remove(id);
-  if (offerRevokedAt.member(id)) {
-    offerRevokedAt.remove(id);
-  }
 }
 
 /**

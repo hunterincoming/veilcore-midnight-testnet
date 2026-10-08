@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import { setNetworkId } from '@midnight-ntwrk/midnight-js-network-id';
 import { pureCircuits as C } from '../../contract/src/managed/veilcore/contract/index.js';
-import { newPresentationRequest, periodBytes, recordStanding } from '../../api/src/royalties-api.js';
+import { newPresentationRequest, periodBytes, recordStanding, roundedValidUntil } from '../../api/src/royalties-api.js';
 import { assertRoyaltiesDeployAllowed, assertRoyaltiesJoinAllowed } from '../../api/src/deploy-guard.js';
 import { VeilcoreSimulator, as, secret } from '../../contract/src/test/veilcore-simulator.js';
 
@@ -98,5 +98,20 @@ describe('mainnet guards', () => {
     expect(withNetwork('preprod', () => assertRoyaltiesJoinAllowed('ab'.repeat(32)))).toBe('development');
     expect(() => withNetwork('mainnet', () => assertRoyaltiesDeployAllowed())).toThrow(/test networks only/);
     expect(() => withNetwork('mainnet', () => assertRoyaltiesJoinAllowed('ab'.repeat(32)))).toThrow(/pins no address/);
+  });
+});
+
+describe('the time a top-up says its offer is open until', () => {
+  const DAY = 86400n;
+  const now = 1_800_000_000n + 12345n;
+  const start = (now / DAY) * DAY;
+  it('is the start of the day after tomorrow for every offer that lasts past it', () => {
+    expect(roundedValidUntil(now + 400n * DAY, now)).toBe(start + 2n * DAY);
+    expect(roundedValidUntil(start + 2n * DAY + 1n, now)).toBe(start + 2n * DAY);
+    expect(roundedValidUntil(start + 2n * DAY, now)).toBe(start + 2n * DAY);
+  });
+  it('is nothing (top-ups closed) when the offer ends before then, so no top-up names an end date', () => {
+    expect(roundedValidUntil(start + 2n * DAY - 1n, now)).toBeUndefined();
+    expect(roundedValidUntil(now + 3600n, now)).toBeUndefined();
   });
 });

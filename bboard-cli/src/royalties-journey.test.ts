@@ -16,7 +16,13 @@ import {
   royaltiesPureCircuits as R,
   royaltiesWitnesses,
 } from '../../contract/src/royalties.js';
-import { NIGHT_COLOR, RoyaltiesAPI, WouldLinkError, newPresentationRequest } from '../../api/src/royalties-api.js';
+import {
+  NIGHT_COLOR,
+  RoyaltiesAPI,
+  WouldLinkError,
+  newPresentationRequest,
+  revocationVerdict,
+} from '../../api/src/royalties-api.js';
 import { type RoyaltiesProviders, royaltiesPrivateStateKey } from '../../api/src/royalties-types.js';
 import { VeilcoreSimulator, as, secret } from '../../contract/src/test/veilcore-simulator.js';
 
@@ -247,6 +253,19 @@ describe('the royalties client, end to end on the simulator', () => {
     await g1.api.claimTopUp(offer, undefined, 5n);
     await expect(g1.api.claimTopUp(offer, undefined, 5n)).rejects.toThrow(/already recorded/);
     expect(await g1.api.credit(offer)).toBe(before + 10n);
+
+    // The verifier's revocation check, from the state right after g1's presentation.
+    const atProof = chain.ledger;
+    expect(revocationVerdict(offer, atProof, chain.ledger)).toEqual({
+      gone: false,
+      unsealed: false,
+      revokedSince: false,
+    });
+    // The first revocation seals at once (no seal yet); a second within 10 minutes cannot.
+    expect((await breeder.api.revokeLicense(b2.license)).sealed).toBe(true);
+    expect(revocationVerdict(offer, atProof, chain.ledger).revokedSince).toBe(true);
+    expect((await breeder.api.revokeLicense(b1.license)).sealed).toBe(false);
+    expect(revocationVerdict(offer, chain.ledger, chain.ledger).unsealed).toBe(true);
 
     // No call left its input in a store.
     for (const p of [breeder, g1, g2, payer, verifier])

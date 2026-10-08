@@ -788,14 +788,14 @@ describe("revocation, ending and seals", () => {
     expect(offerUnsealed(sim, offer)).toBe(false);
   });
 
-  it("a removed offer leaves no revocation entry behind", () => {
+  it("removing an offer keeps its revocation record, so a verifier still sees it", () => {
     const { sim, offer } = withOffer({ expires: T0 + 1000n });
     buy(sim, offer);
     sim.call({ admin: ADMIN }, "revokeLicense", keyOf(offer, LIC, T0 + 1000n));
     expect(sim.state.offerRevokedAt.member(offer)).toBe(true);
     sim.advance(2000n);
     sim.call({}, "removeEnded", offer);
-    expect(sim.state.offerRevokedAt.member(offer)).toBe(false);
+    expect(sim.state.offerRevokedAt.member(offer)).toBe(true);
   });
 
   it("a presentation proved before a revocation is rejected if it lands after the seal", () => {

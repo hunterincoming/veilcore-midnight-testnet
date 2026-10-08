@@ -100,6 +100,8 @@ export type RoyaltiesHeld = {
   readonly notes?: readonly HeldNote[];
   /** A verifier's seed for its scopes: the same offer always gets the same scope from this verifier. */
   readonly verifierSeed?: string;
+  /** Holder tags that answered this verifier, per offer, with when: a repeat is flagged. */
+  readonly seenHolders?: Readonly<Record<string, readonly { readonly holder: string; readonly at: string }[]>>;
   /** Licence keys, notes and receipts this party put on chain: never prove while one is the latest. */
   readonly mine?: readonly string[];
 };

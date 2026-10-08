@@ -219,6 +219,23 @@ export const roundedValidUntil = (expires: bigint, now = nowSeconds()): bigint |
   return expires >= dayAfterTomorrow ? dayAfterTomorrow : undefined;
 };
 
+/**
+ * What revocations say about a presentation of `offer`, from the contract state right after
+ * it (`atProof`) and now. Only that offer's revocations count.
+ */
+export const revocationVerdict = (
+  offer: Uint8Array,
+  atProof: RoyaltiesLedger,
+  now: RoyaltiesLedger,
+): { readonly gone: boolean; readonly unsealed: boolean; readonly revokedSince: boolean } => {
+  const at = (l: RoyaltiesLedger): bigint => (l.offerRevokedAt.member(offer) ? l.offerRevokedAt.lookup(offer) : 0n);
+  return {
+    gone: !now.offers.member(offer),
+    unsealed: at(atProof) > atProof.sealedRevocations,
+    revokedSince: at(now) > at(atProof),
+  };
+};
+
 /** Whether a record can stand behind an offer, read from the main VeilCore contract now. */
 export type RecordStanding =
   | { readonly ok: true }
@@ -819,8 +836,12 @@ export class RoyaltiesAPI {
       unhex(req.scope),
       unhex(req.challenge),
     );
-    const revokedAt = (l: RoyaltiesLedger): bigint =>
-      l.offerRevokedAt.member(offer) ? l.offerRevokedAt.lookup(offer) : 0n;
+    const { gone, unsealed, revokedSince } = revocationVerdict(offer, cells, await this.currentLedger());
+    if (gone)
+      return {
+        accepted: false,
+        lines: ['FAILED That offer has ended and been removed, so this answer cannot be judged now.'],
+      };
     const lines: string[] = [];
     const tagOk = hex(cells.lastPresentation) === hex(expected);
     lines.push(
@@ -830,22 +851,35 @@ export class RoyaltiesAPI {
           : `ok     A live licence from that offer, and that period settled for at least ${req.minUnits} unit(s).`
         : 'FAILED This transaction does not answer your request (another offer, period, time, scope or challenge).',
     );
-    const unsealed = revokedAt(cells) > cells.sealedRevocations;
     if (unsealed)
       lines.push(
-        'WAIT   A licence from this offer was revoked and not yet sealed when this was proved. Ask again after the ' +
-          `next seal (at most ${SEAL_INTERVAL_SECONDS / 60} minutes after the last one) before relying on it.`,
+        'WAIT   A licence from this offer was revoked and not yet sealed when this was proved. Anyone can seal ' +
+          `(menu 68) once ${SEAL_INTERVAL_SECONDS / 60} minutes have passed since the last seal; ask again after that.`,
       );
-    const revokedSince = revokedAt(await this.currentLedger()) > revokedAt(cells);
     if (revokedSince)
       lines.push('WAIT   A licence from this offer has been revoked since this was proved. Ask for a new answer.');
-    lines.push(
-      `holder ${hex(cells.lastPresentationHolder)} (repeats if the same licence answers you again in this scope)`,
-    );
+    const holder = hex(cells.lastPresentationHolder);
+    lines.push(`holder ${holder} (repeats if the same licence answers you again in this scope)`);
+    if (tagOk) {
+      const seen = ((await this.held()).seenHolders?.[req.offer] ?? []).filter(
+        (x) => x.holder === holder && x.at !== txId,
+      );
+      if (seen.length > 0)
+        lines.push(
+          `NOTE   This licence has answered you before (transaction ${seen.map((x) => x.at).join(', ')}). ` +
+            'If that was for another grower, one licence is vouching for both.',
+        );
+      await this.updateHeld((h) => {
+        const list = h.seenHolders?.[req.offer] ?? [];
+        return list.some((x) => x.holder === holder && x.at === txId)
+          ? h
+          : { ...h, seenHolders: { ...h.seenHolders, [req.offer]: [...list, { holder, at: txId }].slice(-256) } };
+      });
+    }
     lines.push(
       'note   This shows that someone holding a live licence answered, not that the person in front of you holds it.',
     );
-    return { accepted: tagOk && !unsealed && !revokedSince, lines, holder: hex(cells.lastPresentationHolder) };
+    return { accepted: tagOk && !unsealed && !revokedSince, lines, holder };
   }
 
   // ─────────────────────────────────────────── upkeep

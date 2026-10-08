@@ -139,7 +139,7 @@ decision below traces to one of them.
 
 ## Before mainnet
 
-1. Independent attack passes. Two were run on 8 October (see "Reviews").
+1. Attack passes. Three AI review passes were run on 8 October (see "Reviews"); a paid outside audit is still required.
 2. Proving keys generated and fingerprinted, as for the live contracts.
 3. A preprod run with real wallets (`docs/royalties-preprod-run.md`). This confirms that Lace and the SDK wallet add the payer's
    input and the breeder's output automatically. That is confirmed in SDK code but not yet on
@@ -151,7 +151,7 @@ decision below traces to one of them.
 
 ## Reviews
 
-**Round 1 (8 Oct 2026), independent reviewer.** 1 blocker, 2 high, 3 medium, 3 low. Blocker:
+**Round 1 (8 Oct 2026), a separate AI review agent (not a human or outside firm).** 1 blocker, 2 high, 3 medium, 3 low. Blocker:
 a paid-up proof could claim more units than were paid, or count a payment made through the
 licensee's own offer. High: a stolen or rotated record secret kept authority over offers;
 receipt squatting by front-running. Medium: the published end date named the offer; trees

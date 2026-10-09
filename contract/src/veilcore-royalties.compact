@@ -81,7 +81,9 @@
 // top-ups, how many generations it follows, an end date, a token, a payee); the parent
 // confirms those exact terms, after its own ancestors are final. The child can never change
 // them; the parent's payee key can move where they are paid or LOWER them, at most once in
-// 30 days (so it cannot stall descendants' sales at will). The child makes its ancestors
+// 30 days (so it cannot stall descendants' sales at will; lowering a share to a tiny one
+// can still leave a low-priced descendant offer unsellable, since every share must come to
+// at least one unit: clients warn the parent first). The child makes its ancestors
 // final once, naming every confirmed link (none can be left out), as a pedigree chart of
 // link ids in fixed places: 2 parents, 4 grandparents, 8 great-grandparents, each place
 // carried from the parent's chart only while its link still runs that far. A share is

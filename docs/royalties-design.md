@@ -19,7 +19,8 @@ on an **offer card** the breeder hands licensees with the terms. A grower **buys
 the price goes straight to the breeder's wallet in the same transaction, and the grower hands
 the breeder a **licence card** that lets the breeder read that licence's settlements and
 nothing more. Royalties are **prepaid** as credit: the grower, or a grain buyer or processor
-holding the grower's **top-up request**, pays an amount straight to the breeder's wallet. Each
+holding the grower's **top-up request** (the offer's public fields and a code, never the
+rate), pays an amount straight to the breeder's wallet. Each
 period the grower **settles** privately against that credit. Settling moves no money and
 publishes nothing that says which variety, which grower, which period, how many units or at
 what rate. The breeder reads all of that for their own licensees with the licence cards. A
@@ -42,13 +43,14 @@ is kept out of the payment and moved into the private settlement.
 | `postOffer` | record holder | Posts an offer, run from then on by its own admin key. A rate commitment must open to a rate above zero. | 35,039 |
 | `closeOffer`, `changeOfferAdmin` | offer admin | Stop new sales; hand the offer to a new key. | |
 | `buyLicense` | anyone | Pays the price (and any ancestors' shares and fees) and issues the licence, in one call. Sales are counted in counters, so two buyers at once do not conflict. | 38,905 |
-| `topUp` | anyone | Pays an amount to the breeder; creates a credit note only the licensee can spend. Proves the offer without naming it. Until 30 days after the offer ends. | 26,753 |
+| `topUp` | anyone | Pays an amount to the breeder; creates a credit note only the licensee can spend. Proves the offer without naming it. Until 30 days after the offer ends. The payer never sees the rate: `postOffer` already proved the commitment opens to a rate above zero. | 22,118 |
+| `topUpSplit` | anyone | The same for an offer whose ancestors take a royalty share: names the offer, and pays each share in the same call. | 28,516 |
 | `settle` | licensee | Spends a note, proves units × rate ≤ its value, keeps the change, records a unique receipt, a numbered lookup tag and the units masked for the breeder. | 102,942 |
 | `mergeNotes` | licensee | Joins two credit notes into one. | 69,023 |
 | `proveLicense` | licensee or delegate | A licence live at the verifier's time, and optionally a settled period ≥ N units; or that period settled under a licence since ended. Needs only the presentation key. | 51,485 |
 | `revokeLicense` | offer admin | Only if the offer said revocable, and only before it ends. Tracked per offer. | |
 | `clearEnded`, `removeEnded` | anyone | Tidy up ended licences (30 days after the end, at the earliest) and ended offers. | |
-| `sealRevocations` | anyone | Retires old licence roots so revoked licences stop proving; every tree's at most daily. Every 600 s at most. | |
+| `sealRevocations` | anyone | Retires old licence roots so revoked licences stop proving, at most once an hour for a revocation; every tree's at most daily. Every 600 s at most (a revocation seal that is due skips that wait). | |
 
 Measured with `zkir mock-compile` from compiler 0.31.1 on 8 October 2026. The limit for
 anything a holder proves is 2^17 = 131,072 rows. `settle` uses 79% of it (it was 96%
@@ -96,7 +98,11 @@ either way. A top-up shows a rounded "open until" time (always the start of the 
 tomorrow, UTC) so it names no offer. Top-ups run until 30 days after an offer ends (its last
 season can be paid for) and close one to two days before that, for the same reason. A
 breeder with one royalty offer per wallet and token gets no cover from that, and the
-client says so before paying.
+client says so before paying. "Today" is the payer's own clock: neither the ledger nor the
+indexer's contract state gives a recent block time without another network call, so the
+client does not look one up. A payer whose clock is a day or more off publishes a time
+nobody else uses that day, which marks the top-up as theirs (and a clock far enough
+behind is refused by the contract as already past). Keep the clock set automatically.
 
 Not public: at a settlement, the offer, the licensee, the period, the units and the rate. At
 a presentation, the licence and the offer (the verifier knows the offer it asked about).
@@ -163,11 +169,20 @@ on-chain licensing projects, the academic papers, and Midnight's own code.
 5. **An end date.** Royalties collected after patents expired lost Bayer the Intacta case in
    Mato Grosso ([Cultivar](https://revistacultivar.com.br/noticias/tribunal-de-mato-grosso-confirma-sentenca-sobre-cobranca-de-royalties-da-soja-intacta)).
    No sale or top-up after the end. Settling stays possible for at least 30 days after it,
-   since it moves no money and closes the books.
+   since it moves no money and closes the books. **A revocable licence can lose those 30
+   days:** a licence cannot be revoked after its end, but its admin can revoke it up to the
+   last second before, and a revoked licence settles nothing more, so its last season goes
+   unsettled. Terms for a revocable offer should say what happens to the last season.
 6. **Revocability is declared before anyone buys** (EIP-5484
    [link](https://eips.ethereum.org/EIPS/eip-5484)). Revocations are tracked per offer, so a
-   verifier waits for a seal only after a revocation on the offer it asked about. Nobody can
-   hold up other breeders' presentations by revoking their own licences.
+   verifier waits for a seal only after a revocation on the offer it asked about: revoking
+   your own licences never makes another breeder's verifiers wait. What a revocation on any
+   offer can still do, said exactly: its seal retires the licence tree's old roots, which
+   voids every settlement and presentation proved against them that has not landed yet.
+   Anyone can revoke a licence of an offer of their own, so the contract allows that at most
+   once an hour (plus the daily seal of every tree), and the client proves such a voided
+   settlement, merge or presentation once more and sends it again. The cost is that a
+   revocation waits up to an hour for its seal, and its offer's verifiers wait with it.
 7. **Licences are not tradable.** Tradable royalty rights pulled music-royalty and IP-token
    projects into securities trouble; Molecule keeps revenue rights off its tokens
    ([Molecule](https://molecule.xyz/blog/ipts-a-gain-of-function)).
@@ -199,7 +214,8 @@ on-chain licensing projects, the academic papers, and Midnight's own code.
   contract, and refuses top-ups and a verifier's check for an offer whose record was since
   recovered from theft (or is not anchored); a plain key change only warns, since sold
   licences cannot move. The contract itself does not check, so anyone can post an offer;
-  per-offer revocations mean that cannot disturb anyone else. Calls between contracts
+  per-offer revocations mean that never makes anyone else's verifiers wait (its revocations
+  can void proofs in flight at most once an hour: decision 6). Calls between contracts
   (ledger 9, not on mainnet yet) would let the contract check this itself.
 - **Losing the offer admin key is permanent.** Keep it on paper, like the maintenance key.
 - **Credit left when a licence ends or is revoked** stays with the breeder, who already holds
@@ -209,11 +225,21 @@ on-chain licensing projects, the academic papers, and Midnight's own code.
 - **The breeder's scan grows with use:** every settlement on the contract × every licence
   card. Fine at hundreds of growers; the numbered tags let a client look a licence's
   settlements up directly later.
-- **A purchase or settlement that timed out may have landed.** The client refuses to buy a
-  second licence from the same offer, or settle the same period again under the same
-  licence, unless asked; a top-up of your own that timed out is looked for and recorded.
-  One licence per offer per computer is the case the client is built for: with two, a
-  top-up request always credits the newer one.
+- **An offer, purchase or settlement that timed out may have landed.** The client refuses
+  to post again an offer it already has on chain from the same record with the same terms
+  fingerprint, price, number for sale and end date (to within a day), buy a second licence
+  from the same offer, or settle the same period again under the same licence, unless
+  asked; a top-up of your own that timed out is looked for and recorded. One licence per
+  offer per computer is the case the client is built for: with two, a top-up request always
+  credits the newer one.
+- **Two runs of the client on one computer share one store.** midnight-js writes back the
+  private state it read when a transaction started, minutes later. Every write of the
+  royalties state is merged with what is on disk (nothing in it is ever removed), and each
+  run remembers what it kept, so one run's write-back cannot drop the other's licences,
+  codes, notes or receipts. A lock on the store (so two runs never write at once) is a
+  separate change.
+- **A revoked licence still proves until its seal**, which can be up to an hour later (see
+  decision 6). A verifier is told to wait, and when it can ask again.
 - **A cleared licence still proves until the next daily seal.** Clearing an ended licence
   does not reset the licence tree at once (that would let anyone void proofs in flight at a
   time of their choosing). It matters only for a "last season" presentation, and the
@@ -301,3 +327,16 @@ None is a human or outside audit.
   understated: now said plainly), 4 low (68 uncapped for offers; a period with spaces could
   be settled twice; two licences on one offer confused the retry check; a verifier's period
   label could carry terminal codes). Fixed.
+- **Round 7 (a fresh review of the whole):** 3 medium. Anyone could still void every
+  settlement and presentation in flight every 10 minutes by revoking a licence of their own
+  offer and sealing (now at most once an hour, and the client proves a voided one again
+  once; "nobody can void proofs in flight at will" was wrong and is corrected above). The
+  top-up request handed the payer the private rate, which the contract no longer needed
+  (top-ups no longer open the rate; payers get a card without it). Two runs on one computer
+  could erase each other's licences and top-up codes (writes now merge with the store).
+  4 low: a post that timed out invited a duplicate offer (refused unless asked); a
+  revocable licence can lose its 30 days to settle, and a tiny payment to an ancestor is
+  refused, not paid nothing (docs corrected); lowering a link's share could make a
+  descendant's offer unsellable (the parent is warned first); the rounded top-up time uses
+  the payer's clock (documented). Regression tests: `royalties-hardening.test.ts` ("seals")
+  and `royalties-attacks.test.ts` ("round 7").

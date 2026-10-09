@@ -44,6 +44,11 @@ Nothing binds until confirmed. Once confirmed, the child can change nothing and 
 removed. The parent's separate payee key can move where it is paid, or LOWER the terms (a
 smaller share or fee, an earlier end: a protection that ended, a dispute settled), never
 raise them, and at most once in 30 days, so it cannot stall the child's sales at will.
+Lowering a share to a tiny one that is not zero can still stall a descendant's offer: every
+share must come to at least one unit of a payment, so at 0.05% an offer priced under 2,000
+units (4,000 for a grandparent's place, 8,000 for a great-grandparent's) can no longer be
+sold, and its breeder must post a new one at a higher price. The parent's client lists every
+open offer that would break and asks first (menu 81); zero is always safe.
 
 | Term | Meaning |
 |---|---|
@@ -141,8 +146,9 @@ not joined the royalties contract to check.
   has to read anyone's books.
 - **The child sets the price and the royalty rate.** A low price or a low rate lowers
   every share. The fee per licence is the floor an ancestor can rely on. Shares round down,
-  so a very small payment (under ten units at 10%) pays an ancestor nothing: less than one
-  unit per place per payment.
+  and a payment too small for every running share to come to at least one unit is refused:
+  at 10%, a purchase or split top-up under 10 units (under 20 with a grandparent at 10%, under
+  40 with a great-grandparent). Nothing is ever paid with an ancestor's share silently zero.
 - **Not on chain: declaring.** A breeder can anchor a new variety with no parents, or
   confirm "sock" parents from records they control (which also takes the two parent
   places, and the 50%). Clients show the pedigree; DNA evidence catches the rest, as it
@@ -163,12 +169,13 @@ not joined the royalties contract to check.
 - **A link confirmed by mistake is permanent for that record.** If a child proposed on a
   card from the wrong party and it was confirmed, the way out is a key change in the main
   contract: the new record has no links and links afresh (its offers are new offers).
-- **Not yet run on a real network.** A purchase with a full chart and fees in other tokens
-  makes up to 16 payments in one transaction; that has run only on the simulator.
+- **Not yet run on a real network.** A purchase with a full chart makes up to 17 payments
+  in one transaction (one to each of the 14 places, the rest to the breeder, and the two
+  parents' fees); that has run only on the simulator.
 
 ## Circuit sizes (rows, measured with `zkir mock-compile` from compiler 0.31.1 on 8 Oct 2026; the limit is 2^17 = 131,072)
 
-buyLicense 38,905 · topUpSplit 32,715 · topUp 26,753 · settle 102,942 (79%) · confirmLink
+buyLicense 38,905 · topUpSplit 28,516 · topUp 22,118 · settle 102,942 (79%) · confirmLink
 27,033 · postOffer 35,039 · finaliseStack 9,374 · proposeLink 9,557 · movePayee 4,964 ·
 relaxLink 4,956.
 
@@ -200,6 +207,10 @@ relaxLink 4,956.
   main contract's parent proposal, and a card can name its child); a split too small to pay
   each ancestor at least one unit was silently zero for them (refused); the buyer was told
   the price but the parent's fee is paid on top (the total per token is now shown).
+- **Round 7 (see `docs/royalties-design.md`):** the docs said a tiny payment pays an
+  ancestor nothing, but the contract refuses it (corrected); a full chart's purchase makes
+  17 payments, not 16; lowering a share to a tiny one could stall a descendant's offers (the
+  parent's client now warns and asks first); top-ups no longer need the rate.
 - **Round 5, checking the fixes:** a thief holding a parent's OLD record (after the owner
   recovered it) could still write terms and confirm, and be paid forever (the child's
   client now refuses a parent record that is not its identity's current one); a parent

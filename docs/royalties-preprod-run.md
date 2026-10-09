@@ -73,7 +73,8 @@ where to write a file BEFORE it sends anything, so a typo costs nothing.
      0.1 from the card, and "in all, this sends from this wallet: 1.000000 NIGHT". Licence
      card `~/Desktop/licence-card.json`; `yes`.
    - `60`: make a top-up request. Offer id; file `~/Desktop/topup.json`. **Write down the
-     code fingerprint it shows** (8 characters).
+     code fingerprint it shows** (8 characters). The request names the offer and its wallet,
+     not the royalty rate.
    - `59`: top up your own credit: offer id, `0.5`. It warns that this is the only royalty
      offer paid to that wallet, so the top-up shows which offer it is for: expected in this
      run. `yes` to go on despite it, then `yes`.
@@ -117,7 +118,8 @@ where to write a file BEFORE it sends anything, so a typo costs nothing.
 10. `57`: revoke the grower's licence. The licence key is the `licence` line in
     `~/Desktop/licence-card.json` (open it in TextEdit). Admin secret: Enter. `yes`.
 11. If it said `Revoked and sealed`, skip this. Otherwise run `68` until it says `Sealed`
-    (if it says "possible from" a time, wait until then).
+    (if it says "possible from" a time, wait until then: a revocation is sealed at most once
+    an hour, so it can be up to an hour).
 12. `66` again: same answers, file `~/Desktop/request2.json`.
 
 ## Grower, window B

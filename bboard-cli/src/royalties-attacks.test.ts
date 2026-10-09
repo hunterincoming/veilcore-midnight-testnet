@@ -507,7 +507,7 @@ describe('files and paths', () => {
     const offers = [...chain.ledger.offers].length;
     const m = menu(
       breeder.api,
-      ['~/terms.txt', '', '0.001', '0.000004', '3', '30', 'y', '', '', '~/no-such-dir/card.json'],
+      ['~/terms.txt', '', '0.001', '0.000004', '3', '30', 'y', '', '~/no-such-dir/card.json'],
       {
         record: B,
       },
@@ -525,7 +525,7 @@ describe('files and paths', () => {
     const out = fresh('offer-card.json');
     const shown: string[] = [];
     vi.spyOn(process.stdout, 'write').mockImplementation((s: any) => (shown.push(String(s)), true));
-    const m = menu(breeder.api, [file('t.txt', 'x'), '', '0.001', '0.000004', '3', '30', 'y', '', '', out, 'yes'], {
+    const m = menu(breeder.api, [file('t.txt', 'x'), '', '0.001', '0.000004', '3', '30', 'y', '', out, 'yes'], {
       record: B,
     });
     await handleRoyaltiesChoice('53', m.ctx);

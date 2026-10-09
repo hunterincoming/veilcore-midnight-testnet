@@ -112,7 +112,7 @@ describe('the preprod run, as the menu walks it (docs/royalties-preprod-run.md)'
 
     // Step 3, 53: terms file; token Enter; list price 1; royalty 0.1; 3; 30 days; revoke y;
     // on chain Enter (no); wallet Enter; offer card; yes.
-    const s53 = menu(A.api, [terms, '', '1', '0.1', '3', '30', 'y', '', '', offerCard, 'yes'], {
+    const s53 = menu(A.api, [terms, '', '1', '0.1', '3', '30', 'y', '', offerCard, 'yes'], {
       record: breederRecord,
     });
     vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
@@ -121,6 +121,8 @@ describe('the preprod run, as the menu walks it (docs/royalties-preprod-run.md)'
     expect(s53.said()).toMatch(/paid off chain \(you issue licences and credit\)/);
     const card = read<OfferCard>(offerCard);
     expect(card.onChainPayment).toBe(false);
+    // Paid off chain, the offer publishes no wallet.
+    expect(card.payTo).toBe('00'.repeat(32));
     const offer = card.offer;
     const nightBefore = chain.n;
 
@@ -226,8 +228,7 @@ describe('the preprod run, as the menu walks it (docs/royalties-preprod-run.md)'
     vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
     await handleRoyaltiesChoice(
       '53',
-      menu(Bw.api, [file('t2.txt', 'terms 2'), '', '1', '0.1', '3', '30', 'y', '', '', card2, 'yes'], { record: K })
-        .ctx,
+      menu(Bw.api, [file('t2.txt', 'terms 2'), '', '1', '0.1', '3', '30', 'y', '', card2, 'yes'], { record: K }).ctx,
     );
     const offer2 = read<OfferCard>(card2);
     expect(offer2.split).toBe(true);

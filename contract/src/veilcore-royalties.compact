@@ -916,6 +916,8 @@ export circuit postOffer(nonce: Bytes<32>, admin: Bytes<32>, terms: Bytes<32>, c
   assert(slot < 4294967296, "That issuer place is outside the issuer tree");
   assert(!issuerSlotTaken.member(slot), "That issuer place is taken; pick another");
   const paid = disclose(onChainPayment);
+  // Money sent to an all-zero address would be lost; an offer paid off chain needs no wallet.
+  assert(!paid || w.bytes != default<Bytes<32>>, "An offer that takes payment through the contract needs a wallet");
   // A record with no links finalises an empty chart here. One with links must finalise first.
   if (!stacks.member(record)) {
     assert((!linksConfirmed.member(record) || linksConfirmed.lookup(record) == 0) &&

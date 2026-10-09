@@ -479,7 +479,7 @@ describe("attacks on issuing", () => {
     expect(() => issueLicence(sim, ending)).toThrow(/ended/);
   });
 
-  it("posting refuses an empty issuer, a taken place and a place outside the issuer tree", () => {
+  it("posting refuses an empty issuer, a taken place, a place outside the issuer tree, and an on-chain offer with no wallet", () => {
     const sim = new RoyaltiesSimulator();
     post(sim, { slot: 7n });
     expect(() => post(sim, { slot: 7n, record: OTHER })).toThrow(
@@ -507,6 +507,12 @@ describe("attacks on issuing", () => {
         false,
       ),
     ).toThrow(/issuer commitment cannot be empty/);
+    // Money sent to an all-zero address would be lost: an offer paid on chain needs a wallet.
+    expect(() =>
+      post(sim, { record: OTHER, onChain: true, payTo: { bytes: ZERO } }),
+    ).toThrow(/needs a wallet/);
+    // Paid off chain, it needs none.
+    post(sim, { record: OTHER, payTo: { bytes: ZERO } });
   });
 });
 

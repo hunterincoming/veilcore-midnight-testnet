@@ -225,7 +225,7 @@ const describeOffer = (o: OfferView): string =>
     `  payment: ${o.onChainPayment ? 'through the contract (buy, top up), or issued by the breeder' : 'off chain; the breeder issues licences and credit'}`,
     `  ${o.remaining} left, ${o.live} issued or sold and live, ends ${day(o.expires)}, ${o.revocable ? 'revocable' : 'NOT revocable'}, ${o.open ? 'open' : 'closed'}`,
     `  breeder's record ${hex(o.record)}`,
-    `  paid to wallet ${hex(o.payTo.bytes)}`,
+    `  ${o.payTo.bytes.every((x) => x === 0) ? 'no wallet (paid off chain)' : `paid to wallet ${hex(o.payTo.bytes)}`}`,
     `  terms fingerprint ${hex(o.terms)}`,
   ].join('\n');
 
@@ -1280,11 +1280,13 @@ const postOffer = async (c: RoyaltiesMenuContext): Promise<void> => {
   )
     .toLowerCase()
     .startsWith('y');
-  const payTo = await askWallet(c);
+  // Paid off chain, the offer names no wallet (nothing is paid to one, and none is published).
+  const payTo = onChainPayment ? await askWallet(c) : new Uint8Array(32);
   const expires = nowSeconds() + days * 86400n;
   c.logger.info(
     `Offer: ${count} licence(s) at a list price of ${showAmount(price, color)}, ending ${day(expires)}, ` +
-      `${revocable ? 'revocable' : 'not revocable'}, wallet ${hex(payTo)}, terms fingerprint ${hex(terms)}, ` +
+      `${revocable ? 'revocable' : 'not revocable'}, ${onChainPayment ? `wallet ${hex(payTo)}` : 'no wallet'}, ` +
+      `terms fingerprint ${hex(terms)}, ` +
       `${onChainPayment ? 'payment through the contract allowed' : 'paid off chain (you issue licences and credit)'}. ` +
       `All public, except the royalty rate (${rate === 0n ? 'none' : `${showAmount(rate, color)} per unit`}), which ` +
       'only the offer card holds.',

@@ -205,7 +205,8 @@ describe('the preprod run, as the menu walks it (docs/royalties-preprod-run.md)'
       /holds no live licence/,
     );
 
-    // Step 5 (window A): 82 shows the same fingerprint and issues the licence; then 60, then 83.
+    // Step 5 (window A): 82 shows the same fingerprint and issues the licence. Step 6 (window B): 60.
+    // Step 7 (window A): 83.
     const s82 = menu(A.api, [licenceCard, 'yes']);
     await handleRoyaltiesChoice('82', s82.ctx);
     expect(s82.left()).toBe(0);
@@ -239,7 +240,7 @@ describe('the preprod run, as the menu walks it (docs/royalties-preprod-run.md)'
     await handleRoyaltiesChoice('83', menu(A.api, [ownReq, '30', 'yes']).ctx);
     await handleRoyaltiesChoice('61', menu(A.api, [offer, '30']).ctx);
 
-    // Step 6 (window B): 61 records 100; 62 settles TEST-1 for 5 units; 63 shows it.
+    // Step 8 (window B): 61 records 100; 62 settles TEST-1 for 5 units; 63 shows it.
     const s61 = menu(Bw.api, [offer, '100']);
     await handleRoyaltiesChoice('61', s61.ctx);
     expect(s61.said()).toMatch(/Amount the breeder issued \(whole USD cents\)/);
@@ -254,14 +255,14 @@ describe('the preprod run, as the menu walks it (docs/royalties-preprod-run.md)'
     expect(s63.said()).toMatch(/licence .*: live/);
     expect(s63.said()).toMatch(/settled TEST-1: 5/);
 
-    // Step 7 (window A): 55 reads TEST-1 for 5 units, and its own books.
+    // Step 9 (window A): 55 reads TEST-1 for 5 units, and its own books.
     const s55 = menu(A.api, [licenceCard, 'TEST-1']);
     await handleRoyaltiesChoice('55', s55.ctx);
     expect(s55.said()).toMatch(/period TEST-1 {2}units 5/);
     expect(s55.said()).toMatch(/settled 5 unit\(s\), worth 50 USD cents; this computer issued 130 USD cents/);
     expect(s55.said()).not.toMatch(/WARNING/);
 
-    // Steps 8 to 14: a licence request, answered (send anyway), checked, revoked, refused.
+    // Steps 9 to 15: a licence request, answered (send anyway), checked, revoked, refused.
     const request = fresh('request.json');
     await handleRoyaltiesChoice('66', menu(A.api, [offer, 'TEST-1', '3', '', '', request]).ctx);
     const s64 = menu(Bw.api, [request, 'yes', 'yes']);
@@ -286,11 +287,50 @@ describe('the preprod run, as the menu walks it (docs/royalties-preprod-run.md)'
     expect(chain.ledger.issueSeq).toBe(2n);
   });
 
-  it('part 2: a variety bred from yours records what its licences and credit owe you (85, 73)', async () => {
+  it('part 2: a variety bred from yours records what its licences and credit owe you (69 to 72, 85, 73)', async () => {
     const chain = new Chain();
-    const { A, Bw, P, K } = await family(chain);
-    const card2 = fresh('offer-card-2.json');
+    const A = chain.party(); // the parent breeder (step 3's offer is posted)
+    const Bw = chain.party(); // the new variety's breeder
+    const P = secret('pp2-parent');
+    const K = secret('pp2-child');
+    anchor(chain, P);
+    anchor(chain, K);
     vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    await A.api.postOffer(P, offerTerms(), MAIN);
+
+    // Window A, 69: unit USD cents; fee 10; share 10; generations 2; days 30; the child's record; file.
+    const terms = fresh('terms.json');
+    const s69 = menu(A.api, ['USD cents', '10', '10', '2', '30', hex(C.commit(K)), terms], { record: P });
+    await handleRoyaltiesChoice('69', s69.ctx);
+    expect(s69.left()).toBe(0);
+    expect(s69.said()).toMatch(/Fee per licence the new variety issues \(0 for none\) \(whole USD cents\)/);
+    expect(s69.said()).not.toMatch(/wallet/i);
+    expect(s69.said()).toMatch(/Written\./);
+    // Window B: 16 in the main contract, then 70 with the terms card.
+    chain.main.call(as(K), 'proposeParent', C.commit(P));
+    const s70 = menu(Bw.api, [terms, 'yes'], { record: K });
+    await handleRoyaltiesChoice('70', s70.ctx);
+    expect(s70.left()).toBe(0);
+    expect(s70.said()).toContain(`Parent record: ${hex(C.commit(P))}`);
+    expect(s70.said()).toMatch(
+      /Terms: 10% of your licence list prices and royalty credit, for 2 generation\(s\); fee 10 USD cents per licence you issue; until [\d-]+; counted in USD cents/,
+    );
+    expect(s70.said()).toMatch(/Proposed\./);
+    // Window A: 71 with window B's record, then 17 in the main contract.
+    const s71 = menu(A.api, [hex(C.commit(K)), 'yes'], { record: P });
+    await handleRoyaltiesChoice('71', s71.ctx);
+    expect(s71.said()).toMatch(/10% for 2 generation\(s\), fee 10 USD cents, until [\d-]+, in USD cents/);
+    expect(s71.said()).toMatch(/Confirmed\./);
+    chain.main.call(as(P), 'confirmParent', C.commit(K));
+    // Window B: 72 shows the chart, no STOP; yes.
+    const s72 = menu(Bw.api, ['yes'], { record: K });
+    await handleRoyaltiesChoice('72', s72.ctx);
+    expect(s72.left()).toBe(0);
+    expect(s72.said()).toMatch(/parent [0-9a-f]{10}…[0-9a-f]{6}: 10% \+ fee 10 USD cents, until/);
+    expect(s72.said()).not.toMatch(/STOP/);
+    expect(s72.said()).toMatch(/Final\./);
+
+    const card2 = fresh('offer-card-2.json');
     await handleRoyaltiesChoice(
       '53',
       menu(Bw.api, [file('t2.txt', 'terms 2'), 'USD cents', '100', '10', '3', '30', 'y', card2, 'yes'], {

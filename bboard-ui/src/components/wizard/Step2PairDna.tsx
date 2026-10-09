@@ -14,6 +14,7 @@ import { getRecord, pairDna, conflictsFor, type StrainRecord } from '../../veilc
 import { FingerprintReveal } from './FingerprintReveal';
 import { Dropzone } from './Dropzone';
 import { THIS_SITE } from '../../config/copy';
+import { utcDate } from '../../veilcore/time';
 
 const MChip = motion(Chip);
 
@@ -84,9 +85,7 @@ export const Step2PairDna: React.FC<{
             {conflicts.length === 1 ? '' : 's'} you hold
             {yoursFirst
               ? '. This record was sealed earliest, by the clocks of the devices that sealed them.'
-              : `. ${priority.strainName} was sealed earlier (${new Date(
-                  priority.loggedAt,
-                ).toLocaleDateString()}, by its device's clock).`}
+              : `. ${priority.strainName} was sealed earlier (${utcDate(priority.loggedAt)}, by its device's clock).`}
           </Alert>
         )}
         <Alert severity="success" variant="outlined">

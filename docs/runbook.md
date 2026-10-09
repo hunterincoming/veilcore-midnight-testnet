@@ -99,6 +99,22 @@ October made that temporary copy inside `~/.veilcore/<network>/`; the next run d
 that too, with the same message. If you see it, and Time Machine ran in between, delete
 the backups of that folder as in step 2.)
 
+### One CLI at a time per network (new on 8 October)
+
+Two CLIs open on the same network share one private-state store, and each writes back
+what it read when its call started, so one can silently undo the other's change (a new
+record secret, say). So the CLI now refuses to start while another one is using the
+store. Before asking for anything it says `Another VeilCore CLI (process …) is using the
+private-state store …` and stops. Close the other Terminal window's CLI and start again.
+
+It knows by a small file next to the store, `~/.veilcore/<network>/private-state.lock`,
+which it removes when it exits. If the CLI was killed or the Mac restarted, the next run
+sees the old process is gone and carries on by itself. If it still refuses and you are
+sure no CLI is running (check every Terminal window and tab), delete that file:
+`rm ~/.veilcore/<network>/private-state.lock` (for example
+`~/.veilcore/mainnet/private-state.lock`), then start again. Never delete it while a CLI is
+running.
+
 ---
 
 ## A. Rehearsal on a local chain
@@ -247,7 +263,7 @@ table, which must stay as it is.
   would be filed before any mainnet deployment. The CLI refuses to deploy until you
   declare revision 4 (step 6), but it cannot check that the record was really filed.
 - **CHECK WITH CLAUDE BEFORE MAINNET:** the fixes made after the round D re-check
-  (`8de6f2a`, `abc1fc9`) and the claims mainnet gate (`5a980b3`) have had one independent
+  (`8de6f2a`, `abc1fc9`) and the claims mainnet gate (`5a980b3`) have had one fresh-session AI
   review (`docs/mainnet-completeness.md`).
 - The 24-word recovery phrase of the wallet whose NIGHT generates your DUST.
 - That wallet's DUST address (starts `mn_dust1`), from your wallet app.

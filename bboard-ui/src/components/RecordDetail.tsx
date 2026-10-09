@@ -33,9 +33,9 @@ import { Step2PairDna } from './wizard/Step2PairDna';
 import { Step3Certificate } from './wizard/Step3Certificate';
 import { Step4CheckReport } from './wizard/Step4CheckReport';
 import { Step5ProveDisclosure } from './wizard/Step5ProveDisclosure';
+import { utcStamp as fmt } from '../veilcore/time';
 
 type Mode = 'overview' | 'pair' | 'cert' | 'check' | 'share';
-const fmt = (ms: number) => new Date(ms).toLocaleString();
 
 const Field: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
   <Box>

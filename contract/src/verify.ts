@@ -23,6 +23,18 @@ export const isLive = (ledger: Ledger, record: Uint8Array): boolean => {
     : same(origin, record);
 };
 
+/**
+ * The commitment that acts for a record's identity now: its head after any rotation or
+ * recovery, else the origin itself. issueLicense keys a licence on the ISSUER'S HEAD at
+ * the time, so a licensee must build commit.license(secret, record) with this, not with
+ * the origin a record's ledgerIdentity names (SPEC 3.6): a licence built against an
+ * identity's origin after it rotated can never be countersigned (8 October 2026 review).
+ */
+export const currentHead = (ledger: Ledger, record: Uint8Array): Uint8Array => {
+  const origin = identityOf(ledger, record);
+  return ledger.headOf.member(origin) ? ledger.headOf.lookup(origin) : origin;
+};
+
 /** Whether a commitment belongs to an anchored identity. */
 export const isAnchored = (ledger: Ledger, record: Uint8Array): boolean =>
   ledger.recoveryOf.member(identityOf(ledger, record));
@@ -192,6 +204,160 @@ export const acceptPresentation = (
   };
 };
 
+/** The sequence counters: each counted call raises exactly one of them by one. */
+const SEQ_COUNTERS = [
+  "anchorSeq",
+  "proofSeq",
+  "batchSeq",
+  "pairSeq",
+  "rotationSeq",
+  "transferSeq",
+  "presentationSeq",
+  "sealSeq",
+  "descentSeq",
+  "obligationSeq",
+] as const satisfies readonly (keyof Ledger)[];
+
+/**
+ * Rule 5, issuer-scoped (8 October 2026 review). acceptPresentation refuses a
+ * presentation proved against an older root while any revocation was waiting, whoever
+ * revoked. A griefer with one throwaway licence of their own, revoked again after every
+ * seal, plus cheap root changes (activating more of their own licences), makes that
+ * refusal permanent for every honest licensee (attack-licences.test.ts, ATTACK 1).
+ *
+ * This rule asks the narrower question that matters: could the licence behind this
+ * presentation have been taken away since the root it proved against? The leaf belongs
+ * to the asked-about issuer (the tag names one of its records), and only that issuer's
+ * identity can remove one of its leaves, by revoking it or by approving its transfer. So
+ * the presentation is accepted when no licence the issuer held at that root was revoked
+ * or transferred by the issuer between that root and the presentation. Revocations and
+ * transfers by anyone else cannot touch the issuer's leaves and are ignored.
+ *
+ * `history` MUST be the contract state after EVERY call on the contract, one state per
+ * call, in order, ending with the presentation's own (`afterTx`). It must reach back at
+ * least to the last seal before the presentation (a root proved against is never older
+ * than that). A per-transaction or per-block history, or one with a call missing, is not
+ * enough: a missing call could be the revocation, and two calls merged into one step can
+ * hide it (a revoke and a new licence placed at the same slot look like a replacement).
+ * A gap cannot be detected in general: calls such as issueLicense, countersignLicense
+ * and revokeLicense move no counter. The obvious ones are refused: a step where the
+ * sequence counters together rise by more than one, or where they and the licence tree
+ * show more than one call's worth of change, or where a counter goes down. The history
+ * comes from the indexer, which is trusted for it as for everything else; it gets no
+ * verifier-key or second-indexer check here, so read it from an indexer you trust.
+ *
+ * From each pair of consecutive states after that root, the presentation is refused when:
+ *  - the asked-about issuer's active count (`activeLicensesBy` of its identity) fell, for
+ *    whatever reason: only the issuer's own revocations lower it;
+ *  - a leaf the tree held at the root was REPLACED in its slot other than by a real
+ *    transfer (transferSeq up by one and lastTransferredLicense changed in that step);
+ *  - such a transfer was the issuer's: the new leaf is
+ *    licenseKey(lastTransferredLicense, r) for one of the issuer's records r.
+ * A leaf at the root that is REMOVED while the issuer's count holds was another issuer's.
+ * Anything the history cannot settle (the root is not in it) refuses.
+ */
+export const acceptPresentationScoped = (
+  history: readonly Ledger[],
+  issuer: Uint8Array,
+  challenge: Uint8Array,
+): { readonly accepted: boolean; readonly reason: string } => {
+  if (history.length === 0)
+    return { accepted: false, reason: "no contract history was given" };
+  const afterTx = history[history.length - 1];
+  const strict = acceptPresentation(afterTx, issuer, challenge);
+  if (
+    strict.accepted ||
+    !strict.reason.startsWith("proved against an older root")
+  )
+    return strict;
+  const root = afterTx.lastPresentationRoot.field;
+  let j = -1;
+  for (let i = history.length - 2; i >= 0; i--)
+    if (history[i].activeLicenses.root().field === root) {
+      j = i;
+      break;
+    }
+  if (j < 0)
+    return {
+      accepted: false,
+      reason:
+        "proved against an older root that the history given does not reach; give the history since the last seal, or ask again",
+    };
+  // The tree as it was at that root: slot -> licence key.
+  const atRoot = new Map<string, string>();
+  for (const [slot, k] of history[j].licenseAtSlot)
+    atRoot.set(String(slot), hex(k));
+  const origin = identityOf(afterTx, issuer);
+  const mine = commitmentsOf(afterTx, issuer);
+  const activeCount = (l: Ledger): bigint =>
+    l.activeLicensesBy.member(origin)
+      ? l.activeLicensesBy.lookup(origin).read()
+      : 0n;
+  const slots = (l: Ledger): Map<string, string> => {
+    const m = new Map<string, string>();
+    for (const [slot, k] of l.licenseAtSlot) m.set(String(slot), hex(k));
+    return m;
+  };
+  const notPerCall = {
+    accepted: false,
+    reason:
+      "proved against an older root, and the history given is not one state per call; ask again",
+  } as const;
+  for (let i = j + 1; i < history.length; i++) {
+    const before = history[i - 1];
+    const after = history[i];
+    // Every counted call raises exactly one sequence counter by one.
+    const deltas = SEQ_COUNTERS.map((c) => after[c] - before[c]);
+    if (deltas.some((d) => d < 0n)) return notPerCall;
+    const counted = deltas.reduce((a, d) => a + d, 0n);
+    if (counted > 1n) return notPerCall;
+    const transferStep =
+      after.transferSeq - before.transferSeq === 1n &&
+      !same(after.lastTransferredLicense, before.lastTransferredLicense);
+    if (activeCount(after) < activeCount(before))
+      return {
+        accepted: false,
+        reason:
+          "proved against an older root, and this issuer has revoked a licence since; ask again",
+      };
+    const prev = slots(before);
+    const next = slots(after);
+    let changes = 0;
+    let replaced = 0;
+    const touched: { slot: string; now: string | undefined }[] = [];
+    for (const [slot, key] of prev) {
+      const now = next.get(slot);
+      if (now === key) continue;
+      changes++;
+      if (now !== undefined) replaced++;
+      if (atRoot.get(slot) === key) touched.push({ slot, now });
+    }
+    for (const slot of next.keys()) if (!prev.has(slot)) changes++;
+    // One call changes at most one leaf, and approveTransfer is the one call that both
+    // replaces a leaf and raises a counter.
+    const calls =
+      Number(counted) + changes - (transferStep && replaced === 1 ? 1 : 0);
+    if (changes > 1 || calls > 1) return notPerCall;
+    if (touched.length === 0) continue;
+    const { now } = touched[0];
+    if (now === undefined) continue; // another issuer's revocation: the issuer's count held
+    // A leaf at the root replaced in place: only approveTransfer does that in one call.
+    if (!transferStep) return notPerCall;
+    const transferred = after.lastTransferredLicense;
+    if (mine.some((r) => hex(pureCircuits.licenseKey(transferred, r)) === now))
+      return {
+        accepted: false,
+        reason:
+          "proved against an older root, and this issuer has approved a transfer since; ask again",
+      };
+  }
+  return {
+    accepted: true,
+    reason:
+      "a live licence from this issuer, proved against an older root; the issuer has revoked or transferred none of its licences since",
+  };
+};
+
 /**
  * How old a licence presentation may be when the verifier decides on it. A presentation
  * shows the licence was live when it landed, nothing later: a licence revoked and sealed
@@ -207,6 +373,11 @@ export const MAX_PRESENTATION_AGE_MS = 60 * 60 * 1000;
  * challenge book: no honest answer can come before the question), or when it is older
  * than `maxAgeMs` at `now`. Otherwise acceptPresentation decides, and an acceptance says
  * what it means: the licence was live WHEN PRESENTED.
+ *
+ * Given `history` (the state after every call, ending with this presentation's: see
+ * acceptPresentationScoped), the issuer-scoped rule decides instead, so a griefer's own
+ * revocations no longer send an honest presentation back. `rule: 'strict'` keeps the
+ * original rule even then. Without a history the strict rule applies, as before.
  */
 export const acceptPresentationAt = (
   afterTx: Ledger,
@@ -218,9 +389,26 @@ export const acceptPresentationAt = (
     readonly issuedAt?: number;
     readonly now?: number;
     readonly maxAgeMs?: number;
+    readonly history?: readonly Ledger[];
+    readonly rule?: "strict" | "issuer-scoped";
   },
 ): { readonly accepted: boolean; readonly reason: string } => {
-  const v = acceptPresentation(afterTx, issuer, challenge);
+  const scoped = when.history !== undefined && when.rule !== "strict";
+  if (scoped) {
+    const last = when.history[when.history.length - 1];
+    if (
+      last === undefined ||
+      last.presentationSeq !== afterTx.presentationSeq ||
+      !same(last.lastPresentation, afterTx.lastPresentation)
+    )
+      return {
+        accepted: false,
+        reason: "the history given does not end with this presentation",
+      };
+  }
+  const v = scoped
+    ? acceptPresentationScoped(when.history, issuer, challenge)
+    : acceptPresentation(afterTx, issuer, challenge);
   if (!v.accepted) return v;
   const { landedAt, blockHeight, issuedAt } = when;
   const now = when.now ?? Date.now();

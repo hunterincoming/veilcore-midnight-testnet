@@ -15,6 +15,13 @@ record's sealed values, and none of them revealing anything beyond the claim:
 | **distinct** | records *a* and *b* differ in at least *k* of the schema's comparable slots | *a*, *b*, schema; never which slots or how many | a breeder showing an examiner that markers differ without exposing them (the problem a USDA plant-variety examiner described to us; no office has asked for or used this) |
 | **unchanged** | two records under one schema have equal values outside a published mask (nothing else: not which is the correction) | *old*, *new*, schema, mask | a verifier of a corrected record, together with the `supersedes` link (SPEC section 6) |
 
+For **unchanged**, the verifier (`verifyClaim`, check 8) refuses a mask that covers every
+slot the schema describes, not only one over all 16: slots the schema does not describe
+are empty in every record, so such a claim says nothing (the CLI refuses to make one).
+For the `supersedes` link, a `recordId` is scoped to its issuer, so the verifier accepts a
+match on `recordId` only when both records have the same holder; a supersedes block that
+also states the original's `commitment` is matched by that instead.
+
 A claim the sealed values do not support cannot be constructed: the proof fails on the
 prover's machine and nothing reaches the chain.
 
@@ -85,7 +92,7 @@ Five circuits: `proveValue`, `proveRange`, `proveDistinct`, `proveUnchanged` and
 `proveAttested`, checks a signature on one) and records the claim in event
 cells (`lastClaimKind`, `lastClaimRecord`, `lastClaimOther`, `lastClaimSchema`,
 `lastClaimSlot`, `lastClaimParam`, `lastClaimOp`) and a counter. Verifiers read the
-cells per transaction from the indexer, as for ownership proofs in the main contract.
+cells per transaction from the indexer, as for control proofs in the main contract.
 
 **No per-claim state.** Nothing grows with the number of claims, so there is no state
 bound to argue: the contract holds only fixed cells and a counter.

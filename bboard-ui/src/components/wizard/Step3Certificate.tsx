@@ -20,8 +20,7 @@ import { useLicenses, activeLicenseCount, licensesForRecord } from '../../veilco
 import { shortFingerprint } from '../../veilcore/commitment';
 import { verifyPath } from '../../veilcore/verify-link';
 import { TEAL } from '../../config/theme';
-
-const fmtStamp = (ms: number) => new Date(ms).toLocaleString();
+import { utcDate, utcStamp as fmtStamp } from '../../veilcore/time';
 
 const Field: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
   <Box>
@@ -88,7 +87,7 @@ export const Step3Certificate: React.FC<{ recordId: string; onDone: () => void; 
   // signature, so "✓ <lab>" printed "✓ undefined" for a real one and a typed-in name for
   // a forged one. Signed attestations are listed on the record page, checked there.
   const deliveryLine = record.attestation
-    ? `Delivery taken via a transfer code on ${new Date(record.attestation.attestedAt).toLocaleDateString()} (unsigned; does not identify who)`
+    ? `Delivery taken via a transfer code on ${utcDate(record.attestation.attestedAt)} (unsigned; does not identify who)`
     : 'none recorded';
 
   const downloadJson = () => {
@@ -161,7 +160,7 @@ export const Step3Certificate: React.FC<{ recordId: string; onDone: () => void; 
               VeilCore
             </Typography>
             <Typography variant="h5" sx={{ lineHeight: 1.1 }}>
-              Record certificate
+              Record summary
             </Typography>
           </Box>
           {/* No seal: this site does not read the chain, so a reported anchor is the
@@ -199,7 +198,7 @@ export const Step3Certificate: React.FC<{ recordId: string; onDone: () => void; 
             <Field label="DNA report paired">
               {record.dnaFingerprint ? (
                 <Box component="span" sx={{ color: TEAL }}>
-                  ✓ paired {record.dnaPairedAt ? `· ${new Date(record.dnaPairedAt).toLocaleDateString()}` : ''}
+                  ✓ paired {record.dnaPairedAt ? `· ${utcDate(record.dnaPairedAt)}` : ''}
                 </Box>
               ) : (
                 'not paired'
@@ -237,8 +236,8 @@ export const Step3Certificate: React.FC<{ recordId: string; onDone: () => void; 
 
         <Divider sx={{ my: 2.5 }} />
         <Typography variant="caption" color="text.secondary">
-          Tamper-evident · no genetic data or lab files on this certificate · fingerprint{' '}
-          {shortFingerprint(record.recordFingerprint)}
+          The record is tamper-evident; this image is not. Scan the code to check it. · No genetic data or lab files on
+          this summary · fingerprint {shortFingerprint(record.recordFingerprint)}
         </Typography>
       </Box>
 

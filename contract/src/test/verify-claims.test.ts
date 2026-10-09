@@ -448,6 +448,113 @@ describe("verifyClaim", () => {
     expect(all.checks.find((c) => !c.ok)?.detail).toMatch(/says nothing/);
   });
 
+  // 8 October 2026 review: a mask over every slot the schema describes (but not all 16)
+  // passed check 8, and supersedes was matched by recordId alone.
+  it("unchanged: a mask over every DESCRIBED slot says nothing, and is refused", () => {
+    const SMALL = {
+      ...SCHEMA,
+      id: "test/small",
+      slots: SCHEMA.slots.slice(0, 4),
+    };
+    const unchanged = (mayChange: boolean[]) => ({
+      kind: "unchanged" as const,
+      record: A.sealed.commitment,
+      other: B.sealed.commitment,
+      schema: fieldSchemaId(SMALL),
+      mayChange,
+    });
+    const describedFree = Array.from({ length: 16 }, (_, i) => i < 4);
+    const v = verifyClaim({ claim: unchanged(describedFree), schema: SMALL });
+    const c8 = v.checks.filter((c) => c.spec === 8);
+    expect(
+      c8.some((c) => !c.ok && /every slot the schema describes/.test(c.detail)),
+    ).toBe(true);
+    expect(v.passed).toBe(false);
+    // One described slot held: the claim says something.
+    const oneHeld = describedFree.map((b, i) => (i === 3 ? false : b));
+    const w = verifyClaim({ claim: unchanged(oneHeld), schema: SMALL });
+    expect(w.checks.filter((c) => c.spec === 8).every((c) => c.ok)).toBe(true);
+    // Without the schema it cannot be judged: it is left to the verifier, never passed silently.
+    const x = verifyClaim({ claim: unchanged(describedFree) });
+    expect(x.toCheck.join("\n")).toMatch(
+      /leaves at least one slot the schema describes/,
+    );
+  });
+
+  it("unchanged: supersedes must name the original by commitment, or by recordId with the same or a declared new holder", () => {
+    const corrected = [...VALUES];
+    corrected[15] = { uint: "4100" };
+    const sup = {
+      recordId: A.env.recordId,
+      reason: "yield re-measured",
+      descentSeverity: "cosmetic",
+      termsSeverity: "cosmetic",
+      effectiveAt: "2026-10-03T00:00:00Z",
+      correctedBy: "holder",
+    };
+    const mask = Array.from({ length: 16 }, (_, i) => i === 15);
+    const judge = (C: ReturnType<typeof sealRecord>) =>
+      verifyClaim({
+        claim: {
+          kind: "unchanged",
+          record: A.sealed.commitment,
+          other: C.sealed.commitment,
+          schema: A.sealed.schemaId,
+          mayChange: mask,
+        },
+        schema: SCHEMA,
+        records: [A.env, C.env],
+      }).checks.filter((c) => c.spec === 8);
+    // Another holder's record that happens to use the same recordId.
+    const other = sealRecord(corrected, "55".repeat(32), {
+      holder: { id: "someone-else" },
+      supersedes: sup,
+    });
+    expect(judge(other).find((c) => !c.ok)?.detail).toMatch(
+      /different holder, and its supersedes block does not list holder/,
+    );
+    // Verification review: the holder is a field a correction may change (the SDK's
+    // corrections.ts classifies it). Declared in changedFields, as supersedesFor writes
+    // it (flattened: holder.id), the holder change is accepted.
+    for (const declared of [
+      ["holder.id"],
+      ["holder"],
+      ["profileData.notes", "holder.id"],
+    ]) {
+      const reheld = sealRecord(corrected, "58".repeat(32), {
+        holder: { id: "new-holder-after-sale" },
+        supersedes: { ...sup, changedFields: declared },
+      });
+      expect(
+        judge(reheld).every((c) => c.ok),
+        declared.join(),
+      ).toBe(true);
+    }
+    const undeclared = sealRecord(corrected, "59".repeat(32), {
+      holder: { id: "new-holder-after-sale" },
+      supersedes: {
+        ...sup,
+        changedFields: ["profileData.notes", "holderName"],
+      },
+    });
+    expect(judge(undeclared).some((c) => !c.ok)).toBe(true);
+    // Named by commitment: matched exactly, whatever the recordId.
+    const byCommitment = sealRecord(corrected, "66".repeat(32), {
+      supersedes: {
+        ...sup,
+        recordId: "anything",
+        commitment: hex(A.sealed.commitment),
+      },
+    });
+    expect(judge(byCommitment).every((c) => c.ok)).toBe(true);
+    const wrongCommitment = sealRecord(corrected, "77".repeat(32), {
+      supersedes: { ...sup, commitment: hex(B.sealed.commitment) },
+    });
+    expect(judge(wrongCommitment).find((c) => !c.ok)?.detail).toMatch(
+      /its commitment is another record's/,
+    );
+  });
+
   it("disclosure accounting: two bounds narrow the number", () => {
     const first = claimFromCells(rangeCells(9000n));
     const v = verifyClaim({

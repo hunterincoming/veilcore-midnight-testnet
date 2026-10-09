@@ -110,7 +110,12 @@ const listeners = new Set<() => void>();
 const notify = () => listeners.forEach((l) => l());
 
 const hydrate = async (): Promise<void> => {
-  const loaded = await store.load(KEY, isLicense);
+  let loaded: License[];
+  try {
+    loaded = await store.load(KEY, isLicense);
+  } catch {
+    return; // the registry could not answer now: keep what is shown
+  }
   // Back-compat: agreements saved before types existed are license agreements.
   licenses = loaded.map((l: License) => ({ ...l, type: l.type ?? 'license' }));
   notify();

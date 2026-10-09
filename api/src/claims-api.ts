@@ -49,7 +49,8 @@ import {
 } from './deploy-guard.js';
 import { FIRST_FRAGMENT, addMissingKeys, deployInFragments, unknownCircuits } from './deploy-fragments.js';
 import { type AuthorityView, isProvablyRetired, retireMaintenanceAuthorityProvably } from './maintenance.js';
-import { singleCallState } from './presentation-lookup.js';
+import { type LookupCheck, singleCallState } from './presentation-lookup.js';
+import { type AuthorityReport, withMainnetPins } from './state-check.js';
 import { type TxRef } from './veilcore-api.js';
 import {
   type ClaimsContract,
@@ -273,21 +274,29 @@ export class ClaimsAPI {
    * the state the indexer recorded for that call. Given a call's own result, its cells
    * are the state that call produced.
    */
-  async readClaim(source: string | ClaimCallTxData, indexerUri?: string): Promise<ClaimReading> {
+  async readClaim(
+    source: string | ClaimCallTxData,
+    indexerUri?: string,
+    check: LookupCheck = {},
+  ): Promise<ClaimReading & { readonly authority?: AuthorityReport }> {
     if (typeof source !== 'string') {
       const cells = claimsLedger(source.public.nextContractState);
       return { claim: claimFromCells(cells), cells };
     }
     if (indexerUri === undefined) throw new Error('Reading a claim by transaction id needs the indexer address.');
+    // On mainnet the state must carry the pinned build's verifier keys (state-check.ts);
+    // a mismatch throws ContractStateMismatchError and nothing is read.
     const found = await singleCallState(
       indexerUri,
       this.deployedContractAddress,
       source,
       CLAIMS_PROVABLE_CIRCUITS,
       'That transaction is not a single claim on this claims contract.',
+      undefined,
+      withMainnetPins(check, 'veilcore-claims', resolveNetwork()),
     );
     const cells = claimsLedger(found.state.data);
-    return { claim: claimFromCells(cells), cells, entryPoint: found.entryPoint };
+    return { claim: claimFromCells(cells), cells, entryPoint: found.entryPoint, authority: found.authority };
   }
 
   /**

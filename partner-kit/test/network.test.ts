@@ -82,3 +82,53 @@ describe('endpoints', () => {
     expect(() => endpointsFor('devnet' as never)).toThrow(/Unknown network/);
   });
 });
+
+// 8 October 2026 review: every proof sends the proof server record and licence secrets;
+// connect() used to accept any URL with only a warning to an optional logger.
+const { ProofServerRefusedError, assertProofServer, connect } = await import('../src/connect');
+const { SeedWallet } = await import('../src/wallet');
+describe('the proof server', () => {
+  const base = {
+    network: 'preprod' as const,
+    wallet: {} as never,
+    privateState: { veilcore: {} as never, claims: {} as never },
+    publicDataProvider: {} as never,
+    scrubTerminal: false,
+  };
+
+  it('on this machine: accepted', () => {
+    for (const u of ['http://127.0.0.1:6300', 'http://localhost:6300', 'http://[::1]:6300'])
+      expect(() => assertProofServer(u)).not.toThrow();
+    expect(connect(base).endpoints.proofServer).toBe('http://127.0.0.1:6300');
+  });
+
+  it('elsewhere: REFUSED unless allowed, and then only over https; nothing is built', () => {
+    expect(() => connect({ ...base, endpoints: { proofServer: 'http://10.0.0.5:6300' } })).toThrow(
+      ProofServerRefusedError,
+    );
+    expect(() => connect({ ...base, endpoints: { proofServer: 'https://proofs.example.com' } })).toThrow(
+      /not on this machine.*allowRemoteProofServer/,
+    );
+    expect(() =>
+      connect({ ...base, endpoints: { proofServer: 'http://proofs.example.com' }, allowRemoteProofServer: true }),
+    ).toThrow(/must be reached over https/);
+    const warn = vi.fn();
+    const c = connect({
+      ...base,
+      endpoints: { proofServer: 'https://proofs.example.com' },
+      allowRemoteProofServer: true,
+      logger: { warn } as never,
+    });
+    expect(c.endpoints.proofServer).toBe('https://proofs.example.com');
+    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/not on this machine/));
+    expect(() => assertProofServer('ftp://127.0.0.1:6300')).toThrow(/http or https/);
+    expect(() => assertProofServer('not a url')).toThrow(/not a proof server URL/);
+  });
+
+  it("the seed wallet's own proof server follows the same rule", async () => {
+    const endpoints = { ...endpointsFor('preprod'), proofServer: 'http://10.0.0.5:6300' };
+    await expect(SeedWallet.create({ network: 'preprod', endpoints, seed: '5e'.repeat(32) })).rejects.toThrow(
+      ProofServerRefusedError,
+    );
+  });
+});

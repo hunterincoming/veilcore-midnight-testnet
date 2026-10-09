@@ -7,7 +7,14 @@
 // re-exported wholesale from the operator code this is built on.
 
 // ── connecting ───────────────────────────────────────────────────────────────
-export { connect, isLocalUrl, type Connection, type ConnectOptions } from './connect.js';
+export {
+  ProofServerRefusedError,
+  assertProofServer,
+  connect,
+  isLocalUrl,
+  type Connection,
+  type ConnectOptions,
+} from './connect.js';
 export {
   DEFAULT_PROOF_SERVER,
   MAINNET_ADDRESSES,
@@ -22,6 +29,7 @@ export {
   type Endpoints,
   type Network,
 } from './network.js';
+export { scrubTerminal, scrubText, urlSecrets } from './terminal.js';
 export {
   SeedWallet,
   WalletProgressNotOpenedError,
@@ -97,12 +105,15 @@ export {
   checkOwnership,
   checkPresentation,
   readClaim,
+  readAuthority,
   readClaimsAuthority,
   readLedger,
   type ReadOptions,
   type Verdict,
   type WhenLanded,
+  type WithAuthority,
 } from './verify.js';
+export { ContractStateMismatchError, type AuthorityReport } from '../../api/src/state-check.js';
 export {
   ChallengeBook,
   MAX_PRESENTATION_AGE_MS,
@@ -111,8 +122,10 @@ export {
   acceptPresentation,
   acceptPresentationAt,
   acceptPresentationOnce,
+  acceptPresentationScoped,
   checkLineage,
   commitmentsOf,
+  currentHead,
   identityOf,
   isAnchored,
   isLive,

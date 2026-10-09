@@ -7,8 +7,12 @@
 // exists only on a branch of veilcore-api, so the page says it is coming rather than that
 // it exists. Change that line in the same release that deploys it.
 //
-// Retention period for demo data: [to be confirmed]. Until the founders set one, the
-// page says only that demo data may be deleted when the test network is reset.
+// Retention: the founders have set no period, so the page says what happens: the
+// registry keeps what it holds until a holder asks for it to be deleted (and, on a test
+// network build, that demo data may go when the test network is reset). It also names the
+// hosts (Vercel for the site, Railway for the registry), what the browser stores locally
+// (veilcore.holder.v1, veilcore.attester.v1, veilcore.role.v1, veilcore.lang) and who
+// runs it (VeilCore is not incorporated yet).
 //
 // SPDX-License-Identifier: Apache-2.0
 
@@ -16,7 +20,7 @@ import React from 'react';
 import { useI18n } from '../../i18n';
 import { SiteShell } from './SiteShell';
 
-const SECTIONS = ['stored', 'local', 'test', 'madeup', 'export', 'delete'] as const;
+const SECTIONS = ['stored', 'local', 'browser', 'hosts', 'test', 'madeup', 'export', 'delete', 'who'] as const;
 
 export const Privacy: React.FC = () => {
   const { t } = useI18n();

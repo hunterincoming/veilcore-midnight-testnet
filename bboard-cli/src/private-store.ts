@@ -32,6 +32,7 @@ import {
 } from '@midnight-ntwrk/midnight-js-level-private-state-provider';
 import { TRANSIENT_FIELDS, memorySigningKeys, transientInput, transientSecrets } from '../../api/src/memory-overlays';
 import { oneAtATime } from './one-at-a-time.js';
+import { lockStoreDir } from './store-lock.js';
 import { veilcoreHome } from './veilcore-home.js';
 
 /** The folder name midnight-js used by default, relative to wherever the CLI ran. */
@@ -367,6 +368,9 @@ export const chooseStore = async (args: {
   const { logger } = args;
   const home = args.home ?? veilcoreHome();
   const dir = storeDirFor(args.networkId, home);
+  // One CLI per store, from before anything is cleaned or copied until the process ends:
+  // two at once overwrite each other's private state (store-lock.ts).
+  lockStoreDir(dir);
   // First, whatever an interrupted copy left behind (it may be what makes `dir` look in use).
   await cleanLeftovers({ networkId: args.networkId, logger, home, tmp: args.tmp });
   const olds: string[] = [];
@@ -470,6 +474,8 @@ export const openStores = async <
   readonly home?: string;
 }) => {
   const home = args.home ?? veilcoreHome();
+  // Held until the process exits; a second CLI on this store is refused (store-lock.ts).
+  lockStoreDir(args.dir);
   if (args.dir.startsWith(path.join(home, '.veilcore') + path.sep)) await makePrivate(args.dir, home);
   const levelFactory = privateLevelFactory(args.dir);
   const main = memorySigningKeys(

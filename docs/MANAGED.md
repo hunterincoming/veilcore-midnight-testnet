@@ -1,7 +1,7 @@
 # VeilCore-run: VeilCore operates for you
 
 **Managed service v1, for mainnet launch. Code: `veilcore-run/`. Last updated 6 October 2026
-(after the independent review, `review-managed.md`).**
+(after a fresh-session AI review, not an audit, `review-managed.md`).**
 
 For partners with no developers, such as a tissue-culture lab. VeilCore runs the on-chain side for
 you, with the same partner kit (`@veilcore/contracts`) a partner's own developer would use, and
@@ -356,7 +356,7 @@ Weak, reused or written-down passwords change that. Bundles on the disk are lock
 **Someone controlling the running computer** (malware, remote access): they can capture each partner's
 password as it is typed, and so every store opened while they are in. For each such partner they can:
 
-- act as every record, until the partner takes it back: prove ownership, issue licences, pair reports,
+- act as every record, until the partner takes it back: prove control, issue licences, pair reports,
   propose and confirm parentage, release obligations owed to the partner, make claims (including
   publishing values), present licences the partner holds, sign as the partner's laboratory;
 - move records to secrets of their own;

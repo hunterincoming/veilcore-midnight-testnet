@@ -410,7 +410,7 @@ in the veilcore-sdk repository):
   pedigree from state; "clean" and "accepted" (recognised roots); presentation acceptance
   (state recorded for the presentation's own call, root current or nothing waiting);
   challenge freshness, single use and kind (`ChallengeBook`, 7 days); presentation age (one
-  hour) and "not before its challenge" (`acceptPresentationAt`); ownership proofs against
+  hour) and "not before its challenge" (`acceptPresentationAt`); control proofs against
   the live head now (`acceptOwnership` with `now`).
 - **Which state is judged.** `verify.ts` judges the ledger it is handed. That the ledger is
   the one recorded for one successful `proveLicense` (or `proveOwnership`) call on the
@@ -528,8 +528,8 @@ do*) and the deployment record (*Known and not fixed*). Briefly:
 - Every reader trusts its indexer. On mainnet that is Blockfrost; Midnight's hosted mainnet
   indexer endpoint was retired on 30 September.
 - Challenges are single-use only within one verifier's `ChallengeBook` (kept by the CLI in
-  an encrypted file per network). An ownership challenge becomes public with the proof, so
-  rule 8 forbids using one challenge for both an ownership proof and a presentation; the
+  an encrypted file per network). A control-proof challenge becomes public with the proof, so
+  rule 8 forbids using one challenge for both a control proof and a presentation; the
   CLI issues them separately, the contract cannot tell.
 - A proof answers a challenge; it does not show that the party in front of the verifier is
   the holder (relaying, rule 8).
@@ -538,16 +538,16 @@ do*) and the deployment record (*Known and not fixed*). Briefly:
 
 ## 8. History of internal attack rounds
 
-None of these is an independent audit. Round 1 was ours; the rest were AI reviewers in
-separate sessions directed by the founders, plus Max Weber's human reviews of earlier
+None of these is an audit. Round 1 was ours; the rest were AI reviewers in
+separate sessions directed by the founders, plus an outside Midnight developer's human reviews of earlier
 builds. "In scope" below means a change to one of the ten files in section 1 (or their
 predecessors).
 
 | Round | Date | Record | Found and fixed in in-scope files |
 |---|---|---|---|
-| Max Weber (ODATANO / NIGHTGATE) | 24–25 Aug | Deployment record, *Revision — 24–25 August 2026*; issue #22 | Four licensing authorisation defects (public countersign, unauthenticated and overwriting transfer proposals, unauthenticated withdraw, revoke leaving the proposal), then the transfer model itself (a secret cannot be un-known). Earlier contract |
-| Max Weber | 16 Sep | Deployment record, *Correction — 16 September 2026* | A circuit's return value is not public: ownership proofs, DNA pairing and rotations published nothing a third party could check. Fixed with event cells |
-| 1. Security pass | 30 Sep | `docs/security-pass-30sep.md` (H1–H4, M1–M6, L1–L5) | Licences stuck after two rotations (`originOf`); recovery could not beat a thief; `proveLicense` bound to nothing; rotation dropped recovery; recovery used the record tag; `issueLicense` front-running; retired secrets proving ownership; caller records taken as arguments (`13e7704`) |
+| Outside Midnight developer | 24–25 Aug | Deployment record, *Revision — 24–25 August 2026*; issue #22 | Four licensing authorisation defects (public countersign, unauthenticated and overwriting transfer proposals, unauthenticated withdraw, revoke leaving the proposal), then the transfer model itself (a secret cannot be un-known). Earlier contract |
+| Outside Midnight developer | 16 Sep | Deployment record, *Correction — 16 September 2026* | A circuit's return value is not public: control proofs, DNA pairing and rotations published nothing a third party could check. Fixed with event cells |
+| 1. Security pass | 30 Sep | `docs/security-pass-30sep.md` (H1–H4, M1–M6, L1–L5) | Licences stuck after two rotations (`originOf`); recovery could not beat a thief; `proveLicense` bound to nothing; rotation dropped recovery; recovery used the record tag; `issueLicense` front-running; retired secrets proving control; caller records taken as arguments (`13e7704`) |
 | Lineage pass | 30 Sep | same, *Lineage contract pass* | Anyone could encumber any record; slot squatting; stale-proof window; caller identity as argument; empty inputs (`f03ebcf`) |
 | 2 | 30 Sep | same, *Round 2* | CRITICAL: a transfer could forge a licence from another issuer (leaf is now `licenseKey`); revocation starvation (ledger `HistoricMerkleTree`); thief blocking recovery (`headOf`); `recoveryCommit(0)` refused (`6a499a5`) |
 | 3 | 30 Sep | *Round 3* | No critical or high. A shared slot counter let anyone block activations (now a client-chosen random free slot); the lineage verifier rule read `rotatedTo`, which recovery did not write (rule 1 now uses `headOf`) (`ddbfe3a`) |
@@ -557,18 +557,18 @@ predecessors).
 | 7 | 30 Sep | *Round 7* | Lookup by transaction (single `proveLicense` on this address); iterative lineage walk (`5b23836`) |
 | 8 (+ re-attack) | 1 Oct | *Round 8* | HIGH: stale presentation bundled with a seal (`lastPresentationUnsealed`); recovery secret reusable (new commitment per recovery); ancestors rewriting pedigrees (`hasOffspring`); `checkLineage` called unanchored commitments clean (`fe3ae54`; re-attack `2690968`) |
 | 9 | 1 Oct | *Round 9* | `proveOwnership` named no verifier (challenge, rule 8); stale `lastRotatedFrom` after recovery (`e0f2815`) |
-| 10 | 1 Oct | *Round 10* | Contract held. Separate challenges for ownership and licences (client) |
+| 10 | 1 Oct | *Round 10* | Contract held. Separate challenges for control proofs and licences (client) |
 | 11 (+ re-attack) | 1 Oct | *Round 11* | Contract held. `verify.ts`: `ChallengeBook` (single use, kind, 7 days); `acceptOwnership` refuses a moved prover. `witnesses.ts`: `revokedLicenses` (`95e40b7`, `6b7d725`) |
 | 12 (+ second attacker) | 1 Oct | *Round 12* | State bounds; F1 (`lastIssuedLicense`), F2 (`lastProposed*`), F3 (recovery resets rotations), F5 (`activeLicensesBy`), R1 (16 more obligation places per recovery), R2 (`lastTransferredLicense`); F4, F6, F7, P2 documented (`ceb3a16`) |
-| Final audit | 1 Oct | *Final audit* | Contract and verifier: no HIGH or MEDIUM; build reproduced byte for byte (ZKIR and contract code) |
-| Independent review | 2 Oct | *Independent review, 2 October 2026 afternoon* | Contract: no blocker, high or medium; two lows documented in design.md |
-| Self-audit | 3 Oct | `docs/self-audit-3oct.md` | Midnight's Compact checklist line by line; mutation testing of all 68 asserts in `veilcore.compact` (64 caught; one real gap, `recoverRecordSecret`'s incoming-secret check, now tested in `mutation-gaps.test.ts`); StrykerJS on `verify.ts`, 217 then 246 of 283 mutants killed (`mutation-gaps-verifier.test.ts`, 12 tests) |
+| Final review | 1 Oct | *Final review* | Contract and verifier: no HIGH or MEDIUM; build reproduced byte for byte (ZKIR and contract code) |
+| Fresh-session AI review | 2 Oct | *Fresh-session AI review, 2 October 2026 afternoon* | Contract: no blocker, high or medium; two lows documented in design.md |
+| Self-review | 3 Oct | `docs/self-audit-3oct.md` | Midnight's Compact checklist line by line; mutation testing of all 68 asserts in `veilcore.compact` (64 caught; one real gap, `recoverRecordSecret`'s incoming-secret check, now tested in `mutation-gaps.test.ts`); StrykerJS on `verify.ts`, 217 then 246 of 283 mutants killed (`mutation-gaps-verifier.test.ts`, 12 tests) |
 | Claims A and B | 3 Oct | Commit `74e529c`; `attack-claims-A.test.ts` (FIXED, DEFENCE, ACCEPTED and OPEN labels); comments A1, A2, A5, A6, A7 and B-H1 in the source | HIGH: a lab signature could be moved to another record with the same field set (now signs the record commitment, all 32 bytes); small-order keys (A6, subgroup check); a second challenge split (A5); biased nonces (A7, `attest.ts`); range claims on non-number slots (numeric mask in the schema id) |
 | Claims layout and mutation testing | 4 Oct | claims-design.md, *Size* and *Mutation testing*; commit `cd30c11` | 71 mutants; three Schnorr survivors now killed by `claims-schnorr.test.ts`; one equivalent (`c < p − 115·2^248` vs `<=`) |
 | C | 4 Oct | `docs/mainnet-completeness.md`, *Attack round C*; commit `bdad91a` | Claims circuits: no false claim accepted. `verify-claims.ts`: any key called "a laboratory" (C3), exact numbers for any scale (C2), same-contract reading (C4). `field-schema.ts`: `ledgerIdentity` left out of the commitment (C1). `attest.ts`: `isSigningKey`, `verifyRecordSignature`. Tests `attack-claims-C`, `attack-verifier-C`, `ledger-identity` |
 | D (+ re-check) | 4 Oct | `docs/security-pass-4oct-roundD.md` | Main contract: nothing at Medium or above, unchanged. `verify.ts`: a presentation shows the licence was live when presented, not later, so rule 5 refuses one older than an hour or older than its challenge (`acceptPresentationAt`, D-7). Tests `hardening-roundD.test.ts` (`99008f4`; re-check fixes `8de6f2a`, outside your files) |
 
-Not independently re-checked yet, and outside your files: `8de6f2a` (join reads the deploy
+Not re-checked by a fresh-session AI review yet, and outside your files: `8de6f2a` (join reads the deploy
 transaction) and `5a980b3` (claims mainnet gate). The per-finding write-ups of claims round
 A and of round D are kept outside the repository; the commit messages, test labels and the
 documents above are the record here.

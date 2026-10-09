@@ -2,10 +2,11 @@
 // test-network wording; in a mainnet build every key here replaces it, in every language,
 // because a draft translation of the test-network sentence would be wrong on mainnet.
 //
-// Written before the launch, to be true once it has happened: the main contract is on
-// Midnight's main network, VeilCore anchors this site's records there in batches (by hand
-// for now: the operator seals a batch and anchors its root, see the registry README, so a
-// new record can wait a while), and the site still sends no transactions itself
+// Written to be true whether or not the first mainnet batch has been anchored yet: the
+// main contract is on Midnight's main network, and records sealed here go into batches
+// that VeilCore anchors there (by hand for now: the operator seals a batch and anchors
+// its root, see the registry README, so a new record can wait a while). Nothing here may
+// say a batch has already been anchored on mainnet. The site still sends no transactions itself
 // (licenses and lab agreements are simulated; a DNA report pairing is saved but not
 // dated). Records sealed here are real records, so the mainnet site doesn't call itself
 // a demo; only the simulated parts are named as simulated. The claims contract deploys right after the main one; until its address is
@@ -32,11 +33,12 @@ type Overlay = Partial<Record<StringKey, string>>;
 
 const common: Overlay = {
   'm.hero.status':
-    "Now on Midnight's main network: we anchor records there in batches, by hand for now. Records sealed on this site are real records; licenses and lab agreements here are still simulated.",
+    "VeilCore's contract is on Midnight's main network. Records sealed on this site are real records: they go into batches that we anchor there by hand for now. Licenses and lab agreements here are still simulated.",
   'm.faq.3a':
-    "It's built to be evidence, and our note for lawyers says what a record proves and what it doesn't. Records are now anchored on Midnight's main network, in batches. Once a record's batch is anchored, the date shows the record existed by then; what that's worth in a dispute is for the court to weigh.",
+    "It's built to be evidence, and our note for lawyers says what a record proves and what it doesn't. Records sealed here go into batches that we anchor on Midnight's main network by hand. Once a record's batch is anchored, the date shows the record existed by then; what that's worth in a dispute is for the court to weigh.",
   'm.stat2.b': 'Main network',
-  'm.foot.about': "An open record format for plant and animal genetics, dated on Midnight's main network.",
+  'm.foot.about':
+    "An open record format for plant and animal genetics. Records are dated by anchoring on Midnight's main network.",
   'm.get.2b':
     "Licenses and lab agreements attach to the record. A licensee can prove they hold a live license without showing which one. An obligation on a parent, such as a royalty, shows on every offspring both holders confirmed; VeilCore records it and doesn't collect it. Built into the contract on Midnight's main network; simulated on this website.",
   'm.demo.lede':
@@ -62,7 +64,7 @@ const common: Overlay = {
   'm.faq.2a':
     'No. Making a record on this site and checking any record need no wallet, no sign-up and nothing to buy. Your browser keeps a random key that finds your records on our server. The fingerprint goes on Midnight, a blockchain built for privacy. You never deal with it directly.',
   'm.for.1p':
-    "Seal a record and pair its DNA report. If the plant turns up under another name, a lab can compare a new test with your report. When you pair through VeilCore's contract on Midnight, the report's fingerprint is dated too, so your record shows you had that report by then. On this website the pairing is saved with your record but not yet dated. VeilCore doesn't test DNA.",
+    "Seal a record and pair its DNA report. If the plant turns up under another name, a lab can compare a new test with your report. When you pair through VeilCore's contract on Midnight, the pairing is dated too: it shows your record was paired with that report by then. If someone else pairs the same report, which pairing came first doesn't show who had the report first. On this website the pairing is saved with your record but not yet dated. VeilCore doesn't test DNA.",
   'm.for.3p':
     "Put terms on material before it ships: what it's for, no propagation, return or destroy it after. Through VeilCore's contract on Midnight, the lab confirms receipt with its own key, so the record shows a second party, which protects the lab as much as the client. On this website it is simulated.",
   'm.for.5p':
@@ -73,7 +75,7 @@ const common: Overlay = {
   'm.privacy.title': 'What this site keeps.',
 
   'm.privacy.lede':
-    "This note covers this website. Records you seal here are real records: they go into batches that we anchor on Midnight's main network.",
+    "This note covers this website. Records you seal here are real records: they go into batches that we anchor on Midnight's main network by hand.",
   'm.privacy.stored.title': 'Stored on our server',
   'm.privacy.stored.text':
     "What you type and what the app computes from it: cultivar and breeder names, species if you enter one, dates, notes, reference numbers, parents, fingerprints of records, fingerprints of photos and lab reports (only the fingerprints, never the files), lab report file names, agreement terms and counterparties, material you send to a lab (who it is addressed to, and the quantity), and, for labs, the public signing key and the attestations they publish. Also your holder key, which the app sends with every save so the server can find your records. The server is VeilCore's registry, hosted on Railway.",
@@ -92,7 +94,7 @@ const claimsLive: Overlay = {
   'm.claims.status':
     "A second Midnight contract, on Midnight's main network. Before launch it passed every end-to-end check, with made-up marker data. It isn't on this website yet.",
   'm.stat2.s':
-    "Both contracts are on Midnight's main network. We anchor this site's records there in batches, by hand for now.",
+    "Both contracts are on Midnight's main network. Records sealed on this site go into batches that we anchor there by hand for now.",
 };
 
 /** Not pinned yet: the main contract is live, the claims contract is still to follow. */
@@ -100,7 +102,7 @@ const claimsPending: Overlay = {
   'm.claims.status':
     "A second Midnight contract. It passed every end-to-end check in pre-launch testing, with made-up marker data. It isn't on Midnight's main network yet, and isn't on this website.",
   'm.stat2.s':
-    "The main contract is on Midnight's main network, and we anchor this site's records there in batches, by hand for now. The claims contract follows.",
+    "The main contract is on Midnight's main network. Records sealed on this site go into batches that we anchor there by hand for now. The claims contract follows.",
 };
 
 /**
@@ -110,7 +112,7 @@ const claimsPending: Overlay = {
 export const DATED_POSTS: readonly StringKey[] = ['m.post0.text', 'm.post2.title', 'm.post2.text'];
 
 const KEY_HOLDERS =
-  "One maintenance key, kept on paper, with a copy held by each founder, can change how VeilCore's main contract on Midnight works from then on. It cannot rewrite records already anchored in the network's history.";
+  "One maintenance key can change how VeilCore's main contract on Midnight works. Whoever holds it can add or replace the contract's operations, which could take over any record's identity, add licenses for any issuer, add or remove obligations and parent links, or switch operations off. It cannot backdate the network's block times, and every change shows on chain. Today the key is on paper, one copy with each founder, and either copy alone can use it. Moving it to a group of keys that must agree is planned, not done.";
 const CLAIMS_NO_KEY = ' The claims contract has no maintenance key: nobody, including us, can change it.';
 
 /** Who can change the contracts. "Decided" only when the policy's status line says APPROVED. */

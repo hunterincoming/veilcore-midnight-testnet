@@ -10,7 +10,7 @@ Version 0.1 - August 2026, revised October 2026 - draft for comment
 
 VeilCore is a records system for plant and animal genetics - plant varieties, breeding lines, seed lots, cultures, animal lines. It lets a holder establish four things that are ordinarily difficult or impossible to establish without disclosing the material itself:
 
-**That they held it, from a date.** Provable to a third party, without revealing what "it" is.
+**That a record of it existed by a date.** Provable to a third party, without revealing what "it" is. Who controls that record now can be shown too; who held it in between cannot.
 
 **What it descends from, and what obligations came with it.** Including obligations that carry to offspring declared as descendants later.
 
@@ -34,7 +34,7 @@ The alternatives are worse. Depositing a specimen requires storage that is infea
 
 **What VeilCore provides:** the holder describes the material and commits to that description - a 32-byte hash, published, revealing nothing. Later they produce the description and anyone can confirm it is the one committed to.
 
-**And they can prove it without producing it.** A zero-knowledge circuit lets a holder demonstrate they know the secret behind a published commitment without revealing the secret. In practice: a breeder can satisfy a counterparty that they hold the record behind a published commitment, and so held it by the commitment's date, while the description stays private. That is possession of the record, not proof that any material is the subject it describes (section 4).
+**And they can show control without producing it.** A zero-knowledge circuit lets a holder demonstrate they know the secret behind a published commitment without revealing the secret. In practice: a breeder can satisfy a counterparty that they control the record behind a published commitment now, while the description stays private. That shows control today, not who held the record earlier. The date the record's ledger identity was anchored says nothing about who holds the record now: a record can change hands through a key rotation or a recovery, and on chain that looks the same as a holder replacing their own key. It says nothing about the content either: the content is dated only by its own commitment's anchor. And it is control of the record, not proof that any material is the subject it describes (section 4).
 
 **Why this matters commercially:** a breeding programme makes hundreds of selections annually, most of which will never be registered and any of which might later need defending. Committing all of them costs almost nothing. Choosing in advance which will matter is not possible.
 
@@ -42,7 +42,7 @@ The alternatives are worse. Depositing a specimen requires storage that is infea
 
 A record can bind a laboratory's genetic analysis to itself: the report file is hashed, the hash committed with the record, and the report never leaves the holder.
 
-The consequence is that a claim rests on a specific analysis rather than only on a cultivar name, which is reused, renamed and disputed. The hash identifies the report file, not the genotype: two reports on the same plant, from different laboratories or different runs, have unrelated hashes. Where two parties claim the same material, each produces the report they committed; the hashes show that each report is the one committed and which was committed first, and whether the material is the same is settled by comparing the reports' marker data.
+The consequence is that a claim rests on a specific analysis rather than only on a cultivar name, which is reused, renamed and disputed. The hash identifies the report file, not the genotype: two reports on the same plant, from different laboratories or different runs, have unrelated hashes. Where two parties claim the same material, each produces the report they committed; the hashes show that each report is the one its record committed to, and each record's own anchor dates that record. Which of two records or pairings carrying the same raw report hash landed first is not evidence of who had the report first: a hash, once seen, can be copied, and a DNA pairing on the live VeilCore contract accepts any non-zero 32-byte value and makes it public. Whether the material is the same is settled by comparing the reports' marker data.
 
 **What it does not do:** it does not sequence anything, and it does not tell you whether a plant in a field is the material described. That requires comparison against the actual sample. What the record establishes is that the description and the analysis existed before the dispute - which is what makes a later comparison meaningful rather than circular.
 
@@ -164,7 +164,7 @@ Stated plainly, because a party who overstates will be corrected in front of the
 
 **It does not identify physical material.** Whether a plant is the subject described requires comparison of characteristics or genetic analysis.
 
-**It does not prove possession of material.** It proves prior possession of the record: that a party held a description, and its nonce, by the date the commitment was anchored, and - where a zero-knowledge proof is offered - that they still hold that secret. It does not prove that any material is the subject described, or that material was ever in their hands.
+**It does not prove possession of material.** It proves prior possession of the record: that someone held a description, and its nonce, by the date the commitment was anchored, and - where a zero-knowledge proof is offered - that whoever answers controls the record now. It does not show those are the same party: a record can change hands through a key rotation or a recovery, which on chain looks the same as a holder replacing their own key. It does not prove that any material is the subject described, or that material was ever in their hands.
 
 **It does not prove anything still exists.** Inspection is the only answer to that.
 

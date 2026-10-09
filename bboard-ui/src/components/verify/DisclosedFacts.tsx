@@ -18,8 +18,8 @@ import { DISCLOSURE_FIELDS, GENETICS_LABEL, LEGACY_NAME, keysOn, type Disclosure
 import type { StrainRecord } from '../../veilcore/records';
 import { TEAL } from '../../config/theme';
 import { networkLabel, isTestNetwork } from '../../config/network';
-
-const fmt = (t: number | string) => new Date(t).toLocaleString();
+import { displayName } from '../../veilcore/display-name';
+import { utcStamp as fmt } from '../../veilcore/time';
 
 // data-fact names what the line is, so a test (or an auditor) can count the ticks.
 export const Fact: React.FC<{ ok?: boolean; children: React.ReactNode }> = ({ ok = true, children }) => (
@@ -109,14 +109,14 @@ export const SharedFacts: React.FC<{ data: SharedFactsData; preview?: boolean }>
       {shared.has('parents') && (
         <Fact ok={false}>
           {data.parents?.length
-            ? `Parents, as the holder states them: ${data.parents.join(' × ')}`
+            ? `Parents, as the holder states them: ${data.parents.map(displayName).join(' × ')}`
             : 'No parents recorded.'}
         </Fact>
       )}
       {shared.has('method') && (
         <Fact ok={false}>
           {data.breedingMethod
-            ? `Breeding method, as the holder states it: ${data.breedingMethod}`
+            ? `Breeding method, as the holder states it: ${displayName(data.breedingMethod)}`
             : 'No breeding method recorded.'}
         </Fact>
       )}

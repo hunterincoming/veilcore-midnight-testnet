@@ -11,6 +11,7 @@
 
 import {
   type ContractAddress,
+  type ContractState,
   sampleSigningKey,
   type SigningKey,
 } from '@midnight-ntwrk/midnight-js-protocol/compact-runtime';
@@ -22,6 +23,7 @@ import {
   acceptOwnership,
   acceptPresentationAt,
   checkLineage,
+  currentHead,
   identityOf,
   isLive,
   type LineageReport,
@@ -34,10 +36,16 @@ import {
 } from '@midnight-ntwrk/midnight-js-contracts';
 import { combineLatest, map, from, defer, type Observable } from 'rxjs';
 import { toHex } from '@midnight-ntwrk/midnight-js-utils';
-import { assertDeploymentRecordCurrent, assertJoinAllowed } from './deploy-guard.js';
+import { assertDeploymentRecordCurrent, assertJoinAllowed, resolveNetwork } from './deploy-guard.js';
 import { FIRST_FRAGMENT, addMissingKeys, deployInFragments, unknownCircuits } from './deploy-fragments.js';
 import { retireMaintenanceAuthorityProvably } from './maintenance.js';
-import { callState, presentationWithTime } from './presentation-lookup.js';
+import { type LookupCheck, presentationWithTime, singleCallState } from './presentation-lookup.js';
+import {
+  type AuthorityReport,
+  ContractStateMismatchError,
+  checkContractState,
+  withMainnetPins,
+} from './state-check.js';
 import { checkStartingState } from './starting-state.js';
 import * as utils from './utils/index.js';
 import {
@@ -260,6 +268,22 @@ export class VeilcoreAPI {
   }
 
   /**
+   * As licensee: the licence commitment to send an issuer, built against the issuer's
+   * CURRENT head. `issuerRecord` may be any commitment of the issuer's identity (its
+   * origin, say, from a record's ledgerIdentity): issueLicense keys the licence on the
+   * issuer's head, so one built against an earlier commitment could never be
+   * countersigned. Keep the returned `issuerRecord`: countersigning, presenting and
+   * transferring this licence all name it. Nothing is sent.
+   */
+  async licenseRequest(
+    secret: Uint8Array,
+    issuerRecord: Uint8Array,
+  ): Promise<{ readonly licenseCommitment: Uint8Array; readonly issuerRecord: Uint8Array }> {
+    const head = currentHead(await this.currentLedger(), issuerRecord);
+    return { licenseCommitment: Veilcore.pureCircuits.licenseCommit(secret, head), issuerRecord: head };
+  }
+
+  /**
    * The licensee activates a pending licence at a random free leaf index. If another
    * activation takes the same index first, it retries with a new one.
    */
@@ -466,32 +490,64 @@ export class VeilcoreAPI {
   }
 
   /**
-   * As a verifier, check a licence presentation (design.md rule 5). `txId` is what the
-   * licensee gave you; it must be a successful proveLicense call on this contract, and
-   * the check is made on the state right after it (presentation-lookup.ts).
+   * Rule 8: check a control proof the holder made for your challenge (proveOwnership:
+   * the contract's name; it proves control of the record now, not ownership). On mainnet the
+   * state at the proof and the state now must both carry the pinned build's verifier keys
+   * (state-check.ts); `check` adds a second indexer or a required authority counter.
    */
-  /** Rule 8: check an ownership proof the holder made for your challenge. */
   async checkOwnership(
     indexerUri: string,
     txId: string,
     record: Uint8Array,
     challenge: Uint8Array,
-  ): Promise<ReturnType<typeof acceptOwnership>> {
-    // The state now as well as the state after the proof: if the proving commitment is
-    // no longer the head (rotated, or recovered away from a thief), the proof is refused.
-    return acceptOwnership(
-      await callState(indexerUri, this.deployedContractAddress, txId, 'proveOwnership'),
-      record,
-      challenge,
-      await this.currentLedger(),
-    );
+    check: LookupCheck = {},
+  ): Promise<ReturnType<typeof acceptOwnership> & { readonly authority?: AuthorityReport }> {
+    const req = this.lookupCheck(check);
+    let found: Awaited<ReturnType<typeof singleCallState>>;
+    try {
+      found = await singleCallState(
+        indexerUri,
+        this.deployedContractAddress,
+        txId,
+        ['proveOwnership'],
+        'That transaction is not a single proveOwnership call on this contract.',
+        undefined,
+        req,
+      );
+    } catch (e) {
+      if (e instanceof ContractStateMismatchError)
+        return { accepted: false, reason: e.message, authority: e.authority };
+      throw e;
+    }
+    // The state now as well as the state after the proof, read once: if the proving
+    // commitment is no longer the head (rotated, or recovered away from a thief), the
+    // proof is refused; where keys are pinned (mainnet), the state now must carry them too.
+    const nowState = await this.currentState();
+    if (req.verifierKeys !== undefined || req.authorityCounter !== undefined) {
+      try {
+        checkContractState(nowState, req, 'the current state');
+      } catch (e) {
+        if (e instanceof ContractStateMismatchError)
+          return { accepted: false, reason: e.message, authority: found.authority };
+        throw e;
+      }
+    }
+    const v = acceptOwnership(Veilcore.ledger(found.state.data), record, challenge, Veilcore.ledger(nowState.data));
+    // The authority reported is the one at the proof, as for a licence presentation.
+    return { ...v, authority: found.authority };
   }
 
   /**
+   * As a verifier, check a licence presentation (design.md rule 5). `txId` is what the
+   * licensee gave you; it must be a successful proveLicense call on this contract, and
+   * the check is made on the state right after it (presentation-lookup.ts).
+   *
    * `issuedAt` is when the verifier issued `challenge` (its challenge book). The
    * presentation is also refused when the indexer gives no time for it, when it landed
    * before the challenge was issued, or when it is older than MAX_PRESENTATION_AGE_MS
    * (verify.ts, acceptPresentationAt): it shows the licence was live when presented, not now.
+   * On mainnet the state must carry the pinned build's verifier keys; the maintenance
+   * authority at that transaction comes back with the verdict.
    */
   async checkPresentation(
     indexerUri: string,
@@ -499,13 +555,37 @@ export class VeilcoreAPI {
     issuer: Uint8Array,
     challenge: Uint8Array,
     issuedAt?: number,
-  ): Promise<ReturnType<typeof acceptPresentationAt>> {
-    const found = await presentationWithTime(indexerUri, this.deployedContractAddress, txId);
-    return acceptPresentationAt(found.ledger, issuer, challenge, {
+    check: LookupCheck = {},
+  ): Promise<ReturnType<typeof acceptPresentationAt> & { readonly authority?: AuthorityReport }> {
+    let found: Awaited<ReturnType<typeof presentationWithTime>>;
+    try {
+      found = await presentationWithTime(
+        indexerUri,
+        this.deployedContractAddress,
+        txId,
+        undefined,
+        this.lookupCheck(check),
+      );
+    } catch (e) {
+      if (e instanceof ContractStateMismatchError)
+        return { accepted: false, reason: e.message, authority: e.authority };
+      throw e;
+    }
+    const v = acceptPresentationAt(found.ledger, issuer, challenge, {
       landedAt: found.blockTime,
       blockHeight: found.blockHeight,
       issuedAt,
     });
+    return { ...v, authority: found.authority };
+  }
+
+  /**
+   * What a verification lookup requires here: on mainnet, the pinned build's verifier
+   * keys, always (a caller cannot turn that off or replace them with its own table);
+   * elsewhere, whatever the caller asks.
+   */
+  private lookupCheck(check: LookupCheck): LookupCheck {
+    return withMainnetPins(check, 'veilcore', resolveNetwork());
   }
 
   // ─────────────────────────────────────────────────────────── plumbing
@@ -537,9 +617,15 @@ export class VeilcoreAPI {
 
   /** The chain as this client reads it now. */
   async currentLedger(): Promise<Veilcore.Ledger> {
+    return Veilcore.ledger((await this.currentState()).data);
+  }
+
+  /** The contract's whole state now (data, circuits, authority), as this client reads it. */
+  private async currentState(): Promise<ContractState> {
     const contractState = await this.providers.publicDataProvider.queryContractState(this.deployedContractAddress);
-    if (contractState === null) throw new Error('the VeilCore contract has no state at its address');
-    return Veilcore.ledger(contractState.data);
+    if (contractState === null || contractState === undefined)
+      throw new Error('the VeilCore contract has no state at its address');
+    return contractState;
   }
 
   /**

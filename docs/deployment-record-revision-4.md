@@ -39,7 +39,7 @@ which record issued a licence, which commitment replaced which.
 
 | Category | Self-assessed score (1–3) | Rationale | Mitigations |
 |---|---|---|---|
-| Privacy-at-risk | 2 | No genetic data, names, terms or amounts reach the chain. The witnesses are secrets, a verifier's challenge, a record commitment and a tree path. What is public is a graph between pseudonymous identities, with timing: confirmed parentage, obligations and obligation proposals and their beneficiaries, licence issue, activation, transfer and revocation, ownership proofs, rotations and recoveries. That is counterparty and timing data, Tier 2. It is one step from identity-level: holders show their records to buyers and verifiers by design, and anyone who learns who holds one identity can read its whole public history. Cannabis is a stigmatised market, and the rubric lists such markets under Tier 3. We claim 2 because nothing on chain names a party: linking an identity needs its holder to disclose it off chain. Once disclosed, that identity's public history reads as Tier 3. A ZK fault that leaked witnesses would expose record, recovery or licence secrets: control of a record until its holder recovers it, and which licensee stands behind a presentation. | Commitments are domain-separated SHA-256 of random secrets. Obligation terms are hashed with a random salt off chain. A presentation publishes a tag only the verifier can recognise and hides the licence and the licensee. Ownership proofs and presentations answer a verifier's challenge, which verifier rules 5 and 8 require be used once. Holders can split activity across records; rotation does not unlink, and we say so. |
+| Privacy-at-risk | 2 | No genetic data, names, terms or amounts reach the chain. The witnesses are secrets, a verifier's challenge, a record commitment and a tree path. What is public is a graph between pseudonymous identities, with timing: confirmed parentage, obligations and obligation proposals and their beneficiaries, licence issue, activation, transfer and revocation, control proofs, rotations and recoveries. That is counterparty and timing data, Tier 2. It is one step from identity-level: holders show their records to buyers and verifiers by design, and anyone who learns who holds one identity can read its whole public history. Cannabis is a stigmatised market, and the rubric lists such markets under Tier 3. We claim 2 because nothing on chain names a party: linking an identity needs its holder to disclose it off chain. Once disclosed, that identity's public history reads as Tier 3. A ZK fault that leaked witnesses would expose record, recovery or licence secrets: control of a record until its holder recovers it, and which licensee stands behind a presentation. | Commitments are domain-separated SHA-256 of random secrets. Obligation terms are hashed with a random salt off chain. A presentation publishes a tag only the verifier can recognise and hides the licence and the licensee. Control proofs and presentations answer a verifier's challenge, which verifier rules 5 and 8 require be used once. Holders can split activity across records; rotation does not unlink, and we say so. |
 | Value-at-risk | 1 | The contract holds no funds. No circuit receives, holds or sends tokens. Obligations record royalties; they do not move money. An exploit could produce wrong licence, lineage or obligation state, or let someone act as a record's holder until recovery. That can cost money off chain. It cannot drain a balance, because there is none. | N/A |
 | State-space-at-risk | 2 | Bounded per identity, growing with the number of identities. Every entry is overwritten, cleared by the party who created it, or capped per anchored identity: at most 16 rotations (reset by recovery) and 16 recoveries, so at most 288 `originOf` entries; 2 parents; 16 obligations in force per record, plus 16 per recovery (at most 272); 8 waiting proposals per proposer; 32 pending and 1024 active licences per issuer. Each anchor writes seven entries that are never removed, and an identity can hold at most 299 permanent entries; fees are paid in DUST, which regenerates, so creating identities is rate-limited, not priced. State grows with the number of anchored records, not with how often anyone calls. Why we still score 2, and why reviewers may read it as 3: *State* in Revision 4. There is no global ceiling on identities, so not Tier 1. Two things are not bounded per identity: the licence tree's root history, cleared only when someone seals (no more often than every 600 s; up to 900 s after the previous seal if its sealer set the bound 300 s ahead), and the total one party can create with many anchors, one fee each. | The caps are enforced in the contract. Waiting proposals, licences and obligations in force each have a clearing move that frees a place; identity and parentage entries are permanent and capped. There is no automated sealer; the operator seals by hand (CLI option 15) after licence activations. Bound table: *State* in Revision 4; full table in `docs/design.md`, *State bounds*. |
 
@@ -432,8 +432,8 @@ holder needs a wallet), and `proposeTransfer` / `approveTransfer` / `withdrawTra
 the issuer consents to a named party. See the second correction below: the mechanism as
 first written did not achieve this).
 
-**Four authorisation defects were found in the licensing circuits and fixed.** Max Weber
-(ODATANO / NIGHTGATE) compiled the contract, deployed it to preprod, ran every circuit
+**Four authorisation defects were found in the licensing circuits and fixed.** An outside
+Midnight developer compiled the contract, deployed it to preprod, ran every circuit
 and replayed them as an attacker, reporting each finding with a transaction hash:
 [issue #22](https://github.com/hunterincoming/veilcore-midnight-testnet/issues/22).
 
@@ -643,7 +643,7 @@ randomness: it reaches the caller's own DApp and nobody reading the ledger. The
 third revision then applied that rule — it made `proveOwnership` and `pairDna`
 return their commitments and recorded the defect as closed.
 
-Max Weber (ODATANO / NIGHTGATE) compiled the artefact recorded above and searched
+An outside Midnight developer compiled the artefact recorded above and searched
 each call's `proofData.publicTranscript` — what a `ContractCall` actually carries —
 against its `input`/`output`, which only the communication commitment covers:
 
@@ -920,7 +920,7 @@ commitments:
   publishes the incoming commitment. Revoke and approve publish the caller's record.
 - **Presentations** publish a tag and a tree root. The root narrows the issuer to those
   with live licences at that root. At launch that can be one issuer.
-- **Ownership proofs** publish the record and the verifier's challenge.
+- **Control proofs** publish the record and the verifier's challenge.
 - **Rotations and recoveries** publish the old and new commitments. Rotation does not
   unlink.
 
@@ -938,17 +938,17 @@ Unchanged at 1. The contract holds no funds and no circuit moves tokens.
 
 ### What was found and fixed
 
-**Outside review.** Max Weber (ODATANO / NIGHTGATE) attacked the licensing circuits in
+**Outside review.** An outside Midnight developer attacked the licensing circuits in
 August ([issue #22](https://github.com/hunterincoming/veilcore-midnight-testnet/issues/22);
-*Revision — 24–25 August 2026* above). In September he checked the third revision's
+*Revision — 24–25 August 2026* above). In September they checked the third revision's
 build against its public transcripts, which found the defect in *Correction — 16
-September 2026*. The repository records no review by him of this build.
+September 2026*. The repository records no review by them of this build.
 
 **Twelve rounds of adversarial review** on 30 September and 1 October 2026, recorded in
 `docs/security-pass-30sep.md`. Round 1 was our own. Rounds 2 to 12 were by AI reviewers
-in separate sessions that had not seen the fixes, directed by the founders (Max Weber's
-August and September passes, above, are the human reviews). Three rounds (8, 11 and 12)
-were followed by an independent re-attack of their fixes. Contract findings were
+in separate sessions that had not seen the fixes, directed by the founders (the outside
+developer's August and September passes, above, are the human reviews). Three rounds (8, 11 and 12)
+were followed by a fresh-session AI re-attack of their fixes (not an audit). Contract findings were
 demonstrated against the build before being fixed or documented. Contract attacks are kept
 as tests in `contract/src/test/`. Not every finding has a test. These were adversarial
 reviews, not a formal security audit.
@@ -968,7 +968,7 @@ Contract findings, as rated there:
 - **Others, rated MEDIUM or lower, or not rated.** Lineage could not survive a rotation
   (see *What changed*). A recovery secret stayed valid after use. An ancestor could
   rewrite the pedigree of material already descended from it. A retired secret could
-  still prove ownership. Anyone could cancel every presentation in flight once a block.
+  still prove control. Anyone could cancel every presentation in flight once a block.
   `issueLicense` could be blocked by front-running. `proveOwnership` named no verifier.
 - **Client and tooling.** The CLI wrote record secrets, recovery secrets, the wallet seed
   and the maintenance key to plain-text log files. The maintenance key stayed in the
@@ -982,7 +982,7 @@ Contract findings, as rated there:
 In rounds 10 and 11 the contract held: no HIGH or MEDIUM finding on chain, and the
 contract did not change. It then changed once more, for the state bounds (see *State*).
 
-**Round 12: an attack on the state bounds.** An independent attacker went after the new
+**Round 12: an attack on the state bounds.** A fresh-session AI attacker (not an audit) went after the new
 caps (`contract/src/test/attack-bounds.test.ts`) and found seven issues. Four were fixed
 in the contract:
 
@@ -1008,8 +1008,8 @@ to a commitment no event cell showed; `approveTransfer` now publishes the new co
 (`lastTransferredLicense`). P2: a proposal publishes the obligation commitment even if
 rejected, harmless when salted, as the CLI does.
 
-**Attack round D, 4 October 2026** (`docs/security-pass-4oct-roundD.md`). Six independent
-reviews: the website, the fee-paying demo service, the SDK (TypeScript, Python, Rust), the
+**Attack round D, 4 October 2026** (`docs/security-pass-4oct-roundD.md`). Six fresh-session
+AI reviews (not an audit): the website, the fee-paying demo service, the SDK (TypeScript, Python, Rust), the
 registry, this contract with its operator tool and client API, and the supply chain.
 
 - **This contract:** no Critical, High or Medium finding in `veilcore.compact`. It did not
@@ -1035,7 +1035,7 @@ registry, this contract with its operator tool and client API, and the supply ch
   starting-state check could refuse the genuine contract after any key change, because
   midnight-js returns the current state, not the deploy state, when the latest action is a
   maintenance update. Fixed in `8de6f2a` by reading the deploy transaction itself.
-- **Not yet independently reviewed:** that fix (`8de6f2a`), and the claims contract's
+- **Not yet re-checked by a fresh-session AI review:** that fix (`8de6f2a`), and the claims contract's
   mainnet gate (`5a980b3`: deploy guard, address pin, fingerprint check). The branches that
   only run on mainnet (fingerprint refusals, empty-pin refusals, joining at the pin) cannot
   run on preprod and are covered by unit tests only.
@@ -1219,6 +1219,13 @@ transactions and the authority's counter are on chain, and anyone can compare th
 and keys on chain with a build of `ceb3a16`, as `join` does. That detects a change after it
 happens. It does not prevent one.
 
+**The counter to expect.** Every maintenance update raises the authority's counter. Since
+8 October VeilCore's verifier checks report it with every verdict (committee size,
+threshold, counter), and a verifier can require a value (`authorityCounter`). The mainnet
+value after the deploy, the remaining circuit keys included:
+**TODO: not yet recorded. Read it from the chain (`readAuthority({ network: 'mainnet', ... })`
+in the partner kit) and fill it in here.**
+
 ### The claims contract
 
 **No maintenance authority on the claims contract, enforced by the operator tool.** Off a
@@ -1396,7 +1403,7 @@ mainnet accepts only these addresses.
   (OutOfDustValidityWindow) while the preprod indexer lagged the chain; the operator tool
   then misread that refusal as a block limit, fixed in `455cf05`
   (`docs/security-pass-30sep.md`).
-  After this run an independent review changed the operator tool's failure paths only
+  After this run a fresh-session AI review (not an audit) changed the operator tool's failure paths only
   (messages, a forced stop, terminal scrubbing; `docs/security-pass-30sep.md`); the
   successful path and the contract are as run here. The local smoke test was re-run on
   the final tool (`c0647dc`) on 2 October 2026, closing at 19:46 EDT: PASSED 26 of 26,
@@ -1456,7 +1463,7 @@ mainnet accepts only these addresses.
 - **The state bounds came after a first draft of this revision.** That draft scored the
   previous build 3 on State-Space-at-Risk against the rubric, which blocks deployment.
   Instead of filing at 3, the contract was changed to cap state per anchored identity
-  (*State*), and the score is now 2. An independent attack on the bounds found 7 issues:
+  (*State*), and the score is now 2. A fresh-session AI attack on the bounds (not an audit) found 7 issues:
   4 fixed in the contract (F1, F2, F3, F5) and 3 documented (F4, F6, F7). A second
   attack on the fixes found 2 more, both fixed in the contract (R1: 16 more obligation
   places per recovery; R2: an approved transfer publishes the new commitment), and P2 was
@@ -1481,7 +1488,7 @@ mainnet accepts only these addresses.
   material an external auditor starts from is in `docs/audit/README.md`.
 - **6 and 7 October 2026:** the partner package (`@veilcore/contracts`, which exposes no
   deploy or maintenance operation) passed 23 of 23 checks against both preprod contracts
-  (`docs/partner-check-run-6oct.md`); one independent review of the mainnet-only operator
+  (`docs/partner-check-run-6oct.md`); one fresh-session AI review (not an audit) of the mainnet-only operator
   checks (address pins, fingerprint gates, the claims deploy guard, the site preflights)
   found nothing serious, and its one medium and two lows were fixed in `799c765`, which
   changes no contract; and the paper-key deploy path ran on preprod for the first time:

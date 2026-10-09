@@ -13,13 +13,13 @@ import { THIS_SITE } from '../config/copy';
 const POINTS = [
   {
     icon: <ScheduleIcon />,
-    title: 'An earlier record beats a later one',
+    title: 'An earlier record shows as earlier',
     body: 'Once records are anchored, anyone can check which was anchored first. Before that, a record’s time is its device’s clock. A record is evidence, not a registration: it shows what you had and when, but doesn’t settle a dispute on its own.',
   },
   {
     icon: <ScienceIcon />,
     title: 'A paired report can be compared later',
-    body: `Pairing saves your lab report’s fingerprint with the record, as your statement, so a fresh test of the material can later be compared with it. When you pair through VeilCore’s contract on Midnight, the report’s fingerprint is dated too; ${THIS_SITE} doesn’t do that yet.`,
+    body: `Pairing saves your lab report’s fingerprint with the record, as your statement, so a fresh test of the material can later be compared with it. When you pair through VeilCore’s contract on Midnight, the pairing is dated too: it shows the record was paired with that report by then, not who had the report first. In ${THIS_SITE}, pairings aren’t dated yet.`,
   },
   {
     icon: <GroupIcon />,

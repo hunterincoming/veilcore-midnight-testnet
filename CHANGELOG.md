@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixes from the 8 October review (8 Oct 2026)
+
+- **Site:** copy on what a DNA pairing shows, what the maintenance key can do, anchoring
+  and privacy, with the translations; the verify page shows a grey seal unless an anchor
+  is checked on chain, times in UTC; a not-found page and robots.txt; a smaller build.
+  Docs vendored from veilcore-sdk `33fa929`. The translation worksheets are out of date
+  and need regenerating.
+- **Client checks:** every verdict's lookup compares the circuits' verifier keys with the
+  pinned build (always on mainnet) and reports the maintenance authority (committee,
+  threshold, counter; `authorityCounter` can require one). An optional second indexer
+  must agree on call, block and state. The partner kit refuses a network name that does
+  not match its indexers or address. Rule 5 has an issuer-scoped form
+  (`acceptPresentationScoped`) for a caller who supplies the history since the last seal;
+  the strict rule stays the default. Licence requests are built against the issuer's
+  current head (`licenseRequest`). Claims check 8 refuses a mask over every described
+  slot and matches `supersedes` beyond `recordId`. The package's canonical JSON refuses
+  what the SDK refuses.
+- **CLI:** one CLI per private-state store (`private-state.lock`); every secret it shows
+  is redacted from then on. Proof server containers bind 127.0.0.1 only.
+- **Partner kit:** a remote proof server is refused unless `allowRemoteProofServer`, then
+  https only; credentials in endpoint URLs are kept off the terminal (`scrubTerminal`).
+  These need a 0.3.0 release of `@veilcore/contracts`, not yet published; 0.2.0 on npm
+  does not have them.
+- **Docs:** design, partner guide, maintenance policy and deployment record match the
+  above. Still open: the mainnet authority counter to expect (a TODO), and Docker image
+  digests (all three images are on tags).
+- **Deploy tool:** Vercel CLI stays on 62.2.0 with `tar` overridden past the critical
+  advisory.
+
 ### VeilCore-run, managed service v1 (6 Oct 2026)
 
 - New folder `veilcore-run/` and `npm run managed`: VeilCore operates on chain for partners
@@ -22,7 +51,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bundle); resumable; the partner's own recovery (`partner-recover`, `partner-check`) is the
   required last step, and `exit-check` shows it on chain. The store is then retired and every
   operation refused; `purge` deletes the remaining secrets and the bundle files.
-- After the independent review (same day): bundles sealed to an X25519 key derived from the
+- After a fresh-session AI review (same day; not an audit): bundles sealed to an X25519 key derived from the
   partner's master (no passphrase typed on VeilCore's computer, no plaintext sheets there);
   pools and exit answers confirmed by a fingerprint the partner reads out; "can act" status
   from what VeilCore actually holds; audit log anchored on chain with receipts; lock before

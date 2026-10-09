@@ -183,6 +183,9 @@ afterEach(() => {
 
 // ─────────────────────────────────────────────── D-2
 
+/** What is in a network's folder, less the store lock this process holds while it runs (store-lock.ts). */
+const besideStore = (dir: string): string[] => readdirSync(dir).filter((f) => f !== 'private-state.lock');
+
 describe('D-2 FIXED: the maintenance key and one-call secrets never reach the store on disk', () => {
   it('the deploy store calls, replayed through the CLI store: the maintenance key is in no file, live or deleted', async () => {
     const { dir, store } = await cliStore();
@@ -424,7 +427,7 @@ describe('D-2 FIXED: the maintenance key and one-call secrets never reach the st
       expect(
         Object.fromEntries(readdirSync(old).map((f) => [f, readFileSync(path.join(old, f)).toString('hex')])),
       ).toEqual(snapshot); // not even opened
-      expect(readdirSync(path.join(home, '.veilcore', 'mainnet'))).toEqual([]);
+      expect(besideStore(path.join(home, '.veilcore', 'mainnet'))).toEqual([]);
     });
 
     it('a new store already in use: no question; the old folder is named, not touched', async () => {
@@ -484,16 +487,16 @@ describe('D-2 FIXED: the maintenance key and one-call secrets never reach the st
         /does not open the old store/,
       );
       expect(readdirSync(tmp)).toEqual([]);
-      expect(readdirSync(path.join(home, '.veilcore', 'mainnet'))).toEqual([]);
+      expect(besideStore(path.join(home, '.veilcore', 'mainnet'))).toEqual([]);
       // The scratch copy is made in `tmp`: with no usable temp folder, MOVE cannot start.
       await expect(
         chooseStore({ ...base, tmp: path.join(tmp, 'absent'), password: PASSWORD, ask: async () => 'MOVE' }),
       ).rejects.toThrow(/ENOENT/);
-      expect(readdirSync(path.join(home, '.veilcore', 'mainnet'))).toEqual([]);
+      expect(besideStore(path.join(home, '.veilcore', 'mainnet'))).toEqual([]);
       // A MOVE that works: only the new store in the home folder, nothing in `tmp`.
       await chooseStore({ ...base, password: PASSWORD, ask: async () => 'MOVE' });
       expect(readdirSync(tmp)).toEqual([]);
-      expect(readdirSync(path.join(home, '.veilcore', 'mainnet'))).toEqual(['private-state']);
+      expect(besideStore(path.join(home, '.veilcore', 'mainnet'))).toEqual(['private-state']);
     });
 
     it('a MOVE killed mid-copy: the next start removes what it left, says so, and offers MOVE again', async () => {
@@ -543,7 +546,7 @@ describe('D-2 FIXED: the maintenance key and one-call secrets never reach the st
       // The unfinished store did not count as "in use": MOVE was offered again and done.
       expect(ask).toHaveBeenCalledTimes(1);
       expect(choice.dir).toBe(storeDirFor('mainnet', home));
-      expect(readdirSync(net)).toEqual(['private-state']);
+      expect(besideStore(net)).toEqual(['private-state']);
       expect(await keyOnDisk(choice.dir)).toBe(false);
     });
   });
@@ -1317,7 +1320,7 @@ describe('D-7 FIXED: a licence check reports the presentation time and refuses a
     const t = Date.now() - 10 * 60_000;
     const { api, I_REC, challenge } = presentation(t);
     const v = await api.checkPresentation('http://indexer', 'aa', I_REC, challenge, t + 5 * 60_000);
-    expect(v).toEqual({ accepted: false, reason: 'the presentation landed before you issued this challenge' });
+    expect(v).toMatchObject({ accepted: false, reason: 'the presentation landed before you issued this challenge' });
   });
 
   it("option 27 passes the challenge book's issue time", () => {

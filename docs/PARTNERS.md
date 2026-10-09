@@ -19,7 +19,9 @@ already record, your software adds one fingerprint (a 32-byte hash) and can put 
 Midnight, a public blockchain built for privacy. From then on, anyone you choose can check:
 
 - that the record existed on that date and has not been changed since;
-- that whoever shows it to them really holds it (they send a one-time challenge, you answer);
+- that whoever shows it to them controls the record now (they send a one-time challenge,
+  you answer). That is control today: prior possession of the record, not ownership, and
+  not who held it before;
 - that your lab signed the report on it;
 - that a grower holds a live licence from a breeder, without the chain naming either of them;
 - one fact about a record, such as "germination at least 95%", without seeing the rest.
@@ -62,13 +64,27 @@ VeilCore server.
 ### Install
 
 ```sh
-npm install @veilcore/contracts veilcore-records
-npx veilcore-keys fetch --to ./veilcore-keys      # proving keys, checked (below); once VeilCore publishes them
+npm install --save-exact @veilcore/contracts@0.2.0 veilcore-records
+npm exec --package=@veilcore/contracts@0.2.0 -- veilcore-keys fetch --to ./veilcore-keys   # proving keys, checked (below)
 docker run -d -p 127.0.0.1:6300:6300 midnightntwrk/proof-server:8.0.3 midnight-proof-server -v
 ```
 
-Node 24, ES modules. Not yet on npm. Until it is, build it from this repository. The build
-needs the compiled contracts, which are not in git:
+Node 24, ES modules. On npm as `@veilcore/contracts`. **Pin an exact version** (`0.2.0`, not
+`^0.2.0`): the package carries the mainnet contract addresses and the key fingerprints it
+checks against, so an upgrade should be a choice you make and review, not something a
+reinstall does for you.
+
+**Do not run a bare `npx veilcore-keys`.** VeilCore does not own the npm name
+`veilcore-keys`. From a folder where the package is not installed, `npx` would download
+whatever package has that name, from anyone. Use `npm exec --package=@veilcore/contracts@0.2.0
+-- veilcore-keys …` as above, or the installed file directly:
+`node node_modules/@veilcore/contracts/dist/veilcore-keys.js …`.
+
+The proof server line binds port 6300 to `127.0.0.1` only, so nothing else on your network
+can reach it (see *Keys and the proof server*).
+
+**Or build it from this repository.** The build needs the compiled contracts, which are not
+in git:
 
 1. Install the Compact compiler **0.31.1** exactly (`compact compile --version` prints
    `0.31.1`; another version gives other contract code, and the build refuses it).
@@ -77,9 +93,8 @@ needs the compiled contracts, which are not in git:
    proving keys, so you can use `keys: { dir: '<repo>/contract/src/managed' }`. It needs to
    download Midnight's proving parameters and takes a while.)
 4. `cd .. && npm run build -w @veilcore/contracts`, then depend on the folder `partner-kit/`.
-5. `npx veilcore-keys check --dir contract/src/managed` (from `partner-kit/`:
-   `node dist/veilcore-keys.js check --dir ../contract/src/managed`) confirms every key
-   matches the deployment record.
+5. From `partner-kit/`: `node dist/veilcore-keys.js check --dir ../contract/src/managed`
+   confirms every key matches the deployment record.
 
 ### Quick start
 
@@ -97,7 +112,7 @@ import {
   checkOwnership,
 } from '@veilcore/contracts';
 
-const network = 'preprod'; // 'mainnet' once VeilCore's addresses are pinned
+const network = 'preprod'; // or 'mainnet': 0.2.0 has VeilCore's mainnet addresses pinned
 const endpoints = endpointsFor(network); // mainnet: endpointsFor('mainnet', {}, { blockfrostProjectId })
 
 // The wallet that pays fees. YOUR secret manager supplies the seed.
@@ -133,7 +148,7 @@ Three complete, runnable examples are in [`partner-kit/examples/`](../partner-ki
 
 | Example               | What it does                                                                                                                                                                                                                                                     |
 | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `lab.mjs`             | A lab receives material: seals the intake record (SDK), anchors it, puts the day's records on chain as one batch root, signs its report (SDK), pairs the report's fingerprint with the record, and proves possession to a verifier who checks it with no wallet. |
+| `lab.mjs`             | A lab receives material: seals the intake record (SDK), anchors it, puts the day's records on chain as one batch root, signs its report (SDK), pairs the report's fingerprint with the record, and proves control of the record to a verifier who checks it with no wallet. |
 | `breeder-licence.mjs` | A breeder issues a licence, the grower countersigns, proves it to a buyer's one-time challenge, the buyer checks it with no wallet, the breeder revokes it.                                                                                                      |
 | `claims.mjs`          | A lab seals a record's fields (the SDK computes the same commitment), signs it; the holder proves "germination at least 95.00%" and the lab's signature; a verifier reads both by transaction id and judges them.                                                |
 
@@ -151,6 +166,10 @@ pays. `npm run local:down` throws it away.
 
 ### What the package offers
 
+**Not yet on npm.** Items marked _(0.3.0)_ below are in this repository but not in 0.2.0
+on npm. They ship with 0.3.0, which is not published yet. Until then, build from this
+repository to use them.
+
 **Connecting** (`connect`, `seedWallet`, `encryptedPrivateState`, `endpointsFor`). Bring your
 own `WalletProvider` + `MidnightProvider` and private-state providers instead if you have
 them; `connect` takes any.
@@ -162,10 +181,16 @@ them; `connect` takes any.
 | a record holder           | `useRecordSecret`, `whoAmI`, `anchor`, `pairDna`, `proveOwnership`, `anchorBatch`                                   |
 | keeping your own identity | `rotateRecordSecret`, `recoverRecordSecret`, `replaceRecoveryCommitment`, `recoverySecretIsCurrent`                 |
 | a licence issuer          | `issueLicense`, `approveTransfer`, `revokeLicense`, `sealRevocations`                                               |
-| a licensee                | `countersignLicense`, `proveLicense`, `proposeTransfer`, `withdrawTransfer`                                         |
+| a licensee                | `licenseRequest` _(0.3.0)_, `countersignLicense`, `proveLicense`, `proposeTransfer`, `withdrawTransfer`             |
 | in a pedigree             | `proposeParent`, `confirmParent`, `withdrawParent`, `checkLineage`                                                  |
 | party to an obligation    | `proposeObligation`, `encumberOwnRecord`, `acceptObligation`, `rejectObligation`, `withdrawObligation`, `discharge` |
 | a verifier                | `checkOwnership`, `checkPresentation`, `ledger`                                                                     |
+
+`proveOwnership` and `checkOwnership` keep the contract's names, but they prove control of
+the record now (prior possession of the record), not ownership. The identity's anchor date
+says nothing about who holds it today: a sale looks like a key rotation on chain. A
+`pairDna` pairing shows the record was paired with that value by that date; anyone can pair
+the same raw report hash, so which pairing came first does not show who had the report first.
 
 Every method that sends a transaction returns its `txId` (give it to whoever checks),
 `txHash` and `blockHeight`. `revokeLicense` and `approveTransfer` also say whether they
@@ -176,18 +201,48 @@ refuses is refused before anything is proved or sent; tell it from other failure
 lists them all). Commitments are computed offline with `commit.record`, `commit.recovery`,
 `commit.license`, `commit.presentationTag` and `commit.obligation`.
 
+**Asking for a licence.** Build the licence commitment with
+`vc.licenseRequest(licenseSecret, issuerRecord)` _(0.3.0)_, not with `commit.license` and
+the issuer's origin (what a record's `ledgerIdentity` names). An issuer's licence is keyed
+on its current head, so a commitment built against an older commitment of the issuer can
+never be countersigned once the issuer has rotated. `licenseRequest` reads the current
+head from the chain (any commitment of the issuer's identity may be given) and returns it
+as `issuerRecord`: use that one for `countersignLicense`, `proveLicense` and
+`proposeTransfer`. `currentHead(ledger, record)` does the same lookup on a ledger you
+already read. Nothing is sent.
+
 **The claims contract** (`VeilCoreClaims`): `proveValue`, `proveRange`, `proveDistinct`,
 `proveUnchanged`, `proveAttested`, `readClaim`, `authority`. Seal a record's fields with
 `sealFields` (identical to the SDK's `sealFieldSet`, checked on the same 100 vectors); a
 laboratory signs with `newLabKey` / `signRecord`.
 
-**Checking, with no wallet** (`checkPresentation`, `checkOwnership`, `checkBatchAnchor`,
-`readClaim`, `readClaimsAuthority`, `readLedger`, `verifyClaim`, `ChallengeBook`): only the
+**Checking, with no wallet** (`checkPresentation`, `checkOwnership` (control of the record
+now, not ownership), `checkBatchAnchor`,
+`readClaim`, `readClaimsAuthority`, `readAuthority` _(0.3.0)_, `readLedger`, `verifyClaim`,
+`ChallengeBook`): only the
 network (and an indexer URL on mainnet). Each looks up the transaction the other party
 names, requires it to have succeeded with exactly one call of the expected kind on
 VeilCore's contract, and judges the state recorded for that call (design.md, verifier rules
 5, 7, 8). Keep a `ChallengeBook` (save its `entries()` between runs) so each challenge is
 used once.
+
+Options the checks take _(0.3.0)_:
+
+| Option | What it does |
+| --- | --- |
+| `secondIndexer` | Another indexer's URL (your own, or another provider's). Every check asks both and refuses unless they report the same call, in the same block, with the same contract state. `checkOwnership` also reads the current state from both. |
+| `verifierKeys` | `'pinned'`: refuse a state whose circuits' verifier keys are not the deployment record's build (the verdict says which circuits differ). `'report'`: only report. Default `'pinned'` on mainnet, where it cannot be turned off, and on preprod; `'report'` elsewhere (a local chain, preview), where the contract is usually your own build. |
+| `authorityCounter` | Refuse unless the maintenance authority's counter is exactly this. Every maintenance update raises it, so pinning the value you last saw turns any change since into a refusal. |
+| `history`, `rule` | `checkPresentation` only. `history` is the contract's state after every call, from the last seal before the presentation up to and including it, from your indexer; with it the issuer-scoped rule 5 decides, so another party's revocations cannot make an honest presentation fail. The package does not fetch it for you. `rule: 'strict'` keeps the original rule even with a history; without one, the original rule applies. |
+
+Every verdict also carries `authority`: the maintenance authority in the state it rests on
+(committee size, threshold, counter, and whether it is retired). A state that is not the
+pinned build comes back as a refusal; `readClaim` throws `ContractStateMismatchError`
+instead. `readAuthority` returns the main contract's authority now; compare its counter
+with the one in the latest deployment record revision. The checks also refuse a network
+name that does not match: a mainnet indexer or VeilCore's mainnet address under any other
+network, or a preprod or preview indexer under `mainnet`. `readLedger` and
+`readClaimsAuthority` read the current state as it is; they compare no keys.
 
 **Not exposed, on purpose:** deploying VeilCore's contracts, adding circuit keys and the
 maintenance authority. That code is bundled inside `dist/index.js` (the clients are built on
@@ -200,8 +255,8 @@ bundle). Without VeilCore's maintenance key it could do nothing privileged anywa
 On **mainnet** the package accepts only the addresses in VeilCore's filed deployment record
 (`MAINNET_ADDRESSES`); any other address is refused before anything is read or sent. Anyone
 can deploy a contract with identical circuits and different starting state, so the address
-is what says which one is VeilCore's. Until the mainnet deploy, those addresses are empty and
-every mainnet join is refused.
+is what says which one is VeilCore's. They were pinned on 8 October 2026, and 0.2.0 joins
+them by default (an earlier version, with empty pins, refuses every mainnet join).
 
 On **preprod** the default is the pair from the 5 October 2026 test run
 (`PREPROD_ADDRESSES`). Test network: nothing there is real.
@@ -217,7 +272,9 @@ circuit it calls, the circuit and its two keys: 72 files for the main contract, 
 claims contract. They are large, so they are not in
 the npm package.
 
-- `npx veilcore-keys fetch --to <dir>` downloads them from VeilCore's release
+- `npm exec --package=@veilcore/contracts@0.2.0 -- veilcore-keys fetch --to <dir>` (or
+  `node node_modules/@veilcore/contracts/dist/veilcore-keys.js fetch --to <dir>`; never a bare
+  `npx veilcore-keys`, see *Install*) downloads them from VeilCore's release
   (`DEFAULT_KEYS_URL`) and **checks every file's SHA-256 against the fingerprints in the
   deployment record**, built into the package. A file that differs is refused and never
   kept, so the download location does not have to be trusted. Then `keys: { dir }`.
@@ -226,10 +283,12 @@ the npm package.
   check applies.
 - Or leave `keys` out: the package fetches and caches them under `~/.veilcore/zk/`.
 
-**Run the proof server yourself, on the same machine or a private network.** Every proof
-sends it its private inputs: record secrets, licence secrets, hidden field values. A proof
-server run by someone else sees all of them. `connect` warns when the proof server is not
-local.
+**Run the proof server yourself, on the same machine.** Every proof sends it its private
+inputs: record secrets, licence secrets, hidden field values. A proof server run by
+someone else sees all of them. In 0.2.0, `connect` only warns when the proof server is not
+local. From 0.3.0, `connect` and `seedWallet` refuse a proof server that is not on this
+machine (`ProofServerRefusedError`, before anything is sent). To use one you run yourself
+elsewhere, pass `allowRemoteProofServer: true`; it must then be an `https` URL.
 
 ### Fees
 
@@ -294,12 +353,12 @@ yours to decide; this is what each one is and what losing it means.
 | Private-state password                                           | decrypts the private-state store                         | your secret manager. It cannot be recovered                                                                                                                                                                |
 | Record secret (`newSecret()`, then `useRecordSecret`)            | acting as the record: licences, lineage, pairing, proofs | stored for you in the encrypted private-state store (`~/.veilcore/<network>/partner-state`, private to your user), **and** in your secret manager before first use. Lost: recover with the recovery secret |
 | Recovery secret                                                  | takes the identity back from anyone, at once             | **offline**: paper or an HSM, in two places, never on the machine that holds the record secret. Only `commit.recovery(...)` of it is needed online, at anchor. Used up by a recovery                       |
-| Licence secret (licensee)                                        | the licence itself: whoever holds it can present it      | your secret manager. The issuer only ever sees `commit.license(...)`                                                                                                                                       |
+| Licence secret (licensee)                                        | the licence itself: whoever holds it can present it      | your secret manager. The issuer only ever sees the licence commitment (`licenseRequest`)                                                                                                                   |
 | Field secret and the field-set file                              | the hidden values a claim keeps hidden                   | the holder's private storage. Never disclosed with the record                                                                                                                                              |
 | Laboratory claims key (`newLabKey().secret`) and SDK signing key | your lab's signatures                                    | your HSM or secret store; publish only the public keys                                                                                                                                                     |
 | Obligation terms and salt                                        | showing later what an obligation commitment means        | with your contract records                                                                                                                                                                                 |
 | Verifier challenges                                              | that each is answered once                               | a `ChallengeBook`; save `entries()`                                                                                                                                                                        |
-| Blockfrost project id (mainnet)                                  | your indexer and node access                             | your secret manager; it travels in the endpoint URLs, so never log them                                                                                                                                    |
+| Blockfrost project id (mainnet)                                  | your indexer and node access                             | your secret manager; it travels in the endpoint URLs, so never log them. From 0.3.0, `connect` and `seedWallet` redact it from everything the process writes to the terminal, since the wallet SDK prints its node URL past any logger; `scrubTerminal: false` turns that off |
 
 What the store holds, and what it does not: the record secret you act as is stored,
 encrypted. Secrets needed for one call (a recovery secret, the secret a rotation moves to,
@@ -321,16 +380,15 @@ provider, those guarantees are yours to keep.
 - **If a rotation or recovery reports an error**, it may have landed: the package checks the
   chain twice and throws `LandedButUnconfirmedError` if it did. Keep both secrets until
   `whoAmI()` shows the new one live.
-- **The indexer is trusted for what it reports.** For a decision that matters, check with a
-  second indexer (pass `indexer` to the checking functions).
+- **The indexer is trusted for what it reports.** For a decision that matters, pass
+  `secondIndexer` to the checking functions _(0.3.0)_: both indexers must agree, or the
+  check is refused. In 0.2.0, run the check again with the other indexer as `indexer` and
+  compare.
 - **Test networks reset and lag.** On preprod, `custom error 171` means its indexer was
   behind; nothing was spent; try again later.
 
 ### What it does not do yet
 
-- Publish to npm (pending the `@veilcore` npm organisation) or publish the key files (pending
-  the `zk-r4` release). Until then: build from this repository, and point `keys.dir` at a build.
-- Mainnet: the addresses are pinned on deploy day; before that, mainnet joins are refused.
 - Fee sponsorship (above). Website self-custody (after launch; until then, VeilCore-run or
   this package). Browsers (this package is for Node; the website is a demo and
   verification page, not an integration point). Signing keys held in an HSM: secrets are

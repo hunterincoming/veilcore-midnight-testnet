@@ -146,7 +146,11 @@ const notify = () => listeners.forEach((l) => l());
 
 /** Re-fetch from the registry. Used on start, after a claim, and by the sync below. */
 export const hydrate = async (): Promise<void> => {
-  records = await store.load(KEY, isStrainRecord);
+  try {
+    records = await store.load(KEY, isStrainRecord);
+  } catch {
+    return; // the registry could not answer now: keep what is shown, try again at the next sync
+  }
   notify();
 };
 

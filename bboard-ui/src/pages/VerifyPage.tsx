@@ -30,9 +30,27 @@ import { TEAL } from '../config/theme';
 import { NETWORK, isTestNetwork, networkLabel } from '../config/network';
 import { Fact, SharedFacts } from '../components/verify/DisclosedFacts';
 import { bindingOf, linkFingerprint } from '../veilcore/verify-link';
+import { displayName } from '../veilcore/display-name';
+import { utcStamp as fmt } from '../veilcore/time';
 
 const API = import.meta.env.VITE_API_BASE ?? '';
-const fmt = (t: number | string) => new Date(t).toLocaleString();
+
+/**
+ * A record id as the site makes them: VEIL- and 128 random bits in hex (records.ts). Only
+ * an id of that shape is echoed back on the page; anything else in the address bar is
+ * "this ID", so a crafted link cannot put its own words on VeilCore's page.
+ */
+const RECORD_ID = /^VEIL-[0-9A-F]{32}$/i;
+const idText = (v: string | undefined): string => (v && RECORD_ID.test(v) ? v : 'this ID');
+
+/**
+ * Whether this page checked the batch root's anchor on chain itself. It cannot yet: it
+ * reads no chain, so an anchor is always the registry's report. The seal turns teal only
+ * when this is true, so today it never does. Checking the record's own inclusion proof,
+ * up to the registry's batch root, is not enough for the seal: that root could be anything
+ * until its anchor is looked up.
+ */
+const ANCHOR_CHECKED_ON_CHAIN = false;
 
 type VerifyResult = {
   found: boolean;
@@ -218,6 +236,9 @@ export const VerifyPage: React.FC = () => {
   const signed = (atts ?? []).filter(countsAsSigned);
   const signedVetted = signed.filter((a) => a.vettedAttester === true);
   const ticked = checked || (bound && signedVetted.length > 0);
+  // The seal: only for an anchor checked on chain by this page (none today).
+  const seal = checked && ANCHOR_CHECKED_ON_CHAIN;
+  const name = displayName(result?.cultivar);
 
   return (
     <Box sx={{ minHeight: '100vh', background: '#04070a' }}>
@@ -264,7 +285,7 @@ export const VerifyPage: React.FC = () => {
         ) : !result?.found ? (
           <Paper sx={{ p: 4, textAlign: 'center' }}>
             <Typography variant="h6" sx={{ mb: 1 }}>
-              No record found for {id || 'this ID'}
+              No record found for {idText(id)}
             </Typography>
             <Typography variant="body2" color="text.secondary">
               This verification link doesn&apos;t match any record in the registry. Check the link is complete and
@@ -294,16 +315,18 @@ export const VerifyPage: React.FC = () => {
                   : 'This link carries a fingerprint that is not valid (it should be 64 hexadecimal characters); it may have been cut short or changed, '}
                 but the registry reports{' '}
                 {binding.reported ? `fingerprint ${shortFingerprint(binding.reported)}` : 'no fingerprint'} for{' '}
-                {id || 'this ID'}. Its answer is not about the record the link names, so this page has checked nothing
-                and shows none of it. Ask whoever gave you the link for the record itself.
+                {idText(id)}. Its answer is not about the record the link names, so this page has checked nothing and
+                shows none of it. Ask whoever gave you the link for the record itself.
               </Typography>
             </Alert>
             <Divider sx={{ my: 2 }} />
-            <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-              {binding.linked
-                ? `Fingerprint in the link: ${binding.linked}`
-                : `Fingerprint in the link: ${(fp ?? '').slice(0, 80)}`}
-            </Typography>
+            {/* Only a well-formed fingerprint (64 hex characters) is shown; anything else
+                in the link is never echoed. */}
+            {binding.linked && (
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                Fingerprint in the link: {binding.linked}
+              </Typography>
+            )}
             <Box sx={{ mt: 2, textAlign: 'right' }}>
               <Chip
                 size="small"
@@ -316,16 +339,15 @@ export const VerifyPage: React.FC = () => {
         ) : (
           <Paper sx={{ p: { xs: 3, md: 4 } }}>
             <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', mb: 2 }}>
-              {/* Teal only when something was checked here against the link's own
-                  fingerprint: it is in a sealed batch whose path this browser folded. A
-                  record with nothing sealed or nothing checkable, or an old link with no
-                  fingerprint, gets a grey mark. */}
+              {/* Teal only when this page checked the batch root's anchor on chain
+                  (ANCHOR_CHECKED_ON_CHAIN), which it cannot do yet, so the mark is grey.
+                  The lines below still tick what this browser did check. */}
               <VerifiedIcon
-                data-checked={checked ? 'yes' : 'no'}
-                sx={{ color: checked ? TEAL : 'text.disabled', fontSize: 30 }}
+                data-checked={seal ? 'yes' : 'no'}
+                sx={{ color: seal ? TEAL : 'text.disabled', fontSize: 30 }}
               />
               <Box>
-                <Typography variant="overline" sx={{ color: checked ? TEAL : 'text.secondary' }}>
+                <Typography variant="overline" sx={{ color: seal ? TEAL : 'text.secondary' }}>
                   {!result.recordFingerprint
                     ? 'Record found — nothing sealed'
                     : !bound
@@ -338,13 +360,28 @@ export const VerifyPage: React.FC = () => {
                             ? 'In a sealed batch · not yet anchored'
                             : 'Fingerprint on file · not in a batch this page could check'}
                 </Typography>
-                <Typography variant="h5">{result.cultivar}</Typography>
               </Box>
             </Stack>
 
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              {result.id}
-            </Typography>
+            {/* The holder's own words, labelled as such: never a heading next to the mark,
+                cleaned of symbols and control characters, and capped (display-name.ts). */}
+            {name && (
+              <Typography
+                variant="body1"
+                sx={{ mb: RECORD_ID.test(result.id ?? '') ? 0.5 : 2, overflowWrap: 'anywhere' }}
+                data-holder-name=""
+              >
+                <Box component="span" sx={{ color: 'text.secondary' }}>
+                  Name, as the holder typed it:{' '}
+                </Box>
+                {name}
+              </Typography>
+            )}
+            {RECORD_ID.test(result.id ?? '') && (
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Record ID: {result.id}
+              </Typography>
+            )}
 
             <Divider sx={{ mb: 2 }} />
 

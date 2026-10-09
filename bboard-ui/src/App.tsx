@@ -7,6 +7,7 @@ import React, { useEffect } from 'react';
 import { Home } from './components/site/Home';
 import { Founders, VerifyLookup } from './components/site/Founders';
 import { Privacy } from './components/site/Privacy';
+import { NotFound } from './components/site/NotFound';
 import { DocPage } from './components/DocPage';
 import { Implementations } from './components/Implementations';
 import { AppFooter } from './components/AppFooter';
@@ -119,6 +120,8 @@ const App: React.FC = () => (
       {/* A made-up record, labelled as one, for a visitor with no record id yet. */}
       <Route path="/verify/example" element={<VerifyExample />} />
       <Route path="/verify/:id" element={<VerifyPage />} />
+      {/* Anything else: say so, rather than render an empty page. */}
+      <Route path="*" element={<NotFound />} />
     </Routes>
   </>
 );

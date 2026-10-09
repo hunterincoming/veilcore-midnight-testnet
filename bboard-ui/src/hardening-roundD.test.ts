@@ -810,6 +810,7 @@ describe.skipIf(!haveBrowser)('browser: built site under the production headers'
     '/docs/integrate',
     '/verify/VEIL-X',
     '/license/LIC-X/sign',
+    '/no-such-page',
   ];
 
   it('every main page loads with no page error and no CSP or Trusted Types violation, and mints no key', async () => {
@@ -985,8 +986,52 @@ describe.skipIf(!haveBrowser)('browser: built site under the production headers'
     const text = await pg.evaluate(() => document.body.innerText);
     expect(text).toMatch(/Checked in this browser: this fingerprint is in batch real/);
     expect(text).toMatch(/This page has not looked it up/);
-    expect(await pg.evaluate(() => document.querySelector('[data-checked]')?.getAttribute('data-checked'))).toBe('yes');
+    // The seal stays grey: the inclusion proof only reaches the registry's own batch root,
+    // and this page checks no anchor on chain (VerifyPage, ANCHOR_CHECKED_ON_CHAIN).
+    expect(await pg.evaluate(() => document.querySelector('[data-checked]')?.getAttribute('data-checked'))).toBe('no');
+    // The name is the holder's, on a labelled line, not a heading.
+    expect(text).toMatch(/Name, as the holder typed it: Sealed/);
+    expect(await pg.evaluate(() => document.querySelectorAll('h5').length)).toBe(0);
     await ctx.close();
+  }, 60_000);
+
+  it('verify page: a holder-typed name loses check marks, emoji and bidi controls, and is capped; odd ids and fp values are not echoed', async () => {
+    const { buildBatch } = await import('veilcore-records');
+    const { proofs } = await buildBatch([FP, 'c'.repeat(64)], 'real');
+    const typed = `\u2705 Verified\u202e by USDA \u2714\ufe0f\u{1F389} ${'x'.repeat(200)}`;
+    const { ctx, pg, errors } = await page((u) =>
+      u.startsWith('/verify/')
+        ? { found: true, cultivar: typed, recordFingerprint: FP, disclosed: [] }
+        : u.startsWith('/proof/')
+          ? { ...proofs[FP], anchor: { chain: 'midnight', network: 'mainnet', txHash: 'beef' } }
+          : undefined,
+    );
+    await pg.goto(`${origin}/verify/VEIL-Z?fp=${FP}`, { waitUntil: 'networkidle' });
+    await pg.waitForSelector('[data-holder-name]', { timeout: 15_000 });
+    const name = await pg.evaluate(() => document.querySelector('[data-holder-name]')?.textContent ?? '');
+    expect(name.startsWith('Name, as the holder typed it: Verified by USDA x')).toBe(true);
+    expect(name).not.toMatch(/\u2705|\u2714|\u202e|\ufe0f|\u{1F389}/u);
+    expect(Array.from(name.replace('Name, as the holder typed it: ', '')).length).toBeLessThanOrEqual(80);
+    expect(await pg.evaluate(() => document.querySelector('[data-checked]')?.getAttribute('data-checked'))).toBe('no');
+    expect(errors).toEqual([]);
+    await ctx.close();
+
+    // An id that is not a record id, and an invalid fp, are never shown back.
+    const odd = 'CALL-1-800-SCAM';
+    const p2 = await page((u) => (u.startsWith('/verify/') ? { found: false } : undefined));
+    await p2.pg.goto(`${origin}/verify/${odd}`, { waitUntil: 'networkidle' });
+    await p2.pg.waitForSelector('text=No record found for this ID', { timeout: 15_000 });
+    expect(await p2.pg.evaluate(() => document.body.innerText)).not.toContain(odd);
+    await p2.ctx.close();
+    const p3 = await page((u) =>
+      u.startsWith('/verify/') ? { found: true, cultivar: 'Cut', recordFingerprint: FP, disclosed: [] } : undefined,
+    );
+    await p3.pg.goto(`${origin}/verify/${odd}?fp=CALL-NOW`, { waitUntil: 'networkidle' });
+    await p3.pg.waitForSelector('text=Do not rely on this page.', { timeout: 15_000 });
+    const t3 = await p3.pg.evaluate(() => document.body.innerText);
+    expect(t3).not.toContain('CALL-NOW');
+    expect(t3).not.toContain(odd);
+    await p3.ctx.close();
   }, 60_000);
 
   it('verify page: "not shared" is never shown as "not paired"; refused keys are named', async () => {
@@ -1159,7 +1204,8 @@ describe.skipIf(!haveBrowser)('browser: built site under the production headers'
     expect(text).toMatch(/Ticked lines checked in this browser/);
     // Exactly two ticks: the inclusion proof and the signed attestation. Not the lineage line.
     expect(await ticks(pg)).toBe(2);
-    expect(await badge(pg)).toBe('yes');
+    // Ticked lines, but a grey seal: no anchor was checked on chain here.
+    expect(await badge(pg)).toBe('no');
     expect(violations).toEqual([]);
     expect(errors).toEqual([]);
     await ctx.close();

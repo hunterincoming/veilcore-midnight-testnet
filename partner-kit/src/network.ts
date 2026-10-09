@@ -29,7 +29,7 @@ export type Endpoints = {
   readonly proofServer: string;
 };
 
-/** A proof server on this machine: `docker run -p 6300:6300 midnightntwrk/proof-server:8.0.3 midnight-proof-server -v`. */
+/** A proof server on this machine: `docker run -p 127.0.0.1:6300:6300 midnightntwrk/proof-server:8.0.3 midnight-proof-server -v`. */
 export const DEFAULT_PROOF_SERVER = 'http://127.0.0.1:6300';
 
 /** The proof server image VeilCore's own tools run, by tag. */

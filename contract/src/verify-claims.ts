@@ -24,6 +24,7 @@ import {
   type FieldSchema,
   type FieldSchemaSlot,
   type TypedSlotValue,
+  canonicalise,
   fieldRecordCommitment,
   fieldSchemaId,
   slotOf,
@@ -243,6 +244,71 @@ const EMPTY = "empty (no value sealed)";
 
 const sameKey = (a: JubjubPoint, b: JubjubPoint): boolean =>
   a.x === b.x && a.y === b.y;
+
+/**
+ * Check 8's link: does `newer` name `older` in supersedes? `older` is the record the
+ * claim names (its JSON recomputed to `olderCommitment`, check 4).
+ *  - A supersedes block that states the superseded record's `commitment` is matched by
+ *    that, exactly.
+ *  - Otherwise by recordId, which is unique only within its issuer (8 October 2026
+ *    review), so the holder is compared too. The holder is a field a correction may
+ *    change (veilcore-records, corrections.ts: `holder` is classified, material for both
+ *    descent and terms), so a different holder is accepted when the correction's own
+ *    supersedes block lists it among `changedFields` (as `holder` or `holder.<path>`,
+ *    the way supersedesFor names it), and not otherwise.
+ */
+const supersedesCheck = (
+  newer: Record<string, unknown>,
+  older: Record<string, unknown>,
+  olderCommitment: string,
+): [boolean, string] => {
+  const sup = newer.supersedes as
+    | { recordId?: unknown; commitment?: unknown; changedFields?: unknown }
+    | undefined;
+  if (sup === undefined || sup === null || typeof sup !== "object")
+    return [false, "the correction does NOT name the original in supersedes"];
+  if (sup.commitment !== undefined) {
+    const ok =
+      typeof sup.commitment === "string" &&
+      sup.commitment.toLowerCase() === olderCommitment;
+    return ok
+      ? [true, "the correction names the original in supersedes, by commitment"]
+      : [
+          false,
+          "the correction does NOT name the original in supersedes: its commitment is another record's",
+        ];
+  }
+  if (typeof sup.recordId !== "string" || sup.recordId !== older.recordId)
+    return [false, "the correction does NOT name the original in supersedes"];
+  const holderOf = (env: Record<string, unknown>): string | undefined => {
+    try {
+      return canonicalise(env.holder);
+    } catch {
+      return undefined;
+    }
+  };
+  const oldHolder = holderOf(older);
+  if (oldHolder !== undefined && holderOf(newer) === oldHolder)
+    return [
+      true,
+      "the correction names the original in supersedes (same recordId, same holder)",
+    ];
+  const declared =
+    Array.isArray(sup.changedFields) &&
+    sup.changedFields.some(
+      (f) =>
+        typeof f === "string" && (f === "holder" || f.startsWith("holder.")),
+    );
+  return declared
+    ? [
+        true,
+        "the correction names the original in supersedes (same recordId); it changes the holder, and says so in changedFields",
+      ]
+    : [
+        false,
+        "the correction names the original's recordId but has a different holder, and its supersedes block does not list holder among changedFields: a recordId is unique only within its issuer, so this does not establish that it corrects this record",
+      ];
+};
 
 export const verifyClaim = (input: ClaimVerifyInput): ClaimVerdict => {
   const claim = isClaim(input.claim)
@@ -517,26 +583,32 @@ export const verifyClaim = (input: ClaimVerifyInput): ClaimVerdict => {
 
   // 8. Unchanged: the mask, and supersedes.
   if (claim.kind === "unchanged") {
-    const all = claim.mayChange!.every(Boolean);
+    const mask = claim.mayChange!;
+    const free = mask.flatMap((b, i) => (b ? [i] : []));
+    // A slot the schema does not describe is empty in every record under it, so equality
+    // there says nothing: a mask covering every DESCRIBED slot is as empty a claim as one
+    // covering all 16 (8 October 2026 review). Judged only with the claim's own schema.
+    const described = wordWith?.slots.map((x) => x.slot) ?? [];
+    const all = mask.every(Boolean);
+    const allDescribed =
+      wordWith !== undefined && described.every((i) => mask[i] === true);
     check(
       8,
-      !all,
+      !all && !allDescribed,
       all
         ? "the mask allows every slot to change, so the claim says nothing"
-        : `slots allowed to change: ${claim.mayChange!.flatMap((b, i) => (b ? [i] : [])).join(", ") || "none"}`,
+        : allDescribed
+          ? `the mask allows every slot the schema describes to change (${described.join(", ") || "it describes none"}), so the claim says nothing`
+          : `slots allowed to change: ${free.join(", ") || "none"}`,
     );
+    if (!all && wordWith === undefined)
+      toCheck.push(
+        "to check: the mask leaves at least one slot the schema describes unable to change (pass the schema); otherwise the claim says nothing",
+      );
     const older = recordFor.get(hex(claim.record));
     const newer = recordFor.get(hex(claim.other!));
     if (older !== undefined && newer !== undefined) {
-      const sup = newer.supersedes as { recordId?: unknown } | undefined;
-      const ok = sup !== undefined && sup.recordId === older.recordId;
-      check(
-        8,
-        ok,
-        ok
-          ? "the correction names the original in supersedes"
-          : "the correction does NOT name the original in supersedes",
-      );
+      check(8, ...supersedesCheck(newer, older, hex(claim.record)));
     } else
       toCheck.push(
         "to check: the newer record names the older in supersedes (pass both records)",

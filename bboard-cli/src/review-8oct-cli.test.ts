@@ -152,3 +152,15 @@ describe('secrets are redacted from log lines whatever their case', () => {
     expect(seen[1]).toBe('a library prints [redacted]\n');
   });
 });
+
+// Verification review: the CLI still said "ownership proof" where the protocol proves
+// control of a record now (prior possession), not ownership.
+describe('the CLI says control proof, not ownership proof', () => {
+  it('in the menu and in what it prints', () => {
+    const src = readFileSync(new URL('./index.ts', import.meta.url), 'utf8');
+    expect(src).toContain('28. Check a control proof');
+    expect(src).toContain('2. Prove control ');
+    expect(src).not.toMatch(/ownership proof/i);
+    expect(src).not.toMatch(/Prove ownership|Ownership proved|OWNERSHIP CHALLENGE/);
+  });
+});

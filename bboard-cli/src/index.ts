@@ -452,7 +452,7 @@ const useUp = async (
 const MAIN_LOOP_QUESTION = `
  Records                                  Lineage
   1. Anchor your record                   16. Propose a parent (as child)
-  2. Prove ownership                      17. Confirm a child (as parent)
+  2. Prove control                        17. Confirm a child (as parent)
   3. Pair a DNA report fingerprint        18. Withdraw your parent proposal
   4. Rotate to a new secret               19. Place an obligation on your record
   5. Recover with the recovery secret     20. Propose an obligation (as beneficiary)
@@ -465,7 +465,7 @@ const MAIN_LOOP_QUESTION = `
  10. Prove you hold a licence             Verifier
  11. Propose a transfer (as holder)       26. Make a challenge (for a licensee or a holder)
  12. Approve a transfer (as issuer)       27. Check a licence presentation
- 13. Withdraw a transfer proposal         28. Check an ownership proof
+ 13. Withdraw a transfer proposal         28. Check a control proof
  14. Revoke a licence
  15. Seal waiting revocations             Other
                                           29. Anchor a batch root
@@ -543,7 +543,7 @@ const mainLoop = async (
           case '2': {
             const challenge = await ask32(rli, "The verifier's challenge (hex): ");
             const p = await api.proveOwnership(challenge);
-            logger.info(`Ownership proved for record ${toHex(p.commitment)}.`);
+            logger.info(`Control proved for record ${toHex(p.commitment)}.`);
             tx(p);
             break;
           }
@@ -755,16 +755,21 @@ const mainLoop = async (
             break;
           }
           case '26': {
-            // Two kinds, never shared: an ownership proof publishes its challenge, and a
+            // Two kinds, never shared: a control proof publishes its challenge, and a
             // licence presentation is private only while its challenge stays unpublished.
-            const kind = (await rli.question('For a (L)icence presentation or an (O)wnership proof? '))
+            const kind = (await rli.question('For a (L)icence presentation or a (C)ontrol proof? '))
               .trim()
               .toLowerCase();
-            const ch = book.issue(kind.startsWith('o') ? 'ownership' : 'licence').challenge;
+            // 'o' (the old "ownership" letter) still means a control proof.
+            const control = kind.startsWith('c') || kind.startsWith('o');
+            const ch = book.issue(control ? 'ownership' : 'licence').challenge;
             await challengeFile.save(book);
-            if (kind.startsWith('o')) {
-              showSecret('OWNERSHIP CHALLENGE — send it to the holder; it will be public once they answer:', toHex(ch));
-              logger.info('Recorded here: option 28 accepts it once, for an ownership proof, within 7 days.');
+            if (control) {
+              showSecret(
+                'CONTROL-PROOF CHALLENGE — send it to the holder; it will be public once they answer:',
+                toHex(ch),
+              );
+              logger.info('Recorded here: option 28 accepts it once, for a control proof, within 7 days.');
             } else {
               showSecret(
                 'LICENCE CHALLENGE — send it to the licensee privately, use it once, never publish it:',
@@ -793,7 +798,7 @@ const mainLoop = async (
             break;
           }
           case '28': {
-            const txId = (await rli.question("The ownership proof's transaction id (from the holder): ")).trim();
+            const txId = (await rli.question("The control proof's transaction id (from the holder): ")).trim();
             const record = await ask32(rli, 'Record you asked about (any record of that identity, hex): ');
             const ch = await ask32(rli, 'The challenge you sent (hex): ');
             await challengeFile.refresh(book);
@@ -858,7 +863,7 @@ const mainLoop = async (
           case '30': {
             const l = await api.currentLedger();
             logger.info(
-              `Protocol version ${l.protocolVersion}. Anchors ${l.anchorSeq}, ownership proofs ${l.proofSeq}, presentations ${l.presentationSeq}.`,
+              `Protocol version ${l.protocolVersion}. Anchors ${l.anchorSeq}, control proofs ${l.proofSeq}, presentations ${l.presentationSeq}.`,
             );
             logger.info(`Parentage edges ${l.descentSeq}, obligation changes ${l.obligationSeq}, seals ${l.sealSeq}.`);
             logger.info(`Revocations waiting for a seal: ${l.unsealedChanges ? 'yes' : 'no'}.`);

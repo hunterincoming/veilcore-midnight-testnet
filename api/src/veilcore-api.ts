@@ -490,7 +490,8 @@ export class VeilcoreAPI {
   }
 
   /**
-   * Rule 8: check an ownership proof the holder made for your challenge. On mainnet the
+   * Rule 8: check a control proof the holder made for your challenge (proveOwnership:
+   * the contract's name; it proves control of the record now, not ownership). On mainnet the
    * state at the proof and the state now must both carry the pinned build's verifier keys
    * (state-check.ts); `check` adds a second indexer or a required authority counter.
    */

@@ -20,6 +20,7 @@ import {
   isNetwork,
   memoryPrivateState,
   passwordProblem,
+  scrubTerminal,
   seedWallet,
 } from '@veilcore/contracts';
 import { type Io } from './io.ts';
@@ -132,6 +133,10 @@ export const openChain = async (
         ? "Your wallet's progress password (16+ characters; nothing shows): "
         : "The operator wallet's progress password (nothing shows): ",
     ));
+  // Whatever prints past this tool's own output (the wallet SDK prints its node URL, with
+  // the Blockfrost project id, to stderr on every reconnect) never shows these: the
+  // project id, the seed and the password, from the environment or typed.
+  scrubTerminal([blockfrostProjectId, seed, password]);
   const problem = passwordProblem(password);
   if (problem !== null) throw new Error(`That wallet password will not be accepted: ${problem}.`);
   const logger = quietLogger(io);

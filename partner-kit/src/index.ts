@@ -7,7 +7,14 @@
 // re-exported wholesale from the operator code this is built on.
 
 // ── connecting ───────────────────────────────────────────────────────────────
-export { connect, isLocalUrl, type Connection, type ConnectOptions } from './connect.js';
+export {
+  ProofServerRefusedError,
+  assertProofServer,
+  connect,
+  isLocalUrl,
+  type Connection,
+  type ConnectOptions,
+} from './connect.js';
 export {
   DEFAULT_PROOF_SERVER,
   MAINNET_ADDRESSES,
@@ -22,6 +29,7 @@ export {
   type Endpoints,
   type Network,
 } from './network.js';
+export { scrubTerminal, scrubText, urlSecrets } from './terminal.js';
 export {
   SeedWallet,
   WalletProgressNotOpenedError,

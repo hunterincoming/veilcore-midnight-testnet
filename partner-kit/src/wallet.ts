@@ -42,6 +42,8 @@ import { type Logger } from 'pino';
 import { firstValueFrom, filter } from 'rxjs';
 import { type Endpoints, type Network, isNetwork } from './network.js';
 import { type SavedWalletState, WalletProgressFile } from './wallet-progress.js';
+import { scrubTerminal, urlSecrets } from './terminal.js';
+import { assertProofServer } from './connect.js';
 
 type Keystore = { getPublicKey(): unknown; signData(payload: Uint8Array): string };
 
@@ -68,6 +70,19 @@ export type SeedWalletOptions = {
     readonly onUnreadable?: 'stop' | 'setAside';
   };
   readonly logger?: Logger;
+  /**
+   * The wallet SDK prints its node URL to stderr on every reconnect, past any logger; with
+   * Blockfrost endpoints that URL carries the project id. By default, when an endpoint URL
+   * carries a credential, it is redacted from everything this process writes to stdout and
+   * stderr (terminal.ts). `false` leaves the terminal alone.
+   */
+  readonly scrubTerminal?: boolean;
+  /**
+   * The wallet proves its own transactions on `endpoints.proofServer`, sending it the
+   * wallet's spending data. As connect(): one not on this machine is refused unless this
+   * is `true`, and then only over https.
+   */
+  readonly allowRemoteProofServer?: boolean;
 };
 
 export type WalletBalances = {
@@ -163,6 +178,8 @@ export class SeedWallet implements WalletProvider, MidnightProvider {
 
   static async create(o: SeedWalletOptions): Promise<SeedWallet> {
     if (!isNetwork(o.network)) throw new Error(`Unknown network ${String(o.network)}.`);
+    if (o.scrubTerminal !== false) scrubTerminal(urlSecrets(Object.values(o.endpoints ?? {})));
+    assertProofServer(o.endpoints.proofServer, o.allowRemoteProofServer === true);
     if ((o.seed === undefined) === (o.mnemonic === undefined))
       throw new Error('Give the wallet a seed or a recovery phrase (one of them).');
     let master: string;

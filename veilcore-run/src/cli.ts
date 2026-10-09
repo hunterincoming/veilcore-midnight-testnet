@@ -238,7 +238,9 @@ export const main = async (argv: readonly string[], io: Io = terminalIo, deps: M
     const openChainFor = async (claims: boolean, who: 'operator' | 'partner' = 'operator'): Promise<Chain> =>
       deps.chain
         ? deps.chain({ claims, who })
-        : openChain(settingsFrom(env, network), { ...io, print: out }, env, { claims, who });
+        : // Typed secrets (seed, password, Blockfrost id) go through `hidden`, so every
+          // line printed afterwards has them redacted too.
+          openChain(settingsFrom(env, network), { ...io, print: out, askHidden: hidden }, env, { claims, who });
     const chainCheck =
       (address?: string) =>
       async (txId: string, head: string): Promise<boolean> =>

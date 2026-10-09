@@ -24,6 +24,7 @@ import {
   type FieldSchema,
   type FieldSchemaSlot,
   type TypedSlotValue,
+  canonicalise,
   fieldRecordCommitment,
   fieldSchemaId,
   slotOf,
@@ -243,6 +244,56 @@ const EMPTY = "empty (no value sealed)";
 
 const sameKey = (a: JubjubPoint, b: JubjubPoint): boolean =>
   a.x === b.x && a.y === b.y;
+
+/**
+ * Check 8's link: does `newer` name `older` in supersedes? `older` is the record the
+ * claim names (its JSON recomputed to `olderCommitment`, check 4). A recordId is scoped
+ * to its issuer, so another holder's record can carry the same one (8 October 2026
+ * review): the link is accepted only when the recordId matches AND both records have the
+ * same holder. A supersedes block that also states the superseded record's `commitment`
+ * is matched by that instead, exactly. Anything less is reported as not named.
+ */
+const supersedesCheck = (
+  newer: Record<string, unknown>,
+  older: Record<string, unknown>,
+  olderCommitment: string,
+): [boolean, string] => {
+  const sup = newer.supersedes as
+    | { recordId?: unknown; commitment?: unknown }
+    | undefined;
+  if (sup === undefined || sup === null || typeof sup !== "object")
+    return [false, "the correction does NOT name the original in supersedes"];
+  if (sup.commitment !== undefined) {
+    const ok =
+      typeof sup.commitment === "string" &&
+      sup.commitment.toLowerCase() === olderCommitment;
+    return ok
+      ? [true, "the correction names the original in supersedes, by commitment"]
+      : [
+          false,
+          "the correction does NOT name the original in supersedes: its commitment is another record's",
+        ];
+  }
+  if (typeof sup.recordId !== "string" || sup.recordId !== older.recordId)
+    return [false, "the correction does NOT name the original in supersedes"];
+  const holderOf = (env: Record<string, unknown>): string | undefined => {
+    try {
+      return canonicalise(env.holder);
+    } catch {
+      return undefined;
+    }
+  };
+  const oldHolder = holderOf(older);
+  if (oldHolder === undefined || holderOf(newer) !== oldHolder)
+    return [
+      false,
+      "the correction names a record with the original's recordId, but under another holder: a recordId is scoped to its issuer, so it may be another record",
+    ];
+  return [
+    true,
+    "the correction names the original in supersedes (same recordId, same holder)",
+  ];
+};
 
 export const verifyClaim = (input: ClaimVerifyInput): ClaimVerdict => {
   const claim = isClaim(input.claim)
@@ -517,26 +568,32 @@ export const verifyClaim = (input: ClaimVerifyInput): ClaimVerdict => {
 
   // 8. Unchanged: the mask, and supersedes.
   if (claim.kind === "unchanged") {
-    const all = claim.mayChange!.every(Boolean);
+    const mask = claim.mayChange!;
+    const free = mask.flatMap((b, i) => (b ? [i] : []));
+    // A slot the schema does not describe is empty in every record under it, so equality
+    // there says nothing: a mask covering every DESCRIBED slot is as empty a claim as one
+    // covering all 16 (8 October 2026 review). Judged only with the claim's own schema.
+    const described = wordWith?.slots.map((x) => x.slot) ?? [];
+    const all = mask.every(Boolean);
+    const allDescribed =
+      wordWith !== undefined && described.every((i) => mask[i] === true);
     check(
       8,
-      !all,
+      !all && !allDescribed,
       all
         ? "the mask allows every slot to change, so the claim says nothing"
-        : `slots allowed to change: ${claim.mayChange!.flatMap((b, i) => (b ? [i] : [])).join(", ") || "none"}`,
+        : allDescribed
+          ? `the mask allows every slot the schema describes to change (${described.join(", ") || "it describes none"}), so the claim says nothing`
+          : `slots allowed to change: ${free.join(", ") || "none"}`,
     );
+    if (!all && wordWith === undefined)
+      toCheck.push(
+        "to check: the mask leaves at least one slot the schema describes unable to change (pass the schema); otherwise the claim says nothing",
+      );
     const older = recordFor.get(hex(claim.record));
     const newer = recordFor.get(hex(claim.other!));
     if (older !== undefined && newer !== undefined) {
-      const sup = newer.supersedes as { recordId?: unknown } | undefined;
-      const ok = sup !== undefined && sup.recordId === older.recordId;
-      check(
-        8,
-        ok,
-        ok
-          ? "the correction names the original in supersedes"
-          : "the correction does NOT name the original in supersedes",
-      );
+      check(8, ...supersedesCheck(newer, older, hex(claim.record)));
     } else
       toCheck.push(
         "to check: the newer record names the older in supersedes (pass both records)",

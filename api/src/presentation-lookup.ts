@@ -241,3 +241,29 @@ export const singleCallState = async (
     keys: checked.keys,
   };
 };
+
+const STATE_QUERY = `query VEILCORE_STATE($address: HexEncoded!) { contractAction(address: $address) { state } }`;
+
+/** A contract's state now, as one indexer reports it (its latest call's state). */
+export const contractStateNow = async (
+  indexer: string,
+  address: string,
+  timeoutMs = 20_000,
+): Promise<ContractState> => {
+  const res = await fetch(indexer, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ query: STATE_QUERY, variables: { address } }),
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  if (!res.ok) throw new Error(`The indexer answered ${res.status}.`);
+  const body = (await res.json()) as {
+    data?: { contractAction?: { state?: string } | null };
+    errors?: { message: string }[];
+  };
+  if (body.errors?.length) throw new Error(`The indexer refused the query: ${body.errors[0].message}`);
+  const hex = body.data?.contractAction?.state;
+  if (typeof hex !== 'string' || !/^(0x)?[0-9a-fA-F]+$/.test(hex))
+    throw new Error(`The indexer has no contract at ${address}.`);
+  return ContractState.deserialize(Uint8Array.from(Buffer.from(hex.replace(/^0x/, ''), 'hex')));
+};

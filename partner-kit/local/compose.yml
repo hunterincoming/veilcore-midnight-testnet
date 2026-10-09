@@ -12,12 +12,12 @@
 name: veilcore-partner-local
 services:
   proof-server:
-    image: midnightntwrk/proof-server:8.0.3
+    image: midnightntwrk/proof-server:8.0.3@sha256:8e6c36c3c175ef6e1b337952155b30470f252af79a20c3f65153a86a983e17ab
     command: ['midnight-proof-server', '-v']
     ports:
       - '127.0.0.1:6300:6300'
   node:
-    image: 'midnightntwrk/midnight-node:0.22.3'
+    image: 'midnightntwrk/midnight-node:0.22.3@sha256:7489838b12e341c78bcbf0e102bb519a4999c7f9d7fbc632493351af3feeb35c'
     ports:
       - '127.0.0.1:9944:9944'
     healthcheck:
@@ -30,7 +30,7 @@ services:
       CFG_PRESET: 'dev'
       SIDECHAIN_BLOCK_BENEFICIARY: '04bcf7ad3be7a5c790460be82a713af570f22e0f801f6659ab8e84a52be6969e'
   indexer:
-    image: 'midnightntwrk/indexer-standalone:4.0.1'
+    image: 'midnightntwrk/indexer-standalone:4.0.1@sha256:fe64c7c518aa7cf33de73890ee352bc19116f506c6d605be49122e29610456f0'
     ports:
       - '127.0.0.1:8088:8088'
     environment:

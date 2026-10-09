@@ -1,6 +1,6 @@
 services:
   proof-server:
-    image: midnightntwrk/proof-server:8.0.3
+    image: midnightntwrk/proof-server:8.0.3@sha256:8e6c36c3c175ef6e1b337952155b30470f252af79a20c3f65153a86a983e17ab
     command: ['midnight-proof-server', '-v']
     container_name: "proof-server-local"
     ports:

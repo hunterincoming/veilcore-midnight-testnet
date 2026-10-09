@@ -109,7 +109,7 @@ export const openChain = async (
   if (health === null || !health.ok)
     throw new Error(
       `No proof server answers at ${s.proofServer}. Start one on this machine: ` +
-        'docker run -d -p 127.0.0.1:6300:6300 midnightntwrk/proof-server:8.0.3 midnight-proof-server -v',
+        'docker run -d -p 127.0.0.1:6300:6300 midnightntwrk/proof-server:8.0.3@sha256:8e6c36c3c175ef6e1b337952155b30470f252af79a20c3f65153a86a983e17ab midnight-proof-server -v',
     );
   io.print(`Checking the proving keys against the deployment record...`);
   await checkKeys(s.keys);

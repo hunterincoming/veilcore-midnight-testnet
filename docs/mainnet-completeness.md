@@ -66,11 +66,11 @@ the evening of 5 October (kept outside the repo).
 - **Dependabot:** `tools/vercel/package-lock.json` (added in round D) audits at 1 critical
   and 24 high, all inside `vercel`'s own dependency tree. Deploy-time tooling, not shipped,
   but counted. No `.github/dependabot.yml`.
-- **Docker images pinned by tag, not by digest** (still pending, 8 October):
-  `midnightntwrk/proof-server:8.0.3`, `midnightntwrk/midnight-node:0.22.3` and
-  `midnightntwrk/indexer-standalone:4.0.1` (`bboard-cli/compose.yml`,
-  `partner-kit/local/compose.yml`, the proof-server files). No digest is recorded in the
-  repository yet; it needs a lookup from a machine with Docker Hub access.
+- **Docker images pinned by digest** (9 October): proof-server 8.0.3, midnight-node 0.22.3
+  and indexer-standalone 4.0.1 are named by tag and SHA-256 digest everywhere they are used
+  (`bboard-cli/compose.yml`, `partner-kit/local/compose.yml`, the proof-server files, the
+  docs and the tools' instructions). The digests were read with `docker pull` and
+  `docker inspect` on Hunter's Mac on 9 October; a re-pushed tag no longer changes what runs.
 - **SDK release hygiene:** no `v0.15.0` git tag, no npm provenance. The tarball itself
   rebuilds byte-identical from `db91cc7`.
 - **Demo service** (`demo-real`, `762cd6f`): not merged into `main` (46 commits behind on 5 October), not

@@ -29,11 +29,12 @@ export type Endpoints = {
   readonly proofServer: string;
 };
 
-/** A proof server on this machine: `docker run -p 127.0.0.1:6300:6300 midnightntwrk/proof-server:8.0.3 midnight-proof-server -v`. */
+/** A proof server on this machine: `docker run -p 127.0.0.1:6300:6300 midnightntwrk/proof-server:8.0.3@sha256:8e6c36c3c175ef6e1b337952155b30470f252af79a20c3f65153a86a983e17ab midnight-proof-server -v`. */
 export const DEFAULT_PROOF_SERVER = 'http://127.0.0.1:6300';
 
 /** The proof server image VeilCore's own tools run, by tag. */
-export const PROOF_SERVER_IMAGE = 'midnightntwrk/proof-server:8.0.3';
+export const PROOF_SERVER_IMAGE =
+  'midnightntwrk/proof-server:8.0.3@sha256:8e6c36c3c175ef6e1b337952155b30470f252af79a20c3f65153a86a983e17ab';
 
 const PUBLIC: Record<Exclude<Network, 'mainnet'>, Omit<Endpoints, 'proofServer'>> = {
   preprod: {

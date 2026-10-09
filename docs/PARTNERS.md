@@ -69,7 +69,7 @@ VeilCore server.
 ```sh
 npm install --save-exact @veilcore/contracts@0.2.0 veilcore-records
 npm exec --package=@veilcore/contracts@0.2.0 -- veilcore-keys fetch --to ./veilcore-keys   # proving keys, checked (below)
-docker run -d -p 127.0.0.1:6300:6300 midnightntwrk/proof-server:8.0.3 midnight-proof-server -v
+docker run -d -p 127.0.0.1:6300:6300 midnightntwrk/proof-server:8.0.3@sha256:8e6c36c3c175ef6e1b337952155b30470f252af79a20c3f65153a86a983e17ab midnight-proof-server -v
 ```
 
 Node 24, ES modules. On npm as `@veilcore/contracts`. **Pin an exact version** (`0.2.0`, not

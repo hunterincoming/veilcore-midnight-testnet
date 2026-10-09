@@ -1219,6 +1219,13 @@ transactions and the authority's counter are on chain, and anyone can compare th
 and keys on chain with a build of `ceb3a16`, as `join` does. That detects a change after it
 happens. It does not prevent one.
 
+**The counter to expect.** Every maintenance update raises the authority's counter. Since
+8 October VeilCore's verifier checks report it with every verdict (committee size,
+threshold, counter), and a verifier can require a value (`authorityCounter`). The mainnet
+value after the deploy, the remaining circuit keys included:
+**TODO: not yet recorded. Read it from the chain (`readAuthority({ network: 'mainnet', ... })`
+in the partner kit) and fill it in here.**
+
 ### The claims contract
 
 **No maintenance authority on the claims contract, enforced by the operator tool.** Off a

@@ -88,11 +88,19 @@ Every use of the authority:
 3. Follows `docs/release-checklist.md` in full: tests, adversarial review, preprod run,
    regenerated fingerprints.
 4. Is published afterwards in a new revision of the deployment record: the transaction,
-   the circuits changed, and the fingerprints of the new build, so anyone can check the
-   chain against the source as `join` does.
+   the circuits changed, the fingerprints of the new build, and the authority's counter
+   after it, so anyone can check the chain against the source as `join` does.
 
 The authority's counter is public on chain. Any change shows up there and through the
-indexer, whether or not we announce it.
+indexer, whether or not we announce it. Every maintenance update raises it (adding the
+remaining circuit keys after the deploy did too). Since 8 October VeilCore's verifier
+checks report it with every verdict, the partner kit's `readAuthority` reads it, and a
+verifier can require the value it expects (`authorityCounter`), so any later change
+becomes a refusal.
+
+**TODO (not yet recorded):** the main contract's counter on mainnet today. Read it from
+the chain with `readAuthority({ network: 'mainnet', ... })` and record it here and in the
+deployment record. Until then this document gives no expected value.
 
 ## If a key is lost or exposed
 

@@ -1,17 +1,20 @@
 // The royalties client (api/src/royalties-api.ts) end to end, with no network: every
 // transaction runs the real contract in the simulator, each party keeps its own private
 // store, and the chain can be told to fail a call or to time out after it landed.
-// Breeder, two growers, a payer and a verifier, through offers, top-ups, private
-// settlements, a merge, the breeder reading the books, and a presentation.
+// Breeder, two growers and a verifier, through offers, licences and credit the breeder
+// issues for payments made off chain, private settlements, a merge, the breeder reading
+// the books, and a presentation. No money passes through the contract.
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, it } from 'vitest';
 import { pureCircuits as C } from '../../contract/src/managed/veilcore/contract/index.js';
-import { royaltiesPureCircuits as R } from '../../contract/src/royalties.js';
+import { royaltiesPureCircuits as R, unitOf } from '../../contract/src/royalties.js';
 import {
   AlreadyDoneError,
-  NIGHT_COLOR,
+  type OfferCard,
+  type RoyaltiesAPI,
   chartOf,
+  owedTotal,
   WouldLinkError,
   newPresentationRequest,
   revocationVerdict,
@@ -20,32 +23,42 @@ import { royaltiesPrivateStateKey } from '../../api/src/royalties-types.js';
 import { as, secret } from '../../contract/src/test/veilcore-simulator.js';
 import { Chain, MAIN, ROYALTIES, hex, now } from './royalties-test-chain.js';
 
+type Party = { api: RoyaltiesAPI };
+/** The grower asks for a licence; the breeder issues it from the licence card. */
+const licensed = async (breeder: Party, grower: Party, card: OfferCard) => {
+  const r = await grower.api.requestLicence(card, MAIN);
+  await breeder.api.issueLicence(r.licenceCard);
+  return r;
+};
+/** The grower pays off chain and asks for credit; the breeder issues it; the grower records it. */
+const fund = async (breeder: Party, grower: Party, offer: Uint8Array, amount: bigint) => {
+  const req = await grower.api.topUpRequest(offer);
+  await breeder.api.issueCredit(req, amount);
+  await grower.api.claimTopUp(offer, req.nonce, amount);
+};
+
 describe('the royalties client, end to end on the simulator', () => {
-  it('offer, buy, top up, settle in private, merge, read the books, present', async () => {
+  it('offer, licences and credit issued, settle in private, merge, read the books, present', async () => {
     const chain = new Chain();
     const breeder = chain.party();
     const g1 = chain.party();
     const g2 = chain.party();
-    const payer = chain.party();
 
     // The breeder's record is anchored in the main contract.
     const record = secret('journey-breeder');
     chain.main.call(as(record), 'anchor', C.recoveryCommit(secret('journey-breeder-rcv')));
 
     const terms = new Uint8Array(32).fill(7);
-    const payTo = new Uint8Array(32).fill(9);
     const posted = await breeder.api.postOffer(
       record,
       {
         terms,
-        color: NIGHT_COLOR,
+        unit: 'USD cents',
         price: 1000n,
         rate: 4n,
-        payTo,
         count: 5n,
         expires: now() + 365n * 86400n,
         revocable: true,
-        onChainPayment: true,
       },
       MAIN,
     );
@@ -55,28 +68,28 @@ describe('the royalties client, end to end on the simulator', () => {
     // The chain holds only the rate's commitment.
     expect(hex(chain.ledger.offers.lookup(offer).rateCommit)).toBe(card.rateCommit);
 
-    const b1 = await g1.api.buyLicense(card, MAIN);
-    const b2 = await g2.api.buyLicense(card, MAIN);
+    const b1 = await licensed(breeder, g1, card);
+    const b2 = await licensed(breeder, g2, card);
     await breeder.api.checkLicenceCard(b1.licenceCard);
+    // Nothing passed through the contract.
+    expect(chain.lastSpends).toEqual([]);
 
-    // A second purchase from the same offer is refused unless asked for (one that timed out
-    // may have landed). One that never lands leaves a licence in g1's store the chain never saw.
-    await expect(g1.api.buyLicense(card, MAIN)).rejects.toThrow(AlreadyDoneError);
-    chain.failNext = true;
-    await expect(g1.api.buyLicense(card, MAIN, { again: true })).rejects.toThrow(/test/);
+    // A second licence from the same offer is refused unless asked for.
+    await expect(g1.api.requestLicence(card, MAIN)).rejects.toThrow(AlreadyDoneError);
 
-    // A payer tops up g1 without learning who g1 is; g1 records it. Twice is refused and changes nothing.
+    // g1 pays the breeder off chain; the breeder issues credit to g1's request, without
+    // learning anything on chain beyond what it already knows. Recorded twice changes nothing.
     const req = await g1.api.topUpRequest(offer);
-    await payer.api.payTopUp(req, 100n);
+    await breeder.api.issueCredit(req, 100n);
     await g1.api.claimTopUp(offer, undefined, 100n);
     await expect(g1.api.claimTopUp(offer, undefined, 100n)).rejects.toThrow(/already recorded/);
     expect(await g1.api.credit(offer)).toBe(100n);
-    await g1.api.topUpOwn(offer, 60n);
+    await fund(breeder, g1, offer, 60n);
     expect(await g1.api.credit(offer)).toBe(160n);
 
     // Rule 2: the latest note is g1's own, so g1 may not settle yet.
     await expect(g1.api.settle(offer, '2026-Q4', 20n)).rejects.toThrow(/credit note is still the newest/);
-    await g2.api.topUpOwn(offer, 50n);
+    await fund(breeder, g2, offer, 50n);
 
     // Settle 20 units at 4: spends the 100 note, keeps 20 change. The client is told the
     // call timed out after it landed: the change must not be lost.
@@ -87,17 +100,17 @@ describe('the royalties client, end to end on the simulator', () => {
 
     // 19 units owe 76: no single note covers it (60 and 20), so the client merges first,
     // then waits for someone else (rule 2) before settling.
-    await g2.api.topUpOwn(offer, 10n);
+    await fund(breeder, g2, offer, 10n);
     await expect(g1.api.settle(offer, '2027-Q1', 19n)).rejects.toThrow(/credit was merged/);
     expect(await g1.api.credit(offer)).toBe(80n);
-    await g2.api.topUpOwn(offer, 10n);
+    await fund(breeder, g2, offer, 10n);
     await g1.api.settle(offer, '2027-Q1', 19n);
     expect(await g1.api.credit(offer)).toBe(4n);
 
     // g2 settles too, so the breeder has two licensees' books to read.
     // g2 bought last, and nobody has bought since: settling now could be guessed to be g2.
     // The client waits by default; g2 may choose to send anyway.
-    await g1.api.topUpOwn(offer, 1n);
+    await fund(breeder, g1, offer, 1n);
     await expect(g2.api.settle(offer, '2026-Q4', 7n)).rejects.toThrow(WouldLinkError);
     await g2.api.settle(offer, '2026-Q4', 7n, { evenIfLinkable: true });
 
@@ -139,7 +152,7 @@ describe('the royalties client, end to end on the simulator', () => {
     const ask = await verifier.api.presentationRequest({ offer, period: '2027-Q1', minUnits: 10n });
     expect((await verifier.api.presentationRequest({ offer })).scope).toBe(ask.scope);
     expect((await chain.party().api.presentationRequest({ offer })).scope).not.toBe(ask.scope);
-    await g2.api.topUpOwn(offer, 1n);
+    await fund(breeder, g2, offer, 1n);
     await g1.api.prove(ask);
     expect(hex(chain.ledger.lastPresentation)).toBe(
       hex(
@@ -155,16 +168,16 @@ describe('the royalties client, end to end on the simulator', () => {
       ),
     );
     // Asking for more units than were settled is refused before anything is sent.
-    await g2.api.topUpOwn(offer, 1n);
+    await fund(breeder, g2, offer, 1n);
     const tooMany = newPresentationRequest({ contract: ROYALTIES, offer, period: '2027-Q1', minUnits: 20n });
     await expect(g1.api.prove(tooMany)).rejects.toThrow(/fewer units/);
 
-    // Two top-up requests, each paid the same amount, are both recorded.
+    // Two top-up requests, each issued the same amount, are both recorded.
     const r1 = await g1.api.topUpRequest(offer);
     const r2 = await g1.api.topUpRequest(offer);
     const before = await g1.api.credit(offer);
-    await payer.api.payTopUp(r1, 5n);
-    await payer.api.payTopUp(r2, 5n);
+    await breeder.api.issueCredit(r1, 5n);
+    await breeder.api.issueCredit(r2, 5n);
     await g1.api.claimTopUp(offer, undefined, 5n);
     await g1.api.claimTopUp(offer, undefined, 5n);
     await expect(g1.api.claimTopUp(offer, undefined, 5n)).rejects.toThrow(/already recorded/);
@@ -184,18 +197,16 @@ describe('the royalties client, end to end on the simulator', () => {
     expect(revocationVerdict(offer, chain.ledger, chain.ledger).unsealed).toBe(true);
 
     // No call left its input in a store.
-    for (const p of [breeder, g1, g2, payer, verifier])
-      expect(p.store.get(royaltiesPrivateStateKey)?.input ?? {}).toEqual({});
+    for (const p of [breeder, g1, g2, verifier]) expect(p.store.get(royaltiesPrivateStateKey)?.input ?? {}).toEqual({});
   });
 });
 
 describe('royalties on offspring, through the client', () => {
-  it('a parent sets terms, the child links and finalises, and growers pay the ancestor automatically', async () => {
+  it('a parent sets terms, the child links and finalises, and every licence and credit records what it owes', async () => {
     const chain = new Chain();
     const parent = chain.party();
     const child = chain.party();
     const grower = chain.party();
-    const payer = chain.party();
     const P = secret('offspring-parent');
     const K = secret('offspring-child');
     const recP = C.commit(P);
@@ -203,32 +214,27 @@ describe('royalties on offspring, through the client', () => {
     chain.main.call(as(P), 'anchor', C.recoveryCommit(secret('offspring-parent-rcv')));
     chain.main.call(as(K), 'anchor', C.recoveryCommit(secret('offspring-child-rcv')));
     const terms = new Uint8Array(32).fill(3);
-    const wP = new Uint8Array(32).fill(41);
-    const wK = new Uint8Array(32).fill(42);
     const expires = now() + 365n * 86400n;
-    const offerTerms = (payTo: Uint8Array) => ({
+    const offerTerms = {
       terms,
-      color: NIGHT_COLOR,
+      unit: 'USD cents',
       price: 1000n,
       rate: 4n,
-      payTo,
       count: 5n,
       expires,
       revocable: true,
-      onChainPayment: true,
-    });
+    };
 
     // The parent's own variety: posting finalises an empty chart, so it can confirm children.
-    await parent.api.postOffer(P, offerTerms(wP), MAIN);
+    await parent.api.postOffer(P, offerTerms, MAIN);
 
     // The parent offers terms for varieties bred from it: 10% for two generations, 25 per licence.
     const card = await parent.api.linkTerms(P, {
-      color: NIGHT_COLOR,
+      unit: 'USD cents',
       fee: 25n,
       share: 1000n,
       generations: 2n,
       until: expires,
-      payTo: wP,
     });
 
     // The child proposes them. A child that alters them is refused by the parent's client.
@@ -246,28 +252,29 @@ describe('royalties on offspring, through the client', () => {
     expect(chartOf(chain.ledger, recK).map((p) => [p.generation, p.effectiveShare, p.fee])).toEqual([[1, 1000, 25n]]);
 
     // The child's offer takes royalties and carries the split.
-    const posted = await child.api.postOffer(K, offerTerms(wK), MAIN);
+    const posted = await child.api.postOffer(K, offerTerms, MAIN);
     expect(posted.card.split).toBe(true);
 
-    // A grower buys: the parent gets 10% of the price and its fee, in the same transaction.
-    await grower.api.buyLicense(posted.card, MAIN);
-    expect(chain.paid(NIGHT_COLOR, wP)).toBe(100n + 25n);
-    expect(chain.paid(NIGHT_COLOR, wK)).toBe(900n);
+    // The child issues a grower's licence: 10% of the list price and the fee are recorded as owed.
+    await licensed(child, grower, posted.card);
+    expect(chain.lastSpends).toEqual([]);
+    expect(owedTotal(await parent.api.owed({ parent: recP, mainAddress: MAIN })).get(hex(unitOf('USD cents')))).toBe(
+      100n + 25n,
+    );
 
-    // A processor tops up the grower's credit: the parent gets 10% of that too.
-    const req = await grower.api.topUpRequest(posted.offer);
-    await payer.api.payTopUp(req, 200n, MAIN);
-    expect(chain.paid(NIGHT_COLOR, wP)).toBe(20n);
-    expect(chain.paid(NIGHT_COLOR, wK)).toBe(180n);
+    // Credit issued on it records the parent's 10% too.
+    await fund(child, grower, posted.offer, 200n);
+    expect(owedTotal(await parent.api.owed({ parent: recP, mainAddress: MAIN })).get(hex(unitOf('USD cents')))).toBe(
+      125n + 20n,
+    );
 
-    // The credit is ordinary private credit: recorded, then settled privately.
-    await grower.api.claimTopUp(posted.offer, undefined, 200n);
+    // The credit is ordinary private credit, settled privately.
     expect(await grower.api.credit(posted.offer)).toBe(200n);
     await grower.api.settle(posted.offer, '2027-Q1', 10n, { evenIfLinkable: true });
     expect(await grower.api.credit(posted.offer)).toBe(160n);
   });
 
-  it('a variety cannot leave out a parent it agreed terms with; a parent with no terms takes nothing', async () => {
+  it('a variety cannot leave out a parent it agreed terms with; a parent with no terms is owed nothing', async () => {
     const chain = new Chain();
     const parent = chain.party();
     const child = chain.party();
@@ -278,28 +285,25 @@ describe('royalties on offspring, through the client', () => {
     const Q = secret('no-terms-child');
     for (const x of [P, K, Q]) chain.main.call(as(x), 'anchor', C.recoveryCommit(secret(`rcv-${hex(x).slice(0, 6)}`)));
     const expires = now() + 365n * 86400n;
-    const t = (payTo: Uint8Array) => ({
+    const t = {
       terms: new Uint8Array(32).fill(3),
-      color: NIGHT_COLOR,
+      unit: 'USD cents',
       price: 1000n,
       rate: 4n,
-      payTo,
       count: 5n,
       expires,
       revocable: true,
-      onChainPayment: true,
-    });
-    await parent.api.postOffer(P, t(new Uint8Array(32).fill(51)), MAIN);
+    };
+    await parent.api.postOffer(P, t, MAIN);
 
     // K agrees 10% with P, both confirm. K cannot finalise a chart that leaves P out: the
     // contract demands every confirmed link.
     const card = await parent.api.linkTerms(P, {
-      color: NIGHT_COLOR,
+      unit: 'USD cents',
       fee: 0n,
       share: 1000n,
       generations: 1n,
       until: expires,
-      payTo: new Uint8Array(32).fill(51),
     });
     await child.api.proposeLink(K, card);
     await parent.api.confirmLink(P, C.commit(K));
@@ -317,18 +321,19 @@ describe('royalties on offspring, through the client', () => {
       raw.call('finaliseStack', { recordSecret: K }, (c) => c.callTx.finaliseStack(none, none)),
     ).rejects.toThrow(/Name every confirmed link/);
     await child.api.finaliseStack(K, MAIN);
-    const linked = await child.api.postOffer(K, t(new Uint8Array(32).fill(52)), MAIN);
-    await grower.api.buyLicense(linked.card, MAIN);
-    expect(chain.paid(NIGHT_COLOR, new Uint8Array(32).fill(51))).toBe(100n);
+    const linked = await child.api.postOffer(K, t, MAIN);
+    await licensed(child, grower, linked.card);
+    const rows = await parent.api.owed({ parent: C.commit(P), mainAddress: MAIN });
+    expect(owedTotal(rows).get(hex(unitOf('USD cents')))).toBe(100n);
 
-    // Q's parentage is confirmed with no terms at all: shown as taking nothing, not refused.
+    // Q's parentage is confirmed with no terms at all: shown as owing nothing, not refused.
     chain.main.call(as(Q), 'proposeParent', C.commit(P));
     chain.main.call(as(P), 'confirmParent', C.commit(Q));
     // Q's own client finalises without a link to P (P set no terms), with a warning, not a refusal.
     await other.api.finaliseStack(Q, MAIN);
-    const plain = await other.api.postOffer(Q, t(new Uint8Array(32).fill(53)), MAIN);
+    const plain = await other.api.postOffer(Q, t, MAIN);
     const ped = await grower.api.pedigreeIn(MAIN, C.commit(Q));
     expect(ped.ok && ped.warnings.some((w) => /takes nothing/.test(w))).toBe(true);
-    await grower.api.buyLicense(plain.card, MAIN);
+    await licensed(other, chain.party(), plain.card);
   });
 });

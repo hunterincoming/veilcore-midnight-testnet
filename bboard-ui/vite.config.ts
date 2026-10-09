@@ -58,7 +58,7 @@ const mainnetBuild = (mode: string, command: string) => {
 
 // The page description search engines and link previews show, by mode.
 const DESCRIPTION = {
-  test: 'An open record format for plant and animal genetics. Seal a record on your own computer; only its fingerprint is dated on Midnight. Pre-launch: tested on a Midnight test network, no independent audit yet.',
+  test: 'An open record format for plant and animal genetics. Seal a record on your own computer; only its fingerprint is dated on Midnight. Pre-launch: tested on a Midnight test network, no security audit yet.',
   mainnet:
     "An open record format for plant and animal genetics. Seal a record on your own computer; only its fingerprint is dated, on Midnight's main network. Free to check, no account.",
 };
@@ -76,7 +76,8 @@ export default defineConfig(({ mode, command }) => {
     cacheDir: './.vite',
     build: {
       target: 'esnext',
-      minify: false,
+      // Minified: the unminified bundle was several times larger for every visitor.
+      minify: true,
       // No source maps in the published bundle.
       sourcemap: false,
       rollupOptions: {

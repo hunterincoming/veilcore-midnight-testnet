@@ -76,7 +76,7 @@ export const en = {
     "Notebooks and files are dated by whoever keeps them, so they're easy to doubt. Registering the material itself means handing over what you're protecting. VeilCore gives your record a date nobody can backdate, and the genetics stay with you.",
   'm.for.1t': 'A cutting walks out the door.',
   'm.for.1p':
-    "Seal a record and pair its DNA report. If the plant turns up under another name, a lab can compare a new test with your report. When you pair through VeilCore's contract on Midnight, the pairing is dated too: it shows your record was paired with that report by then. If someone else pairs the same report, which pairing came first doesn't show who had the report first. In this web demo the pairing is saved with your record but not yet dated. VeilCore doesn't test DNA.",
+    "Seal a record and pair its DNA report. If the plant turns up under another name, a lab can compare a new test with your report. When you pair through VeilCore's contract on Midnight, the pairing is dated too: it shows the holder of your record had that report by then. What goes on chain is tied to your record and hides the report, so nobody can copy your pairing to their own record. In this web demo the pairing is saved with your record but not yet dated. VeilCore doesn't test DNA.",
   'm.for.2t': 'Variety protection and certification.',
   'm.for.2link': 'How a claim works →',
   'm.for.3t': "Material in a lab's hands.",

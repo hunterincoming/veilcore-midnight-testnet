@@ -10,7 +10,7 @@ Version 0.1 - August 2026, revised October 2026
 
 This is a draft specification, published for comment. It describes a record format and a verification procedure. It is not a description of a product.
 
-**The format is open.** Anyone may implement it. There is no licence fee, no certification requirement, and no dependency on any company for the format to function. Three implementations - in TypeScript, Python and Rust - pass the same 100 conformance vectors. All three have the same author, so they show the vectors hold across languages, not that a third party can implement the format from this document alone. An implementation by an unrelated party is the test this document most needs. The vectors cover canonicalisation, commitment computation, inclusion proofs, rejections, attestation payloads and field sets; corrections and resolution are implemented in the reference implementation and are not yet part of the vector set.
+**The format is open.** Anyone may implement it. There is no licence fee, no certification requirement, and no dependency on any company for the format to function. Three implementations - in TypeScript, Python and Rust - pass the same 100 record-format conformance vectors. All three have the same author, so they show the vectors hold across languages, not that a third party can implement the format from this document alone. An implementation by an unrelated party is the test this document most needs. The vectors cover canonicalisation, commitment computation, inclusion proofs, rejections, attestation payloads and field sets; corrections and resolution are implemented in the reference implementation and are not yet part of the vector set. One more vector, added in October 2026, covers the report pairing of section 3.7; the TypeScript and Python implementations pass it, and the Rust implementation does not run it yet.
 
 **Verification is free and requires no account, permanently.** This is a design constraint rather than a pricing decision: a record whose verification can be withheld is not evidence.
 
@@ -136,6 +136,20 @@ A ledger contract may keep licences, lineage and obligations under an identity o
 The identity's own anchor date says nothing about who holds the record now, or about this record's content. A record can change hands through a key rotation or a recovery, which on the ledger looks the same as a holder replacing their own key; and the content is dated only by its own commitment's anchor.
 
 It reveals nothing about the secret behind the identity. It does link the record's content to everything that identity does on the ledger, for anyone shown the record; a holder who wants a record unlinkable leaves it out.
+
+### 3.7 A report paired on a ledger
+
+A holder may pair a report - a laboratory's DNA report, say - with a ledger identity, so the ledger dates when that identity's holder had the report. The value put on the ledger is
+
+`binding = H("veilcore:v1:dnapair", reportHash, identity, salt)`
+
+where `H` is as in section 4.5 (SHA-256 over 32-byte elements, the first the tag in UTF-8 right-padded with zero bytes to 32), `reportHash` is the SHA-256 of the report file, `identity` is the ledger identity (section 3.6) of the record pairing it, and `salt` is 32 bytes from a cryptographically secure generator, kept by the holder with the report. Each input is 64 lowercase hex characters; anything else shall be refused.
+
+**Why not the report's hash itself.** A value on a public ledger can be copied, even from a transaction still waiting to be included, and paired under another identity first. Which of two pairings of a raw hash came first then shows nothing about who had the report first. The binding reveals nothing about the report (without the salt nobody can test a guess), holds only for the identity inside it, and cannot be made for another identity without the report's hash, which stays with the holder until they show it.
+
+**What a verifier checks.** Given the report, the salt, the identity and the ledger transaction: hash the report themselves, recompute the binding, and confirm the transaction paired that value under that identity (on VeilCore's contract: verifier rule 9 of its design note, `docs/design.md` in the veilcore-midnight-testnet repository). The transaction's time is the date that identity's holder had the report by. It does not show who holds the identity now (section 3.6), or that nobody else had the report earlier: the laboratory that wrote it did. Nothing in the binding says what the report says.
+
+**The holder shall keep the salt with the report.** Without it the pairing can never be shown. Once disclosed, it lets anyone holding the report recognise the pairing.
 
 ---
 
@@ -526,7 +540,7 @@ Stated plainly, because a claim that overreaches is worse than no claim.
 
 **It does not establish that the record is true.** A commitment proves that a description existed on a date and is unaltered. It does not establish that the description is accurate. Accuracy comes from attestations by parties with something to lose.
 
-**It establishes prior possession of the record, not of material.** What is shown is that a party held this description, with its nonce, by the date of the anchor. It does not show that the party presenting it now is that party: a ledger identity's anchor date says nothing about who holds the record today (section 3.6). Nor does the earlier of two records or ledger pairings carrying the same raw report hash show who had the report first; a hash, once seen, can be copied. It does not show that any material is the subject described, or that material was ever in their hands.
+**It establishes prior possession of the record, not of material.** What is shown is that a party held this description, with its nonce, by the date of the anchor. It does not show that the party presenting it now is that party: a ledger identity's anchor date says nothing about who holds the record today (section 3.6). Nor does the earlier of two records or ledger pairings carrying the same raw report hash show who had the report first; a hash, once seen, can be copied. A pairing bound to an identity (section 3.7) does show when that identity's holder had the report. It does not show that any material is the subject described, or that material was ever in their hands.
 
 **It does not identify material physically.** Whether a specimen is the subject described requires comparison of characteristics or genetic analysis. What the record establishes is that the description, and any analysis attached to it, existed before the dispute - which is what makes a later comparison meaningful rather than circular.
 
@@ -555,7 +569,7 @@ A conformance profile covering party conduct is not defined here (section 12).
 
 An implementation is conformant if it reproduces the published test vectors exactly.
 
-Vectors cover canonicalisation - key ordering, omitted versus null, array order preservation, NFC normalisation, nested sorting, numeric and boolean forms - commitment computation across a range of record shapes, including the requirement that changing the anchor does not change the commitment, and inclusion proofs across batch sizes chosen so that an implementation which duplicates an odd node rather than promoting it will disagree. Field-set vectors (section 4.5) cover schema ids, slot values including the number 0 against an absent value, NFC text, salts, set roots and openings, with refusals for every validation rule and for field-set records missing their bindings.
+Vectors cover canonicalisation - key ordering, omitted versus null, array order preservation, NFC normalisation, nested sorting, numeric and boolean forms - commitment computation across a range of record shapes, including the requirement that changing the anchor does not change the commitment, and inclusion proofs across batch sizes chosen so that an implementation which duplicates an odd node rather than promoting it will disagree. Field-set vectors (section 4.5) cover schema ids, slot values including the number 0 against an absent value, NFC text, salts, set roots and openings, with refusals for every validation rule and for field-set records missing their bindings. Together these are the 100 record-format vectors. One further vector (`pairings`) gives the binding of section 3.7 for fixed inputs; it is not part of the record format, and an implementation that does not offer ledger pairings may leave it out and say so.
 
 **Conformance is demonstrated, not asserted.** The vector set and a runner are published with the reference implementation. The runner communicates with an implementation over standard input and output, so implementations in any language can be tested.
 

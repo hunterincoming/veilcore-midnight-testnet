@@ -42,7 +42,7 @@ The alternatives are worse. Depositing a specimen requires storage that is infea
 
 A record can bind a laboratory's genetic analysis to itself: the report file is hashed, the hash committed with the record, and the report never leaves the holder.
 
-The consequence is that a claim rests on a specific analysis rather than only on a cultivar name, which is reused, renamed and disputed. The hash identifies the report file, not the genotype: two reports on the same plant, from different laboratories or different runs, have unrelated hashes. Where two parties claim the same material, each produces the report they committed; the hashes show that each report is the one its record committed to, and each record's own anchor dates that record. Which of two records or pairings carrying the same raw report hash landed first is not evidence of who had the report first: a hash, once seen, can be copied, and a DNA pairing on the live VeilCore contract accepts any non-zero 32-byte value and makes it public. Whether the material is the same is settled by comparing the reports' marker data.
+The consequence is that a claim rests on a specific analysis rather than only on a cultivar name, which is reused, renamed and disputed. The hash identifies the report file, not the genotype: two reports on the same plant, from different laboratories or different runs, have unrelated hashes. Where two parties claim the same material, each produces the report they committed; the hashes show that each report is the one its record committed to, and each record's own anchor dates that record. Which of two records or pairings carrying the same raw report hash landed first is not evidence of who had the report first: a hash, once seen, can be copied, and a DNA pairing on the live VeilCore contract accepts any non-zero 32-byte value and makes it public. **A pairing bound to the holder's record** (SPEC section 3.7) addresses this: what goes on chain is a hash of the report's hash, the record's ledger identity and a random value the holder keeps. It reveals nothing about the report, and it cannot be copied to another record or made for one without the report. To rely on it, a verifier hashes the report they were given and checks the pairing against it. Its date shows when that record's holder had the report - not who holds the record now, and not that nobody had the report earlier (the laboratory that wrote it did). A pairing of a raw hash still shows nothing about who had the report first, so check which kind a pairing is. Whether the material is the same is settled by comparing the reports' marker data.
 
 **What it does not do:** it does not sequence anything, and it does not tell you whether a plant in a field is the material described. That requires comparison against the actual sample. What the record establishes is that the description and the analysis existed before the dispute - which is what makes a later comparison meaningful rather than circular.
 
@@ -108,7 +108,7 @@ A party producing "a VeilCore record" is producing all three.
 
 A VeilCore record has an unusual property here: **it authenticates itself arithmetically.** Given the record, anyone recomputes the hash and compares. The method is published and reproducible, and needs no proprietary tool or expert judgement; what remains open to challenge is narrower - the published serialisation rules and the anchor lookup.
 
-**FRE 901(b)(9) - evidence about a process or system** is the natural route. The process is SHA-256 over a published serialisation. Three implementations, in different programming languages, produce identical results on the published test vectors. All three were written by the same author, so they show the rules give one answer across languages; no third-party implementation exists yet.
+**FRE 901(b)(9) - evidence about a process or system** is the natural route. The process is SHA-256 over a published serialisation. Three implementations, in different programming languages, produce identical results on the published record-format test vectors. All three were written by the same author, so they show the rules give one answer across languages; no third-party implementation exists yet.
 
 **FRE 902(13)** permits that foundation to be established by certification rather than live testimony. Note the limit the Advisory Committee states plainly: a 902(13) certification establishes authenticity only, and any hearsay exception must be established separately.
 
@@ -242,7 +242,7 @@ Indicative, not a form.
 2. The commitment is SHA-256 over a canonical serialisation defined in the published specification.
 3. Recomputing from the produced record yields the published value.
 4. That value appears in the identified transaction, block and time.
-5. The process is published and reproducible; three implementations in different languages, all by the same author, agree on the published test vectors.
+5. The process is published and reproducible; three implementations in different languages, all by the same author, agree on the published record-format test vectors.
 
 **Hearsay foundation under 803(6), separately:**
 

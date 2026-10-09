@@ -22,6 +22,7 @@ import {
   acceptOwnership,
   acceptPresentationAt,
   checkLineage,
+  currentHead,
   identityOf,
   isLive,
   type LineageReport,
@@ -263,6 +264,22 @@ export class VeilcoreAPI {
   async issueLicense(licenseCommitment: Uint8Array): Promise<TxRef> {
     await this.refuseRevoked(licenseCommitment, 'issue a licence to');
     return this.logged('issueLicense', await this.deployedContract.callTx.issueLicense(licenseCommitment));
+  }
+
+  /**
+   * As licensee: the licence commitment to send an issuer, built against the issuer's
+   * CURRENT head. `issuerRecord` may be any commitment of the issuer's identity (its
+   * origin, say, from a record's ledgerIdentity): issueLicense keys the licence on the
+   * issuer's head, so one built against an earlier commitment could never be
+   * countersigned. Keep the returned `issuerRecord`: countersigning, presenting and
+   * transferring this licence all name it. Nothing is sent.
+   */
+  async licenseRequest(
+    secret: Uint8Array,
+    issuerRecord: Uint8Array,
+  ): Promise<{ readonly licenseCommitment: Uint8Array; readonly issuerRecord: Uint8Array }> {
+    const head = currentHead(await this.currentLedger(), issuerRecord);
+    return { licenseCommitment: Veilcore.pureCircuits.licenseCommit(secret, head), issuerRecord: head };
   }
 
   /**

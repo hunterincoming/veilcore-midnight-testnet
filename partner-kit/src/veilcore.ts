@@ -183,6 +183,20 @@ export class VeilCore {
     return this.#api.issueLicense(licenseCommitment);
   }
 
+  /**
+   * As licensee: the licence commitment to send the issuer, built against the issuer's
+   * CURRENT head (any commitment of its identity may be given, its origin included). Use
+   * this rather than commit.license with an origin: a licence built against a commitment
+   * that is no longer the issuer's head can never be countersigned. Keep the returned
+   * `issuerRecord` for countersignLicense, proveLicense and proposeTransfer. Nothing is sent.
+   */
+  licenseRequest(
+    licenseSecret: Uint8Array,
+    issuerRecord: Uint8Array,
+  ): Promise<{ readonly licenseCommitment: Uint8Array; readonly issuerRecord: Uint8Array }> {
+    return this.#api.licenseRequest(licenseSecret, issuerRecord);
+  }
+
   /** As licensee: activate the licence `issuerRecord` issued to commit.license(licenseSecret, issuerRecord). */
   countersignLicense(licenseSecret: Uint8Array, issuerRecord: Uint8Array): Promise<TxRef> {
     return this.#api.countersignLicense(licenseSecret, issuerRecord);

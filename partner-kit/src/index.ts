@@ -117,6 +117,7 @@ export {
   acceptPresentationScoped,
   checkLineage,
   commitmentsOf,
+  currentHead,
   identityOf,
   isAnchored,
   isLive,

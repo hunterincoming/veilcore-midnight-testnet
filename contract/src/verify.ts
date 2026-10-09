@@ -23,6 +23,18 @@ export const isLive = (ledger: Ledger, record: Uint8Array): boolean => {
     : same(origin, record);
 };
 
+/**
+ * The commitment that acts for a record's identity now: its head after any rotation or
+ * recovery, else the origin itself. issueLicense keys a licence on the ISSUER'S HEAD at
+ * the time, so a licensee must build commit.license(secret, record) with this, not with
+ * the origin a record's ledgerIdentity names (SPEC 3.6): a licence built against an
+ * identity's origin after it rotated can never be countersigned (8 October 2026 review).
+ */
+export const currentHead = (ledger: Ledger, record: Uint8Array): Uint8Array => {
+  const origin = identityOf(ledger, record);
+  return ledger.headOf.member(origin) ? ledger.headOf.lookup(origin) : origin;
+};
+
 /** Whether a commitment belongs to an anchored identity. */
 export const isAnchored = (ledger: Ledger, record: Uint8Array): boolean =>
   ledger.recoveryOf.member(identityOf(ledger, record));

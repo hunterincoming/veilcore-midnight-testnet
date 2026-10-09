@@ -638,13 +638,21 @@ const mainLoop = async (
             break;
           }
           case '7': {
-            const issuer = await ask32(rli, "Issuer's record (hex): ");
+            const given = await ask32(rli, "Issuer's record (hex): ");
             const secret = randomBytes(32);
+            // Built against the issuer's CURRENT head: issueLicense keys the licence on it, so
+            // one built against an earlier commitment (an origin) could never be countersigned.
+            const { licenseCommitment, issuerRecord } = await api.licenseRequest(secret, given);
             showSecret(
               'YOUR LICENCE SECRET — keep it; you need it to countersign, present and transfer:',
               toHex(secret),
             );
-            logger.info(`Send the issuer this licence commitment: ${toHex(C.licenseCommit(secret, issuer))}`);
+            if (toHex(issuerRecord) !== toHex(given))
+              logger.info(
+                `That record has moved on: the issuer acts as ${toHex(issuerRecord)} now. The licence is built ` +
+                  'against that one: give it, not the one you typed, when you countersign, present or transfer.',
+              );
+            logger.info(`Send the issuer this licence commitment: ${toHex(licenseCommitment)}`);
             break;
           }
           case '8': {

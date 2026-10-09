@@ -110,6 +110,37 @@ describe('a laboratory: anchor, prove possession, timestamp a batch, pair a repo
   });
 });
 
+describe('a licence requested after the issuer rotated (8 October 2026 review)', () => {
+  it("is built against the issuer's head, not the origin it was asked with, and can be countersigned", async () => {
+    const vc = await VeilCore.join(chain.conn, { address: VEILCORE_ADDR });
+    const first = newSecret();
+    const origin = commit.record(first);
+    await vc.useRecordSecret(first);
+    await vc.anchor(commit.recovery(newSecret()));
+    const second = newSecret();
+    await vc.rotateRecordSecret(second);
+
+    // Built offline against the origin (what a record's ledgerIdentity names): issued
+    // against the head, it can never be countersigned.
+    const L0 = newSecret();
+    await vc.issueLicense(commit.license(L0, origin));
+    expect(await refusedByContract(vc.countersignLicense(L0, origin))).toBe(true);
+    expect(await refusedByContract(vc.countersignLicense(L0, commit.record(second)))).toBe(true);
+
+    // licenseRequest resolves the head first.
+    const L = newSecret();
+    const req = await vc.licenseRequest(L, origin);
+    expect(same(req.issuerRecord, commit.record(second))).toBe(true);
+    expect(same(req.licenseCommitment, commit.license(L, commit.record(second)))).toBe(true);
+    await vc.issueLicense(req.licenseCommitment);
+    await vc.countersignLicense(L, req.issuerRecord);
+    const challenge = newChallenge();
+    const shown = await vc.proveLicense(L, req.issuerRecord, challenge);
+    const v = await checkPresentation({ ...read(), txId: shown.txId, issuer: origin, challenge, issuedAt: Date.now() });
+    expect(v.accepted).toBe(true);
+  });
+});
+
 describe('a breeder licenses a grower: issue, countersign, prove, verify, transfer, revoke', () => {
   it('runs end to end', async () => {
     const vc = await VeilCore.join(chain.conn, { address: VEILCORE_ADDR });

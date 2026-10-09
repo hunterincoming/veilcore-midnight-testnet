@@ -75,7 +75,7 @@ export const es: Strings = {
   'm.post1.tag': 'Formato',
   'm.post1.title': 'Tres implementaciones, una respuesta',
   'm.post1.text':
-    'Una prueba diferencial encontró que nuestras implementaciones en TypeScript, Python y Rust no coincidían en algunos números. Corregido: ahora coinciden en cada una de 81 000 entradas, y 55 vectores de conformidad lo fijan.',
+    'Una prueba diferencial encontró que nuestras implementaciones en TypeScript, Python y Rust no coincidían en algunos números. Corregido: ahora coinciden en cada una de 81 000 entradas, y los vectores de prueba compartidos lo comprueban.',
   'm.post2.date': '2 oct 2026',
   'm.post2.tag': 'Contrato',
   'm.post2.title': 'Una ejecución completa en la red de pruebas de Midnight',
@@ -84,12 +84,12 @@ export const es: Strings = {
   'm.status.label': 'Dónde estamos',
   'm.status.title1': 'Con franqueza sobre',
   'm.status.title2': 'dónde estamos.',
-  'm.status.lede': 'Preferimos decirlo ahora a que salga a la luz más tarde.',
+  'm.status.lede': 'Lo que está hecho y lo que aún no.',
   'm.stat3.b': 'Sin auditoría',
   'm.status.keyTitle': 'Quién puede cambiar el contrato.',
   'm.status.keyText':
-    'Los fundadores tienen una clave de mantenimiento del contrato de VeilCore en Midnight. Con ella se puede cambiar cómo funciona el contrato de ahí en adelante. No puede reescribir los registros ya anclados en el historial de la red. Una política para su uso está propuesta, no decidida.',
-  'm.status.keyLink': 'Leer la política propuesta →',
+    'Una clave de mantenimiento puede cambiar cómo funciona el contrato de VeilCore en Midnight. Quien la tenga puede añadir o reemplazar operaciones del contrato, lo que podría permitirle tomar el control de la identidad de cualquier registro, añadir licencias en nombre de cualquier emisor, añadir o quitar obligaciones y vínculos de parentesco, o desactivar operaciones. No puede antedatar los tiempos de bloque de la red, y cada cambio queda a la vista en la cadena. Hoy la clave está en papel, una copia en manos de cada fundador, y cualquiera de las dos copias basta por sí sola para usarla. Pasarla a un grupo de claves que deban estar de acuerdo está previsto, pero aún no está hecho. Cada uso se anuncia públicamente, según una política de mantenimiento escrita.',
+  'm.status.keyLink': 'Leer la política de mantenimiento →',
   'm.contact.label': 'Contacto',
   'm.contact.title1': 'Díganos',
   'm.contact.title2': 'dónde falla.',
@@ -104,7 +104,7 @@ export const es: Strings = {
   'm.verify.label': 'Verificar',
   'm.verify.title': 'Compruebe un registro',
   'm.verify.lede':
-    'Ingrese el identificador de registro impreso en un certificado o que le hayan compartido. Verá lo que su titular decidió divulgar y si está intacto.',
+    'Ingrese el identificador de registro impreso en un certificado o que le hayan compartido. Verá lo que su titular decidió compartir y lo que esta página pudo comprobar por sí misma: si el registro está en un lote sellado y si las firmas de laboratorio, si las hay, son válidas.',
   'm.verify.field': 'Identificador de registro',
   'm.verify.go': 'Comprobar',
   'm.founders.label': 'Fundadores',
@@ -152,5 +152,18 @@ export const es: Strings = {
   'm.privacy.delete.title': 'Eliminación',
   'm.privacy.delete.text':
     'Para que eliminemos sus datos de la demo de nuestro servidor, escriba a hunter@veilcore.org con los identificadores de sus registros.',
+  'm.privacy.browser.title': 'Se guarda en su navegador',
+  'm.privacy.browser.text':
+    'Su navegador guarda, en este dispositivo: su clave de titular (también se envía una copia a nuestro servidor, como se indica arriba), la clave de firma de un laboratorio si configuró una (su parte privada nunca sale de este dispositivo), el rol que eligió y su idioma. Para borrarlos, elimine los datos de este sitio en la configuración de su navegador. Guarde antes su clave de titular: sin ella, este navegador ya no podrá encontrar sus registros.',
+  'm.privacy.hosts.title': 'Alojamiento',
+  'm.privacy.hosts.text':
+    'Este sitio web está alojado en Vercel, que registra direcciones IP y solicitudes. Nuestro servidor de registro funciona en Railway, que registra solicitudes.',
+  'm.privacy.who.title': 'Quién lo guarda y durante cuánto tiempo',
+  'm.privacy.who.text':
+    'VeilCore aún no está constituida como empresa; sus fundadores gestionan este sitio y el registro. No hay un plazo de conservación fijado: lo que guarda el registro se queda allí hasta que nos pida que lo eliminemos. Contacto: hunter@veilcore.org.',
+  'm.notfound.title': 'Página no encontrada.',
+  'm.notfound.text':
+    'No hay ninguna página en esta dirección. Si alguien le dio un enlace a un registro, compruebe que esté completo.',
+  'm.notfound.home': 'Inicio de VeilCore →',
   'm.privacy.contact': 'Preguntas: hunter@veilcore.org',
 };

@@ -178,9 +178,9 @@ export const Implementations: React.FC = () => (
       </Box>
 
       <Typography variant="body1" color="text.secondary" sx={{ maxWidth: 680, mb: 4, lineHeight: 1.8, fontSize: 16 }}>
-        If it passes, it is conformant, and you owe us nothing for saying so. Nobody offers certification today; it
-        could be offered later, by us or anyone. The vectors are public, so anyone can check anyone, including checking
-        us.
+        If it passes, it computes the same commitments and proofs as ours, and you owe us nothing for saying so. Nobody
+        offers certification today; it could be offered later, by us or anyone. The vectors are public, so anyone can
+        check anyone, including checking us.
       </Typography>
 
       <Stack direction="row" spacing={2} sx={{ flexWrap: 'wrap', gap: 2 }}>

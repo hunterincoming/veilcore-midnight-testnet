@@ -75,7 +75,7 @@ export const fr: Strings = {
   'm.post1.tag': 'Format',
   'm.post1.title': 'Trois implémentations, une seule réponse',
   'm.post1.text':
-    'Un test différentiel a révélé que nos implémentations TypeScript, Python et Rust divergeaient sur certains nombres. Corrigé : elles concordent désormais sur chacune des 81 000 entrées, et 55 vecteurs de conformité le figent.',
+    'Un test différentiel a révélé que nos implémentations TypeScript, Python et Rust divergeaient sur certains nombres. Corrigé : elles concordent désormais sur chacune des 81 000 entrées, et les vecteurs de test partagés le vérifient.',
   'm.post2.date': '2 oct. 2026',
   'm.post2.tag': 'Contrat',
   'm.post2.title': 'Une exécution complète sur le réseau de test de Midnight',
@@ -84,12 +84,12 @@ export const fr: Strings = {
   'm.status.label': 'Où nous en sommes',
   'm.status.title1': 'Franchement,',
   'm.status.title2': 'où nous en sommes.',
-  'm.status.lede': 'Nous préférons le dire maintenant plutôt que cela se sache plus tard.',
+  'm.status.lede': "Ce qui est fait, et ce qui ne l'est pas encore.",
   'm.stat3.b': 'Aucun audit',
   'm.status.keyTitle': 'Qui peut modifier le contrat.',
   'm.status.keyText':
-    "Les fondateurs détiennent une clé de maintenance du contrat de VeilCore sur Midnight. Elle permet de modifier le fonctionnement du contrat à partir de ce moment. Elle ne peut pas réécrire les enregistrements déjà ancrés dans l'historique du réseau. Une politique d'utilisation est proposée, pas décidée.",
-  'm.status.keyLink': 'Lire la politique proposée →',
+    "Une clé de maintenance peut modifier le fonctionnement du contrat de VeilCore sur Midnight. Son détenteur peut ajouter ou remplacer des opérations du contrat, ce qui pourrait lui permettre de prendre le contrôle de l'identité de n'importe quel enregistrement, d'ajouter des licences au nom de n'importe quel émetteur, d'ajouter ou de retirer des obligations et des liens de parenté, ou de désactiver des opérations. Elle ne peut pas antidater les heures de bloc du réseau, et chaque modification est visible sur la chaîne. Aujourd'hui, la clé est sur papier, une copie chez chaque fondateur, et une seule copie suffit pour l'utiliser. Le passage à un groupe de clés qui doivent s'accorder est prévu, mais pas encore fait. Chaque utilisation est annoncée publiquement, selon une politique de maintenance écrite.",
+  'm.status.keyLink': 'Lire la politique de maintenance →',
   'm.contact.label': 'Nous contacter',
   'm.contact.title1': 'Dites-nous',
   'm.contact.title2': 'où ça échoue.',
@@ -104,7 +104,7 @@ export const fr: Strings = {
   'm.verify.label': 'Vérifier',
   'm.verify.title': 'Vérifier un enregistrement',
   'm.verify.lede':
-    "Saisissez l'identifiant d'enregistrement imprimé sur un certificat ou qui vous a été communiqué. Vous verrez ce que son détenteur a choisi de divulguer, et s'il est intact.",
+    "Saisissez l'identifiant d'enregistrement imprimé sur un certificat ou qui vous a été communiqué. Vous verrez ce que son détenteur a choisi de partager, et ce que cette page a pu vérifier elle-même : si l'enregistrement est dans un lot scellé, et si les éventuelles signatures de laboratoire sont valides.",
   'm.verify.field': "Identifiant d'enregistrement",
   'm.verify.go': 'Vérifier',
   'm.founders.label': 'Fondateurs',
@@ -152,5 +152,18 @@ export const fr: Strings = {
   'm.privacy.delete.title': 'Suppression',
   'm.privacy.delete.text':
     'Pour faire supprimer vos données de démo de notre serveur, écrivez à hunter@veilcore.org en indiquant les identifiants de vos enregistrements.',
+  'm.privacy.browser.title': 'Conservé dans votre navigateur',
+  'm.privacy.browser.text':
+    "Votre navigateur conserve, sur cet appareil : votre clé de détenteur (une copie est aussi envoyée à notre serveur, voir plus haut), la clé de signature d'un laboratoire si vous en avez configuré une (sa partie privée ne quitte jamais cet appareil), le rôle choisi et votre langue. Pour les supprimer, effacez les données de ce site dans les réglages de votre navigateur. Sauvegardez d'abord votre clé de détenteur : sans elle, ce navigateur ne retrouvera plus vos enregistrements.",
+  'm.privacy.hosts.title': 'Hébergement',
+  'm.privacy.hosts.text':
+    'Ce site est hébergé chez Vercel, qui enregistre les adresses IP et les requêtes. Notre serveur de registre fonctionne chez Railway, qui enregistre les requêtes.',
+  'm.privacy.who.title': 'Qui les conserve, et combien de temps',
+  'm.privacy.who.text':
+    "VeilCore n'est pas encore constituée en société ; les fondateurs de VeilCore exploitent ce site et le registre. Il n'y a pas de durée de conservation fixée : ce que le registre détient y reste jusqu'à ce que vous nous demandiez de le supprimer. Contact : hunter@veilcore.org.",
+  'm.notfound.title': 'Page introuvable.',
+  'm.notfound.text':
+    "Il n'y a pas de page à cette adresse. Si quelqu'un vous a donné un lien vers un enregistrement, vérifiez qu'il est complet.",
+  'm.notfound.home': 'Accueil de VeilCore →',
   'm.privacy.contact': 'Questions : hunter@veilcore.org',
 };

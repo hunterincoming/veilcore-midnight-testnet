@@ -8,7 +8,7 @@ export const en = {
   'nav.licenses': 'Agreements',
   'nav.language': 'Language',
   'footer.about':
-    "An open record format for plant and animal genetics. Recomputing a record's fingerprint needs only SHA-256 and the open specification; checking its date also needs a read of the Midnight network. Both are free and need no account. Looking a record up by its identifier on this site uses our server.",
+    "An open record format for plant and animal genetics. Recomputing a record's fingerprint needs only SHA-256 and the open specification; checking its date also needs a look-up on a Midnight explorer. Looking a record up by its identifier on this site uses our server.",
   'footer.documents': 'Documents',
   'footer.spec': 'Specification',
   'footer.evidence': 'Records in evidence',
@@ -76,7 +76,7 @@ export const en = {
     "Notebooks and files are dated by whoever keeps them, so they're easy to doubt. Registering the material itself means handing over what you're protecting. VeilCore gives your record a date nobody can backdate, and the genetics stay with you.",
   'm.for.1t': 'A cutting walks out the door.',
   'm.for.1p':
-    "Seal a record and pair its DNA report. If the plant turns up under another name, a lab can compare a new test with your report. When you pair through VeilCore's contract on Midnight, the report's fingerprint is dated too, so your record shows you had that report by then. In this web demo the pairing is saved with your record but not yet dated. VeilCore doesn't test DNA.",
+    "Seal a record and pair its DNA report. If the plant turns up under another name, a lab can compare a new test with your report. When you pair through VeilCore's contract on Midnight, the pairing is dated too: it shows your record was paired with that report by then. If someone else pairs the same report, which pairing came first doesn't show who had the report first. In this web demo the pairing is saved with your record but not yet dated. VeilCore doesn't test DNA.",
   'm.for.2t': 'Variety protection and certification.',
   'm.for.2link': 'How a claim works →',
   'm.for.3t': "Material in a lab's hands.",
@@ -102,7 +102,7 @@ export const en = {
   'm.step3.n': '03 · Anchor',
   'm.step3.title': 'Get a date',
   'm.step3.text':
-    'Only the fingerprint goes on Midnight, in a batch with others. The date is the block the batch lands in, not a date we choose.',
+    'Only the fingerprint goes on Midnight, in a batch with others. The date is the block the batch lands in: it shows the record existed by then.',
   'm.step4.n': '04 · Verify',
   'm.step4.title': 'Show it later',
   'm.step4.text': 'Give it to a buyer, examiner or court. They can check it, free, with no account.',
@@ -163,7 +163,7 @@ export const en = {
   'm.open.1link': 'All three implementations →',
   'm.open.2t': "Your record doesn't need us.",
   'm.open.2p':
-    'Anyone holding the record and its inclusion proof (a small file showing the record is in an anchored batch) can check it with SHA-256, the open spec and a read of the Midnight network, even if VeilCore is gone.',
+    'Anyone holding the record and its inclusion proof (a small file showing the record is in an anchored batch) can check it with SHA-256, the open spec and a look-up on a Midnight explorer, even if VeilCore is gone.',
   'm.open.3t': "We don't vouch for results.",
   'm.open.3p':
     "A record shows which key signed it, the name and accreditor registered with that key, and whether we've checked that the key belongs to that name. Whoever checks it decides what that's worth.",
@@ -191,7 +191,7 @@ export const en = {
   'm.faq.4link2': 'Integration guide →',
   'm.faq.5q': 'What if VeilCore disappears?',
   'm.faq.5a':
-    "Records you've kept a copy of still check. The spec is open, the TypeScript, Python and Rust code is published, and checking needs SHA-256, the record's inclusion proof (a small file showing it's in an anchored batch) and a read of the Midnight network. A one-click download of everything we hold for you is coming.",
+    "Records you've kept a copy of still check. The spec is open, the TypeScript, Python and Rust code is published, and checking needs SHA-256, the record's inclusion proof (a small file showing it's in an anchored batch) and a look-up on a Midnight explorer. A one-click download of everything we hold for you is coming.",
   'm.faq.6q': 'What does it cost?',
   'm.faq.6a': 'Making a record on this site costs nothing today. Checking a record is free, always.',
 
@@ -240,7 +240,7 @@ export const en = {
   'm.post1.tag': 'Format',
   'm.post1.title': 'Three implementations, one answer',
   'm.post1.text':
-    'A differential test found our TypeScript, Python and Rust implementations disagreeing on some numbers. Fixed: they now agree on every one of 81,000 inputs, and 55 shared test vectors check for it.',
+    'A differential test found our TypeScript, Python and Rust implementations disagreeing on some numbers. Fixed: they now agree on every one of 81,000 inputs, and the shared test vectors check for it.',
   'm.post2.date': '2 Oct 2026',
   'm.post2.tag': 'Contract',
   'm.post2.title': "A full run on Midnight's test network",
@@ -266,7 +266,7 @@ export const en = {
   'm.addr.explorer': 'Look them up on midnightexplorer.com (run by TexLabs) →',
   'm.status.keyTitle': 'Who can change the contract.',
   'm.status.keyText':
-    "One maintenance key, kept on paper, with a copy held by each founder, can change how VeilCore's contract on Midnight works from then on. It cannot rewrite records already anchored in the network's history. Every use is announced publicly, under a written maintenance policy.",
+    "One maintenance key can change how VeilCore's contract on Midnight works. Whoever holds it can add or replace the contract's operations, which could take over any record's identity, add licenses for any issuer, add or remove obligations and parent links, or switch operations off. It cannot backdate the network's block times, and every change shows on chain. Today the key is on paper, one copy with each founder, and either copy alone can use it. Moving it to a group of keys that must agree is planned, not done. Every use is announced publicly, under a written maintenance policy.",
   'm.status.keyLink': 'Read the maintenance policy →',
 
   'm.contact.label': 'Get in touch',
@@ -295,7 +295,7 @@ export const en = {
   'm.verify.label': 'Verify',
   'm.verify.title': 'Check a record',
   'm.verify.lede':
-    'Enter the record identifier printed on a certificate or shared with you. You will see what its holder chose to disclose, and whether it is intact.',
+    'Enter the record identifier printed on a certificate or shared with you. You will see what its holder chose to share, and what this page could check itself: whether the record is in a sealed batch, and whether any lab signatures verify.',
   'm.verify.what':
     "A VeilCore record describes genetic material without including the genetics. Only its fingerprint is published, and it gets a date once it's anchored on Midnight. Checking one is free and needs no account.",
   'm.verify.home': 'What is VeilCore? →',
@@ -352,6 +352,19 @@ export const en = {
   'm.privacy.delete.title': 'Deletion',
   'm.privacy.delete.text':
     'To have your demo data deleted from our server, email hunter@veilcore.org with the identifiers of your records.',
+  'm.privacy.browser.title': 'Kept in your browser',
+  'm.privacy.browser.text':
+    "Your browser keeps, on this device: your holder key (a copy also goes to our server, as above), a lab's signing key if you set one up (its private half never leaves this device), the role you picked, and your language. To remove them, clear this site's data in your browser settings. Save your holder key first: without it, this browser can't find your records again.",
+  'm.privacy.hosts.title': 'Hosting',
+  'm.privacy.hosts.text':
+    'This website is hosted on Vercel, which logs IP addresses and requests. Our registry server runs on Railway, which logs requests.',
+  'm.privacy.who.title': 'Who keeps it, and for how long',
+  'm.privacy.who.text':
+    "VeilCore isn't incorporated yet, so VeilCore's founders run this site and the registry. There is no set retention period: what the registry holds stays there until you ask us to delete it. Contact: hunter@veilcore.org.",
+  'm.notfound.title': 'Page not found.',
+  'm.notfound.text':
+    'There is no page at this address. If someone gave you a link to a record, check that it is complete.',
+  'm.notfound.home': 'VeilCore home →',
   'm.privacy.contact': 'Questions: hunter@veilcore.org',
 } as const;
 

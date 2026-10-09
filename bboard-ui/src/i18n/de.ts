@@ -76,7 +76,7 @@ export const de: Strings = {
   'm.post1.tag': 'Format',
   'm.post1.title': 'Drei Implementierungen, eine Antwort',
   'm.post1.text':
-    'Ein Differenztest ergab, dass unsere Implementierungen in TypeScript, Python und Rust bei einigen Zahlen voneinander abwichen. Behoben: Sie stimmen jetzt bei jeder einzelnen von 81.000 Eingaben überein, und 55 Konformitätsvektoren legen das fest.',
+    'Ein Differenztest ergab, dass unsere Implementierungen in TypeScript, Python und Rust bei einigen Zahlen voneinander abwichen. Behoben: Sie stimmen jetzt bei jeder einzelnen von 81.000 Eingaben überein, und die gemeinsamen Testvektoren prüfen das.',
   'm.post2.date': '2. Okt. 2026',
   'm.post2.tag': 'Contract',
   'm.post2.title': 'Ein vollständiger Durchlauf im Testnetz von Midnight',
@@ -85,12 +85,12 @@ export const de: Strings = {
   'm.status.label': 'Wo wir stehen',
   'm.status.title1': 'Ehrlich darüber,',
   'm.status.title2': 'wo wir stehen.',
-  'm.status.lede': 'Wir sagen das lieber jetzt, als dass es später herauskommt.',
+  'm.status.lede': 'Was fertig ist und was noch nicht.',
   'm.stat3.b': 'Kein Audit',
   'm.status.keyTitle': 'Wer den Contract ändern kann.',
   'm.status.keyText':
-    'Die Gründer halten einen Wartungsschlüssel für den VeilCore-Contract auf Midnight. Damit lässt sich ändern, wie der Contract ab diesem Zeitpunkt funktioniert. Bereits in der Historie des Netzwerks verankerte Datensätze kann er nicht umschreiben. Eine Richtlinie für seine Verwendung ist vorgeschlagen, nicht beschlossen.',
-  'm.status.keyLink': 'Vorgeschlagene Richtlinie lesen →',
+    'Ein Wartungsschlüssel kann ändern, wie der VeilCore-Contract auf Midnight funktioniert. Wer ihn hält, kann Operationen des Contracts hinzufügen oder ersetzen und damit die Identität jedes Datensatzes übernehmen, Lizenzen für jeden Aussteller anlegen, Verpflichtungen und Elternverknüpfungen hinzufügen oder entfernen oder Operationen abschalten. Die Blockzeiten des Netzwerks kann er nicht zurückdatieren, und jede Änderung ist on-chain sichtbar. Heute liegt der Schlüssel auf Papier vor, je eine Kopie bei jedem Gründer, und jede Kopie allein genügt, um ihn zu verwenden. Ihn auf eine Gruppe von Schlüsseln zu verlagern, die zustimmen müssen, ist geplant, aber noch nicht umgesetzt. Jede Verwendung wird öffentlich angekündigt, nach einer schriftlichen Wartungsrichtlinie.',
+  'm.status.keyLink': 'Wartungsrichtlinie lesen →',
   'm.contact.label': 'Kontakt aufnehmen',
   'm.contact.title1': 'Sagen Sie uns,',
   'm.contact.title2': 'wo es versagt.',
@@ -105,7 +105,7 @@ export const de: Strings = {
   'm.verify.label': 'Prüfen',
   'm.verify.title': 'Einen Datensatz prüfen',
   'm.verify.lede':
-    'Geben Sie die Datensatzkennung ein, die auf einem Zertifikat aufgedruckt ist oder Ihnen mitgeteilt wurde. Sie sehen, was der Inhaber offenlegen wollte, und ob der Datensatz unverändert ist.',
+    'Geben Sie die Datensatzkennung ein, die auf einem Zertifikat aufgedruckt ist oder Ihnen mitgeteilt wurde. Sie sehen, was der Inhaber teilen wollte, und was diese Seite selbst prüfen konnte: ob der Datensatz in einem versiegelten Stapel ist und ob Laborsignaturen gültig sind.',
   'm.verify.field': 'Datensatzkennung',
   'm.verify.go': 'Prüfen',
   'm.founders.label': 'Gründer',
@@ -153,5 +153,18 @@ export const de: Strings = {
   'm.privacy.delete.title': 'Löschung',
   'm.privacy.delete.text':
     'Wenn Sie Ihre Demodaten von unserem Server löschen lassen möchten, schreiben Sie an hunter@veilcore.org und nennen Sie die Kennungen Ihrer Datensätze.',
+  'm.privacy.browser.title': 'In Ihrem Browser gespeichert',
+  'm.privacy.browser.text':
+    'Ihr Browser speichert auf diesem Gerät: Ihren Inhaberschlüssel (eine Kopie geht auch an unseren Server, siehe oben), den Signaturschlüssel eines Labors, falls Sie einen eingerichtet haben (sein privater Teil verlässt dieses Gerät nie), die gewählte Rolle und Ihre Sprache. Um sie zu entfernen, löschen Sie die Daten dieser Website in den Einstellungen Ihres Browsers. Sichern Sie vorher Ihren Inhaberschlüssel: Ohne ihn findet dieser Browser Ihre Datensätze nicht mehr.',
+  'm.privacy.hosts.title': 'Hosting',
+  'm.privacy.hosts.text':
+    'Diese Website wird bei Vercel gehostet, das IP-Adressen und Anfragen protokolliert. Unser Registerserver läuft bei Railway, das Anfragen protokolliert.',
+  'm.privacy.who.title': 'Wer es aufbewahrt, und wie lange',
+  'm.privacy.who.text':
+    'VeilCore ist noch nicht als Unternehmen gegründet; die Gründer von VeilCore betreiben diese Website und das Register. Es gibt keine feste Aufbewahrungsfrist: Was das Register speichert, bleibt dort, bis Sie uns bitten, es zu löschen. Kontakt: hunter@veilcore.org.',
+  'm.notfound.title': 'Seite nicht gefunden.',
+  'm.notfound.text':
+    'Unter dieser Adresse gibt es keine Seite. Wenn Ihnen jemand einen Link zu einem Datensatz gegeben hat, prüfen Sie, ob er vollständig ist.',
+  'm.notfound.home': 'Startseite von VeilCore →',
   'm.privacy.contact': 'Fragen: hunter@veilcore.org',
 };

@@ -363,6 +363,7 @@ describe('builds', () => {
     '/verify',
     '/verify/example',
     '/verify/VEIL-NONE',
+    '/no-such-page',
     '/implementations',
     '/new',
     '/records',
@@ -452,7 +453,7 @@ describe('builds', () => {
         expect(mainnet[p].match(/made-up details|use made-up data/i)?.[0], p).toBeUndefined();
       }
       expect(mainnet['/']).toMatch(
-        /Records sealed on this site are real records; licenses and lab agreements here are still simulated\./,
+        /Records sealed on this site are real records: they go into batches that we anchor there by hand for now\. Licenses and lab agreements here are still simulated\./,
       );
       expect(mainnet['/']).toMatch(/Make a record/);
       expect(mainnet['/privacy']).toMatch(/Site privacy/);
@@ -476,9 +477,7 @@ describe('builds', () => {
     });
 
     it('the mainnet site says main network, with the contract addresses', () => {
-      expect(mainnet['/']).toMatch(
-        /Now on Midnight's main network: we anchor records there in batches, by hand for now\./,
-      );
+      expect(mainnet['/']).toMatch(/VeilCore's contract is on Midnight's main network\./);
       // Built from the real policy, approved by both founders on 7 October 2026.
       expect(mainnet['/']).toMatch(/Every use is announced publicly, under a written maintenance policy\./);
       expect(mainnet['/']).toMatch(/The claims contract has no maintenance key/);

@@ -80,7 +80,7 @@ For the anchoring job (it stays off without these two):
 
 | Variable | What to put |
 |---|---|
-| `REGISTRY_URL` | `https://veilcore-api-production.up.railway.app` |
+| `REGISTRY_URL` | A registry whose `VEILCORE_ANCHOR_NETWORK` and `VEILCORE_ANCHOR_CONTRACT` are this service's network and contract. On preprod: a preprod registry, never the production one (refused). |
 | `REGISTRY_OPERATOR_TOKEN` | The same value as `VEILCORE_OPERATOR_TOKEN` on the registry service |
 
 Optional, with defaults: `SPONSOR_NETWORK` (preprod), `MAX_FEE_DUST` (5),
@@ -101,6 +101,11 @@ refused (and logged once), rather than counted against the proxy's own address.
 also refuses if the seed you gave it is the contract's maintenance key.
 
 ## Setting it up on preprod (for Hunter)
+
+**Use `docs/no-wallet-preprod-run.md`.** It replaces the steps below, which pointed the
+anchoring job at the production registry: a preprod sponsor must use a preprod registry
+(the job now refuses any registry that does not publish this network and contract at
+`/.well-known/veilcore-registry`). The steps are kept for reference.
 
 Do these in order. Each one says how you know it worked.
 

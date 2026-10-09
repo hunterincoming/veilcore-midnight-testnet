@@ -12,6 +12,7 @@ import * as Veilcore from '../../contract/src/managed/veilcore/contract/index.js
 import { identityOf, isLive, type LineageReport } from '../../contract/src/verify.js';
 import { type SealResult, type TxRef, VeilcoreAPI } from '../../api/src/veilcore-api.js';
 import { type VeilcoreDerivedState, veilcorePrivateStateKey } from '../../api/src/veilcore-types.js';
+import { type PairingNote } from '../../contract/src/witnesses.js';
 import { commit } from './commitments.js';
 import { type Connection } from './connect.js';
 import { type Network, resolveAddress } from './network.js';
@@ -119,7 +120,35 @@ export class VeilCore {
     return this.#api.anchorBatch(root);
   }
 
-  /** Bind a DNA report's fingerprint (any non-zero 32 bytes you choose) to this record. */
+  /**
+   * Pair a report with this record, so the pairing dates the report and nobody can copy it
+   * to their own record (docs/design.md, rule 9). `reportHash` is the report file's
+   * SHA-256 (reportHashOf). The chain gets H("veilcore:v1:dnapair", reportHash, identity,
+   * salt), which reveals nothing about the report. The salt is saved in your private state
+   * before anything is sent (`pairings()`); keep it with the report, or the pairing can
+   * never be shown. To show it, give a verifier pairingEvidence(...) and the report file.
+   */
+  pairReport(reportHash: Uint8Array): Promise<
+    TxRef & {
+      readonly binding: Uint8Array;
+      readonly salt: Uint8Array;
+      readonly identity: Uint8Array;
+      readonly recordCommitment: Uint8Array;
+    }
+  > {
+    return this.#api.pairReport(reportHash);
+  }
+
+  /** The bound pairings made from this private state, with their salts (hex). Oldest first. */
+  pairings(): Promise<readonly PairingNote[]> {
+    return this.#api.pairings();
+  }
+
+  /**
+   * Pair any non-zero 32 bytes you choose with this record, as given. COPYABLE: anyone who
+   * sees the value, even before it lands, can pair it to a record of their own first, so a
+   * raw report hash paired this way does not show who had the report first. Use pairReport.
+   */
   pairDna(dnaCommitment: Uint8Array): Promise<TxRef & { readonly recordCommitment: Uint8Array }> {
     return this.#api.pairDna(dnaCommitment);
   }
@@ -310,6 +339,20 @@ export class VeilCore {
    */
   checkOwnership(txId: string, record: Uint8Array, challenge: Uint8Array): Promise<Verdict> {
     return this.#api.checkOwnership(this.#conn.endpoints.indexer, txId, record, challenge);
+  }
+
+  /**
+   * Rule 9: check a bound pairing by its txId, for `record` (any record of the identity),
+   * the report's SHA-256 (hash the file you were given) and the holder's salt. The
+   * verdict's `pairedAt` is the date that identity's holder had the report by.
+   */
+  checkPairing(
+    txId: string,
+    record: Uint8Array,
+    reportHash: Uint8Array,
+    salt: Uint8Array,
+  ): Promise<Verdict & { readonly pairedAt?: number }> {
+    return this.#api.checkPairing(this.#conn.endpoints.indexer, txId, record, reportHash, salt);
   }
 
   /**

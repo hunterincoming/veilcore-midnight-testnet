@@ -51,9 +51,12 @@ const run = async (flow: Flow): Promise<string[]> => {
 };
 
 describe('the examples, run as partner-check runs them', () => {
-  it('lab: intake, anchor, batch root, signed report, possession', async () => {
+  it('lab: intake, anchor, batch root, signed report, bound pairing, control proof', async () => {
     const lines = await run(labFlow);
-    expect(lines).toHaveLength(8);
+    expect(lines).toHaveLength(9);
+    expect(lines.join('\n')).toMatch(
+      /checks the pairing from the evidence file: whoever controlled this record had this report by/,
+    );
     expect(lines.every((l) => l.startsWith('PASS'))).toBe(true);
   });
 

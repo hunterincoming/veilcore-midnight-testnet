@@ -4,7 +4,7 @@
 //
 // Each check finds the transaction the other party names, requires it to have succeeded
 // with exactly one call on VeilCore's contract, of the expected kind, and judges the
-// state the indexer recorded for that call (docs/design.md, verifier rules 5, 7 and 8).
+// state the indexer recorded for that call (docs/design.md, verifier rules 5, 7, 8 and 9).
 // On mainnet only the pinned addresses are accepted, and the state judged must carry the
 // pinned build's verifier keys (state-check.ts): a circuit the maintenance authority
 // replaced is refused. The authority itself (committee, threshold, counter) comes back
@@ -14,7 +14,7 @@
 import { ContractState } from '@midnight-ntwrk/midnight-js-protocol/compact-runtime';
 import * as Veilcore from '../../contract/src/managed/veilcore/contract/index.js';
 import { CLAIMS_PROVABLE_CIRCUITS, claimsLedger } from '../../contract/src/claims.js';
-import { acceptOwnership, acceptPresentationAt } from '../../contract/src/verify.js';
+import { acceptOwnership, acceptPairing, acceptPresentationAt } from '../../contract/src/verify.js';
 import { type Claim, claimFromCells } from '../../contract/src/verify-claims.js';
 import { type LookupCheck, presentationWithTime, singleCallState } from '../../api/src/presentation-lookup.js';
 import {
@@ -277,6 +277,62 @@ export const checkOwnership = async (
   let v: Verdict = { accepted: false, reason: 'no current state was read' };
   for (const s of nows) {
     v = acceptOwnership(after, o.record, o.challenge, Veilcore.ledger(s.data));
+    if (!v.accepted) break;
+  }
+  return { ...v, blockHeight: found.blockHeight, blockTime: found.blockTime, authority: found.authority };
+};
+
+/**
+ * Rule 9: a bound DNA pairing. The holder gives you the report file, `txId`, `record` (any
+ * record of the identity) and `salt` (an evidence file holds all but the report:
+ * readPairingEvidence). Hash the report file yourself (reportHashOf) for `reportHash`.
+ * Accepted only if that transaction is a single pairDna call that paired
+ * H("veilcore:v1:dnapair", reportHash, identity, salt) for `record`'s identity; then
+ * `pairedAt` (the block time, ms) is the date that identity's holder had the report by. A
+ * binding copied to another record, a raw report hash, a wrong salt or report: refused.
+ * It does not show who controls the record now (checkOwnership answers that). The state
+ * now is read to resolve a record made after the pairing; with a second indexer, both
+ * indexers' states now must agree with the verdict.
+ */
+export const checkPairing = async (
+  o: ReadOptions & {
+    readonly txId: string;
+    readonly record: Uint8Array;
+    readonly reportHash: Uint8Array;
+    readonly salt: Uint8Array;
+  },
+): Promise<Verdict & WhenLanded & WithAuthority & { readonly pairedAt?: number }> => {
+  const w = where(o, 'veilcore');
+  let found: Awaited<ReturnType<typeof singleCallState>>;
+  const nows: ContractState[] = [];
+  try {
+    found = await singleCallState(
+      w.indexer,
+      w.address,
+      o.txId,
+      ['pairDna'],
+      'That transaction is not a single pairDna call on this contract.',
+      o.timeoutMs,
+      w.check,
+    );
+    for (const i of o.secondIndexer === undefined ? [w.indexer] : [w.indexer, o.secondIndexer]) {
+      const s = await stateNow(i, w.address, o.timeoutMs);
+      checkContractState(s, w.check, 'the current state');
+      nows.push(s);
+    }
+  } catch (e) {
+    const r = refusedState(e);
+    if (r !== undefined) return r;
+    throw e;
+  }
+  const after = Veilcore.ledger(found.state.data);
+  let v: ReturnType<typeof acceptPairing> = { accepted: false, reason: 'no current state was read' };
+  for (const s of nows) {
+    v = acceptPairing(
+      after,
+      { record: o.record, reportHash: o.reportHash, salt: o.salt },
+      { landedAt: found.blockTime, blockHeight: found.blockHeight, now: Veilcore.ledger(s.data) },
+    );
     if (!v.accepted) break;
   }
   return { ...v, blockHeight: found.blockHeight, blockTime: found.blockTime, authority: found.authority };

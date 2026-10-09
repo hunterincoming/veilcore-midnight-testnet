@@ -5,9 +5,11 @@
 //      identity for this accession (ledgerIdentity, SPEC 3.6).
 //   2. Anchor: the accession's record is anchored on chain, with a recovery commitment.
 //   3. The day's records go on chain as ONE batch root; each client gets an inclusion proof.
-//   4. The lab signs its report (SDK) and pairs the report's fingerprint with the record.
-//   5. A verifier challenges the holder; the holder proves possession; the verifier checks
-//      it with no wallet at all.
+//   4. The lab signs its report (SDK) and pairs it with the record, bound to the record's
+//      identity so nobody can copy the pairing to their own record. A verifier with no
+//      wallet checks the pairing from the evidence file and the report.
+//   5. A verifier challenges the holder; the holder proves control of the record; the
+//      verifier checks it with no wallet at all.
 //
 // Run:  node examples/lab.mjs   (settings: examples/setup.mjs)
 // SPDX-License-Identifier: Apache-2.0
@@ -22,7 +24,19 @@ import {
   verifyCommitment,
   verifyInclusion,
 } from 'veilcore-records';
-import { checkBatchAnchor, checkOwnership, commit, fromHex, newChallenge, newSecret, toHex } from '@veilcore/contracts';
+import {
+  checkBatchAnchor,
+  checkOwnership,
+  checkPairing,
+  commit,
+  fromHex,
+  newChallenge,
+  newSecret,
+  pairingEvidence,
+  readPairingEvidence,
+  reportHashOf,
+  toHex,
+} from '@veilcore/contracts';
 import { isMain, runExample } from './setup.mjs';
 
 const now = () => new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
@@ -94,7 +108,7 @@ export const labFlow = async ({ vc, network, endpoints }, { check, say }) => {
   const onChain = await checkBatchAnchor({ ...read, txId: tx.txId, root });
   check(onChain.accepted, `a verifier with no wallet finds the root on chain: ${onChain.reason}`);
 
-  // ── 4. Sign the report, pair its fingerprint ───────────────────────────────
+  // ── 4. Sign the report, pair it with the record ────────────────────────────
   // YOURS: the lab's signing key is generated once and kept in your HSM or secret store.
   const labKey = await generateKeypair();
   const report = Buffer.from(`Certificate of analysis for ${recordId} (test data)`);
@@ -112,22 +126,49 @@ export const labFlow = async ({ vc, network, endpoints }, { check, say }) => {
     labKey.privateKey,
   );
   check(await verifyAttestation(attestation), 'the lab’s signed report verifies (SDK, off chain)');
-  await vc.pairDna(fromHex(reportHash));
+  // pairReport, not pairDna with the raw hash: a raw hash on chain can be copied, even from
+  // a transaction still waiting to land, and paired to someone else's record first.
+  const paired = await vc.pairReport(fromHex(reportHash));
   const ledger = await vc.ledger();
   check(
-    toHex(ledger.lastPairedDna) === reportHash && toHex(ledger.lastPairedRecord) === toHex(record),
-    'pairDna: the chain binds the report’s fingerprint to the record',
+    toHex(ledger.lastPairedDna) === toHex(paired.binding) &&
+      toHex(ledger.lastPairedDna) !== reportHash &&
+      toHex(ledger.lastPairedRecord) === toHex(record),
+    'pairReport: the chain holds a binding of the report to the record, not the report’s hash',
   );
+  // YOURS: this file goes to the client with the report. It holds the salt: without it
+  // the pairing can never be shown. (The salt is also kept in the private state: vc.pairings().)
+  const evidence = pairingEvidence({
+    network,
+    contractAddress: vc.address,
+    txId: paired.txId,
+    identity: paired.identity,
+    reportHash: fromHex(reportHash),
+    salt: paired.salt,
+    reportFile: `${recordId}-COA.txt`,
+  });
+  // A verifier with no wallet: reads the evidence file, hashes the report it was given itself.
+  const shown = readPairingEvidence(JSON.stringify(evidence));
+  const dated = await checkPairing({
+    ...read,
+    txId: shown.txId,
+    record: shown.record,
+    reportHash: reportHashOf(report),
+    salt: shown.salt,
+  });
+  check(dated.accepted, `a verifier (no wallet) checks the pairing from the evidence file: ${dated.reason}`);
 
-  // ── 5. Prove possession to a verifier ──────────────────────────────────────
+  // ── 5. Prove control of the record to a verifier ───────────────────────────
   const challenge = newChallenge(); // the VERIFIER makes this and sends it privately
   const owned = await vc.proveOwnership(challenge);
   const verdict = await checkOwnership({ ...read, txId: owned.txId, record, challenge });
-  check(verdict.accepted, `the verifier (no wallet) accepts the ownership proof: ${verdict.reason}`);
+  check(verdict.accepted, `the verifier (no wallet) accepts the control proof: ${verdict.reason}`);
   const replay = await checkOwnership({ ...read, txId: owned.txId, record, challenge: newChallenge() });
   check(!replay.accepted, `and refuses it for anyone else’s challenge: ${replay.reason}`);
-  say(`Give the client: the record, its inclusion proof (batch tx ${tx.txId}), the signed report.`);
-  return { record, accessionSecret };
+  say(
+    `Give the client: the record, its inclusion proof (batch tx ${tx.txId}), the signed report and its pairing evidence file.`,
+  );
+  return { record, accessionSecret, evidence };
 };
 
 if (isMain(import.meta.url)) await runExample('VeilCore example: a laboratory', labFlow);

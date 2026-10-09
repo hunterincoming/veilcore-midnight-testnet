@@ -83,6 +83,15 @@ const verdict = await checkPresentation({ network: 'preprod', txId, issuer, chal
   would download someone else's.
 - `proveOwnership` and `checkOwnership` keep the contract's names, but they prove control of
   the record now (prior possession of the record), not ownership.
+- Pair a report with `pairReport(reportHashOf(reportFile))`, not `pairDna`. `pairDna` puts the
+  32 bytes you give it on chain as they are, so a raw report hash can be copied, even from a
+  transaction still waiting to land, and paired to someone else's record first.
+  `pairReport` puts a salted binding of the report to your record's identity there instead:
+  it reveals nothing about the report, and it verifies for no other record. Give a verifier
+  the report file and `pairingEvidence(...)` (record, report hash, salt, transaction id); they
+  check it with `checkPairing`, no wallet needed. The date it gives is when that record's
+  holder had the report, not who controls the record now. Keep the salt (it is also in your
+  private state: `pairings()`): without it the pairing can never be shown. Not in 0.2.0.
 - Not exposed, on purpose: deploying VeilCore's contracts, adding circuit keys, the
   maintenance authority. That code is bundled (the clients are built on it) but nothing
   reaches it from the package's exports. It is VeilCore's operator work.

@@ -6,6 +6,7 @@
 
 import { createHash, randomBytes } from 'node:crypto';
 import { pureCircuits } from '../../contract/src/managed/veilcore/contract/index.js';
+import { dnaPairBinding } from '../../contract/src/pairing.js';
 
 const bytes32 = (b: Uint8Array, what: string): Uint8Array => {
   if (!(b instanceof Uint8Array) || b.length !== 32) throw new Error(`${what} is 32 bytes.`);
@@ -39,6 +40,13 @@ export const commit = {
   /** The tag a licence presentation publishes, which only the verifier who chose the challenge can recognise. */
   presentationTag: (issuerRecord: Uint8Array, challenge: Uint8Array): Uint8Array =>
     pureCircuits.presentationTag(bytes32(issuerRecord, 'A record'), bytes32(challenge, 'A challenge')),
+  /**
+   * What a bound pairing puts on chain (VeilCore.pairReport makes it for you):
+   * H("veilcore:v1:dnapair", reportHash, identity, salt), with the report file's SHA-256,
+   * the pairing record's identity (its origin) and the holder's 32 random bytes.
+   */
+  reportPairing: (reportHash: Uint8Array, identity: Uint8Array, salt: Uint8Array): Uint8Array =>
+    dnaPairBinding(reportHash, identity, salt),
   /**
    * An obligation's commitment: SHA-256(salt || UTF-8 terms), as the VeilCore CLI makes it.
    * Keep the terms and the salt: both are needed to show later what was agreed. Without a

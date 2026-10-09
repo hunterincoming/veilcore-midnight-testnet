@@ -14,7 +14,8 @@ vi.mock('@midnight-ntwrk/midnight-js-contracts', async (orig) => {
 
 const { VeilCore } = await import('../src/veilcore');
 const { commit, newChallenge, newSecret, toHex } = await import('../src/commitments');
-const { checkBatchAnchor, checkOwnership, checkPresentation, readLedger } = await import('../src/verify');
+const { checkBatchAnchor, checkOwnership, checkPairing, checkPresentation, readLedger } = await import('../src/verify');
+const { reportHashOf } = await import('../../contract/src/pairing');
 const { RevokedLicenceError } = await import('../../api/src/veilcore-api');
 const { isContractRefusal } = await import('../src/errors');
 /** The promise is refused by the contract, and by nothing else. */
@@ -107,6 +108,53 @@ describe('a laboratory: anchor, prove possession, timestamp a batch, pair a repo
     await expect(
       readLedger({ network: 'mainnet', indexer: chain.endpoints.indexer, address: 'ef'.repeat(32) }),
     ).rejects.toThrow(/on mainnet the VeilCore contract is a04de0a2/);
+  });
+});
+
+describe('a bound DNA pairing (rule 9)', () => {
+  it('pairs a binding, not the report hash; a verifier with no wallet dates it; a copy fails; rotation keeps it', async () => {
+    const vc = await VeilCore.join(chain.conn, { address: VEILCORE_ADDR });
+    const labSecret = newSecret();
+    const lab = commit.record(labSecret);
+    await vc.useRecordSecret(labSecret);
+    await vc.anchor(commit.recovery(newSecret()));
+    const report = reportHashOf(new TextEncoder().encode('lab report (test data)'));
+
+    const p = await vc.pairReport(report);
+    const l = await vc.ledger();
+    expect(same(l.lastPairedDna, p.binding) && !same(l.lastPairedDna, report)).toBe(true);
+    expect(same(p.binding, commit.reportPairing(report, lab, p.salt))).toBe(true);
+    expect((await vc.pairings()).map((n) => n.txId)).toEqual([p.txId]);
+
+    const ok = await checkPairing({ ...read(), txId: p.txId, record: lab, reportHash: report, salt: p.salt });
+    expect(ok.accepted).toBe(true);
+    expect(ok.pairedAt).toBe(ok.blockTime);
+    expect((await vc.checkPairing(p.txId, lab, report, p.salt)).accepted).toBe(true);
+    expect(
+      (await checkPairing({ ...read(), txId: p.txId, record: lab, reportHash: report, salt: newSecret() })).accepted,
+    ).toBe(false);
+    await expect(
+      checkPairing({ ...read(), txId: chainLog[0].txId, record: lab, reportHash: report, salt: p.salt }),
+    ).rejects.toThrow(/not a single pairDna call/);
+
+    // Another identity copies the binding to its own record: it verifies for nobody but the lab.
+    const copier = newSecret();
+    await vc.useRecordSecret(copier);
+    await vc.anchor(commit.recovery(newSecret()));
+    const copy = await vc.pairDna(p.binding);
+    for (const record of [commit.record(copier), lab])
+      expect(
+        (await checkPairing({ ...read(), txId: copy.txId, record, reportHash: report, salt: p.salt })).accepted,
+      ).toBe(false);
+
+    // The lab rotates: the pairing checks with its new record too.
+    await vc.useRecordSecret(labSecret);
+    const next = newSecret();
+    await vc.rotateRecordSecret(next);
+    expect(
+      (await checkPairing({ ...read(), txId: p.txId, record: commit.record(next), reportHash: report, salt: p.salt }))
+        .accepted,
+    ).toBe(true);
   });
 });
 

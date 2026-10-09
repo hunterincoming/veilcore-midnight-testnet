@@ -98,11 +98,21 @@ export {
   type TypedSlotValue,
 } from '../../contract/src/field-schema.js';
 export { numberFrom } from '../../contract/src/fields.js';
+export {
+  PAIRING_EVIDENCE_FORMAT,
+  pairingEvidence,
+  readPairingEvidence,
+  reportHashOf,
+  type PairingEvidence,
+  type ReadPairingEvidence,
+} from '../../contract/src/pairing.js';
+export { type PairingNote } from '../../contract/src/witnesses.js';
 
 // ── verifying (no wallet) ────────────────────────────────────────────────────
 export {
   checkBatchAnchor,
   checkOwnership,
+  checkPairing,
   checkPresentation,
   readClaim,
   readAuthority,
@@ -119,6 +129,7 @@ export {
   MAX_PRESENTATION_AGE_MS,
   acceptOwnership,
   acceptOwnershipOnce,
+  acceptPairing,
   acceptPresentation,
   acceptPresentationAt,
   acceptPresentationOnce,

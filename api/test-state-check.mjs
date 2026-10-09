@@ -102,9 +102,13 @@ serve({ 'http://one': tx(STATE), 'http://two': tx(OTHER) });
 await assert.rejects(() => look({ secondIndexer: 'http://two' }), /disagree .*contract state/);
 serve({ 'http://one': tx(STATE), 'http://two': tx(STATE, { block: { height: 8, timestamp: 1_790_000_000_000 } }) });
 await assert.rejects(() => look({ secondIndexer: 'http://two' }), /disagree .*block/);
+// Verification review: the block time was not compared, so a first indexer could make an
+// old presentation look fresh for rule 5's one-hour limit.
+serve({ 'http://one': tx(STATE), 'http://two': tx(STATE, { block: { height: 7, timestamp: 1_790_000_000_000 - 5 * 3_600_000 } }) });
+await assert.rejects(() => look({ secondIndexer: 'http://two' }), /disagree .*block time/);
 serve({ 'http://one': tx(STATE) });
 await assert.rejects(() => look({ secondIndexer: 'http://two' }), /second indexer does not confirm .*No such transaction/);
 serve({ 'http://one': tx(STATE), 'http://two': tx(STATE, { transactionResult: { status: 'FAILURE' } }) });
 await assert.rejects(() => look({ secondIndexer: 'http://two' }), /second indexer does not confirm/);
-console.log('refused: a second indexer with another state, another block, no such transaction, or a failure');
+console.log('refused: a second indexer with another state, block, block time, no such transaction, or a failure');
 console.log('\nall state checks pass');

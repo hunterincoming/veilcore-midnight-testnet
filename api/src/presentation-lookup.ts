@@ -223,6 +223,9 @@ export const singleCallState = async (
     const differs: string[] = [];
     if (second.entryPoint !== first.entryPoint) differs.push('the call');
     if (second.blockHeight !== first.blockHeight) differs.push('the block');
+    // Rule 5 refuses a presentation over an hour old by this time: a first indexer that
+    // lied about it could make an old presentation look fresh.
+    if (second.blockTime !== first.blockTime) differs.push('the block time');
     if (second.stateHex !== first.stateHex) differs.push('the contract state');
     if (differs.length > 0)
       throw new Error(`The two indexers disagree about that transaction (${differs.join(', ')}). Refused.`);

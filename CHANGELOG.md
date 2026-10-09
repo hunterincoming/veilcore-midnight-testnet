@@ -14,8 +14,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   first. The clients now pair `H("veilcore:v1:dnapair", reportHash, identity, salt)`
   instead (`contract/src/pairing.ts`): it hides the report, verifies only for the
   identity inside it, and needs the report hash to make. Verifier rule 9
-  (`acceptPairing`) dates the report by the pairing's block; it does not show who
-  controls the record now.
+  (`acceptPairing`): whoever controlled this record's identity at the block's date had
+  this report, or its SHA-256, by then; it does not show who controls the record now.
+- **Hostile review, same day.** The verdict flags a report hash paired raw before the
+  bound pairing (from the contract's history, `api/src/pairing-history.ts`) and key
+  changes or recoveries of the identity since; checking without the report file is
+  refused; one wording everywhere; a pairing whose confirmation failed can be found from
+  its binding (CLI option 45); `checkPairing` reads the state now from the second indexer
+  too; weak salts are refused; evidence files need their binding and a plain file name.
 - **API and partner kit:** `pairReport` (salt saved in private state before sending),
   `pairings()`, `checkPairing` (pinned keys, second indexer, state now for rotated
   records), `commit.reportPairing`, `pairingEvidence` / `readPairingEvidence`,
@@ -24,7 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **CLI:** option 3 pairs a report file bound to the record and writes an evidence file;
   44 checks one (hashing the report given); 45 shows saved pairings; 43 is the raw pairing.
 - **Vectors and docs:** the binding's vector in `contract/vectors/v1.json` and in the
-  SDK's conformance set (SDK `6e21f23`, SPEC 3.7); design.md (hashes, `pairDna`, rule 9),
+  SDK's conformance set (SDK `1b46728`, SPEC 3.7); design.md (hashes, `pairDna`, rule 9),
   PARTNERS.md, the site's pairing paragraph and vendored docs.
 
 ### Fixes from the 8 October review (8 Oct 2026)

@@ -120,7 +120,7 @@ every rotation and recovery, and a retired secret controls nothing.
 |---|---|
 | `anchor(recoveryCommitment)` | Anchors the caller's record. Refuses the zero commitment and the zero secret's commitment. |
 | `proveOwnership(challenge)` | Publishes the caller's live record in `lastOwnershipProof` and the verifier's challenge in `lastOwnershipChallenge`, so the proof answers one verifier (rule 8). It shows present control of the record's identity, and only that: not ownership, and not who held it before. The identity's anchor date says nothing about who holds it now, or about any content: a holder can anchor, then rotate to a buyer, and on chain a sale looks like a key rotation. Treat any rotation or recovery since the anchor as a possible change of hands. Content is dated only by its own commitment's anchor (its batch root, or its pairing). |
-| `pairDna(dnaCommitment)` | Records any non-zero 32-byte value the holder chooses against the caller's record. It is the holder's own statement that a report belongs to the record; the contract cannot check it. Once sent, the value is public: anyone watching can pair the same value to a record of their own, and can front-run a pairing still waiting to land. So a raw report hash paired directly shows nothing about who had the report first. **The client pairs a binding instead** (`pairReport`): `dnaPairBinding(reportHash, identity, salt)`, with the report file's SHA-256, the caller's identity (its origin, so it holds across rotation and recovery) and 32 random bytes the holder keeps. It reveals nothing about the report; copied to another record it verifies for nobody (rule 9 recomputes it with the pairing record's identity); and making one for another identity needs the report's hash, which stays private until the holder shows it. So a bound pairing dates when that identity's holder had the report. Not who controls the record now: a holder can pair, then rotate to a buyer. Not that nobody had the report earlier: the lab that wrote it did. |
+| `pairDna(dnaCommitment)` | Records any non-zero 32-byte value the holder chooses against the caller's record. It is the holder's own statement that a report belongs to the record; the contract cannot check it. Once sent, the value is public: anyone watching can pair the same value to a record of their own, and can front-run a pairing still waiting to land. So a raw report hash paired directly shows nothing about who had the report first. **The client pairs a binding instead** (`pairReport`): `dnaPairBinding(reportHash, identity, salt)`, with the report file's SHA-256, the caller's identity (its origin, so it holds across rotation and recovery) and 32 random bytes the holder keeps. It reveals nothing about the report; copied to another record it verifies for nobody (rule 9 recomputes it with the pairing record's identity); and making one for another identity needs the report's hash, which stays private until the holder shows it, unless it was ever paired raw (then anyone can, from that block on; rule 9 looks for that). So a bound pairing shows: whoever controlled this record's identity at that date had this report, or its SHA-256, by then. Not who controls the record now: a holder can pair, then rotate to a buyer, and a thief holding the key can pair before the owner recovers (rule 9 says when the identity changed keys since). Not that nobody had the report earlier: the lab that wrote it did. |
 | `rotateRecordSecret(newRecord)` | Moves the identity; the caller must hold the new secret. Anchored identities only. At most 16 since the anchor or the last recovery. |
 | `recoverRecordSecret(origin, newRecord, newRecoveryCommitment)` | Moves the identity with the recovery secret, whoever holds the head. At most 16 per identity; each one resets the rotation count. |
 | `replaceRecoveryCommitment(origin, new)` | Replaces a recovery secret that may have leaked. |
@@ -402,11 +402,27 @@ Since 8 October every lookup a verdict rests on (`api/src/presentation-lookup.ts
    `dnaPairBinding(reportHash, identity, salt)` where `identity` is the identity of
    `lastPairedRecord` in that state, and that is the identity of the record you were given
    (resolve the record with the state now, so a record made by a later rotation works).
-   The block time is the date that identity's holder had the report by. Refuse a raw
-   report hash paired directly: anyone could have copied it. It does not show who controls
-   the record now (rule 8 does), or that nobody else had the report earlier. The client
-   keeps every salt in private state, saved before the pairing is sent (`acceptPairing`;
-   `VeilcoreAPI.pairReport`, `checkPairing`; CLI options 3, 44 and 45).
+   Refuse a raw report hash paired directly: anyone could have copied it. Refuse when you
+   were not given the report file: its hash alone is all anyone needs to make a pairing.
+   An acceptance says, and only says: whoever controlled this record's identity at the
+   block's date had this report, or its SHA-256, by then. Two more checks qualify it, and
+   the verdict states them:
+   - **The hash published raw earlier.** Search the contract's history (every `pairDna`
+     call, from the indexer's subscription) for a raw pairing of the same report hash
+     before this one. From the first such block, the hash was public and anyone could have
+     made this pairing without the report: "this report's hash was published raw on
+     <date> by another record; anyone could have made a pairing from it after that". The
+     history comes from one indexer; when it was not searched, the verdict says so.
+   - **Key changes since.** Compare the identity's head, rotation and recovery counts at
+     the pairing with the state now. If they differ, the identity changed keys since: a
+     sale, a new key and a recovery from a thief look the same, so an earlier key holder
+     made the pairing ("recovered since" when a recovery is among them).
+   It does not show who controls the record now (rule 8 does), or that nobody else had
+   the report earlier. The client keeps every salt in private state, saved before the
+   pairing is sent, and can find the transaction of a pairing whose confirmation failed
+   from its binding in the same history (`acceptPairing`, `acceptPairingWithStates`;
+   `VeilcoreAPI.pairReport`, `checkPairing`, `findPairingTransactions`;
+   `api/src/pairing-history.ts`; CLI options 3, 44 and 45).
 
 ## Trust model
 
@@ -426,8 +442,8 @@ maintenance key can change the circuits ("Assumed" below, and "Governance").
 - A presentation came from someone holding a live licence from the named issuer.
 
 **Proven by the contract plus verifier rule 9** (and SHA-256)
-- Whoever controlled an identity when a bound pairing landed knew the report's SHA-256
-  then.
+- Whoever controlled an identity when a bound pairing landed had the report, or its
+  SHA-256, by then. Which of the two, the chain cannot say.
 
 **Assumed, and stated plainly**
 - **The maintenance key holder does not abuse it.** As long as the key exists,
@@ -600,7 +616,12 @@ offline copy. Option 32 shows the record secret; do not confuse them). Holders s
   when it does, a DNA report goes on chain through the bound pairing (rule 9), which has
   its own salted tag, not as a record.
 - **A bound pairing can be lost.** Without its salt it can never be shown. The client saves
-  the salt before sending; the holder must keep it with the report.
+  the salt before sending; the holder must keep it with the report. The salt is not derived
+  from the record secret, so a paper copy of that does not bring it back: back up the
+  evidence files.
+- **A report hash paired raw is public for good.** Anyone can make a bound pairing of it
+  after that block, without the report. Rule 9 finds the raw pairing and says so; it
+  cannot tell who among those holding the hash had the report itself.
 - **Record commitments are stable pseudonyms.** Actions under one record link to each
   other.
 - **Licences issued by a thief** before recovery stay PENDING under the identity until

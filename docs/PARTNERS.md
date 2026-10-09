@@ -23,9 +23,9 @@ Midnight, a public blockchain built for privacy. From then on, anyone you choose
   you answer). That is control today: prior possession of the record, not ownership, and
   not who held it before;
 - that your lab signed the report on it;
-- that whoever controlled a record had a given report by a date (a bound pairing: the
-  report stays private until you show it, and nobody can copy the pairing to their own
-  record);
+- that whoever controlled a record's identity at a date had a given report, or its SHA-256,
+  by then (a bound pairing: the report stays private until you show it, and nobody can
+  copy the pairing to their own record);
 - that a grower holds a live licence from a breeder, without the chain naming either of them;
 - one fact about a record, such as "germination at least 95%", without seeing the rest.
 
@@ -200,14 +200,22 @@ pairing came first does not show who had the report first. `pairReport` pairs
 `commit.reportPairing(reportHash, identity, salt)` instead: a hash of the report's SHA-256,
 your record's identity and 32 random bytes (the salt). It reveals nothing about the report,
 it verifies for no other record, and nobody can make one for their own record without the
-report's hash. To show it, give the verifier the report file and the evidence:
+report's hash. That hash must never have been on chain raw: once it is (a `pairDna` of the
+hash itself, as the 0.2.0 lab example did), anyone can make a bound pairing of it, and a
+verifier is told so. To show it, give the verifier the report file and the evidence:
 `pairingEvidence({ network, contractAddress, txId, identity, reportHash, salt })` (the
 record, the report's SHA-256, the salt, the transaction). They hash the report themselves
-and run `checkPairing` (design.md, rule 9). The date is when that record's holder had the
-report; it is not who controls the record now (a control proof answers that), and the lab
-that wrote the report had it too. Keep the salt with the report: without it the pairing
-can never be shown. `pairReport` saves it in your private state before sending
-(`pairings()`).
+and run `checkPairing` (design.md, rule 9); without the report file there is nothing to
+accept. An acceptance says: whoever controlled this record's identity at that date had this
+report, or its SHA-256, by then. The verdict also says when the report's hash was paired
+raw earlier (`publishedRawEarlier`; the contract's history is read over the indexer's
+subscription, `indexerWS`) and when the identity changed keys since (`identityMoved`: a
+sale, a new key and a recovery from a thief look the same). It is not who controls the
+record now (a control proof answers that), and the lab that wrote the report had it too.
+Keep the salt with the report: without it the pairing can never be shown, and it is not
+derived from your record secret, so a paper copy of that does not bring it back.
+`pairReport` saves it in your private state before sending (`pairings()`); if a pairing's
+confirmation fails, `findPairingTransactions()` finds its transaction from the binding.
 
 Every method that sends a transaction returns its `txId` (give it to whoever checks),
 `txHash` and `blockHeight`. `revokeLicense` and `approveTransfer` also say whether they
@@ -375,7 +383,7 @@ yours to decide; this is what each one is and what losing it means.
 | Field secret and the field-set file                              | the hidden values a claim keeps hidden                   | the holder's private storage. Never disclosed with the record                                                                                                                                              |
 | Laboratory claims key (`newLabKey().secret`) and SDK signing key | your lab's signatures                                    | your HSM or secret store; publish only the public keys                                                                                                                                                     |
 | Obligation terms and salt                                        | showing later what an obligation commitment means        | with your contract records                                                                                                                                                                                 |
-| Pairing salt (`pairReport`)                                      | showing a bound pairing: without it, it can never be shown | with the report and its evidence file; also kept in the private-state store (`pairings()`). Shown to a verifier, it lets anyone holding the report recognise the pairing                                   |
+| Pairing salt (`pairReport`)                                      | showing a bound pairing: without it, it can never be shown | with the report and its evidence file, backed up: it is not derived from the record secret. Also kept in the private-state store (`pairings()`). Shown to a verifier, it lets anyone holding the report recognise the pairing |
 | Verifier challenges                                              | that each is answered once                               | a `ChallengeBook`; save `entries()`                                                                                                                                                                        |
 | Blockfrost project id (mainnet)                                  | your indexer and node access                             | your secret manager; it travels in the endpoint URLs, so never log them. From 0.3.0, `connect` and `seedWallet` redact it from everything the process writes to the terminal, since the wallet SDK prints its node URL past any logger; `scrubTerminal: false` turns that off |
 

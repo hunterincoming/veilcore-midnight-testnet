@@ -117,7 +117,11 @@ const openingOf = (
 const codeOf = (license: Uint8Array, offer: Uint8Array, n: Uint8Array) =>
   R.topUpCode(R.spendKey(license, offer), n);
 
-/** The breeder issues a licence from the licensee's licence key (from the licence card). */
+/** The licence commitment on a licensee's licence card (its viewing and spending keys, and the offer). */
+const commitmentOf = (license: Uint8Array, offer: Uint8Array) =>
+  R.licenseCommit(R.viewKey(license, offer), R.spendKey(license, offer), offer);
+
+/** The breeder issues a licence from the licensee's licence card. */
 const issueLicence = (
   sim: RoyaltiesSimulator,
   offer: Uint8Array,
@@ -128,7 +132,7 @@ const issueLicence = (
     who,
     "issueLicense",
     offer,
-    licenceKeyOf(license, offer, sim.state.offers.lookup(offer).expires),
+    commitmentOf(license, offer),
     sim.freeSlot(),
   );
 
@@ -464,9 +468,6 @@ describe("attacks on issuing", () => {
     expect(() => issueLicence(sim, offer, LIC, { admin: ADMIN_B })).toThrow(
       /Only the offer's admin/,
     );
-    expect(() =>
-      sim.call({ admin: ADMIN }, "issueLicense", offer, ZERO, sim.freeSlot()),
-    ).toThrow(/cannot be empty/);
     issueLicence(sim, offer);
     expect(() => issueLicence(sim, offer)).toThrow(/already bought or issued/);
     issueLicence(sim, offer, LIC2);
@@ -477,6 +478,48 @@ describe("attacks on issuing", () => {
     const ending = post(sim, { record: OTHER, expires: T0 + DAY });
     sim.advance(2n * DAY);
     expect(() => issueLicence(sim, ending)).toThrow(/ended/);
+  });
+
+  it("an admin cannot add a licence to someone else's offer: the key is made from the issuing offer", () => {
+    const sim = new RoyaltiesSimulator();
+    const a = post(sim);
+    const mine = post(sim, { record: OTHER, admin: ADMIN_B, issuer: ISSUER_B });
+    // The attacker holds keys of its own and issues them, naming offer a, from its own offer.
+    const forged = b(66);
+    sim.call(
+      { admin: ADMIN_B },
+      "issueLicense",
+      mine,
+      commitmentOf(forged, a),
+      sim.freeSlot(),
+    );
+    // The leaf it added is bound to its own offer, so it cannot present as a licence from a.
+    expect(
+      sim.state.licenseOffer.member(licenceKeyOf(forged, a, EXPIRES)),
+    ).toBe(false);
+    expect(() =>
+      sim.call(
+        { license: forged, offer: a, expires: EXPIRES, challenge: b(60) },
+        "proveLicense",
+        ZERO,
+        0n,
+        sim.now + HOUR,
+        b(80),
+        true,
+      ),
+    ).toThrow(/No live licence/);
+    // Nor can it squat the licensee's request: the breeder of a still issues it.
+    sim.call(
+      { admin: ADMIN_B },
+      "issueLicense",
+      mine,
+      commitmentOf(LIC, a),
+      sim.freeSlot(),
+    );
+    issueLicence(sim, a);
+    expect(sim.state.licenseOffer.member(licenceKeyOf(LIC, a, EXPIRES))).toBe(
+      true,
+    );
   });
 
   it("posting refuses an empty issuer, a taken place, a place outside the issuer tree, and an on-chain offer with no wallet", () => {
@@ -775,7 +818,7 @@ describe("ancestors of a variety paid off chain: what is owed is recorded, and c
         { admin: ADMIN, split: none },
         "issueLicense",
         offer,
-        licenceKeyOf(LIC, offer, EXPIRES),
+        commitmentOf(LIC, offer),
         sim.freeSlot(),
       ),
     ).toThrow(/ancestor's share/);

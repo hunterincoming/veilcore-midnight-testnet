@@ -81,7 +81,9 @@ on Midnight, an offer can use it without a rebuild.
 
 - Only the offer's admin key issues its licences (or revokes, closes, hands over the offer,
   or names a new credit issuer). A licence is issued once, only while the offer is open,
-  before its end, and while licences are left.
+  before its end, and while licences are left. The contract makes the licence key itself,
+  from the licensee's commitment and the issuing offer, so an admin can only ever add
+  licences to its own offer.
 - Only the offer's credit issuer key issues its credit, and only for that offer: a note is
   bound to the offer's leaf (every term, the rate included), so credit issued on one offer
   can never settle another. The same code, offer and amount can be issued once (a retry
@@ -124,9 +126,9 @@ on Midnight, an offer can use it without a rebuild.
 | Circuit | Who | What it does | Rows |
 |---|---|---|---|
 | `postOffer` | record holder | Posts an offer, run from then on by its own admin key, with its credit issuer key in the issuer tree. A rate commitment must open to a rate above zero. | 41,251 |
-| `issueLicense` | offer admin | Issues a licence from the licensee's licence key; no money. Records what it owes ancestors. | 16,066 |
+| `issueLicense` | offer admin | Issues a licence from the licensee's licence commitment; the key is made here from it and this offer. No money. Records what it owes ancestors. | 22,289 |
 | `issueCredit` | credit issuer | Issues credit to a top-up code, proving the offer through the issuer tree without naming it; the amount stays in the note. Ordinary offers only. | 29,487 |
-| `issueCreditSplit` | credit issuer | The same for a variety whose ancestors take a royalty share: names the offer and the amount, records each share. | 30,202 |
+| `issueCreditSplit` | credit issuer | The same for a variety whose ancestors take a royalty share: names the offer and the amount, records each share. | 30,248 |
 | `changeCreditIssuer` | offer admin | Names a new credit issuer key; the old one stops at the next due seal. | 19,199 |
 | `closeOffer`, `changeOfferAdmin` | offer admin | Stop new licences; hand the offer to a new key. | |
 | `buyLicense` | anyone | Offers that take payment on chain: pays the price (and ancestors' shares and fees) and adds the licence, in one call. | 42,093 |
@@ -422,8 +424,13 @@ on-chain licensing projects, the academic papers, and Midnight's own code.
 - **Protocol 4 (9 October 2026, issuing instead of paying):** built and tested in one
   session (contract tests `royalties-credit.test.ts`, 20; client tests
   `bboard-cli/src/royalties-credit.test.ts`, 14, including issuing without the key, on the
-  wrong offer, twice, by a licensee, skipping ancestors' shares, with a replaced key). **Not
-  yet reviewed by a separate agent;** the next review pass should start here.
+  wrong offer, twice, by a licensee, skipping ancestors' shares, with a replaced key). Found
+  while checking the build: the first `issueLicense` took the licence key whole, so the admin
+  of one offer could add a key naming another offer and present it as a licence that offer
+  never issued (or squat a licensee's request). The contract now makes the key from the
+  licensee's commitment and the issuing offer; regression test "an admin cannot add a licence
+  to someone else's offer". **Not yet reviewed by a separate agent;** the next review pass
+  should start here.
 
 All review passes were run by separate AI agents that had not seen the work being reviewed.
 None is a human or outside audit.

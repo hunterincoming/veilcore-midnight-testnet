@@ -255,7 +255,13 @@ describe("the client's witnesses, through a whole licensee journey", () => {
           now: T0,
         },
       },
-      (c, ctx) => c.impureCircuits.issueLicense(ctx, offer, key, 5n),
+      (c, ctx) =>
+        c.impureCircuits.issueLicense(
+          ctx,
+          offer,
+          R.licenseCommit(R.viewKey(lic, offer), R.spendKey(lic, offer), offer),
+          5n,
+        ),
     );
     expect(hex(k.ledger.lastSale)).toBe(hex(key));
     const op: OfferOpening = {

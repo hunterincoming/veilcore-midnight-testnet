@@ -1412,7 +1412,10 @@ export class RoyaltiesAPI {
       throw new Error(
         "That licence card's end date is not the offer's: the licensee must make it again. Nothing was sent.",
       );
-    const license = R.licenseKey(R.licenseCommit(unhex(card.viewKey), unhex(card.spendKey), offer), offer, o.expires);
+    // The contract makes the licence key from this commitment and the offer, so a licence can
+    // only ever be issued on the offer it names.
+    const commitment = R.licenseCommit(unhex(card.viewKey), unhex(card.spendKey), offer);
+    const license = R.licenseKey(commitment, offer, o.expires);
     if (hex(license) !== card.licence)
       throw new Error(
         "That licence card's keys do not make its licence key: it is not the licensee's real card. Nothing was sent.",
@@ -1428,7 +1431,7 @@ export class RoyaltiesAPI {
     const tx = await this.call(
       'issueLicense',
       { adminSecret: admin, split: { record: o.record, color: o.color, total: o.price, now: nowSeconds() } },
-      (c) => c.callTx.issueLicense(offer, license, slot),
+      (c) => c.callTx.issueLicense(offer, commitment, slot),
     );
     return { ...tx, license };
   }

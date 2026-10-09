@@ -781,6 +781,8 @@ circuit owe(key: Bytes<32>, id: Bytes<32>, o: Offer, total: Uint<64>, withFees: 
   const fees = withFees ? feesOf(st) : default<Vector<2, Uint<64>>>;
   const any = fold((acc: Boolean, a: Uint<64>) => acc || a > 0, false, shares) || fees[0] > 0 || fees[1] > 0;
   if (any) {
+    // Keys are unique (a licence key or a credit note); never let one record replace another.
+    assert(!owed.member(key), "What that owes is already recorded");
     owed.insert(key, Owed { record: o.record, offer: id, color: o.color, shares: shares, fees: fees });
     owedSeq.increment(1);
   }
@@ -1018,16 +1020,19 @@ export circuit buyLicense(offer: Bytes<32>, slot: Uint<64>): [] {
 }
 
 /**
- * The admin issues licence `license` (the licence key from the licensee's licence card) at
- * `slot`. No money moves: the licensee paid off chain. If the variety has ancestors, what
- * this licence owes them (each share of the list price, each parent's fee) is recorded in
- * `owed`, in the same call.
+ * The admin issues a licence at `slot` from the licensee's licence commitment
+ * (licenseCommit(viewKey, spendKey, offer), from the licence card). The licence key is made
+ * here from that commitment, THIS offer and its end date, so an admin can only ever add
+ * licences to its own offer: a key passed in whole could name another offer, and present as
+ * a licence its breeder never issued. No money moves: the licensee paid off chain. If the
+ * variety has ancestors, what this licence owes them (each share of the list price, each
+ * parent's fee) is recorded in `owed`, in the same call.
  */
-export circuit issueLicense(offer: Bytes<32>, license: Bytes<32>, slot: Uint<64>): [] {
+export circuit issueLicense(offer: Bytes<32>, commitment: Bytes<32>, slot: Uint<64>): [] {
   const id = disclose(offer);
   const o = anyOffer(id);
   assertAdmin(o);
-  const k = disclose(license);
+  const k = disclose(licenseKey(disclose(commitment), id, o.expires));
   addLicence(id, o, k, slot);
   owe(k, id, o, o.price, true);
 }

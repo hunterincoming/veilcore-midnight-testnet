@@ -1,7 +1,7 @@
 # VeilCore: Technical Design
 
 **Provenance, licensing and heritable obligations for plant and animal genetics on Midnight**
-Protocol version 1 · last updated 1 October 2026 (evening: state bounds)
+Protocol version 1 · last updated 9 October 2026 (bound DNA pairing)
 
 ---
 
@@ -37,8 +37,9 @@ through an indexer it trusts (see Trust model).
   anchored records, not with how often anyone calls. The bound for every field is under
   "State bounds"; where it does not hold, "Known limits" says so.
 - **Browser-viable proving.** 24 circuits, each under 700 ZKIR operations.
-- **Independent recomputation of commitments.** The six commitment hashes are plain
-  SHA-256 (next section), so anyone can recompute one without Midnight tooling. The
+- **Independent recomputation of commitments.** The six commitment hashes, and the
+  client's DNA pairing binding, are plain SHA-256 (next section), so anyone can recompute
+  one without Midnight tooling. The
   licence tree is the exception: its inner nodes use Midnight's field hash. Reading
   contract state at all, and checking a presentation (rule 5), needs Midnight's tooling.
 
@@ -58,9 +59,17 @@ bytes to 32), then each input. This is exactly Compact's `persistentHash` over
 | `licenseKey` | `veilcore:v1:lickey` | licence commitment, issuing record |
 | `presentationTag` | `veilcore:v1:present` | issuing record, verifier challenge |
 | `obligationKey` | `veilcore:v1:obligation` | record identity, obligation commitment, beneficiary identity |
+| `dnaPairBinding` (client, not a circuit) | `veilcore:v1:dnapair` | report SHA-256, pairing record's identity, salt |
+
+`dnaPairBinding` is computed off chain (`contract/src/pairing.ts`) and passed to `pairDna`
+as its value; the contract never computes it and does not know it is one. It has the same
+layout as `obligationKey`: the test suite checks it against Compact's `persistentHash`
+over `Vector<4, Bytes<32>>` and checks that the same function gives `obligationKey` with
+that tag (`src/test/pairing.test.ts`). See `pairDna` below and rule 9.
 
 Test vectors: `contract/vectors/v1.json`. The test suite checks each vector against the
-compiled contract and against a plain SHA-256 implementation. The contract publishes
+compiled contract (the binding: against the client's function) and against a plain SHA-256
+implementation. The contract publishes
 `protocolVersion = 1`; a change to any tag or input order is a new version.
 
 **Not SHA-256: the licence tree.** `activeLicenses` is a ledger `HistoricMerkleTree`.
@@ -111,7 +120,7 @@ every rotation and recovery, and a retired secret controls nothing.
 |---|---|
 | `anchor(recoveryCommitment)` | Anchors the caller's record. Refuses the zero commitment and the zero secret's commitment. |
 | `proveOwnership(challenge)` | Publishes the caller's live record in `lastOwnershipProof` and the verifier's challenge in `lastOwnershipChallenge`, so the proof answers one verifier (rule 8). It shows present control of the record's identity, and only that: not ownership, and not who held it before. The identity's anchor date says nothing about who holds it now, or about any content: a holder can anchor, then rotate to a buyer, and on chain a sale looks like a key rotation. Treat any rotation or recovery since the anchor as a possible change of hands. Content is dated only by its own commitment's anchor (its batch root, or its pairing). |
-| `pairDna(dnaCommitment)` | Records any non-zero 32-byte value the holder chooses against the caller's record. It is the holder's own statement that a report belongs to the record; the contract cannot check it. A pairing shows the record was paired with that value by that block, nothing more. Once paired, the value is public: anyone watching can pair the same value to a record of their own, and can front-run a pairing still waiting to land. So which of two pairings of the same raw report hash came first is not evidence of who had the report first. |
+| `pairDna(dnaCommitment)` | Records any non-zero 32-byte value the holder chooses against the caller's record. It is the holder's own statement that a report belongs to the record; the contract cannot check it. Once sent, the value is public: anyone watching can pair the same value to a record of their own, and can front-run a pairing still waiting to land. So a raw report hash paired directly shows nothing about who had the report first. **The client pairs a binding instead** (`pairReport`): `dnaPairBinding(reportHash, identity, salt)`, with the report file's SHA-256, the caller's identity (its origin, so it holds across rotation and recovery) and 32 random bytes the holder keeps. It reveals nothing about the report; copied to another record it verifies for nobody (rule 9 recomputes it with the pairing record's identity); and making one for another identity needs the report's hash, which stays private until the holder shows it. So a bound pairing dates when that identity's holder had the report. Not who controls the record now: a holder can pair, then rotate to a buyer. Not that nobody had the report earlier: the lab that wrote it did. |
 | `rotateRecordSecret(newRecord)` | Moves the identity; the caller must hold the new secret. Anchored identities only. At most 16 since the anchor or the last recovery. |
 | `recoverRecordSecret(origin, newRecord, newRecoveryCommitment)` | Moves the identity with the recovery secret, whoever holds the head. At most 16 per identity; each one resets the rotation count. |
 | `replaceRecoveryCommitment(origin, new)` | Replaces a recovery secret that may have leaked. |
@@ -288,7 +297,7 @@ total created by one party with many anchors.
 
 ## Verifier rules
 
-These are normative. `contract/src/verify.ts` implements rules 1 to 5 and 8. Rule 5's
+These are normative. `contract/src/verify.ts` implements rules 1 to 5, 8 and 9. Rule 5's
 "refuse a presentation that landed before you issued its challenge" needs the block time
 of the presentation's transaction: since round D, `acceptPresentationAt` takes it (the
 lookup reads it in the same indexer query) with the challenge's issue time, and also
@@ -385,6 +394,19 @@ Since 8 October every lookup a verdict rests on (`api/src/presentation-lookup.ts
    record's commitment. Like a presentation, a proof shows that the holder of the secret
    answered your challenge, not that the party in front of you is that holder: a
    middleman can relay it. Answer challenges only from the party you are dealing with.
+9. **Bound DNA pairings.** The holder gives you the report file and an evidence file
+   (`pairingEvidence`): the record (its identity), the report's SHA-256, the salt and the
+   `pairDna` transaction id. Hash the report file yourself; never take the hash from the
+   holder. Look the transaction up as in rule 5 (successful, its only call on this contract
+   is one `pairDna`, verifier keys pinned) and accept only if `lastPairedDna` is
+   `dnaPairBinding(reportHash, identity, salt)` where `identity` is the identity of
+   `lastPairedRecord` in that state, and that is the identity of the record you were given
+   (resolve the record with the state now, so a record made by a later rotation works).
+   The block time is the date that identity's holder had the report by. Refuse a raw
+   report hash paired directly: anyone could have copied it. It does not show who controls
+   the record now (rule 8 does), or that nobody else had the report earlier. The client
+   keeps every salt in private state, saved before the pairing is sent (`acceptPairing`;
+   `VeilcoreAPI.pairReport`, `checkPairing`; CLI options 3, 44 and 45).
 
 ## Trust model
 
@@ -402,6 +424,10 @@ maintenance key can change the circuits ("Assumed" below, and "Governance").
 
 **Proven by the contract plus verifier rule 5**
 - A presentation came from someone holding a live licence from the named issuer.
+
+**Proven by the contract plus verifier rule 9** (and SHA-256)
+- Whoever controlled an identity when a bound pairing landed knew the report's SHA-256
+  then.
 
 **Assumed, and stated plainly**
 - **The maintenance key holder does not abuse it.** As long as the key exists,
@@ -571,7 +597,10 @@ offline copy. Option 32 shows the record secret; do not confuse them). Holders s
 - **The web app's file fingerprints** (DNA reports, photos) are run through the record
   commitment, so whoever holds a report could anchor its fingerprint as a record of their
   own, and could find a record paired with it. The app does not put these on chain today;
-  before it does, they get their own salted tag.
+  when it does, a DNA report goes on chain through the bound pairing (rule 9), which has
+  its own salted tag, not as a record.
+- **A bound pairing can be lost.** Without its salt it can never be shown. The client saves
+  the salt before sending; the holder must keep it with the report.
 - **Record commitments are stable pseudonyms.** Actions under one record link to each
   other.
 - **Licences issued by a thief** before recovery stay PENDING under the identity until
@@ -637,6 +666,7 @@ compiled contract, in the style of Midnight's examples (`veilcore-simulator.ts`)
 | `licences.test.ts` | Lifecycle, forgery through transfer, squatting, starvation of revocation, sealing and its rate limit, slot contention |
 | `lineage.test.ts` | Consent, release by beneficiary only, survival across rotation and recovery, identity merging, the verifier walk |
 | `interface.test.ts` | Published vectors, protocol version, the circuit list, no secret or caller record as an argument |
+| `pairing.test.ts` | Rule 9: the binding's hash layout against the contract's, a copied binding (even one that landed first), wrong salt or report, a raw pairing, rotation and recovery, the evidence file |
 | `attack-*.test.ts` | The contract-side attacks from rounds 8 to 12. Most tests assert the refusal or the fix directly; a few blocked attacks are kept as `it.fails`, so they still run and must still fail. `attack-bounds.test.ts` is round 12, the attack on the state bounds (F1 to F7) |
 | `state-bounds.test.ts` | Each per-identity cap, the moves that free a place, and that repeated calls by one identity leave state where it started. The 1024-active-licence test runs only with `SLOW_TESTS=1` |
 | `rules-coverage-round11.test.ts` | Round 11: one test for each rule in this file and the README that had none (40), including limits the docs had wrong |

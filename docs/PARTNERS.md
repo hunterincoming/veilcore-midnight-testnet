@@ -23,6 +23,9 @@ Midnight, a public blockchain built for privacy. From then on, anyone you choose
   you answer). That is control today: prior possession of the record, not ownership, and
   not who held it before;
 - that your lab signed the report on it;
+- that whoever controlled a record had a given report by a date (a bound pairing: the
+  report stays private until you show it, and nobody can copy the pairing to their own
+  record);
 - that a grower holds a live licence from a breeder, without the chain naming either of them;
 - one fact about a record, such as "germination at least 95%", without seeing the rest.
 
@@ -148,7 +151,7 @@ Three complete, runnable examples are in [`partner-kit/examples/`](../partner-ki
 
 | Example               | What it does                                                                                                                                                                                                                                                     |
 | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `lab.mjs`             | A lab receives material: seals the intake record (SDK), anchors it, puts the day's records on chain as one batch root, signs its report (SDK), pairs the report's fingerprint with the record, and proves control of the record to a verifier who checks it with no wallet. |
+| `lab.mjs`             | A lab receives material: seals the intake record (SDK), anchors it, puts the day's records on chain as one batch root, signs its report (SDK), pairs it with the record (bound, so it cannot be copied) and has a verifier check that from the evidence file, and proves control of the record to a verifier who checks it with no wallet. |
 | `breeder-licence.mjs` | A breeder issues a licence, the grower countersigns, proves it to a buyer's one-time challenge, the buyer checks it with no wallet, the breeder revokes it.                                                                                                      |
 | `claims.mjs`          | A lab seals a record's fields (the SDK computes the same commitment), signs it; the holder proves "germination at least 95.00%" and the lab's signature; a verifier reads both by transaction id and judges them.                                                |
 
@@ -178,19 +181,33 @@ them; `connect` takes any.
 
 | You are                   | Operations                                                                                                          |
 | ------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| a record holder           | `useRecordSecret`, `whoAmI`, `anchor`, `pairDna`, `proveOwnership`, `anchorBatch`                                   |
+| a record holder           | `useRecordSecret`, `whoAmI`, `anchor`, `pairReport` _(0.3.0)_, `pairings` _(0.3.0)_, `pairDna`, `proveOwnership`, `anchorBatch` |
 | keeping your own identity | `rotateRecordSecret`, `recoverRecordSecret`, `replaceRecoveryCommitment`, `recoverySecretIsCurrent`                 |
 | a licence issuer          | `issueLicense`, `approveTransfer`, `revokeLicense`, `sealRevocations`                                               |
 | a licensee                | `licenseRequest` _(0.3.0)_, `countersignLicense`, `proveLicense`, `proposeTransfer`, `withdrawTransfer`             |
 | in a pedigree             | `proposeParent`, `confirmParent`, `withdrawParent`, `checkLineage`                                                  |
 | party to an obligation    | `proposeObligation`, `encumberOwnRecord`, `acceptObligation`, `rejectObligation`, `withdrawObligation`, `discharge` |
-| a verifier                | `checkOwnership`, `checkPresentation`, `ledger`                                                                     |
+| a verifier                | `checkOwnership`, `checkPresentation`, `checkPairing` _(0.3.0)_, `ledger`                                           |
 
 `proveOwnership` and `checkOwnership` keep the contract's names, but they prove control of
 the record now (prior possession of the record), not ownership. The identity's anchor date
-says nothing about who holds it today: a sale looks like a key rotation on chain. A
-`pairDna` pairing shows the record was paired with that value by that date; anyone can pair
-the same raw report hash, so which pairing came first does not show who had the report first.
+says nothing about who holds it today: a sale looks like a key rotation on chain.
+
+**Pairing a report.** Use `pairReport(reportHashOf(reportFile))` _(0.3.0)_. `pairDna` puts
+the 32 bytes you give it on chain as they are: anyone who sees a raw report hash there, even
+in a transaction still waiting to land, can pair it to their own record first, so which raw
+pairing came first does not show who had the report first. `pairReport` pairs
+`commit.reportPairing(reportHash, identity, salt)` instead: a hash of the report's SHA-256,
+your record's identity and 32 random bytes (the salt). It reveals nothing about the report,
+it verifies for no other record, and nobody can make one for their own record without the
+report's hash. To show it, give the verifier the report file and the evidence:
+`pairingEvidence({ network, contractAddress, txId, identity, reportHash, salt })` (the
+record, the report's SHA-256, the salt, the transaction). They hash the report themselves
+and run `checkPairing` (design.md, rule 9). The date is when that record's holder had the
+report; it is not who controls the record now (a control proof answers that), and the lab
+that wrote the report had it too. Keep the salt with the report: without it the pairing
+can never be shown. `pairReport` saves it in your private state before sending
+(`pairings()`).
 
 Every method that sends a transaction returns its `txId` (give it to whoever checks),
 `txHash` and `blockHeight`. `revokeLicense` and `approveTransfer` also say whether they
@@ -199,7 +216,8 @@ readers (`whoAmI`, `ledger`, `checkLineage`, the checks) send nothing. A call th
 refuses is refused before anything is proved or sent; tell it from other failures with
 `isContractRefusal(e)` (midnight-js wraps the refusal a few causes deep; `errorChain(e)`
 lists them all). Commitments are computed offline with `commit.record`, `commit.recovery`,
-`commit.license`, `commit.presentationTag` and `commit.obligation`.
+`commit.license`, `commit.presentationTag`, `commit.reportPairing` _(0.3.0)_ and
+`commit.obligation`.
 
 **Asking for a licence.** Build the licence commitment with
 `vc.licenseRequest(licenseSecret, issuerRecord)` _(0.3.0)_, not with `commit.license` and
@@ -217,20 +235,20 @@ already read. Nothing is sent.
 laboratory signs with `newLabKey` / `signRecord`.
 
 **Checking, with no wallet** (`checkPresentation`, `checkOwnership` (control of the record
-now, not ownership), `checkBatchAnchor`,
+now, not ownership), `checkPairing` _(0.3.0)_, `checkBatchAnchor`,
 `readClaim`, `readClaimsAuthority`, `readAuthority` _(0.3.0)_, `readLedger`, `verifyClaim`,
 `ChallengeBook`): only the
 network (and an indexer URL on mainnet). Each looks up the transaction the other party
 names, requires it to have succeeded with exactly one call of the expected kind on
 VeilCore's contract, and judges the state recorded for that call (design.md, verifier rules
-5, 7, 8). Keep a `ChallengeBook` (save its `entries()` between runs) so each challenge is
+5, 7, 8, 9). Keep a `ChallengeBook` (save its `entries()` between runs) so each challenge is
 used once.
 
 Options the checks take _(0.3.0)_:
 
 | Option | What it does |
 | --- | --- |
-| `secondIndexer` | Another indexer's URL (your own, or another provider's). Every check asks both and refuses unless they report the same call, in the same block, with the same contract state. `checkOwnership` also reads the current state from both. |
+| `secondIndexer` | Another indexer's URL (your own, or another provider's). Every check asks both and refuses unless they report the same call, in the same block, with the same contract state. `checkOwnership` and `checkPairing` also read the current state from both. |
 | `verifierKeys` | `'pinned'`: refuse a state whose circuits' verifier keys are not the deployment record's build (the verdict says which circuits differ). `'report'`: only report. Default `'pinned'` on mainnet, where it cannot be turned off, and on preprod; `'report'` elsewhere (a local chain, preview), where the contract is usually your own build. |
 | `authorityCounter` | Refuse unless the maintenance authority's counter is exactly this. Every maintenance update raises it, so pinning the value you last saw turns any change since into a refusal. |
 | `history`, `rule` | `checkPresentation` only. `history` is the contract's state after every call, from the last seal before the presentation up to and including it, from your indexer; with it the issuer-scoped rule 5 decides, so another party's revocations cannot make an honest presentation fail. The package does not fetch it for you. `rule: 'strict'` keeps the original rule even with a history; without one, the original rule applies. |
@@ -357,6 +375,7 @@ yours to decide; this is what each one is and what losing it means.
 | Field secret and the field-set file                              | the hidden values a claim keeps hidden                   | the holder's private storage. Never disclosed with the record                                                                                                                                              |
 | Laboratory claims key (`newLabKey().secret`) and SDK signing key | your lab's signatures                                    | your HSM or secret store; publish only the public keys                                                                                                                                                     |
 | Obligation terms and salt                                        | showing later what an obligation commitment means        | with your contract records                                                                                                                                                                                 |
+| Pairing salt (`pairReport`)                                      | showing a bound pairing: without it, it can never be shown | with the report and its evidence file; also kept in the private-state store (`pairings()`). Shown to a verifier, it lets anyone holding the report recognise the pairing                                   |
 | Verifier challenges                                              | that each is answered once                               | a `ChallengeBook`; save `entries()`                                                                                                                                                                        |
 | Blockfrost project id (mainnet)                                  | your indexer and node access                             | your secret manager; it travels in the endpoint URLs, so never log them. From 0.3.0, `connect` and `seedWallet` redact it from everything the process writes to the terminal, since the wallet SDK prints its node URL past any logger; `scrubTerminal: false` turns that off |
 

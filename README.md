@@ -11,7 +11,7 @@ Written agreements have a related problem. A contract binds the parties who sign
 VeilCore records what was held and when, lets licences be granted against a record, and lets an obligation on an ancestor be carried by everything derived from it.
 
 - **Prove prior possession** — on chain, an anchored record is dated by the block it lands in. (The web app does not anchor yet; see Current status.)
-- **Pair a DNA report** — record a DNA report fingerprint against your record. The contract binds whatever 32-byte value the holder submits: it is the holder's own statement that this report belongs to this record, not a check of the genetics. The web app keeps the pairing in the registry, not on chain.
+- **Pair a DNA report** — record a DNA report against your record. The contract binds whatever 32-byte value the holder submits: it is the holder's own statement that this report belongs to this record, not a check of the genetics. The client submits a salted binding of the report's hash to the record's identity, not the raw hash, so the pairing cannot be copied to another record and dates when that record's holder had the report (verifier rule 9 in [`docs/design.md`](docs/design.md)). The web app keeps the pairing in the registry, not on chain.
 - **License against the record** — on chain a licence is only PENDING (issued) or ACTIVE (countersigned), and revoking removes it. The contract stores no terms and has no expiry. Terms, dates, expiry and the royalty log are kept by the app, in the VeilCore registry. A presentation proves "a live licence from this issuer", not which licence or on what terms.
 - **Prove a claim without showing the secret** — prove you hold a record, or a licence, without revealing the secret behind it. A control proof publishes the record's commitment. A licence presentation hides the licence and the licensee, and the issuer only among issuers with live licences; while only one issuer has live licences, as at launch, it names that issuer.
 
@@ -96,7 +96,7 @@ API, the registry or the website, and are tested there instead: `bboard-cli/src/
 formal security audit, and we do not call them one.
 
 The six commitment hashes (record, recovery, licence, licence key, presentation tag,
-obligation) are plain SHA-256 over a tag and their inputs, with published test vectors
+obligation), and the client's DNA pairing binding, are plain SHA-256 over a tag and their inputs, with published test vectors
 (`contract/vectors/v1.json`), so they can be recomputed in any language. The licence
 tree is not: its inner nodes use Midnight's own field hash, and verifier rule 5 compares
 tree roots, so checking a licence presentation, like reading any contract state, needs

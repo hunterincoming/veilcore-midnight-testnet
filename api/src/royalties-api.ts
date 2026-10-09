@@ -1,42 +1,48 @@
-// The client API for the VeilCore royalties contract, protocol 3 (contract/src/veilcore-royalties.compact).
+// The client API for the VeilCore royalties contract, protocol 4 (contract/src/veilcore-royalties.compact).
 // SPDX-License-Identifier: Apache-2.0
 //
-// Public money, private books. A breeder posts an offer and hands licensees an OFFER CARD
-// (the rate and its salt, which the chain only commits to). A grower buys a licence and
-// hands the breeder a LICENCE CARD (viewing and spending keys for that offer). Royalty
-// credit is topped up in public, by the grower or by anyone holding the grower's TOP-UP
-// REQUEST (a PAYER CARD, with the offer's public fields but not the rate, and a code); each
-// period is settled in private against that credit. The breeder reads every
-// settlement of their own licensees with the licence cards. A buyer or regulator checks a
-// licence, and a settled period, with a PRESENTATION REQUEST. A licensee can hand a
-// PRESENTATION CARD to someone who answers verifiers for them: it proves, never spends.
+// We never touch the money; we prove the books. A breeder posts an offer and hands
+// licensees an OFFER CARD (the rate and its salt, which the chain only commits to). A
+// grower makes a LICENCE CARD from it (viewing and spending keys for that offer) and hands
+// it to the breeder with payment, however they already pay; the breeder ISSUES the licence
+// from the card. For royalties, the grower hands the breeder a TOP-UP REQUEST (a PAYER CARD,
+// with the offer's public fields but not the rate, and a code naming nobody) with payment;
+// the breeder ISSUES that much credit to it. Each period is settled in private against that
+// credit. The breeder reads every settlement of their own licensees with the licence cards.
+// A buyer or regulator checks a licence, and a settled period, with a PRESENTATION REQUEST.
+// A licensee can hand a PRESENTATION CARD to someone who answers verifiers for them: it
+// proves, never spends. An offer posted to take payment ON CHAIN also lets a grower buy the
+// licence and anyone pay the top-up request through the contract, as before.
 //
 // Rules the contract cannot enforce, enforced here:
-//   1. Pay only an offer whose record is the live head of an anchored identity in the
+//   1. Deal only with an offer whose record is the live head of an anchored identity in the
 //      main VeilCore contract, and whose pedigree matches it (ledger 8 has no calls
-//      between contracts). Checked at purchase, at every top-up and in a verifier's check.
-//   2. Never prove while the latest sale, credit note or receipt on chain is one of yours:
-//      the root a proof publishes would then name your own transaction.
-//   3. Open the rate from the offer card before buying or settling: a card whose rate does
-//      not match the chain's commitment, or is zero, is refused. A payer never sees the
-//      rate: the contract proved at posting that the commitment opens to a rate above zero,
-//      so a top-up checks only the payer card's public fields against the chain.
+//      between contracts). Checked when asking for or buying a licence, at every top-up and
+//      in a verifier's check.
+//   2. Never prove while the latest licence, credit note, receipt or (for an issuer) issuer
+//      leaf on chain is one of yours: the root a proof publishes would then name your own
+//      transaction.
+//   3. Open the rate from the offer card before asking for a licence, buying or settling: a
+//      card whose rate does not match the chain's commitment, or is zero, is refused. A payer
+//      never sees the rate: the contract proved at posting that the commitment opens to a
+//      rate above zero, so a top-up checks only the payer card's public fields against the
+//      chain.
 //
 // Every card read from a file is checked and normalised (lower-case hex, 32 bytes) before
-// it is used or kept. Offers, purchases and settlements that may already have landed (a
-// timeout) are not repeated without being asked. A settle, merge or presentation whose
-// proof went stale on the way (a seal retired its root) is proved and sent once more
-// (isStaleRootError: not yet checked against a real node; a retry after an on-chain
-// failure pays a second fee).
+// it is used or kept. Offers, licences, credit and settlements that may already have landed
+// (a timeout) are not repeated without being asked. A settle, merge, presentation or private
+// issuance whose proof went stale on the way (a seal retired its root) is proved and sent
+// once more (isStaleRootError: not yet checked against a real node; a retry after an
+// on-chain failure pays a second fee).
 //
 // Two runs on one computer share this store. Every write of it (this client's own, and
 // midnight-js's write-back after a transaction) is merged with what is on disk, and each
 // run also remembers everything it kept, so one run's write never drops another's
-// licences, codes, notes or receipts (mergeHeld).
+// licences, codes, notes, receipts or keys (mergeHeld).
 //
-// Secrets kept between runs (admin secrets, licence secrets, credit notes) live in this
-// client's encrypted store; each call's input is kept in memory only (transientInput).
-// Design and limits: docs/royalties-design.md.
+// Secrets kept between runs (admin and issuer secrets, licence secrets, credit notes) live
+// in this client's encrypted store; each call's input is kept in memory only
+// (transientInput). Design and limits: docs/royalties-design.md.
 
 import { type ContractAddress, sampleSigningKey } from '@midnight-ntwrk/midnight-js-protocol/compact-runtime';
 import { type StateValue } from '@midnight-ntwrk/midnight-js-protocol/onchain-runtime';
@@ -63,10 +69,12 @@ import {
   type RoyaltyOffer,
   changeNonceOf,
   compiledRoyaltiesDeploying,
+  issuerLeafOf,
   emptyRoyaltiesHeld,
   emptyRoyaltiesPrivateState,
   licenceKeyOf,
   noteOf,
+  offerLeafOf,
   placeDenominator,
   royaltiesLedger,
   royaltiesPureCircuits as R,
@@ -147,8 +155,10 @@ export type OfferCard = {
   readonly expires: string;
   readonly rate: string;
   readonly rateSalt: string;
-  /** Whether the offer's ancestors take a share of royalties (then top-ups name the offer). Missing means no. */
+  /** Whether the offer's ancestors take a share of royalties (then its credit names the offer). Missing means no. */
   readonly split?: boolean;
+  /** Whether licences are bought and credit topped up through the contract. Missing means no: the breeder issues both. */
+  readonly onChainPayment?: boolean;
 };
 
 /**
@@ -199,9 +209,14 @@ export type PayerCard = {
   readonly rateCommit: string;
   readonly expires: string;
   readonly split?: boolean;
+  readonly onChainPayment?: boolean;
 };
 
-/** What a licensee gives whoever tops up their credit: a payer card (no rate) and a code naming nobody. */
+/**
+ * What a licensee gives whoever credits them: their breeder, who issues that much credit
+ * for a payment made off chain, or (for an offer that takes payment on chain) anyone who
+ * pays it through the contract. A payer card (no rate) and a code naming nobody.
+ */
 export type TopUpRequest = {
   readonly kind: 'veilcore-topup-request';
   readonly card: PayerCard;
@@ -218,6 +233,7 @@ export const payerCardOf = (c: OfferCard): PayerCard => ({
   rateCommit: c.rateCommit,
   expires: c.expires,
   split: c.split === true,
+  onChainPayment: c.onChainPayment === true,
 });
 
 /**
@@ -274,6 +290,7 @@ export const normaliseOfferCard = (v: unknown): OfferCard => {
     rate: whole(c.rate, "The offer card's rate"),
     rateSalt: hex32(c.rateSalt, "The offer card's rate salt"),
     split: c.split === true,
+    onChainPayment: c.onChainPayment === true,
   };
 };
 
@@ -314,6 +331,7 @@ export const normalisePayerCard = (v: unknown): PayerCard => {
     rateCommit: hex32(c.rateCommit, "The payer card's rate commitment"),
     expires: whole(c.expires, "The payer card's end date"),
     split: c.split === true,
+    onChainPayment: c.onChainPayment === true,
   };
 };
 
@@ -392,8 +410,8 @@ export type SettlementReading = {
   readonly number?: number;
 };
 
-/** The fields of an offer a top-up or settlement opens privately (from an offer card or a payer card). */
-type OfferFields = Pick<OfferCard, 'offer' | 'payTo' | 'color' | 'rateCommit' | 'expires' | 'split'>;
+/** The fields of an offer an issuance, top-up or settlement opens privately (from an offer card or a payer card). */
+type OfferFields = Pick<OfferCard, 'offer' | 'payTo' | 'color' | 'rateCommit' | 'expires' | 'split' | 'onChainPayment'>;
 
 export const openingOf = (c: OfferFields): OfferOpening => ({
   offer: unhex(c.offer),
@@ -402,6 +420,7 @@ export const openingOf = (c: OfferFields): OfferOpening => ({
   rateCommit: unhex(c.rateCommit),
   expires: BigInt(c.expires),
   split: c.split === true,
+  onChainPayment: c.onChainPayment === true,
 });
 
 /** Whether a card's public fields are the offer's on chain. */
@@ -410,7 +429,8 @@ const sameAsChain = (card: OfferFields, onChain: RoyaltyOffer): boolean =>
   hex(onChain.color) === card.color.toLowerCase() &&
   hex(onChain.rateCommit) === card.rateCommit.toLowerCase() &&
   onChain.expires === BigInt(card.expires) &&
-  onChain.split === (card.split === true);
+  onChain.split === (card.split === true) &&
+  onChain.onChainPayment === (card.onChainPayment === true);
 
 /** Refuse an offer card that does not match the chain, or whose rate does not open its commitment. */
 export const checkOfferCard = (card: OfferCard, onChain?: RoyaltyOffer): void => {
@@ -425,13 +445,13 @@ export const checkOfferCard = (card: OfferCard, onChain?: RoyaltyOffer): void =>
 
 /**
  * Refuse a payer card that does not match the offer on chain, or whose offer takes no
- * royalties through the contract. Only public fields: the payer never sees the rate (the
+ * royalties. Only public fields: the payer never sees the rate (the
  * contract proved at posting that the commitment opens to a rate above zero).
  */
 export const checkPayerCard = (card: PayerCard, onChain: RoyaltyOffer): void => {
   if (card.kind !== 'veilcore-payer-card') throw new Error('That is not a payer card.');
   if (isZero(unhex(card.rateCommit)))
-    throw new Error('That offer takes no royalties through the contract: there is nothing to top up.');
+    throw new Error('That offer takes no royalties: there is no credit to issue or top up.');
   if (!sameAsChain(card, onChain))
     throw new Error('That top-up request does not match the offer on chain. Do not pay against it.');
 };
@@ -509,14 +529,24 @@ export const roundedValidUntil = (expires: bigint, now = nowSeconds()): bigint |
  * sealRevocations decides): an hour after the last revocation seal, or at the daily seal if
  * that comes first. Undefined when none is waiting.
  */
-export const revocationSealableAt = (l: RoyaltiesLedger): bigint | undefined => {
-  if (!l.unsealedChanges) return undefined;
+export const revocationSealableAt = (l: RoyaltiesLedger): bigint | undefined =>
+  l.unsealedChanges ? sealableAt(l) : undefined;
+
+/** When a seal of a waiting revocation or replaced issuer is due: the hourly rule, or the daily seal. */
+const sealableAt = (l: RoyaltiesLedger): bigint => {
   const hourly = l.lastRevocationReset + REVOCATION_SEAL_INTERVAL;
   const lastSeal = l.lastSealTime + BigInt(SEAL_INTERVAL_SECONDS);
   const daily = l.lastSlowSealTime + DAILY_SEAL_INTERVAL;
   const viaDaily = daily > lastSeal ? daily : lastSeal;
   return hourly < viaDaily ? hourly : viaDaily;
 };
+
+/**
+ * The earliest block time at which a seal would seal what is waiting in `l`: a revocation
+ * or a replaced credit issuer (the same hourly rule covers both). Undefined when neither is.
+ */
+const keyChangeSealableAt = (l: RoyaltiesLedger): bigint | undefined =>
+  l.unsealedChanges || l.issuerChanges ? sealableAt(l) : undefined;
 
 /**
  * What revocations say about a presentation of `offer`, from the contract state right after
@@ -744,6 +774,7 @@ const loneOfferWarning = (l: RoyaltiesLedger, o: RoyaltyOffer, until: bigint): s
       hex(x.color) === hex(o.color) &&
       !isZero(x.rateCommit) &&
       !x.split &&
+      x.onChainPayment &&
       x.expires + SETTLE_GRACE >= until,
   ).length;
   return cover <= 1
@@ -762,6 +793,12 @@ export type OfferTerms = {
   readonly count: bigint;
   readonly expires: bigint;
   readonly revocable: boolean;
+  /**
+   * Whether licences are bought and credit topped up THROUGH the contract (money on chain,
+   * in this token). Default no: the breeder issues licences and credit for payments made
+   * however the parties already pay.
+   */
+  readonly onChainPayment?: boolean;
 };
 
 /**
@@ -791,7 +828,7 @@ export class AlreadyDoneError extends Error {
 }
 
 /** The trees a proof can use, by the ledger cell naming each one's newest leaf. */
-type Tree = 'sale' | 'note' | 'receipt';
+type Tree = 'sale' | 'note' | 'receipt' | 'issuer';
 
 /** A note this client can spend, with the licence whose secret spends it. */
 type Spendable = { readonly note: NoteOpening; readonly lic: HeldLicence; readonly key: string };
@@ -805,6 +842,32 @@ type Prover = {
 };
 const proverLeaf = (p: Prover, offer: Uint8Array): Uint8Array =>
   R.licenseKey(R.licenseCommit(R.viewOf(p.present), p.spend, offer), offer, p.expires);
+
+/** Why an offer that takes no payment through the contract refuses a purchase or top-up. */
+const NO_ON_CHAIN_PAYMENT =
+  'That offer takes no payment through the contract: its breeder issues licences and credit for payments made ' +
+  'off chain. Ask for a licence (84) or give the breeder a top-up request (60) instead. Nothing was sent.';
+
+/** One ancestor's due from one licence or credit issued off chain, as `owed` records it. */
+export type OwedRow = {
+  /** The licence key or credit note that owes it. */
+  readonly key: string;
+  readonly kind: 'licence' | 'credit';
+  readonly offer: string;
+  /** The descendant variety's record. */
+  readonly record: string;
+  readonly place: number;
+  readonly generation: number;
+  readonly link: string;
+  /** The ancestor's record, and the wallet the link pays. */
+  readonly parent: string;
+  readonly payTo: string;
+  readonly share: bigint;
+  readonly color: string;
+  /** A parent's fee for a licence, in its link's token. */
+  readonly fee: bigint;
+  readonly feeColor: string;
+};
 
 const sameNote = (x: { nonce: string; amount: string }, n: NoteOpening): boolean =>
   x.nonce === hex(n.nonce) && x.amount === String(n.amount);
@@ -843,6 +906,8 @@ export const mergeHeld = (a: RoyaltiesHeld, b: RoyaltiesHeld): RoyaltiesHeld => 
     ...a,
     ...b,
     admins: { ...a.admins, ...b.admins },
+    issuerKeys: unionBy(a.issuerKeys, b.issuerKeys, (x) => `${x.offer}:${x.secret}`),
+    issued: unionBy(a.issued, b.issued, (x) => x.note),
     licences: unionBy(a.licences, b.licences, (x) => `${x.offer}:${x.secret}`),
     receipts: unionBy(a.receipts, b.receipts, (x) => x.leaf),
     offerCards: { ...a.offerCards, ...b.offerCards },
@@ -864,6 +929,8 @@ export const mergeHeld = (a: RoyaltiesHeld, b: RoyaltiesHeld): RoyaltiesHeld => 
 /** How much a `held` holds (to tell whether a merge added anything). */
 const heldSize = (h: RoyaltiesHeld): number =>
   Object.keys(h.admins).length +
+  (h.issuerKeys ?? []).length +
+  (h.issued ?? []).length +
   h.licences.length +
   h.receipts.length +
   Object.keys(h.offerCards ?? {}).length +
@@ -898,8 +965,8 @@ export const mergingPrivateStateProvider = (store: StateStore): StateStore =>
     },
   });
 
-/** The circuits proved against roots a seal can retire, sent once more if the root went stale. */
-const REPROVE_ON_STALE = new Set(['settle', 'proveLicense', 'mergeNotes']);
+/** The circuits proved against roots a seal can retire (issueCredit: the issuer tree's), sent once more if the root went stale. */
+const REPROVE_ON_STALE = new Set(['settle', 'proveLicense', 'mergeNotes', 'issueCredit']);
 
 /** An error and every error it wraps (cause, and the errors of an AggregateError), outermost first. */
 const errorChain = (e: unknown): unknown[] => {
@@ -983,6 +1050,7 @@ export class RoyaltiesAPI {
     const l = await this.currentLedger();
     if (!l.offers.member(offer)) throw new Error('No such offer on this contract.');
     const o = l.offers.lookup(offer);
+    if (!o.onChainPayment) throw new Error(NO_ON_CHAIN_PAYMENT);
     const totals = new Map<string, bigint>([[hex(o.color), amount ?? o.price]]);
     if (amount === undefined)
       for (const p of chartOf(l, o.record))
@@ -1086,6 +1154,45 @@ export class RoyaltiesAPI {
   }
 
   /**
+   * What licences and credit issued off chain owe ancestors, as the contract recorded it
+   * when each was issued: one row per ancestor place per licence or credit. `parent` keeps
+   * the rows owed to that ancestor record; `record` the rows owed by that descendant
+   * variety. Whether they were paid happens off chain, between the two.
+   */
+  async owed(filter: { readonly parent?: Uint8Array; readonly record?: Uint8Array } = {}): Promise<OwedRow[]> {
+    const l = await this.currentLedger();
+    const rows: OwedRow[] = [];
+    for (const [key, e] of l.owed) {
+      if (filter.record !== undefined && hex(e.record) !== hex(filter.record)) continue;
+      if (!l.stacks.member(e.record)) continue;
+      const chart = l.stacks.lookup(e.record);
+      chart.forEach((lid, place) => {
+        const share = e.shares[place] ?? 0n;
+        const fee = place < 2 ? (e.fees[place] ?? 0n) : 0n;
+        if (isZero(lid) || (share === 0n && fee === 0n) || !l.links.member(lid)) return;
+        const k = l.links.lookup(lid);
+        if (filter.parent !== undefined && hex(k.parent) !== hex(filter.parent)) return;
+        rows.push({
+          key: hex(key),
+          kind: l.everSold.member(key) ? 'licence' : 'credit',
+          offer: hex(e.offer),
+          record: hex(e.record),
+          place,
+          generation: place < 2 ? 1 : place < 6 ? 2 : 3,
+          link: hex(lid),
+          parent: hex(k.parent),
+          payTo: hex(k.payTo.bytes),
+          share,
+          color: hex(e.color),
+          fee,
+          feeColor: hex(k.color),
+        });
+      });
+    }
+    return rows;
+  }
+
+  /**
    * What this client holds: the store, merged with everything this run has kept (another
    * run's write can have dropped some of it from disk; it is written back at once).
    */
@@ -1118,9 +1225,12 @@ export class RoyaltiesAPI {
   // ─────────────────────────────────────────── breeder: offers
 
   /**
-   * Post an offer from the record `recordSecret` stands for. Makes the admin secret and the
-   * rate salt; returns the offer card to hand licensees with the terms. The admin secret
-   * must also be written on paper: without it the offer can never be closed or revoked.
+   * Post an offer from the record `recordSecret` stands for. Makes the admin secret, the
+   * credit issuer secret and the rate salt; returns the offer card to hand licensees with
+   * the terms. The admin secret must also be written on paper: without it the offer can
+   * never be closed, its licences revoked or issued, or its credit issuer replaced. The
+   * issuer secret stays on this computer (a lost one is replaced by the admin, 86). Without
+   * `onChainPayment`, licences and credit are issued here for payments made off chain.
    * Refused (AlreadyDoneError) unless `again` when this client already posted an offer on
    * chain from the same record with the same terms fingerprint, price and number for sale,
    * ending within a day of the same time: a post that timed out may have landed.
@@ -1130,7 +1240,14 @@ export class RoyaltiesAPI {
     t: OfferTerms,
     mainAddress?: ContractAddress,
     opts: { readonly again?: boolean } = {},
-  ): Promise<TxRef & { readonly offer: Uint8Array; readonly adminSecret: Uint8Array; readonly card: OfferCard }> {
+  ): Promise<
+    TxRef & {
+      readonly offer: Uint8Array;
+      readonly adminSecret: Uint8Array;
+      readonly issuerSecret: Uint8Array;
+      readonly card: OfferCard;
+    }
+  > {
     if (t.terms.length !== 32 || isZero(t.terms)) throw new Error('The terms fingerprint is 32 bytes, not all zero.');
     if (t.payTo.length !== 32) throw new Error('The payout wallet is a 32-byte unshielded address.');
     if (t.price <= 0n || t.count <= 0n) throw new Error('The price and the number for sale must be more than zero.');
@@ -1147,6 +1264,8 @@ export class RoyaltiesAPI {
         );
     }
     const adminSecret = utils.randomBytes(32);
+    const issuerSecret = utils.randomBytes(32);
+    const onChainPayment = t.onChainPayment === true;
     const rateSalt = utils.randomBytes(32);
     const nonce = utils.randomBytes(32);
     const offer = R.offerId(R.recordCommit(recordSecret), nonce);
@@ -1212,7 +1331,7 @@ export class RoyaltiesAPI {
     const split = chartSplits(before, record);
     if (split && t.rate === 0n)
       throw new Error(
-        "This record's ancestors take a share of royalties, so its offers must take royalties through the contract. Nothing was sent.",
+        "This record's ancestors take a share of royalties, so its offers must take royalties. Nothing was sent.",
       );
     const card: OfferCard = {
       kind: 'veilcore-offer-card',
@@ -1225,12 +1344,16 @@ export class RoyaltiesAPI {
       rate: String(t.rate),
       rateSalt: hex(rateSalt),
       split,
+      onChainPayment,
     };
-    // Kept before the call, so an interrupted post still leaves the admin secret and card here.
+    const issuerSlot = await this.freeIssuerSlot();
+    // Kept before the call, so an interrupted post still leaves the secrets and card here.
     await this.updateHeld((h) => ({
       ...h,
       admins: { ...h.admins, [hex(offer)]: hex(adminSecret) },
+      issuerKeys: [...(h.issuerKeys ?? []), { offer: hex(offer), secret: hex(issuerSecret) }],
       offerCards: { ...h.offerCards, [hex(offer)]: card },
+      mine: keepMine(h.mine, [hex(issuerLeafOf(openingOf(card), issuerSecret))]),
     }));
     const tx = await this.call(
       'postOffer',
@@ -1247,9 +1370,12 @@ export class RoyaltiesAPI {
           t.count,
           t.expires,
           t.revocable,
+          R.adminCommit(issuerSecret),
+          issuerSlot,
+          onChainPayment,
         ),
     );
-    return { ...tx, offer, adminSecret, card };
+    return { ...tx, offer, adminSecret, issuerSecret, card };
   }
 
   async closeOffer(offer: Uint8Array, adminSecret?: Uint8Array): Promise<TxRef> {
@@ -1262,6 +1388,164 @@ export class RoyaltiesAPI {
     if (!l.licenseOffer.member(license)) throw new Error('No such live licence. Nothing was sent.');
     const admin = adminSecret ?? (await this.adminFor(l.licenseOffer.lookup(license)));
     const tx = await this.call('revokeLicense', { adminSecret: admin }, (c) => c.callTx.revokeLicense(license));
+    return { ...tx, ...(await this.seal()) };
+  }
+
+  // ─────────────────────────────────────────── breeder: issuing (payment off chain)
+
+  /**
+   * As the BREEDER: issue the licence a licensee's card describes, once they have paid
+   * (off chain). The card's keys must make its licence key for this offer (so the breeder
+   * can read its settlements); no money moves. On a variety with ancestors, what the
+   * licence owes them (each share of the list price, each parent's fee) is recorded on chain
+   * in the same call. A licence already on chain is not issued again (an issuance that timed
+   * out may have landed: then there is nothing to do).
+   */
+  async issueLicence(raw: LicenceCard, adminSecret?: Uint8Array): Promise<TxRef & { readonly license: Uint8Array }> {
+    const card = normaliseLicenceCard(raw);
+    if (card.contract !== this.deployedContractAddress.toLowerCase())
+      throw new Error('That licence card is for another royalties contract. Nothing was sent.');
+    const offer = unhex(card.offer);
+    const o = await this.offer(offer);
+    const admin = adminSecret ?? (await this.adminFor(offer));
+    if (card.expires !== undefined && BigInt(card.expires) !== o.expires)
+      throw new Error(
+        "That licence card's end date is not the offer's: the licensee must make it again. Nothing was sent.",
+      );
+    const license = R.licenseKey(R.licenseCommit(unhex(card.viewKey), unhex(card.spendKey), offer), offer, o.expires);
+    if (hex(license) !== card.licence)
+      throw new Error(
+        "That licence card's keys do not make its licence key: it is not the licensee's real card. Nothing was sent.",
+      );
+    const l = await this.currentLedger();
+    if (l.everSold.member(license))
+      throw new AlreadyDoneError('That licence is already on chain (issued or bought). Nothing was sent.');
+    if (!o.open) throw new Error('That offer is closed. Nothing was sent.');
+    if (o.expires <= nowSeconds()) throw new Error('That offer has ended. Nothing was sent.');
+    if (o.remaining === 0n) throw new Error('That offer has no licences left. Nothing was sent.');
+    assertNoLinkEndingSoon(l, o.record);
+    const slot = await this.freeSlot();
+    const tx = await this.call(
+      'issueLicense',
+      { adminSecret: admin, split: { record: o.record, color: o.color, total: o.price, now: nowSeconds() } },
+      (c) => c.callTx.issueLicense(offer, license, slot),
+    );
+    return { ...tx, license };
+  }
+
+  /**
+   * The ancestors whose share issuing credit on `offer` would record as owed, place by place
+   * (empty for a variety none of whose ancestors takes a royalty share now).
+   */
+  async issuePreview(offer: Uint8Array): Promise<ChartPlace[]> {
+    const l = await this.currentLedger();
+    if (!l.offers.member(offer)) throw new Error('No such offer on this contract.');
+    const o = l.offers.lookup(offer);
+    if (!o.split) return [];
+    return chartOf(l, o.record).filter(
+      (p) => p.until > nowSeconds() && p.color === hex(o.color) && p.effectiveShare > 0,
+    );
+  }
+
+  /**
+   * As the BREEDER (the offer's credit issuer): issue `amount` of credit to a licensee's
+   * top-up request, for a payment they made off chain. No money moves; the note on chain
+   * is the licensee's receipt that the breeder acknowledged the payment. For an ordinary
+   * offer the issuance names neither the offer nor the amount (rule 2 applies: never while
+   * this computer's own offer is the newest in the issuer tree). For a variety whose
+   * ancestors take a royalty share it names the offer and the amount, and records each
+   * share as owed. The request names nobody: compare its code's fingerprint with the
+   * licensee by another channel, since a swapped code credits whoever made it. The same
+   * code and amount can be issued once; a second request is needed to issue more. Kept in
+   * this computer's books (issuedTotal) before it is sent.
+   */
+  async issueCredit(
+    raw: TopUpRequest,
+    amount: bigint,
+    opts: { readonly evenIfLinkable?: boolean } = {},
+  ): Promise<TxRef & { readonly note: Uint8Array; readonly fingerprint: string }> {
+    const req = normaliseTopUpRequest(raw);
+    if (amount <= 0n) throw new Error('Credit must be more than zero. Nothing was sent.');
+    if (amount >= 1n << 64n) throw new Error('That amount is too large. Nothing was sent.');
+    if (req.card.contract !== this.deployedContractAddress.toLowerCase())
+      throw new Error('That request is for another royalties contract. Nothing was sent.');
+    const offer = unhex(req.card.offer);
+    const o = await this.offer(offer);
+    checkPayerCard(req.card, o);
+    const issuer = await this.issuerFor(offer);
+    const op = openingOf(req.card);
+    const code = unhex(req.code);
+    const note = R.noteCommit(code, offerLeafOf(op), amount);
+    const fingerprint = codeFingerprint(req.code);
+    const l = await this.currentLedger();
+    if (l.noteSeen.member(note))
+      throw new AlreadyDoneError(
+        `Credit of exactly ${amount} to that request is already on chain (perhaps an issuance that timed out did ` +
+          'land). A code and amount are issued once: to issue more, ask the licensee for a new request. Nothing was sent.',
+      );
+    if (o.split) assertNoLinkEndingSoon(l, o.record);
+    else await this.assertNotLatest(['issuer'], opts);
+    // Kept before the call: a timeout can come after it landed. Only notes the chain shows count.
+    await this.updateHeld((h) => ({
+      ...h,
+      issued: [
+        ...(h.issued ?? []),
+        { offer: hex(offer), note: hex(note), amount: String(amount), fingerprint, at: String(nowSeconds()) },
+      ],
+    }));
+    const tx = o.split
+      ? await this.call(
+          'issueCreditSplit',
+          {
+            issuerSecret: issuer,
+            code,
+            split: { record: o.record, color: o.color, total: amount, now: nowSeconds() },
+          },
+          (c) => c.callTx.issueCreditSplit(offer, amount),
+        )
+      : await this.call('issueCredit', { issuerSecret: issuer, opening: op, code, amount }, (c) =>
+          c.callTx.issueCredit(),
+        );
+    return { ...tx, note, fingerprint };
+  }
+
+  /** Credit this computer issued on `offer` that is on chain (its own books: what it acknowledged). */
+  async issuedTotal(offer: Uint8Array): Promise<{ readonly total: bigint; readonly count: number }> {
+    const l = await this.currentLedger();
+    const landed = ((await this.held()).issued ?? []).filter(
+      (x) => x.offer === hex(offer) && l.noteSeen.member(unhex(x.note)),
+    );
+    return { total: landed.reduce((a, x) => a + BigInt(x.amount), 0n), count: landed.length };
+  }
+
+  /**
+   * As the offer's ADMIN: name a new credit issuer key (made and kept here), when the old
+   * one is lost or may be stolen. The old key stops issuing at the next seal that is due
+   * (at most an hour; sealed here when it can be). Credit already issued stays valid: the
+   * breeder's own books (what it issued, against what was settled) show any it did not issue.
+   */
+  async changeCreditIssuer(offer: Uint8Array, adminSecret?: Uint8Array): Promise<TxRef & SealResult> {
+    const o = await this.offer(offer);
+    const admin = adminSecret ?? (await this.adminFor(offer));
+    const secret = utils.randomBytes(32);
+    const card: OfferFields = {
+      offer: hex(offer),
+      payTo: hex(o.payTo.bytes),
+      color: hex(o.color),
+      rateCommit: hex(o.rateCommit),
+      expires: String(o.expires),
+      split: o.split,
+      onChainPayment: o.onChainPayment,
+    };
+    // Kept before the call: whichever key the chain names is the one used.
+    await this.updateHeld((h) => ({
+      ...h,
+      issuerKeys: [...(h.issuerKeys ?? []), { offer: hex(offer), secret: hex(secret) }],
+      mine: keepMine(h.mine, [hex(issuerLeafOf(openingOf(card), secret))]),
+    }));
+    const tx = await this.call('changeCreditIssuer', { adminSecret: admin }, (c) =>
+      c.callTx.changeCreditIssuer(offer, R.adminCommit(secret)),
+    );
     return { ...tx, ...(await this.seal()) };
   }
 
@@ -1286,7 +1570,8 @@ export class RoyaltiesAPI {
     const key = R.licenseKey(R.licenseCommit(unhex(card.viewKey), unhex(card.spendKey), offer), offer, expires);
     if (hex(key) !== card.licence.toLowerCase())
       throw new Error("That licence card's keys do not make its licence key: it is not the licensee's real card.");
-    if (!l.everSold.member(key)) throw new Error('No licence with that key was ever sold on this contract.');
+    if (!l.everSold.member(key))
+      throw new Error('No licence with that key was ever bought or issued on this contract.');
   }
 
   /**
@@ -1391,6 +1676,7 @@ export class RoyaltiesAPI {
       throw new Error('That offer card is for another royalties contract. Nothing was sent.');
     const o = await this.offer(offer);
     if (!isZero(o.rateCommit)) checkOfferCard(card, o);
+    if (!o.onChainPayment) throw new Error(NO_ON_CHAIN_PAYMENT);
     if (!o.open) throw new Error('That offer is closed. Nothing was sent.');
     if (o.expires <= nowSeconds()) throw new Error('That offer has ended. Nothing was sent.');
     if (o.remaining === 0n) throw new Error('That offer is sold out. Nothing was sent.');
@@ -1420,9 +1706,69 @@ export class RoyaltiesAPI {
     return { ...tx, license, licenceCard: this.cardFor(secret, offer, license, o.expires) };
   }
 
-  /** The licence card for this client's live licence from `offer`, to hand the breeder again. */
+  /**
+   * Rule 1 for asking for a licence from `offer`: what buying would refuse is refused here
+   * too (the record must be the live head of an anchored identity; the pedigree must match).
+   * Returns the warnings to show before the grower goes on.
+   */
+  async licenceChecks(offer: Uint8Array, mainAddress: ContractAddress): Promise<string[]> {
+    const o = await this.offer(offer);
+    return this.offerChecks(o.record, mainAddress, 'buy');
+  }
+
+  /**
+   * As a GROWER, for an offer whose breeder issues licences: make a licence (a fresh
+   * secret, kept here) and the licence card to hand the breeder with payment. No
+   * transaction: the breeder issues the licence from the card (issueLicence), and can then
+   * read its settlements. Refused unless the card matches the chain and opens its rate, the
+   * offer is open with licences left, and its record stands in the main contract (as for a
+   * purchase). Refused (AlreadyDoneError) if this client already holds a licence from the
+   * offer, live or not yet issued, unless `again`: write that one's card again (78).
+   */
+  async requestLicence(
+    raw: OfferCard,
+    mainAddress: ContractAddress,
+    opts: { readonly again?: boolean } = {},
+  ): Promise<{ readonly license: Uint8Array; readonly licenceCard: LicenceCard; readonly warnings: string[] }> {
+    const card = normaliseOfferCard(raw);
+    const offer = unhex(card.offer);
+    if (card.contract !== this.deployedContractAddress.toLowerCase())
+      throw new Error('That offer card is for another royalties contract.');
+    const o = await this.offer(offer);
+    if (!isZero(o.rateCommit)) checkOfferCard(card, o);
+    if (!o.open) throw new Error('That offer is closed.');
+    if (o.expires <= nowSeconds()) throw new Error('That offer has ended.');
+    if (o.remaining === 0n) throw new Error('That offer has no licences left.');
+    if (
+      opts.again !== true &&
+      ((await this.liveLicences(offer)).length > 0 || (await this.pendingLicences(offer)).length > 0)
+    )
+      throw new AlreadyDoneError(
+        'This computer already holds a licence from that offer, issued or still waiting to be (78 writes its card ' +
+          'again).',
+      );
+    const warnings = await this.offerChecks(o.record, mainAddress, 'buy');
+    const secret = utils.randomBytes(32);
+    const license = licenceKeyOf(secret, offer, o.expires);
+    await this.updateHeld((h) => ({
+      ...h,
+      offerCards: { ...h.offerCards, [card.offer]: card },
+      licences: [...h.licences, { offer: hex(offer), secret: hex(secret), expires: String(o.expires) }],
+      mine: keepMine(h.mine, [hex(license)]),
+    }));
+    return { license, licenceCard: this.cardFor(secret, offer, license, o.expires), warnings };
+  }
+
+  /**
+   * The licence card for this client's licence from `offer` (live, ended but not cleared,
+   * or asked for and not issued yet), to hand the breeder again.
+   */
   async licenceCard(offer: Uint8Array): Promise<LicenceCard> {
-    const lic = await this.licenceFor(offer, true);
+    const lic = (await this.liveLicences(offer, true)).at(-1) ?? (await this.pendingLicences(offer)).at(-1);
+    if (lic === undefined)
+      throw new Error(
+        'This client holds no licence from that offer (none asked for or bought here, revoked, ended or never landed).',
+      );
     return this.cardFor(
       unhex(lic.secret),
       offer,
@@ -1472,6 +1818,7 @@ export class RoyaltiesAPI {
       throw new Error('That request is for another royalties contract. Nothing was sent.');
     const o = await this.offer(unhex(req.card.offer));
     checkPayerCard(req.card, o);
+    if (!o.onChainPayment) throw new Error(NO_ON_CHAIN_PAYMENT);
     const op = openingOf(req.card);
     if (mainAddress !== undefined)
       for (const w of await this.offerChecks(o.record, mainAddress, 'topup')) this.logger?.warn(w);
@@ -1511,6 +1858,7 @@ export class RoyaltiesAPI {
    * looks again a few times.
    */
   async topUpOwn(offer: Uint8Array, amount: bigint, mainAddress?: ContractAddress): Promise<TxRef> {
+    if (!(await this.offer(offer)).onChainPayment) throw new Error(NO_ON_CHAIN_PAYMENT);
     const req = await this.topUpRequest(offer);
     let tx: TxRef;
     const started = this.callsStarted;
@@ -1546,9 +1894,9 @@ export class RoyaltiesAPI {
   }
 
   /**
-   * Record credit someone paid against a top-up request this client made: the amount they
-   * paid. Checked on chain before it is kept. Tries every open code for the offer when
-   * `nonceHex` is not given.
+   * Record credit issued or paid against a top-up request this client made: the amount the
+   * breeder issued, or someone paid. Checked on chain before it is kept. Tries every open
+   * code for the offer when `nonceHex` is not given.
    */
   async claimTopUp(offer: Uint8Array, nonceHex: string | undefined, amount: bigint): Promise<NoteOpening> {
     const card = await this.cardOf(offer);
@@ -1584,7 +1932,7 @@ export class RoyaltiesAPI {
     throw new Error(
       alreadyRecorded
         ? `Every top-up of exactly ${amount} that landed for your codes on that offer is already recorded.`
-        : `No credit of exactly ${amount} has landed for your top-up codes on that offer yet.`,
+        : `No credit of exactly ${amount} has landed (issued or paid) for your top-up codes on that offer yet.`,
     );
   }
 
@@ -2069,11 +2417,13 @@ export class RoyaltiesAPI {
   /**
    * What lowering `link`'s share to `share` (running until `until`) would break, for every
    * offer of a descendant whose chart holds the link: where that place's share of the
-   * offer's price would come to less than one unit, the contract refuses the payment. An
-   * open offer could then no longer be sold (its breeder would have to post a new one at a
-   * higher price), and top-ups below the same floor are refused. A closed offer, or one that
-   * has ended but is still within its 30 days of top-ups, is listed too when its ancestors
-   * take a royalty share: topUpSplit still pays the shares, so its small top-ups are refused.
+   * offer's list price would come to less than one unit, the contract refuses the licence
+   * (bought or issued: an issued one records the share). An open offer could then no longer
+   * be sold or issued from (its breeder would have to post a new one at a higher price), and
+   * credit below the same floor is refused. A closed offer, or one that has ended but is
+   * still within its 30 days after the end, is listed too when its ancestors take a royalty
+   * share: issued credit records the shares and topUpSplit pays them, so small amounts of
+   * either are refused.
    */
   async relaxWarnings(link: Uint8Array, share: bigint, until?: bigint): Promise<string[]> {
     const l = await this.currentLedger();
@@ -2097,12 +2447,12 @@ export class RoyaltiesAPI {
         const place = `your ${gen[i] ?? 'great-grandparent'} share`;
         out.push(
           selling
-            ? `${what} could no longer be sold: ${place} of its price would come to less than one unit, which the ` +
-                `contract refuses (its breeder would have to post it again at a price of at least ${floor}; ` +
-                `top-ups under ${floor} are refused too)`
-            : `${what} is ${o.open ? 'ended' : 'closed'} but still takes royalty top-ups until ` +
+            ? `${what} could no longer be sold or issued from: ${place} of its price would come to less than one ` +
+                `unit, which the contract refuses (its breeder would have to post it again at a price of at least ` +
+                `${floor}; credit under ${floor}, issued or topped up, is refused too)`
+            : `${what} is ${o.open ? 'ended' : 'closed'} but still takes royalty credit until ` +
                 `${new Date(Number(o.expires + SETTLE_GRACE) * 1000).toISOString().slice(0, 10)}: with ${place} at ` +
-                `that size, any top-up under ${floor} would be refused`,
+                `that size, any credit under ${floor}, issued or topped up, would be refused`,
         );
       });
     }
@@ -2421,28 +2771,28 @@ export class RoyaltiesAPI {
    */
   async seal(): Promise<SealResult> {
     const l = await this.currentLedger();
-    if (!l.unsealedChanges && !l.rootsSinceSeal) return { sealed: false, waiting: false };
+    if (!l.unsealedChanges && !l.issuerChanges && !l.rootsSinceSeal) return { sealed: false, waiting: false };
     const now = nowSeconds();
     const skew = BigInt(SEAL_SKEW_SECONDS);
     let earliest: bigint;
-    if (l.unsealedChanges) {
-      // Only a seal that seals the revocation is worth sending.
-      earliest = (revocationSealableAt(l) ?? 0n) + skew;
+    if (l.unsealedChanges || l.issuerChanges) {
+      // Only a seal that seals the revocation (or the replaced issuer) is worth sending.
+      earliest = (keyChangeSealableAt(l) ?? 0n) + skew;
     } else earliest = l.lastSealTime + BigInt(SEAL_INTERVAL_SECONDS) + skew;
     if (now < earliest) return { sealed: false, waiting: true, sealableAt: Number(earliest) };
     try {
       await this.call('sealRevocations', {}, (c) => c.callTx.sealRevocations(now + BigInt(SEAL_AHEAD_SECONDS)));
       const after = await this.currentLedger();
-      if (!after.unsealedChanges) return { sealed: true, waiting: false };
-      const at = revocationSealableAt(after);
+      if (!after.unsealedChanges && !after.issuerChanges) return { sealed: true, waiting: false };
+      const at = keyChangeSealableAt(after);
       return { sealed: false, waiting: true, ...(at !== undefined ? { sealableAt: Number(at + skew) } : {}) };
     } catch (e) {
       this.logger?.info(`seal not made now: ${e instanceof Error ? e.message : String(e)}`);
       const after = await this.currentLedger();
-      const at = revocationSealableAt(after);
+      const at = keyChangeSealableAt(after);
       return {
         sealed: false,
-        waiting: after.unsealedChanges || after.rootsSinceSeal,
+        waiting: after.unsealedChanges || after.issuerChanges || after.rootsSinceSeal,
         ...(at !== undefined ? { sealableAt: Number(at + skew) } : {}),
       };
     }
@@ -2525,7 +2875,7 @@ export class RoyaltiesAPI {
    * Every proof publishes the root it used; a root whose newest leaf is yours points at the
    * transaction that put it there. Only the trees the circuit proves against count:
    * settle uses licences and notes, merge uses notes, a presentation uses licences (and
-   * receipts when it asks about a period).
+   * receipts when it asks about a period), a private issuance the issuer tree.
    */
   private async assertNotLatest(
     trees: readonly Tree[],
@@ -2538,6 +2888,7 @@ export class RoyaltiesAPI {
       sale: [l.lastSale, 'licence purchase', 'licence purchase on this contract'],
       note: [l.lastNote, 'credit note', 'top-up, settlement or merge'],
       receipt: [l.lastReceipt, 'settlement', 'settlement'],
+      issuer: [l.lastIssuer, 'offer (or credit issuer change)', 'offer posted on this contract'],
     };
     for (const t of trees) {
       const [leaf, what, next] = latest[t];
@@ -2629,6 +2980,41 @@ export class RoyaltiesAPI {
     if (s === undefined || hex(R.adminCommit(unhex(s))) !== hex((await this.offer(offer)).admin))
       throw new Error('This client holds no admin secret that runs that offer now: type it in. Nothing was sent.');
     return unhex(s);
+  }
+
+  /** The credit issuer secret kept here that the chain names for `offer` now. */
+  private async issuerFor(offer: Uint8Array): Promise<Uint8Array> {
+    const want = hex((await this.offer(offer)).issuer);
+    const k = ((await this.held()).issuerKeys ?? []).find(
+      (x) => x.offer === hex(offer) && hex(R.adminCommit(unhex(x.secret))) === want,
+    );
+    if (k === undefined)
+      throw new Error(
+        'This computer holds no credit issuer key for that offer (posted elsewhere, or replaced since): issue from ' +
+          "the computer that holds it, or name a new one here with the offer's admin secret (86). Nothing was sent.",
+      );
+    return unhex(k.secret);
+  }
+
+  /** Licences held for `offer` that the chain has never seen (asked for, not issued yet), oldest first. */
+  private async pendingLicences(offer: Uint8Array): Promise<HeldLicence[]> {
+    const l = await this.currentLedger();
+    return (await this.held()).licences.filter(
+      (x) =>
+        x.offer === hex(offer) &&
+        !l.everSold.member(licenceKeyOf(unhex(x.secret), offer, BigInt(x.expires))) &&
+        BigInt(x.expires) > nowSeconds(),
+    );
+  }
+
+  /** A free place in the issuer tree (below 2^32), for a new offer. */
+  private async freeIssuerSlot(): Promise<bigint> {
+    const l = await this.currentLedger();
+    for (let i = 0; i < 64; i++) {
+      const s = BigInt(Buffer.from(utils.randomBytes(4)).readUInt32BE(0));
+      if (!l.issuerSlotTaken.member(s)) return s;
+    }
+    throw new Error('Could not find a free issuer place. Try again.');
   }
 
   /** Licences held for `offer` that the chain shows live (or, `allowEnded`, ended but not cleared), oldest first. */
@@ -2796,6 +3182,9 @@ export class RoyaltiesAPI {
       );
       throw e;
     }
+    // Deploy behaviour is unchanged: the authority is retired, so this contract can never be
+    // changed. The founders want upgradability; versioned upgrades are designed on another
+    // branch, not here.
     try {
       await retireMaintenanceAuthorityProvably(providers, address, logger, RoyaltiesAPI.confirmIntervalMs);
     } catch (e) {

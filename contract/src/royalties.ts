@@ -137,8 +137,14 @@ export type HeldLinkTerms = {
 export type RoyaltiesHeld = {
   /** Offer id -> the admin secret this party runs it with. */
   readonly admins: Readonly<Record<string, string>>;
-  /** Offer id -> the credit issuer secret this party issues its credit with. */
-  readonly issuers?: Readonly<Record<string, string>>;
+  /**
+   * Credit issuer secrets this party made, by offer: every one is kept (a replacement that
+   * timed out may or may not have landed); the one the chain names is used.
+   */
+  readonly issuerKeys?: readonly {
+    readonly offer: string;
+    readonly secret: string;
+  }[];
   /**
    * Credit this party issued, kept for its own books (what it acknowledged, to set against
    * what its licensees settle): the offer, the note on chain, the amount, the code's

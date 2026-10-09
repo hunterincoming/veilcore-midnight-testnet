@@ -77,6 +77,8 @@ const offerTerms = (payTo: Uint8Array, extra: object = {}) => ({
   count: 10n,
   expires: now() + 365n * 86400n,
   revocable: true,
+  // These tests cover the optional on-chain payment path; royalties-credit.test.ts covers issuing.
+  onChainPayment: true,
   ...extra,
 });
 
@@ -505,7 +507,7 @@ describe('files and paths', () => {
     const offers = [...chain.ledger.offers].length;
     const m = menu(
       breeder.api,
-      ['~/terms.txt', '', '0.001', '0.000004', '3', '30', 'y', '', '~/no-such-dir/card.json'],
+      ['~/terms.txt', '', '0.001', '0.000004', '3', '30', 'y', '', '', '~/no-such-dir/card.json'],
       {
         record: B,
       },
@@ -523,7 +525,7 @@ describe('files and paths', () => {
     const out = fresh('offer-card.json');
     const shown: string[] = [];
     vi.spyOn(process.stdout, 'write').mockImplementation((s: any) => (shown.push(String(s)), true));
-    const m = menu(breeder.api, [file('t.txt', 'x'), '', '0.001', '0.000004', '3', '30', 'y', '', out, 'yes'], {
+    const m = menu(breeder.api, [file('t.txt', 'x'), '', '0.001', '0.000004', '3', '30', 'y', '', '', out, 'yes'], {
       record: B,
     });
     await handleRoyaltiesChoice('53', m.ctx);
@@ -820,7 +822,7 @@ describe('round 7', () => {
     void _n;
     void _f;
     expect(Object.keys(req.card).sort()).toEqual(
-      ['color', 'contract', 'expires', 'kind', 'offer', 'payTo', 'rateCommit', 'split'].sort(),
+      ['color', 'contract', 'expires', 'kind', 'offer', 'onChainPayment', 'payTo', 'rateCommit', 'split'].sort(),
     );
     expect(JSON.stringify(req)).not.toContain(card.rateSalt);
     // Through the menu, from a file.
@@ -860,7 +862,7 @@ describe('round 7', () => {
     await expect(breeder.api.postOffer(B, { ...t, expires: t.expires + 60n }, MAIN)).rejects.toThrow(AlreadyDoneError);
     const m = menu(
       breeder.api,
-      [termsFile, '', '0.001', '0.000004', '3', '30', 'y', '', fresh('c.json'), 'yes', 'no'],
+      [termsFile, '', '0.001', '0.000004', '3', '30', 'y', 'y', '', fresh('c.json'), 'yes', 'no'],
       {
         record: B,
       },
@@ -936,8 +938,10 @@ describe('round 7', () => {
     await child.api.closeOffer(ko.offer);
     const w = await parent.api.relaxWarnings(link, 5n);
     expect(w).toHaveLength(1);
-    expect(w[0]).toMatch(/is closed but still takes royalty top-ups until .*any top-up under 2000 would be refused/);
-    await expect(parent.api.relaxLink(link, { share: 5n })).rejects.toThrow(/top-up under 2000/);
+    expect(w[0]).toMatch(
+      /is closed but still takes royalty credit until .*any credit under 2000, issued or topped up, would be refused/,
+    );
+    await expect(parent.api.relaxLink(link, { share: 5n })).rejects.toThrow(/credit under 2000/);
     // A share that keeps every top-up of the price's size working is not warned about.
     expect(await parent.api.relaxWarnings(link, 10n)).toEqual([]);
   });

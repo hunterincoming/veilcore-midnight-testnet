@@ -45,6 +45,7 @@ describe('the royalties client, end to end on the simulator', () => {
         count: 5n,
         expires: now() + 365n * 86400n,
         revocable: true,
+        onChainPayment: true,
       },
       MAIN,
     );
@@ -214,6 +215,7 @@ describe('royalties on offspring, through the client', () => {
       count: 5n,
       expires,
       revocable: true,
+      onChainPayment: true,
     });
 
     // The parent's own variety: posting finalises an empty chart, so it can confirm children.
@@ -285,6 +287,7 @@ describe('royalties on offspring, through the client', () => {
       count: 5n,
       expires,
       revocable: true,
+      onChainPayment: true,
     });
     await parent.api.postOffer(P, t(new Uint8Array(32).fill(51)), MAIN);
 

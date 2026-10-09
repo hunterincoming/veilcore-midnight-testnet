@@ -1,17 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 /**
- * Main menu options 50 to 81: the royalties contract, protocol 3 (contract/src/veilcore-royalties.compact).
+ * Main menu options 50 to 86: the royalties contract, protocol 4 (contract/src/veilcore-royalties.compact).
  * Test networks only until it is approved for mainnet (api/src/deploy-guard.ts).
  *
- * Five roles, five kinds of file handed between them:
+ * We never touch the money: growers pay their breeder however they already pay, and the
+ * breeder issues the licence and the royalty credit on chain. Five roles, and the files
+ * handed between them:
  *   breeder  posts an offer       -> OFFER CARD (rate and salt) to licensees
- *   grower   buys a licence       -> LICENCE CARD (viewing keys) back to the breeder
- *   grower   asks someone to pay  -> TOP-UP REQUEST (no rate) to a buyer, lab or processor
+ *   grower   asks for a licence   -> LICENCE CARD (viewing keys) to the breeder, who issues it (82)
+ *   grower   asks for credit      -> TOP-UP REQUEST (no rate) to the breeder, who issues it (83)
  *   grower   lets someone answer  -> PRESENTATION CARD (proves, never spends) to a delegate
  *   verifier asks for proof       -> LICENCE REQUEST to the grower, who answers on chain
- * The offer card holds the private rate, and a presentation card lets its holder answer
- * as the licence: hand them only to the parties. A top-up request carries the offer's
- * public fields and a code, never the rate.
+ * An offer posted to take payment on chain also lets a grower buy a licence (58) and anyone
+ * pay a top-up request through the contract (59, 65). The offer card holds the private
+ * rate, and a presentation card lets its holder answer as the licence: hand them only to
+ * the parties. A top-up request carries the offer's public fields and a code, never the rate.
  *
  * Every file is read without ever repeating its contents, every card is checked and
  * normalised before use, every output path is asked for and checked BEFORE anything is
@@ -33,6 +36,7 @@ import {
   type LinkTermsCard,
   NIGHT_COLOR,
   type OfferView,
+  type OwedRow,
   type PaymentPreview,
   type PresentationCard,
   type PresentationRequest,
@@ -40,6 +44,7 @@ import {
   WouldLinkError,
   codeFingerprint,
   newPresentationRequest,
+  normaliseLicenceCard,
   normaliseLinkTerms,
   normaliseOfferCard,
   normalisePresentationCard,
@@ -49,29 +54,33 @@ import {
 } from '../../api/src/royalties-api.js';
 import { assertRoyaltiesDeployAllowed } from '../../api/src/deploy-guard.js';
 import { type RoyaltiesProviders } from '../../api/src/royalties-types.js';
-import { royaltiesPureCircuits } from '../../contract/src/royalties.js';
+import { licenceKeyOf, royaltiesPureCircuits } from '../../contract/src/royalties.js';
 import { showSecret } from './secret-out.js';
 
 export const ROYALTIES_MENU = `
- Royalties (third contract: licences sold on chain, royalties prepaid in public and settled in private; test networks only)
- 50. Deploy the royalties contract        Grower
- 51. Join the royalties contract          58. Buy a licence (with the offer card)
- 52. Finish a royalties deploy            59. Top up your own royalty credit
- Breeder                                  60. Make a top-up request for someone to pay
- 53. Post an offer (writes an offer card) 61. Record credit someone paid for you
- 54. List offers                          62. Settle a period (private)
- 55. Read your licensees' settlements     63. Show your credit and settlements
- 56. Close an offer                       64. Answer a licence request
- 57. Revoke a licence                     Payer: 65. Pay a top-up request
- Verifier: 66. Make a licence request     67. Check an answer
- 68. Seal and tidy up (anyone)
+ Royalties (third contract; test networks only). Growers pay their breeder off chain; the breeder issues licences
+ and credit on chain; each period is settled in private.
+ 50. Deploy the royalties contract         Grower
+ 51. Join the royalties contract           84. Ask for a licence (writes your licence card)
+ 52. Finish a royalties deploy             60. Ask for credit (writes a top-up request)
+ Breeder                                   61. Record credit issued or paid for you
+ 53. Post an offer (writes an offer card)  62. Settle a period (private)
+ 54. List offers                           63. Show your licences, credit and settlements
+ 82. Issue a licence (from a licence card) 64. Answer a licence request
+ 83. Issue credit (from a top-up request)  Verifier
+ 55. Read your licensees' settlements      66. Make a licence request
+ 56. Close an offer                        67. Check an answer
+ 57. Revoke a licence
+ 86. Name a new credit issuer key          68. Seal and tidy up (anyone)
+ Only for offers that take payment on chain: 58. Buy a licence  59. Top up your own credit  65. Pay a top-up request
  Royalties on offspring (a new variety bred from a licensed one)
- Parent breeder                           Breeder of the new variety
+ Parent breeder                            Breeder of the new variety
  69. Offer terms for varieties bred from yours (writes a terms card)
- 71. Confirm a new variety's link         70. Propose a link on a parent's terms card
- 74. Move where a link pays you           72. Make your variety's ancestors final
- 81. Lower a link's terms                 76. Withdraw an unconfirmed link
- Anyone: 73. Show a variety's pedigree chart and who it pays
+ 71. Confirm a new variety's link          70. Propose a link on a parent's terms card
+ 74. Move where a link pays you            72. Make your variety's ancestors final
+ 81. Lower a link's terms                  76. Withdraw an unconfirmed link
+ 85. What varieties bred from yours owe you
+ Anyone: 73. Show a variety's pedigree chart, who it pays and what it owes
  75. Take over your earlier record's chart (after a key change)
  Files again: 77. Offer card  78. Your licence card  79. A presentation card for someone who answers for you
  80. Answer a licence request with a presentation card you were given`;
@@ -212,8 +221,9 @@ const adminTyped = (typed: string): Uint8Array | undefined => {
 const describeOffer = (o: OfferView): string =>
   [
     `offer ${hex(o.id)}`,
-    `  price ${showAmount(o.price, o.color)}; royalty ${o.rateCommit.every((x) => x === 0) ? 'none through the contract' : 'per unit, rate in the offer card (private)'}`,
-    `  ${o.remaining} left, ${o.live} sold and live, ends ${day(o.expires)}, ${o.revocable ? 'revocable' : 'NOT revocable'}, ${o.open ? 'open' : 'closed'}`,
+    `  list price ${showAmount(o.price, o.color)}; royalty ${o.rateCommit.every((x) => x === 0) ? 'none' : 'per unit, rate in the offer card (private)'}`,
+    `  payment: ${o.onChainPayment ? 'through the contract (buy, top up), or issued by the breeder' : 'off chain; the breeder issues licences and credit'}`,
+    `  ${o.remaining} left, ${o.live} issued or sold and live, ends ${day(o.expires)}, ${o.revocable ? 'revocable' : 'NOT revocable'}, ${o.open ? 'open' : 'closed'}`,
     `  breeder's record ${hex(o.record)}`,
     `  paid to wallet ${hex(o.payTo.bytes)}`,
     `  terms fingerprint ${hex(o.terms)}`,
@@ -372,6 +382,54 @@ const showChart = (
   }
 };
 
+/** Owed rows, totalled per group (`label`) and token. */
+const showOwed = (c: RoyaltiesMenuContext, rows: readonly OwedRow[], label: (r: OwedRow) => string): void => {
+  const groups = new Map<string, OwedRow[]>();
+  for (const r of rows) groups.set(label(r), [...(groups.get(label(r)) ?? []), r]);
+  for (const [name, rs] of groups) {
+    const totals = new Map<string, bigint>();
+    for (const r of rs) {
+      if (r.share > 0n) totals.set(r.color, (totals.get(r.color) ?? 0n) + r.share);
+      if (r.fee > 0n) totals.set(r.feeColor, (totals.get(r.feeColor) ?? 0n) + r.fee);
+    }
+    const licences = new Set(rs.filter((r) => r.kind === 'licence').map((r) => r.key)).size;
+    const credit = new Set(rs.filter((r) => r.kind === 'credit').map((r) => r.key)).size;
+    c.logger.info(
+      `  ${name}: ${[...totals].map(([col, a]) => showAmount(a, col)).join(' + ')} ` +
+        `(${licences} licence(s), ${credit} credit issuance(s))`,
+    );
+  }
+};
+
+/**
+ * The breeder's own check of its books, per offer read: credit this computer issued
+ * against royalties the licences read have settled. Settled beyond what was issued (on an
+ * offer that takes no payment on chain) means credit came from somewhere else.
+ */
+const showBooks = async (
+  c: RoyaltiesMenuContext,
+  api: RoyaltiesAPI,
+  found: readonly { readonly offer: string; readonly units: bigint }[],
+): Promise<void> => {
+  for (const offer of new Set(found.map((f) => f.offer))) {
+    const card = await api.offerCard(unhex(offer)).catch(() => undefined);
+    if (card === undefined) continue;
+    const units = found.filter((f) => f.offer === offer).reduce((a, f) => a + f.units, 0n);
+    const settled = units * BigInt(card.rate);
+    const issued = await api.issuedTotal(unhex(offer));
+    const color = unhex(card.color);
+    c.logger.info(
+      `offer ${short(offer)}: the licences read settled ${units} unit(s), worth ${showAmount(settled, color)}; this ` +
+        `computer issued ${showAmount(issued.total, color)} of credit on it (${issued.count} issuance(s)).`,
+    );
+    if (settled > issued.total && card.onChainPayment !== true)
+      c.logger.warn(
+        '  WARNING: more was settled than this computer issued. If no other computer of yours issues credit for ' +
+          'this offer, its issuer key may be in other hands: name a new one (86).',
+      );
+  }
+};
+
 /**
  * Run a private proof. If the client would rather wait (your own transaction is still the
  * newest, so a watcher could guess this one is yours), say so and let the user choose.
@@ -493,6 +551,7 @@ export const handleRoyaltiesChoice = async (choice: string, c: RoyaltiesMenuCont
         if (missing.length > 0) c.logger.info(`Not settled yet: ${missing.join('; ')}`);
         if (read > accepted.length)
           c.logger.info(`${read - accepted.length} licence(s) read have settled nothing at all.`);
+        await showBooks(c, api, found);
         return true;
       }
       case '56': {
@@ -529,6 +588,11 @@ export const handleRoyaltiesChoice = async (choice: string, c: RoyaltiesMenuCont
         const card = readWith(await askPath(c, 'The offer card the breeder gave you (path): '), normaliseOfferCard);
         const o = await api.offer(unhex(card.offer));
         c.logger.info(describeOffer(o));
+        if (!o.onChainPayment)
+          throw new RoyaltiesInputError(
+            'That offer takes no payment through the contract: ask for a licence (84) and pay the breeder as your ' +
+              'terms say; they issue it. Nothing was sent.',
+          );
         if (o.rateCommit.some((x) => x !== 0))
           c.logger.info(`Royalty rate in your offer card: ${showAmount(BigInt(card.rate), o.color)} per unit.`);
         if (
@@ -554,6 +618,11 @@ export const handleRoyaltiesChoice = async (choice: string, c: RoyaltiesMenuCont
         const api = needApi(c);
         const offer = await ask32(c, 'Offer id your licence is from (hex): ');
         const o = await api.offer(offer);
+        if (!o.onChainPayment)
+          throw new RoyaltiesInputError(
+            'That offer takes no payment through the contract: make a top-up request (60), pay the breeder as your ' +
+              'terms say, and they issue the credit. Nothing was sent.',
+          );
         const amount = await askAmount(c, 'Amount to top up (a round amount hides more)', o.color);
         if (
           !(await showPreview(c, await api.paymentPreview(offer, amount, c.mainAddress), 'Topping up your credit on'))
@@ -578,10 +647,12 @@ export const handleRoyaltiesChoice = async (choice: string, c: RoyaltiesMenuCont
         void _nonce;
         if (!writeCard(c, out, file, '60 again (a new request)')) return true;
         c.logger.info(
-          `Written. It names the offer and its wallet, not your royalty rate. Give it to whoever pays for you, and ` +
-            `tell them separately (by phone or in person) its code ` +
-            `fingerprint: ${fingerprint}. Their client shows it before they pay; a different one means the file was ` +
-            'changed on the way. When they tell you the amount they paid, record it (61).',
+          `Written. It names the offer and its wallet, not your royalty rate. Give it to your breeder with your ` +
+            `payment (they issue that much credit to it, 83), or, for an offer that takes payment on chain, to ` +
+            `whoever pays for you (65). Tell them separately (by phone or in person) its code fingerprint: ` +
+            `${fingerprint}. Their client shows it first; a different one means the file was changed on the way. ` +
+            'When they tell you the amount issued or paid, record it (61). One request per amount: use a new one ' +
+            'for each payment.',
         );
         return true;
       }
@@ -589,7 +660,7 @@ export const handleRoyaltiesChoice = async (choice: string, c: RoyaltiesMenuCont
         const api = needApi(c);
         const offer = await ask32(c, 'Offer id your licence is from (hex): ');
         const o = await api.offer(offer);
-        const amount = await askAmount(c, 'Amount they paid', o.color);
+        const amount = await askAmount(c, 'Amount they issued or paid', o.color);
         await api.claimTopUp(offer, undefined, amount);
         c.logger.info(`Recorded. Your credit: ${showAmount(await api.credit(offer), o.color)}.`);
         return true;
@@ -616,12 +687,27 @@ export const handleRoyaltiesChoice = async (choice: string, c: RoyaltiesMenuCont
         const h = await api.held();
         const offers = [...new Set(h.licences.map((l) => l.offer))];
         if (offers.length === 0) c.logger.info('This computer holds no licence on this contract.');
+        const l = await api.currentLedger();
         for (const o of offers) {
           const id = unhex(o);
           const color =
             (await api.offer(id).catch(() => undefined))?.color ??
             (h.offerCards?.[o] !== undefined ? unhex(h.offerCards[o].color) : NIGHT_COLOR);
           c.logger.info(`offer ${short(o)}: credit ${showAmount(await api.credit(id), color)}`);
+          for (const x of h.licences.filter((y) => y.offer === o)) {
+            const key = licenceKeyOf(unhex(x.secret), id, BigInt(x.expires));
+            c.logger.info(
+              `  licence ${short(hex(key))}: ${
+                l.licenseOffer.member(key)
+                  ? BigInt(x.expires) > nowSeconds()
+                    ? 'live'
+                    : 'ended'
+                  : l.everSold.member(key)
+                    ? 'revoked or cleared'
+                    : 'not issued yet (the breeder issues it from your licence card)'
+              }`,
+            );
+          }
           for (const r of await api.settlements(id)) c.logger.info(`  settled ${r.period}: ${r.units} unit(s)`);
         }
         return true;
@@ -645,6 +731,11 @@ export const handleRoyaltiesChoice = async (choice: string, c: RoyaltiesMenuCont
         const api = needApi(c);
         const req = readWith(await askPath(c, 'The top-up request you were given (path): '), normaliseTopUpRequest);
         const o = await api.offer(unhex(req.card.offer));
+        if (!o.onChainPayment)
+          throw new RoyaltiesInputError(
+            "That offer takes no payment through the contract: pay the breeder as the licensee's terms say; the " +
+              'breeder issues the credit. Nothing was sent.',
+          );
         const amount = await askAmount(c, 'Amount to pay', o.color);
         c.logger.info(
           `Code fingerprint ${codeFingerprint(req.code)}: ask the licensee for theirs (by phone or in person). If it ` +
@@ -862,6 +953,15 @@ export const handleRoyaltiesChoice = async (choice: string, c: RoyaltiesMenuCont
         const ped = await api.pedigreeIn(c.mainAddress, record);
         c.logger.info(ped.ok ? 'Pedigree: matches the VeilCore contract.' : `Pedigree: REFUSED, ${ped.why}.`);
         if (ped.ok) for (const w of ped.warnings) c.logger.info(`Warning: ${w}`);
+        const rows = await api.owed({ record });
+        if (rows.length > 0) {
+          c.logger.info('Recorded as owed to its ancestors by licences and credit issued off chain:');
+          showOwed(
+            c,
+            rows,
+            (r) => `${['', 'parent', 'grandparent', 'great-grandparent'][r.generation]} ${short(r.parent)}`,
+          );
+        }
         return true;
       }
       case '74': {
@@ -968,6 +1068,153 @@ export const handleRoyaltiesChoice = async (choice: string, c: RoyaltiesMenuCont
         c.logger.info('Lowered.');
         return true;
       }
+      case '82': {
+        const api = needApi(c);
+        const card = readWith(await askPath(c, "The licensee's licence card (path): "), normaliseLicenceCard);
+        const o = await api.offer(unhex(card.offer));
+        c.logger.info(describeOffer(o));
+        c.logger.info(`Licence ${card.licence}`);
+        const admin = adminTyped(
+          await c.hidden('Admin secret (64 hex; Enter if this computer posted it; nothing shows): '),
+        );
+        const places = (await api.chart(o.record)).filter((p) => p.until > nowSeconds());
+        if (places.some((p) => p.effectiveShare > 0 || p.fee > 0)) {
+          c.logger.info(
+            "This variety's ancestors take a share of each licence's list price, and parents a fee: issuing records " +
+              'on chain that you owe them this (pay them as you agreed):',
+          );
+          showChart(c, places, o.price, o.color);
+        }
+        if (!(await askYes(c, 'Issue this licence? Only once the licensee has paid you, as your terms say.')))
+          return (c.logger.info('Nothing was sent.'), true);
+        try {
+          const r = await api.issueLicence(card, admin);
+          c.logger.info(`Issued. Transaction ${r.txHash} at block ${r.blockHeight}.`);
+        } catch (e) {
+          if (!(e instanceof AlreadyDoneError)) throw e;
+          c.logger.info(`${e.message} (If you issued it before and the wait timed out, it did land: nothing to do.)`);
+          return true;
+        }
+        c.logger.info(
+          "Keep the licence card with your licensees' cards: 55 reads its settlements with it. No money moved through " +
+            'the contract.',
+        );
+        return true;
+      }
+      case '83': {
+        const api = needApi(c);
+        const req = readWith(await askPath(c, "The licensee's top-up request (path): "), normaliseTopUpRequest);
+        const o = await api.offer(unhex(req.card.offer));
+        c.logger.info(describeOffer(o));
+        c.logger.info(
+          `Code fingerprint ${codeFingerprint(req.code)}: ask the licensee for theirs (by phone or in person). If it ` +
+            'differs, the request was changed on the way and would credit someone else. Do not issue.',
+        );
+        const amount = await askAmount(c, 'Credit to issue (what they paid you for royalties)', o.color);
+        if (o.split) {
+          c.logger.info(
+            "This variety's ancestors take a share of royalties: this issuance names the offer and the amount on " +
+              'chain, and records that you owe them (pay them as you agreed):',
+          );
+          showChart(c, await api.issuePreview(o.id), amount, o.color, false);
+        } else
+          c.logger.info(
+            "On chain this shows only that some offer's credit issuer issued some credit: not the offer, the " +
+              'licensee or the amount. No money moves.',
+          );
+        if (!(await askYes(c, `Issue ${showAmount(amount, o.color)} of credit to this request?`)))
+          return (c.logger.info('Nothing was sent.'), true);
+        let r;
+        try {
+          r = await linkable(c, (evenIfLinkable) => api.issueCredit(req, amount, { evenIfLinkable }));
+        } catch (e) {
+          if (!(e instanceof AlreadyDoneError)) throw e;
+          c.logger.info(e.message);
+          return true;
+        }
+        if (r === undefined) return true;
+        const books = await api.issuedTotal(o.id);
+        c.logger.info(
+          `Issued. Transaction ${r.txHash}. Tell the licensee the exact amount (${showAmount(amount, o.color)}), so ` +
+            `they record it (61). Issued on this offer from this computer so far: ${showAmount(books.total, o.color)} ` +
+            `in ${books.count} issuance(s).`,
+        );
+        return true;
+      }
+      case '84': {
+        const api = needApi(c);
+        const card = readWith(await askPath(c, 'The offer card the breeder gave you (path): '), normaliseOfferCard);
+        const o = await api.offer(unhex(card.offer));
+        c.logger.info(describeOffer(o));
+        if (o.rateCommit.some((x) => x !== 0))
+          c.logger.info(`Royalty rate in your offer card: ${showAmount(BigInt(card.rate), o.color)} per unit.`);
+        c.logger.info(
+          `  terms fingerprint ${hex(o.terms)} (the sha256 of the signed terms file: check it matches yours)`,
+        );
+        const warnings = await api.licenceChecks(o.id, c.mainAddress);
+        for (const w of warnings) c.logger.warn(`  WARNING: ${w}.`);
+        if (
+          warnings.length > 0 &&
+          (await ask(c, 'Type yes to go on despite these warnings, anything else to stop: ')).toLowerCase() !== 'yes'
+        )
+          return (c.logger.info('Nothing was written.'), true);
+        const out = await askOutPath(c, 'Where to write your licence card for the breeder (path): ');
+        if (
+          (
+            await ask(c, 'Make a licence for this offer? No transaction: your breeder issues it. Type yes: ')
+          ).toLowerCase() !== 'yes'
+        )
+          return (c.logger.info('Nothing was written.'), true);
+        const r = await unlessDone(c, 'Make another licence for this offer?', (again) =>
+          api.requestLicence(card, c.mainAddress, { again }),
+        );
+        if (r === undefined) return true;
+        if (writeCard(c, out, r.licenceCard, '78'))
+          c.logger.info(
+            `Licence card written to ${out}. Give it to the breeder with your payment, as your terms say: they issue ` +
+              'the licence from it (63 shows when it is live), and it lets them read your settlements, nothing more.',
+          );
+        return true;
+      }
+      case '85': {
+        const api = needApi(c);
+        const typed = (await ask(c, "The ancestor's record (hex; Enter for your own record): ")).replace(/^0x/i, '');
+        let parent: Uint8Array;
+        if (typed === '') parent = royaltiesPureCircuits.recordCommit(await needRecord(c));
+        else if (/^[0-9a-fA-F]{64}$/.test(typed)) parent = unhex(typed.toLowerCase());
+        else throw new RoyaltiesInputError('A record is 64 hex characters.');
+        const rows = await api.owed({ parent });
+        if (rows.length === 0) {
+          c.logger.info('Nothing is recorded as owed to that record by licences or credit issued off chain.');
+          return true;
+        }
+        showOwed(c, rows, (r) => `variety ${short(r.record)}, offer ${short(r.offer)}`);
+        c.logger.info(
+          'Recorded by the contract when each licence and credit was issued, at the terms you agreed. Whether it was ' +
+            "paid is between you and the descendant's breeder: this is the record you both work from.",
+        );
+        return true;
+      }
+      case '86': {
+        const api = needApi(c);
+        const offer = await ask32(c, 'Offer id (hex): ');
+        const admin = adminTyped(
+          await c.hidden('Admin secret (64 hex; Enter if this computer posted it; nothing shows): '),
+        );
+        c.logger.info(
+          'A new credit issuer key is made and kept on this computer. The old one stops issuing at the next seal (at ' +
+            'most an hour). Credit it already issued stays valid: compare what you issued with what was settled (55).',
+        );
+        if (!(await askYes(c, 'Name a new credit issuer for this offer?')))
+          return (c.logger.info('Nothing was sent.'), true);
+        const r = await api.changeCreditIssuer(offer, admin);
+        c.logger.info(
+          r.sealed
+            ? 'Done and sealed: only the new key issues now.'
+            : `Done. The old key can still issue until it is sealed (68)${r.sealableAt ? `, possible from ${new Date(r.sealableAt * 1000).toISOString()}` : ''}.`,
+        );
+        return true;
+      }
       default:
         return false;
     }
@@ -1019,31 +1266,49 @@ const postOffer = async (c: RoyaltiesMenuContext): Promise<void> => {
     throw new RoyaltiesInputError(`Could not read that file (${(e as NodeJS.ErrnoException).code ?? 'error'}).`);
   }
   const color = await askToken(c, 'Token (Enter for NIGHT, or the token type in 64 hex): ');
-  const price = await askAmount(c, 'Price of one licence', color);
-  const rate = await askAmount(c, 'Royalty per unit (0 for none through the contract; kept private)', color, true);
-  const count = await askWhole(c, 'How many licences for sale: ');
+  const price = await askAmount(c, "List price of one licence (public; ancestors' shares are worked out on it)", color);
+  const rate = await askAmount(c, 'Royalty per unit (0 for none; kept private)', color, true);
+  const count = await askWhole(c, 'How many licences: ');
   const days = await askWhole(c, 'Licences end in how many days: ');
-  const revocable = (await ask(c, 'May you revoke a sold licence for breach? (y/N): ')).toLowerCase().startsWith('y');
+  const revocable = (await ask(c, 'May you revoke a licence for breach? (y/N): ')).toLowerCase().startsWith('y');
+  const onChainPayment = (
+    await ask(
+      c,
+      'Also take payment THROUGH the contract (growers buy licences and top up credit on chain, in this token)? ' +
+        'Most offers do not: you issue licences and credit when paid. (y/N): ',
+    )
+  )
+    .toLowerCase()
+    .startsWith('y');
   const payTo = await askWallet(c);
   const expires = nowSeconds() + days * 86400n;
   c.logger.info(
-    `Offer: ${count} licence(s) at ${showAmount(price, color)}, ending ${day(expires)}, ${revocable ? 'revocable' : 'not revocable'}, ` +
-      `paid to ${hex(payTo)}, terms fingerprint ${hex(terms)}. All public, except the royalty rate ` +
-      `(${rate === 0n ? 'none' : `${showAmount(rate, color)} per unit`}), which only the offer card holds.`,
+    `Offer: ${count} licence(s) at a list price of ${showAmount(price, color)}, ending ${day(expires)}, ` +
+      `${revocable ? 'revocable' : 'not revocable'}, wallet ${hex(payTo)}, terms fingerprint ${hex(terms)}, ` +
+      `${onChainPayment ? 'payment through the contract allowed' : 'paid off chain (you issue licences and credit)'}. ` +
+      `All public, except the royalty rate (${rate === 0n ? 'none' : `${showAmount(rate, color)} per unit`}), which ` +
+      'only the offer card holds.',
   );
   const out = await askOutPath(c, 'Where to write the offer card for your licensees (path): ');
   if (!(await askYes(c, 'Post it?'))) return c.logger.info('Nothing was sent.');
   const r = await unlessDone(c, 'Post another offer with the same terms?', (again) =>
-    api.postOffer(recordSecret, { terms, color, price, rate, payTo, count, expires, revocable }, c.mainAddress, {
-      again,
-    }),
+    api.postOffer(
+      recordSecret,
+      { terms, color, price, rate, payTo, count, expires, revocable, onChainPayment },
+      c.mainAddress,
+      { again },
+    ),
   );
   if (r === undefined) return;
   c.logger.info(`Posted. Offer id: ${hex(r.offer)}.`);
   showSecret(
-    'OFFER ADMIN SECRET: write it on paper now. It is the only way to close this offer or revoke its licences ' +
-      'from another computer, and it cannot be recovered:',
+    'OFFER ADMIN SECRET: write it on paper now. It is the only way to issue licences, close this offer, revoke ' +
+      'its licences or name a new credit issuer from another computer, and it cannot be recovered:',
     hex(r.adminSecret),
+  );
+  c.logger.info(
+    "The key that issues this offer's credit is kept on this computer. If it is lost, or may be stolen, name a new " +
+      'one with the admin secret (86).',
   );
   if (writeCard(c, out, r.card, '77'))
     c.logger.info(`Offer card written to ${out}: give it to licensees with the terms. It holds the private rate.`);

@@ -495,24 +495,48 @@ export const acceptOwnership = (
   };
 };
 
+/** A raw pairDna of a report's own hash, found in the contract's history (rule 9). */
+export type RawPairing = {
+  /** The record that paired it (lastPairedRecord). */
+  readonly record: Uint8Array;
+  /** Its block time (ms), height and transaction, as the indexer reported them. */
+  readonly landedAt?: number;
+  readonly blockHeight?: number;
+  readonly txId?: string;
+};
+
+/** The one line every rule 9 acceptance starts with. */
+export const pairingVerdictLine = (at: string): string =>
+  `whoever controlled this record's identity at ${at} had this report, or its SHA-256, by then`;
+
+const when = (landedAt: number | undefined, blockHeight?: number): string =>
+  `${blockHeight === undefined ? "" : `block ${blockHeight}, `}${landedAt === undefined ? "an unknown time" : new Date(landedAt).toISOString()}`;
+
 /**
- * Rule 9. Accept a bound DNA pairing (pairing.ts): that whoever controlled `record`'s
- * identity had the report whose SHA-256 is `reportHash` by the time that transaction
- * landed. `afterTx` is the contract state recorded for the pairing's own `pairDna` call,
- * found by transaction id; `landedAt` (ms) is its block time, from the same indexer
- * answer, and the date the verdict gives. `now`, the contract state now, resolves a
- * `record` made after the pairing (a later rotation or recovery); without it, `record`
- * must be a commitment the identity had when it paired.
+ * Rule 9. Accept a bound DNA pairing (pairing.ts). `afterTx` is the contract state recorded
+ * for the pairing's own `pairDna` call, found by transaction id; `landedAt` (ms) is its
+ * block time, from the same indexer answer, and the date the verdict gives. `now`, the
+ * contract state now, resolves a `record` made after the pairing (a later rotation or
+ * recovery) and shows whether the identity changed keys since; without it, `record` must
+ * be a commitment the identity had when it paired, and that is reported as not checked.
  *
  * Accepted only when `lastPairedDna` is H("veilcore:v1:dnapair", reportHash, identity,
  * salt) for the identity of `lastPairedRecord`, and that identity is `record`'s. A binding
  * copied to another record fails here: it holds only for the identity inside it. A raw
  * report hash paired directly is refused: anyone who saw it could have paired it first.
  *
- * What it shows: the report existed, and that identity's holder had its hash, by that
- * date. Not who controls the record now (a record can change hands by rotation; rule 8
- * answers that), not that nobody else had the report earlier (its lab did), and nothing
- * about what the report says.
+ * What an acceptance says, and nothing more: whoever controlled this record's identity at
+ * that date had this report, or its SHA-256, by then. Two things weaken it, and the reason
+ * says so when they apply:
+ *  - `earlierRaw`: raw pairings of the same report hash that landed before this one (the
+ *    lookup finds them in the contract's history). After the first, the hash was public:
+ *    anyone could have made a bound pairing of it without the report. `undefined` means
+ *    the history was not searched, and the reason says that too.
+ *  - the identity changed keys since (`now` differs from `afterTx` in its head, rotations
+ *    or recoveries): a sale, a new key and a recovery from a thief look the same, so an
+ *    earlier holder made this pairing, maybe not the one asking.
+ * It never shows who controls the record now (rule 8), that nobody else had the report
+ * earlier (its lab did), or anything about what the report says.
  */
 export const acceptPairing = (
   afterTx: Ledger,
@@ -521,15 +545,20 @@ export const acceptPairing = (
     readonly reportHash: Uint8Array;
     readonly salt: Uint8Array;
   },
-  when: {
+  context: {
     readonly landedAt: number | undefined;
     readonly blockHeight?: number;
     readonly now?: Ledger;
+    readonly earlierRaw?: readonly RawPairing[];
   },
 ): {
   readonly accepted: boolean;
   readonly reason: string;
   readonly pairedAt?: number;
+  /** Raw pairings of this report's hash that landed earlier (undefined: not searched). */
+  readonly publishedRawEarlier?: readonly RawPairing[];
+  /** The identity changed keys since the pairing (undefined: the state now was not given). */
+  readonly identityMoved?: boolean;
 } => {
   const { record, reportHash, salt } = claim;
   if (record.length !== 32 || reportHash.length !== 32 || salt.length !== 32)
@@ -549,7 +578,7 @@ export const acceptPairing = (
       accepted: false,
       reason: "the pairing record was not anchored",
     };
-  if (!same(identityOf(when.now ?? afterTx, record), identity))
+  if (!same(identityOf(context.now ?? afterTx, record), identity))
     return {
       accepted: false,
       reason: "that transaction paired a different record",
@@ -565,20 +594,90 @@ export const acceptPairing = (
     return {
       accepted: false,
       reason:
-        "that transaction did not pair this report, with this salt, for this record",
+        "that transaction did not pair this report, with this salt, for this record's identity",
     };
   }
-  if (when.landedAt === undefined)
+  if (context.landedAt === undefined)
     return {
       accepted: false,
       reason: "the indexer did not say when the pairing landed; ask again",
     };
-  const at = `${when.blockHeight === undefined ? "" : `block ${when.blockHeight}, `}${new Date(when.landedAt).toISOString()}`;
+  const notes: string[] = [];
+
+  // M1: a raw pairing of the same hash before this one made the hash public.
+  const raw = context.earlierRaw;
+  if (raw === undefined)
+    notes.push(
+      "whether this report's hash was published raw earlier, which would let anyone make such a pairing without the report, was not checked",
+    );
+  else if (raw.length > 0) {
+    const first = raw[0];
+    const by = same(identityOf(context.now ?? afterTx, first.record), identity)
+      ? "by this record's identity"
+      : "by another record";
+    notes.push(
+      `this report's hash was published raw on ${when(first.landedAt, first.blockHeight)} ${by}; anyone could have made a pairing from it after that`,
+    );
+  }
+
+  // M2: the identity changed keys since. Heads are never reused, so a different head, or
+  // a different rotation or recovery count, means a key change.
+  let identityMoved: boolean | undefined;
+  const now = context.now;
+  if (now === undefined)
+    notes.push(
+      "whether this record's identity changed keys since the pairing was not checked",
+    );
+  else {
+    const count = (l: Ledger, m: "rotationsOf" | "recoveriesOf"): bigint =>
+      l[m].member(identity) ? l[m].lookup(identity).read() : 0n;
+    const recoveries =
+      count(now, "recoveriesOf") - count(afterTx, "recoveriesOf");
+    identityMoved =
+      !same(currentHead(now, identity), pairedBy) ||
+      recoveries !== 0n ||
+      count(now, "rotationsOf") !== count(afterTx, "rotationsOf");
+    if (identityMoved)
+      notes.push(
+        recoveries > 0n
+          ? `this record's identity was recovered since the pairing (${recoveries} time${recoveries === 1n ? "" : "s"}): an earlier key holder made it, possibly someone who held a stolen key`
+          : "this record's identity changed keys since the pairing (a sale and a new key look the same): an earlier key holder made it",
+      );
+  }
+
   return {
     accepted: true,
-    reason: `whoever controlled this record had this report by ${at}. That dates the report; it does not show who controls the record now`,
-    pairedAt: when.landedAt,
+    reason: [
+      pairingVerdictLine(when(context.landedAt, context.blockHeight)),
+      ...notes,
+      "it does not show who controls the record now",
+    ].join(". "),
+    pairedAt: context.landedAt,
+    ...(raw === undefined ? {} : { publishedRawEarlier: raw }),
+    ...(identityMoved === undefined ? {} : { identityMoved }),
   };
+};
+
+/**
+ * Rule 9 against several readings of the state now (one per indexer asked): accepted only
+ * if every one accepts, and if any shows the identity changed keys since, that verdict is
+ * the one returned. With none, as acceptPairing without `now`.
+ */
+export const acceptPairingWithStates = (
+  afterTx: Ledger,
+  claim: Parameters<typeof acceptPairing>[1],
+  context: Omit<Parameters<typeof acceptPairing>[2], "now"> & {
+    readonly nows: readonly Ledger[];
+  },
+): ReturnType<typeof acceptPairing> => {
+  const { nows, ...rest } = context;
+  if (nows.length === 0) return acceptPairing(afterTx, claim, rest);
+  const vs = nows.map((now) => acceptPairing(afterTx, claim, { ...rest, now }));
+  return (
+    vs.find((v) => !v.accepted) ??
+    vs.find((v) => v.identityMoved === true) ??
+    vs[0]
+  );
 };
 
 // ───────────────────────────────────────────── rules 5 and 8: each challenge used once

@@ -15,6 +15,8 @@ import { acceptPairing } from "../verify.js";
 import {
   DNA_PAIR_TAG,
   dnaPairBinding,
+  isWeakSalt,
+  newPairingSalt,
   pairingEvidence,
   readPairingEvidence,
   reportHashOf,
@@ -120,8 +122,13 @@ describe("rule 9: a bound pairing", () => {
     );
     expect(v.accepted).toBe(true);
     expect(v.pairedAt).toBe(Number(T0 + 100n) * 1000);
-    expect(v.reason).toMatch(/had this report by block 7, /);
+    expect(v.reason).toMatch(
+      /^whoever controlled this record's identity at block 7, \S+ had this report, or its SHA-256, by then/,
+    );
     expect(v.reason).toMatch(/does not show who controls the record now/);
+    // Neither the history nor the state now was given: both say "not checked".
+    expect(v.reason).toMatch(/published raw earlier.*was not checked/);
+    expect(v.reason).toMatch(/changed keys since the pairing was not checked/);
   });
 
   it("nothing about the report is on chain: only the binding", () => {
@@ -360,5 +367,168 @@ describe("the evidence file", () => {
       /64 lowercase hex/,
     );
     expect(() => readPairingEvidence("{")).toThrow(/not JSON/);
+  });
+});
+
+// ───────────────────────── the 9 October hostile review (pocs/pairing/poc-pairing.test.ts)
+
+describe("review M1: knowing the hash is enough once it was published raw", () => {
+  it("a bound pairing made from a hash someone else paired raw earlier says so", () => {
+    const V = secret("m1-victim"),
+      M = secret("m1-mallory");
+    sim.call(as(V), "anchor", freshRecovery());
+    sim.call(as(M), "anchor", freshRecovery());
+    sim.call(as(V), "pairDna", REPORT_HASH); // an older client, or CLI option 43
+    const rawAt = landed();
+    const seen = sim.state.lastPairedDna; // Mallory never sees the report
+    sim.advance(3600n);
+    const salt = secret("m1-salt");
+    sim.call(as(M), "pairDna", dnaPairBinding(seen, C.commit(M), salt));
+    const after = sim.state;
+    const claim = { record: C.commit(M), reportHash: REPORT_HASH, salt };
+    const v = acceptPairing(after, claim, {
+      landedAt: landed(),
+      now: sim.state,
+      earlierRaw: [{ record: C.commit(V), landedAt: rawAt, blockHeight: 3 }],
+    });
+    // Still true as far as it goes (she had the SHA-256), and now it says why that is weak.
+    expect(v.accepted).toBe(true);
+    expect(v.reason).toContain(
+      `this report's hash was published raw on block 3, ${new Date(rawAt).toISOString()} by another record; anyone could have made a pairing from it after that`,
+    );
+    expect(v.reason).not.toMatch(/had this report by/);
+    expect(v.publishedRawEarlier).toHaveLength(1);
+    // Searched, and nothing found: no flag, no "not checked".
+    const clean = acceptPairing(after, claim, {
+      landedAt: 1,
+      now: sim.state,
+      earlierRaw: [],
+    });
+    expect(clean.reason).not.toMatch(/published raw|not checked/);
+  });
+
+  it("a raw pairing by the same identity is named as such", () => {
+    sim.call(as(A), "pairDna", REPORT_HASH);
+    const rawAt = landed();
+    sim.call(as(A), "pairDna", dnaPairBinding(REPORT_HASH, A_REC, SALT));
+    const v = acceptPairing(
+      sim.state,
+      { record: A_REC, reportHash: REPORT_HASH, salt: SALT },
+      {
+        landedAt: 1,
+        now: sim.state,
+        earlierRaw: [{ record: A_REC, landedAt: rawAt }],
+      },
+    );
+    expect(v.reason).toMatch(
+      /published raw on .* by this record's identity; anyone could/,
+    );
+  });
+});
+
+describe("review M2: a pairing made before the identity changed keys", () => {
+  it("made by a thief holding the key, then the owner recovered: the verdict says an earlier key holder made it", () => {
+    const V = secret("m2-victim"),
+      rcv = secret("m2-rcv");
+    const V_REC = C.commit(V);
+    sim.call(as(V), "anchor", C.recoveryCommit(rcv));
+    const thiefReport = reportHashOf(
+      new TextEncoder().encode("report the thief wants attached"),
+    );
+    const ts = secret("m2-thief-salt");
+    sim.call(as(V), "pairDna", dnaPairBinding(thiefReport, V_REC, ts)); // the thief, with V's secret
+    const after = sim.state;
+    const NEW = secret("m2-new");
+    sim.call(
+      as(secret("anyone"), { recovery: rcv, incoming: NEW }),
+      "recoverRecordSecret",
+      V_REC,
+      C.commit(NEW),
+      freshRecovery(),
+    );
+    const v = acceptPairing(
+      after,
+      { record: C.commit(NEW), reportHash: thiefReport, salt: ts },
+      { landedAt: 1, now: sim.state, earlierRaw: [] },
+    );
+    expect(v.accepted).toBe(true);
+    expect(v.identityMoved).toBe(true);
+    expect(v.reason).toMatch(
+      /this record's identity was recovered since the pairing \(1 time\): an earlier key holder made it, possibly someone who held a stolen key/,
+    );
+    expect(v.reason).toMatch(/^whoever controlled this record's identity at /);
+  });
+
+  it("rotated since (a sale looks the same): says so; not moved: says nothing", () => {
+    sim.call(as(A), "pairDna", dnaPairBinding(REPORT_HASH, A_REC, SALT));
+    const after = sim.state;
+    const claim = { record: A_REC, reportHash: REPORT_HASH, salt: SALT };
+    const still = acceptPairing(after, claim, {
+      landedAt: 1,
+      now: sim.state,
+      earlierRaw: [],
+    });
+    expect(still.identityMoved).toBe(false);
+    expect(still.reason).not.toMatch(/changed keys|recovered since/);
+    const A2 = secret("m2-A2");
+    sim.call(as(A, { incoming: A2 }), "rotateRecordSecret", C.commit(A2));
+    const moved = acceptPairing(after, claim, {
+      landedAt: 1,
+      now: sim.state,
+      earlierRaw: [],
+    });
+    expect(moved.identityMoved).toBe(true);
+    expect(moved.reason).toMatch(
+      /changed keys since the pairing \(a sale and a new key look the same\): an earlier key holder made it/,
+    );
+  });
+});
+
+describe("review lows: salts and evidence fields", () => {
+  it("weak salts are named; new salts come from the crypto generator and are never weak", () => {
+    expect(isWeakSalt(new Uint8Array(32))).toBe(true);
+    expect(isWeakSalt(new Uint8Array(32).fill(7))).toBe(true);
+    expect(isWeakSalt(new Uint8Array(16))).toBe(true);
+    expect(isWeakSalt(SALT)).toBe(false);
+    const a = newPairingSalt(),
+      b = newPairingSalt();
+    expect(a).toHaveLength(32);
+    expect(hex(a)).not.toBe(hex(b));
+  });
+
+  it("an evidence file without its binding, or with a path as the report's name, is refused", () => {
+    const ev = pairingEvidence({
+      network: "mainnet",
+      contractAddress: "a".repeat(64),
+      txId: "ab",
+      identity: A_REC,
+      reportHash: REPORT_HASH,
+      salt: SALT,
+    });
+    const { binding: _b, ...noBinding } = ev;
+    void _b;
+    expect(() => readPairingEvidence(noBinding)).toThrow(/binding must be 64/);
+    for (const name of [
+      "../../etc/passwd",
+      "a/b.pdf",
+      "a\\b.pdf",
+      "bad\u0007bell",
+      "..",
+      "",
+    ])
+      expect(() => readPairingEvidence({ ...ev, reportFile: name })).toThrow(
+        /plain file name/,
+      );
+    expect(() =>
+      pairingEvidence({
+        network: "mainnet",
+        contractAddress: "a".repeat(64),
+        txId: "ab",
+        identity: A_REC,
+        reportHash: REPORT_HASH,
+        salt: SALT,
+        reportFile: "/tmp/x.pdf",
+      }),
+    ).toThrow(/plain file name/);
   });
 });

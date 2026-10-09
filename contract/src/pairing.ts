@@ -23,12 +23,19 @@
 //   - a copied binding is worthless: it verifies only for the identity inside it, and a
 //     copier who paired it under their own record cannot show a report and salt that
 //     produce it for theirs;
-//   - to bind a report to their own identity, a copier needs the report hash itself, which
-//     stays private until the holder shows it. Anything paired after that is dated after.
-// So the date of a bound pairing is when that identity's holder had the report. It is not
-// who controls the record now: a record can change hands by key rotation (a control proof,
-// rule 8, answers that separately). Nor does it show nobody else had the report: the lab
-// that wrote it had it too.
+//   - to bind a report to their own identity, a copier needs the report's hash. That stays
+//     private until the holder shows it, but ONLY if it was never published: a raw pairDna
+//     of the same hash (an older client, CLI option 43, the 0.2.0 lab example) puts it on
+//     chain for anyone, and from then on anyone can make a bound pairing of it without
+//     ever seeing the report. The verifier looks for such a raw pairing before the bound
+//     one and says so (rule 9).
+// So a bound pairing shows: whoever controlled the record's identity at that date had the
+// report, or its SHA-256, by then. Not who controls the record now: a record can change
+// hands, or be recovered from a thief, by a key change (the verifier says when the identity
+// changed keys since; a control proof, rule 8, answers who controls it now). Nor that
+// nobody else had the report: the lab that wrote it had it too. The salt is the holder's
+// to keep: it is NOT derived from the record secret, so a paper copy of that secret does
+// not bring it back.
 //
 // Nothing here changes the contract: a binding is just the 32 bytes pairDna is given.
 
@@ -66,6 +73,21 @@ export const taggedHash = (tag: string, ...inputs: Uint8Array[]): Uint8Array =>
       )
       .digest(),
   );
+
+/**
+ * A salt that hides nothing: all zero, or one byte repeated. Anyone who has the report could
+ * then test whether a pairing on chain is of it. Refused wherever a pairing is made.
+ */
+export const isWeakSalt = (salt: Uint8Array): boolean =>
+  salt.length !== 32 || salt.every((b) => b === salt[0]);
+
+/** A pairing salt: 32 bytes from the platform's cryptographic random generator. */
+export const newPairingSalt = (): Uint8Array => {
+  const salt = globalThis.crypto.getRandomValues(new Uint8Array(32));
+  if (isWeakSalt(salt))
+    throw new Error("The random generator returned a degenerate value.");
+  return salt;
+};
 
 /** The SHA-256 of a report file, as it is paired. */
 export const reportHashOf = (report: Uint8Array): Uint8Array =>
@@ -111,11 +133,24 @@ export type PairingEvidence = {
   /** The holder's 32 random bytes. Shown, it lets anyone with the report recognise this pairing. */
   readonly salt: string;
   readonly binding: string;
-  /** The report file's name, for the reader. Not checked. */
+  /**
+   * The report file's name, for the reader: a plain file name (no folders), not checked
+   * against anything. The verifier hashes the file it was actually given.
+   */
   readonly reportFile?: string;
 };
 
 const HEX64 = /^[0-9a-f]{64}$/;
+
+/** A file name with no folder part, no control characters, not "." or "..". */
+const isPlainFileName = (v: unknown): v is string =>
+  typeof v === "string" &&
+  v.length > 0 &&
+  v.length <= 200 &&
+  v !== "." &&
+  v !== ".." &&
+  // eslint-disable-next-line no-control-regex
+  !/[/\\\u0000-\u001f\u007f]/.test(v);
 const HEX_ID = /^[0-9a-f]+$/;
 
 const fromHex64 = (v: unknown, what: string): Uint8Array => {
@@ -133,17 +168,23 @@ export const pairingEvidence = (p: {
   readonly reportHash: Uint8Array;
   readonly salt: Uint8Array;
   readonly reportFile?: string;
-}): PairingEvidence => ({
-  format: PAIRING_EVIDENCE_FORMAT,
-  network: p.network,
-  contractAddress: p.contractAddress.toLowerCase(),
-  txId: p.txId.toLowerCase().replace(/^0x/, ""),
-  record: hex(p.identity),
-  reportSha256: hex(p.reportHash),
-  salt: hex(p.salt),
-  binding: hex(dnaPairBinding(p.reportHash, p.identity, p.salt)),
-  ...(p.reportFile === undefined ? {} : { reportFile: p.reportFile }),
-});
+}): PairingEvidence => {
+  if (p.reportFile !== undefined && !isPlainFileName(p.reportFile))
+    throw new Error(
+      "A report file name is a plain file name, without folders.",
+    );
+  return {
+    format: PAIRING_EVIDENCE_FORMAT,
+    network: p.network,
+    contractAddress: p.contractAddress.toLowerCase(),
+    txId: p.txId.toLowerCase().replace(/^0x/, ""),
+    record: hex(p.identity),
+    reportSha256: hex(p.reportHash),
+    salt: hex(p.salt),
+    binding: hex(dnaPairBinding(p.reportHash, p.identity, p.salt)),
+    ...(p.reportFile === undefined ? {} : { reportFile: p.reportFile }),
+  };
+};
 
 /** An evidence file, checked for form and read into bytes. Throws on anything malformed. */
 export type ReadPairingEvidence = {
@@ -191,15 +232,16 @@ export const readPairingEvidence = (input: unknown): ReadPairingEvidence => {
   const record = fromHex64(e.record, "The record");
   const reportHash = fromHex64(e.reportSha256, "The report's SHA-256");
   const salt = fromHex64(e.salt, "The salt");
-  if (e.binding !== undefined) {
-    const stated = fromHex64(e.binding, "The binding");
-    if (hex(stated) !== hex(dnaPairBinding(reportHash, record, salt)))
-      throw new Error(
-        "The binding in the evidence file is not the one its report hash, record and salt give. The file is damaged or was edited.",
-      );
-  }
-  if (e.reportFile !== undefined && typeof e.reportFile !== "string")
-    throw new Error("The evidence file's report file name must be text.");
+  // Required, so a damaged or edited file is caught: it must be what the rest gives.
+  const stated = fromHex64(e.binding, "The binding");
+  if (hex(stated) !== hex(dnaPairBinding(reportHash, record, salt)))
+    throw new Error(
+      "The binding in the evidence file is not the one its report hash, record and salt give. The file is damaged or was edited.",
+    );
+  if (e.reportFile !== undefined && !isPlainFileName(e.reportFile))
+    throw new Error(
+      "The evidence file's report file name must be a plain file name (no folders or control characters, at most 200 characters).",
+    );
   return {
     network: e.network,
     contractAddress: e.contractAddress,

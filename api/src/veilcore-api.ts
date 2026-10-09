@@ -37,7 +37,7 @@ import { toHex } from '@midnight-ntwrk/midnight-js-utils';
 import { assertDeploymentRecordCurrent, assertJoinAllowed, resolveNetwork } from './deploy-guard.js';
 import { FIRST_FRAGMENT, addMissingKeys, deployInFragments, unknownCircuits } from './deploy-fragments.js';
 import { retireMaintenanceAuthorityProvably } from './maintenance.js';
-import { type LookupCheck, presentationWithTime, singleCallState } from './presentation-lookup.js';
+import { type LookupCheck, callState, presentationWithTime } from './presentation-lookup.js';
 import {
   type AuthorityReport,
   ContractStateMismatchError,
@@ -484,17 +484,9 @@ export class VeilcoreAPI {
     check: LookupCheck = {},
   ): Promise<ReturnType<typeof acceptOwnership> & { readonly authority?: AuthorityReport }> {
     const req = this.lookupCheck(check);
-    let found: Awaited<ReturnType<typeof singleCallState>>;
+    let after: Veilcore.Ledger;
     try {
-      found = await singleCallState(
-        indexerUri,
-        this.deployedContractAddress,
-        txId,
-        ['proveOwnership'],
-        'That transaction is not a single proveOwnership call on this contract.',
-        undefined,
-        req,
-      );
+      after = await callState(indexerUri, this.deployedContractAddress, txId, 'proveOwnership', undefined, req);
     } catch (e) {
       if (e instanceof ContractStateMismatchError)
         return { accepted: false, reason: e.message, authority: e.authority };
@@ -502,17 +494,19 @@ export class VeilcoreAPI {
     }
     // The state now as well as the state after the proof: if the proving commitment is
     // no longer the head (rotated, or recovered away from a thief), the proof is refused.
+    const v = acceptOwnership(after, record, challenge, await this.currentLedger());
+    // Where keys are pinned (mainnet), the current state must carry them too; its
+    // maintenance authority is reported with the verdict.
+    if (req.verifierKeys === undefined && req.authorityCounter === undefined) return v;
     const nowState = await this.providers.publicDataProvider.queryContractState(this.deployedContractAddress);
     if (nowState === null) throw new Error('the VeilCore contract has no state at its address');
     try {
-      checkContractState(nowState, req, 'the current state');
+      return { ...v, authority: checkContractState(nowState, req, 'the current state').authority };
     } catch (e) {
       if (e instanceof ContractStateMismatchError)
         return { accepted: false, reason: e.message, authority: e.authority };
       throw e;
     }
-    const v = acceptOwnership(Veilcore.ledger(found.state.data), record, challenge, Veilcore.ledger(nowState.data));
-    return { ...v, authority: found.authority };
   }
 
   /**

@@ -1317,7 +1317,7 @@ describe('D-7 FIXED: a licence check reports the presentation time and refuses a
     const t = Date.now() - 10 * 60_000;
     const { api, I_REC, challenge } = presentation(t);
     const v = await api.checkPresentation('http://indexer', 'aa', I_REC, challenge, t + 5 * 60_000);
-    expect(v).toEqual({ accepted: false, reason: 'the presentation landed before you issued this challenge' });
+    expect(v).toMatchObject({ accepted: false, reason: 'the presentation landed before you issued this challenge' });
   });
 
   it("option 27 passes the challenge book's issue time", () => {

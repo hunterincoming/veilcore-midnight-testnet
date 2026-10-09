@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Bound DNA pairing (9 Oct 2026)
+
+- **No contract change.** `pairDna` still publishes any non-zero 32 bytes, so a raw
+  report hash can be copied, even from a pending transaction, and paired to another record
+  first. The clients now pair `H("veilcore:v1:dnapair", reportHash, identity, salt)`
+  instead (`contract/src/pairing.ts`): it hides the report, verifies only for the
+  identity inside it, and needs the report hash to make. Verifier rule 9
+  (`acceptPairing`) dates the report by the pairing's block; it does not show who
+  controls the record now.
+- **API and partner kit:** `pairReport` (salt saved in private state before sending),
+  `pairings()`, `checkPairing` (pinned keys, second indexer, state now for rotated
+  records), `commit.reportPairing`, `pairingEvidence` / `readPairingEvidence`,
+  `reportHashOf`. Raw `pairDna` stays, documented as copyable. The lab example uses the
+  bound pairing. Not in `@veilcore/contracts` 0.2.0.
+- **CLI:** option 3 pairs a report file bound to the record and writes an evidence file;
+  44 checks one (hashing the report given); 45 shows saved pairings; 43 is the raw pairing.
+- **Vectors and docs:** the binding's vector in `contract/vectors/v1.json` and in the
+  SDK's conformance set (SDK `6e21f23`, SPEC 3.7); design.md (hashes, `pairDna`, rule 9),
+  PARTNERS.md, the site's pairing paragraph and vendored docs.
+
 ### Fixes from the 8 October review (8 Oct 2026)
 
 - **Site:** copy on what a DNA pairing shows, what the maintenance key can do, anchoring

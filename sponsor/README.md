@@ -132,7 +132,7 @@ Also note your deployer wallet's two addresses: run the tool with the deployer w
 Those go in `SPONSOR_FORBIDDEN_ADDRESSES`.
 
 **4. On Railway, add a proof server** in the same project: New → Docker Image →
-`midnightntwrk/proof-server:8.0.3@sha256:<digest>`, start command
+`midnightntwrk/proof-server:8.0.3@sha256:8e6c36c3c175ef6e1b337952155b30470f252af79a20c3f65153a86a983e17ab`, start command
 `midnight-proof-server -v`, name it `proof-server`. Get the digest once with
 `docker buildx imagetools inspect midnightntwrk/proof-server:8.0.3` (the `Digest:` line):
 a tag can be re-pushed, a digest cannot. Don't give it a public domain. Its private

@@ -50,9 +50,10 @@ never re-registering NIGHT for DUST is about that mainnet wallet and does not ap
 All three go in the same Railway project as the registry. None of them touches the
 production registry.
 
-**A. A proof server.** New → Docker Image → `midnightntwrk/proof-server:8.0.3`. Start command
-`midnight-proof-server -v`. Name it `proof-server`. No public domain. (If you already ran
-the Docker digest command from this morning, use `midnightntwrk/proof-server:8.0.3@sha256:<digest>`.)
+**A. A proof server.** New → Docker Image →
+`midnightntwrk/proof-server:8.0.3@sha256:8e6c36c3c175ef6e1b337952155b30470f252af79a20c3f65153a86a983e17ab`
+(the exact version you looked up today). Start command `midnight-proof-server -v`. Name it
+`proof-server`. No public domain.
 
 **B. A preprod registry** (a second copy of the registry, for test records only). New →
 GitHub repo → `veilcore-api`. Name it `veilcore-api-preprod`. Then:

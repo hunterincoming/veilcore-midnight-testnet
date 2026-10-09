@@ -13,6 +13,7 @@ import {
   checkContractState,
   pinnedVerifierKeys,
   verifierKeyMismatches,
+  withMainnetPins,
 } from './src/state-check.ts';
 import { singleCallState } from './src/presentation-lookup.ts';
 
@@ -111,4 +112,12 @@ await assert.rejects(() => look({ secondIndexer: 'http://two' }), /second indexe
 serve({ 'http://one': tx(STATE), 'http://two': tx(STATE, { transactionResult: { status: 'FAILURE' } }) });
 await assert.rejects(() => look({ secondIndexer: 'http://two' }), /second indexer does not confirm/);
 console.log('refused: a second indexer with another state, block, block time, no such transaction, or a failure');
+// Verification review: on mainnet a caller's own verifierKeys table replaced the pins.
+// Now the pins always apply there; a caller adds checks, never replaces them.
+const weaker = { verifierKeys: { anchor: 'ab'.repeat(32) }, authorityCounter: 16n, secondIndexer: 'http://two' };
+assert.deepEqual(withMainnetPins(weaker, 'veilcore', 'mainnet'), { ...weaker, verifierKeys: pins });
+assert.deepEqual(withMainnetPins({}, 'veilcore-claims', 'mainnet').verifierKeys, pinnedVerifierKeys('veilcore-claims'));
+assert.equal(withMainnetPins(weaker, 'veilcore', 'preprod'), weaker);
+assert.equal(withMainnetPins({}, 'veilcore', null).verifierKeys, undefined);
+console.log('mainnet: the pinned keys always apply; a caller adds a counter or a second indexer, never its own pins');
 console.log('\nall state checks pass');

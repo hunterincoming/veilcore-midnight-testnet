@@ -26,11 +26,15 @@ import { ChallengeFile } from './challenge-file';
 
 // checkOwnership's indexer lookup, replaced so the test decides what "the state after the
 // proof" is (the real one fetches it by transaction id).
-const lookup: { state: unknown; data: unknown } = vi.hoisted(() => ({ state: undefined, data: undefined }));
+const lookup: { state: unknown; data: unknown; check?: unknown } = vi.hoisted(() => ({
+  state: undefined,
+  data: undefined,
+}));
 vi.mock('../../api/src/presentation-lookup', () => ({
   callState: async () => lookup.state,
   presentationState: async () => lookup.state,
-  singleCallState: async () => ({
+  singleCallState: async (...a: unknown[]) => ({
+    ...((lookup.check = a[6]), {}),
     entryPoint: 'proveOwnership',
     state: { data: lookup.data },
     authority: { committee: 1, threshold: 1, counter: 16n, retired: false },
@@ -339,6 +343,42 @@ describe("R11-K FIXED: checkOwnership refuses a thief's proof once the owner rec
     const v = await api.checkOwnership('http://indexer', 'aa', REC, ch);
     expect(v.accepted).toBe(false);
     expect(v.reason).toMatch(/ask for a fresh proof/);
+  });
+});
+
+describe('verification review: on mainnet a caller cannot replace the pinned keys', () => {
+  it("the lookup runs with the deployment record's keys, whatever table the caller passes", async () => {
+    const { setNetworkId, getNetworkId } = await import('@midnight-ntwrk/midnight-js-network-id');
+    const { pinnedVerifierKeys } = await import('../../api/src/state-check');
+    const was = (() => {
+      try {
+        return getNetworkId();
+      } catch {
+        return 'undeployed';
+      }
+    })();
+    setNetworkId('mainnet');
+    try {
+      const sim = new VeilcoreSimulator();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      lookup.data = (sim as any).ctx.currentQueryContext.state;
+      const { api } = fakeApi({});
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (api as any).currentState = async () => ({
+        data: lookup.data,
+        operations: () => [],
+        operation: () => undefined,
+        maintenanceAuthority: { committee: [], threshold: 1, counter: 0n },
+      });
+      const own = { anchor: 'ab'.repeat(32) };
+      await api.checkOwnership('http://indexer', 'aa', secret('m-rec'), secret('m-ch'), {
+        verifierKeys: own,
+        authorityCounter: 16n,
+      });
+      expect(lookup.check).toEqual({ verifierKeys: pinnedVerifierKeys('veilcore'), authorityCounter: 16n });
+    } finally {
+      setNetworkId(was);
+    }
   });
 });
 

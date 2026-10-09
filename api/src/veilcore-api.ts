@@ -44,7 +44,7 @@ import {
   type AuthorityReport,
   ContractStateMismatchError,
   checkContractState,
-  pinnedVerifierKeys,
+  withMainnetPins,
 } from './state-check.js';
 import { checkStartingState } from './starting-state.js';
 import * as utils from './utils/index.js';
@@ -580,11 +580,11 @@ export class VeilcoreAPI {
 
   /**
    * What a verification lookup requires here: on mainnet, the pinned build's verifier
-   * keys, always (a caller cannot turn that off); elsewhere, whatever the caller asks.
+   * keys, always (a caller cannot turn that off or replace them with its own table);
+   * elsewhere, whatever the caller asks.
    */
   private lookupCheck(check: LookupCheck): LookupCheck {
-    if (resolveNetwork() !== 'mainnet') return check;
-    return { ...check, verifierKeys: check.verifierKeys ?? pinnedVerifierKeys('veilcore') };
+    return withMainnetPins(check, 'veilcore', resolveNetwork());
   }
 
   // ─────────────────────────────────────────────────────────── plumbing

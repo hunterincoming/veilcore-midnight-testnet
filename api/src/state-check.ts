@@ -154,3 +154,15 @@ export const checkContractState = (
     );
   return { authority, keys: req.verifierKeys === undefined ? 'unchecked' : 'pinned' };
 };
+
+/**
+ * The requirements a lookup on `network` runs with. On mainnet the verifier keys are
+ * ALWAYS the pinned build's: a caller's own `verifierKeys` table is ignored there, so a
+ * caller can add a stricter check (a required authority counter, a second indexer) but
+ * never replace or loosen the mainnet pins. Elsewhere the caller's requirements stand.
+ */
+export const withMainnetPins = <T extends StateRequirements>(
+  check: T,
+  contract: PinnedContract,
+  network: string | null,
+): T => (network === 'mainnet' ? { ...check, verifierKeys: pinnedVerifierKeys(contract) } : check);

@@ -50,7 +50,7 @@ import {
 import { FIRST_FRAGMENT, addMissingKeys, deployInFragments, unknownCircuits } from './deploy-fragments.js';
 import { type AuthorityView, isProvablyRetired, retireMaintenanceAuthorityProvably } from './maintenance.js';
 import { type LookupCheck, singleCallState } from './presentation-lookup.js';
-import { type AuthorityReport, pinnedVerifierKeys } from './state-check.js';
+import { type AuthorityReport, withMainnetPins } from './state-check.js';
 import { type TxRef } from './veilcore-api.js';
 import {
   type ClaimsContract,
@@ -293,9 +293,7 @@ export class ClaimsAPI {
       CLAIMS_PROVABLE_CIRCUITS,
       'That transaction is not a single claim on this claims contract.',
       undefined,
-      resolveNetwork() === 'mainnet'
-        ? { ...check, verifierKeys: check.verifierKeys ?? pinnedVerifierKeys('veilcore-claims') }
-        : check,
+      withMainnetPins(check, 'veilcore-claims', resolveNetwork()),
     );
     const cells = claimsLedger(found.state.data);
     return { claim: claimFromCells(cells), cells, entryPoint: found.entryPoint, authority: found.authority };

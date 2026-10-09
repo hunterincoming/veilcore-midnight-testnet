@@ -22,6 +22,7 @@ import {
   type LicenceCard,
   type TopUpRequest,
   codeFingerprint,
+  isStaleRootError,
   mergingPrivateStateProvider,
   newPresentationRequest,
 } from '../../api/src/royalties-api.js';
@@ -772,6 +773,28 @@ describe('round 7', () => {
     expect(tries).toBe(1);
   });
 
+  it("a stale root is recognised wherever the contract's refusal sits in the error chain; never with a timeout", async () => {
+    const wrap = (inner: Error) => new Error('Unexpected error submitting scoped transaction', { cause: inner });
+    const stale = new Error('failed assert: That credit note is not on chain, or the path is stale');
+    expect(isStaleRootError(wrap(stale))).toBe(true);
+    expect(isStaleRootError(wrap(wrap(stale)))).toBe(true);
+    expect(isStaleRootError(new AggregateError([new Error('x'), stale], 'several'))).toBe(true);
+    expect(isStaleRootError(Object.assign(new Error('failed'), { name: 'CallTxFailedError' }))).toBe(true);
+    expect(isStaleRootError(wrap(new Error('failed assert: That credit note is already spent')))).toBe(false);
+    expect(isStaleRootError(new Error('Transaction timed out', { cause: stale }))).toBe(false);
+    expect(isStaleRootError(wrap(new Error('timeout waiting for finality')))).toBe(false);
+    // Through call(): a settle rejected at submission with a wrapped stale-root refusal is sent once more.
+    const { g1 } = await market();
+    let tries = 0;
+    await expect(
+      raw(g1.api, 'settle', {}, async () => {
+        tries++;
+        throw wrap(stale);
+      }),
+    ).rejects.toThrow(/Unexpected error submitting/);
+    expect(tries).toBe(2);
+  });
+
   it('a revocation within the hour waits for its seal; the client sends no seal before then, and the verifier is told when', async () => {
     const { chain, breeder, offer, b1, b2 } = await market();
     expect((await breeder.api.revokeLicense(b2.license)).sealed).toBe(true);
@@ -885,6 +908,38 @@ describe('round 7', () => {
     await handleRoyaltiesChoice('81', yes.ctx);
     expect(chain.ledger.links.lookup(link).share).toBe(5n);
     await expect(grower.api.buyLicense(ko.card, MAIN)).rejects.toThrow(/Too small a payment/);
+  });
+
+  it('a closed offer that still takes split top-ups is in the relax warning too', async () => {
+    const chain = new Chain();
+    const [parent, child, grower] = [chain.party(), chain.party(), chain.party()];
+    const [P, K] = [secret('r7-cp'), secret('r7-ck')];
+    anchor(chain, P);
+    anchor(chain, K);
+    const wP = new Uint8Array(32).fill(73);
+    await parent.api.postOffer(P, offerTerms(wP), MAIN);
+    const card = await parent.api.linkTerms(P, {
+      color: NIGHT_COLOR,
+      fee: 0n,
+      share: 1000n,
+      generations: 1n,
+      until: now() + 365n * 86400n,
+      payTo: wP,
+    });
+    chain.main.call(as(K), 'proposeParent', C.commit(P));
+    const { link } = await child.api.proposeLink(K, card, MAIN);
+    await parent.api.confirmLink(P, C.commit(K));
+    chain.main.call(as(P), 'confirmParent', C.commit(K));
+    await child.api.finaliseStack(K, MAIN);
+    const ko = await child.api.postOffer(K, offerTerms(new Uint8Array(32).fill(74)), MAIN);
+    await grower.api.buyLicense(ko.card, MAIN);
+    await child.api.closeOffer(ko.offer);
+    const w = await parent.api.relaxWarnings(link, 5n);
+    expect(w).toHaveLength(1);
+    expect(w[0]).toMatch(/is closed but still takes royalty top-ups until .*any top-up under 2000 would be refused/);
+    await expect(parent.api.relaxLink(link, { share: 5n })).rejects.toThrow(/top-up under 2000/);
+    // A share that keeps every top-up of the price's size working is not warned about.
+    expect(await parent.api.relaxWarnings(link, 10n)).toEqual([]);
   });
 
   // Two CLI runs on one computer share one store (round 7's PoC). midnight-js reads the

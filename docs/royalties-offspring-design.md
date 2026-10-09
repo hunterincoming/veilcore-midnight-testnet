@@ -47,8 +47,9 @@ raise them, and at most once in 30 days, so it cannot stall the child's sales at
 Lowering a share to a tiny one that is not zero can still stall a descendant's offer: every
 share must come to at least one unit of a payment, so at 0.05% an offer priced under 2,000
 units (4,000 for a grandparent's place, 8,000 for a great-grandparent's) can no longer be
-sold, and its breeder must post a new one at a higher price. The parent's client lists every
-open offer that would break and asks first (menu 81); zero is always safe.
+sold, and its breeder must post a new one at a higher price; top-ups under the same floor
+are refused, also for a closed or ended offer still in its 30 days of top-ups. The parent's
+client lists every such offer and asks first (menu 81); zero is always safe.
 
 | Term | Meaning |
 |---|---|

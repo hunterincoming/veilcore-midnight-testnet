@@ -290,9 +290,9 @@ describe("seals", () => {
     expect(() => sim.land(f.p)).toThrow();
     expect(sim.state.unsealedChanges).toBe(false);
     const resetAt = sim.state.lastRevocationReset;
-    // Cycles 1 to 4, ten minutes apart, all within the hour: the seals go through but retire
+    // Cycles 1 to 3, ten minutes apart, all within the hour: the seals go through but retire
     // nothing, the revocation stays waiting (verifiers keep waiting), and every proof lands.
-    for (let n = 1; n <= 4; n++) {
+    for (let n = 1; n <= 3; n++) {
       sim.advance(700n);
       sim.call({ license: b(60 + n) }, "buyLicense", eves, sim.freeSlot());
       f = inFlight(n);
@@ -339,6 +339,48 @@ describe("seals", () => {
     ).toThrow(/No live licence/);
   }, 60_000);
 
+  it("a revocation waits at most an hour for its seal, even after a seal whose bound was 300 s ahead", () => {
+    // Verify round 2: the hour was counted from the seal's bound (up to 300 s ahead of its
+    // block), so a revocation could wait about 65 minutes. It is now counted from the bound
+    // less SEAL_SLACK, never later than the block.
+    const sim = new RoyaltiesSimulator();
+    const offer = post(sim);
+    buy(sim, offer);
+    buy(sim, offer, LIC2);
+    buy(sim, offer, b(12));
+    sim.call({}, "sealRevocations", sim.now + 100n); // daily
+    sim.advance(700n);
+    sim.call(
+      { admin: ADMIN },
+      "revokeLicense",
+      licenceKeyOf(b(12), offer, EXPIRES),
+    );
+    const sealBlock = sim.now;
+    sim.call({}, "sealRevocations", sim.now + 300n); // as far ahead as allowed
+    expect(sim.state.lastRevocationReset <= sealBlock).toBe(true);
+    sim.advance(1n);
+    const p = sim.prove(
+      who(offer, { license: LIC2 }),
+      "proveLicense",
+      NIGHT,
+      0n,
+      sim.now + 2n * HOUR,
+      SCOPE,
+      true,
+    );
+    sim.call(
+      { admin: ADMIN },
+      "revokeLicense",
+      licenceKeyOf(LIC2, offer, EXPIRES),
+    );
+    const revokedAt = sim.now;
+    sim.advance(HOUR);
+    sim.call({}, "sealRevocations", sim.now + 100n);
+    expect(sim.state.unsealedChanges).toBe(false);
+    expect(sim.now - revokedAt <= HOUR).toBe(true);
+    expect(() => sim.land(p)).toThrow();
+  });
+
   it("the daily seal also seals a waiting revocation, without counting as the hourly one", () => {
     const sim = new RoyaltiesSimulator();
     const offer = post(sim);
@@ -354,7 +396,7 @@ describe("seals", () => {
     );
     sim.call({}, "sealRevocations", sim.now + 100n); // the hourly revocation seal
     const resetAt = sim.state.lastRevocationReset;
-    expect(resetAt).toBe(sim.now + 100n);
+    expect(resetAt).toBe(sim.now + 100n - 300n); // the bound less SEAL_SLACK
     sim.advance(700n); // within the hour, but the daily seal is due
     sim.call(
       { admin: ADMIN },

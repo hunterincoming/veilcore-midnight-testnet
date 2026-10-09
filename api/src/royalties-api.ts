@@ -25,7 +25,9 @@
 // Every card read from a file is checked and normalised (lower-case hex, 32 bytes) before
 // it is used or kept. Offers, purchases and settlements that may already have landed (a
 // timeout) are not repeated without being asked. A settle, merge or presentation whose
-// proof went stale on the way (a seal retired its root) is proved and sent once more.
+// proof went stale on the way (a seal retired its root) is proved and sent once more
+// (isStaleRootError: not yet checked against a real node; a retry after an on-chain
+// failure pays a second fee).
 //
 // Two runs on one computer share this store. Every write of it (this client's own, and
 // midnight-js's write-back after a transaction) is merged with what is on disk, and each
@@ -899,17 +901,42 @@ export const mergingPrivateStateProvider = (store: StateStore): StateStore =>
 /** The circuits proved against roots a seal can retire, sent once more if the root went stale. */
 const REPROVE_ON_STALE = new Set(['settle', 'proveLicense', 'mergeNotes']);
 
+/** An error and every error it wraps (cause, and the errors of an AggregateError), outermost first. */
+const errorChain = (e: unknown): unknown[] => {
+  const out: unknown[] = [];
+  const walk = (x: unknown): void => {
+    if (x === undefined || x === null || out.includes(x) || out.length > 32) return;
+    out.push(x);
+    if (typeof x === 'object') {
+      walk((x as { cause?: unknown }).cause);
+      const inner = (x as { errors?: unknown }).errors;
+      if (Array.isArray(inner)) for (const y of inner) walk(y);
+    }
+  };
+  walk(e);
+  return out;
+};
+
+/** The contract's own refusal when a proof's root is not in a tree's history: "... or the path is stale". */
+const STALE_ROOT = /or the path is stale/i;
+
 /**
  * Whether a call failed because a root it proved against was retired before it landed (a
- * seal in between): the contract's root checks ("... or the path is stale"), or a
- * transaction midnight-js reports failed on chain (CallTxFailedError, which does not say
- * why). Never a timeout: a call that timed out may have landed.
+ * seal in between): the contract's root-check refusal ("... or the path is stale") anywhere
+ * in the error chain (message or cause, however midnight-js or the node wraps it, e.g.
+ * "Unexpected error submitting ..."), or a transaction midnight-js reports failed on chain
+ * (CallTxFailedError, which does not say why). Never when anything in the chain speaks of
+ * a timeout: a call that timed out may have landed.
+ *
+ * Not yet checked on a real network: what a node returns for a stale proof is assumed, not
+ * observed (the preprod run does not cover it). A failure caught at submission costs
+ * nothing; one recorded on chain has paid its fee, so the one retry can cost a second fee.
  */
 export const isStaleRootError = (e: unknown): boolean => {
-  const name = e instanceof Error ? e.name : '';
-  const message = e instanceof Error ? e.message : String(e);
-  if (/timed out|timeout/i.test(message)) return false;
-  return name === 'CallTxFailedError' || /path is stale|stale root|checkRoot/i.test(message);
+  const chain = errorChain(e);
+  const text = (x: unknown): string => (x instanceof Error ? x.message : typeof x === 'string' ? x : '');
+  if (chain.some((x) => /timed out|timeout/i.test(text(x)))) return false;
+  return chain.some((x) => (x instanceof Error && x.name === 'CallTxFailedError') || STALE_ROOT.test(text(x)));
 };
 
 // ─────────────────────────────────────────────────────────────── the client
@@ -2040,10 +2067,13 @@ export class RoyaltiesAPI {
   }
 
   /**
-   * What lowering `link`'s share to `share` (running until `until`) would break: every open
-   * offer of a descendant whose price would no longer pay that place at least one unit. The
-   * contract refuses such a payment, so the offer could not be sold until its breeder posts
-   * a new one at a higher price (and top-ups of it below the same floor are refused).
+   * What lowering `link`'s share to `share` (running until `until`) would break, for every
+   * offer of a descendant whose chart holds the link: where that place's share of the
+   * offer's price would come to less than one unit, the contract refuses the payment. An
+   * open offer could then no longer be sold (its breeder would have to post a new one at a
+   * higher price), and top-ups below the same floor are refused. A closed offer, or one that
+   * has ended but is still within its 30 days of top-ups, is listed too when its ancestors
+   * take a royalty share: topUpSplit still pays the shares, so its small top-ups are refused.
    */
   async relaxWarnings(link: Uint8Array, share: bigint, until?: bigint): Promise<string[]> {
     const l = await this.currentLedger();
@@ -2054,16 +2084,25 @@ export class RoyaltiesAPI {
     const gen = ['parent', 'parent', 'grandparent', 'grandparent', 'grandparent', 'grandparent'];
     const out: string[] = [];
     for (const [id, o] of l.offers) {
-      if (!o.open || o.expires <= now || hex(o.color) !== hex(k.color) || !l.stacks.member(o.record)) continue;
+      if (hex(o.color) !== hex(k.color) || !l.stacks.member(o.record)) continue;
+      const selling = o.open && o.expires > now;
+      const toppingUp = o.split && o.expires + SETTLE_GRACE > now;
+      if (!selling && !toppingUp) continue;
       l.stacks.lookup(o.record).forEach((lid, i) => {
         if (hex(lid) !== hex(link)) return;
         const d = placeDenominator(i);
         if (o.price * share >= d) return;
+        const floor = (d + share - 1n) / share;
+        const what = `offer ${hex(id).slice(0, 10)} (record ${hex(o.record).slice(0, 10)}, price ${o.price})`;
+        const place = `your ${gen[i] ?? 'great-grandparent'} share`;
         out.push(
-          `offer ${hex(id).slice(0, 10)} (record ${hex(o.record).slice(0, 10)}, price ${o.price}) could no longer be ` +
-            `sold: your ${gen[i] ?? 'great-grandparent'} share of its price would come to less than one unit, which ` +
-            `the contract refuses (its breeder would have to post it again at a price of at least ` +
-            `${(d + share - 1n) / share}; top-ups below that are refused too)`,
+          selling
+            ? `${what} could no longer be sold: ${place} of its price would come to less than one unit, which the ` +
+                `contract refuses (its breeder would have to post it again at a price of at least ${floor}; ` +
+                `top-ups under ${floor} are refused too)`
+            : `${what} is ${o.open ? 'ended' : 'closed'} but still takes royalty top-ups until ` +
+                `${new Date(Number(o.expires + SETTLE_GRACE) * 1000).toISOString().slice(0, 10)}: with ${place} at ` +
+                `that size, any top-up under ${floor} would be refused`,
         );
       });
     }
@@ -2073,8 +2112,8 @@ export class RoyaltiesAPI {
   /**
    * As a PARENT: lower a link's terms (a smaller share or fee, an earlier end), with the
    * payee key kept here. Never raises them; once in 30 days. Lowering is final. Refused while
-   * relaxWarnings has something to say (a descendant's offer could no longer be sold),
-   * unless `despite`.
+   * relaxWarnings has something to say (a descendant's offer could no longer be sold, or its
+   * small top-ups would be refused), unless `despite`.
    */
   async relaxLink(
     link: Uint8Array,

@@ -50,7 +50,7 @@ is kept out of the payment and moved into the private settlement.
 | `proveLicense` | licensee or delegate | A licence live at the verifier's time, and optionally a settled period ≥ N units; or that period settled under a licence since ended. Needs only the presentation key. | 51,485 |
 | `revokeLicense` | offer admin | Only if the offer said revocable, and only before it ends. Tracked per offer. | |
 | `clearEnded`, `removeEnded` | anyone | Tidy up ended licences (30 days after the end, at the earliest) and ended offers. | |
-| `sealRevocations` | anyone | Retires old licence roots so revoked licences stop proving, at most once an hour for a revocation; every tree's at most daily. Every 600 s at most (a revocation seal that is due skips that wait). | |
+| `sealRevocations` | anyone | Retires old licence roots so revoked licences stop proving, at most once an hour for a revocation (a revocation waits at most an hour); every tree's at most daily. Every 600 s at most (a revocation seal that is due skips that wait). | |
 
 Measured with `zkir mock-compile` from compiler 0.31.1 on 8 October 2026. The limit for
 anything a holder proves is 2^17 = 131,072 rows. `settle` uses 79% of it (it was 96%
@@ -180,9 +180,17 @@ on-chain licensing projects, the academic papers, and Midnight's own code.
    offer can still do, said exactly: its seal retires the licence tree's old roots, which
    voids every settlement and presentation proved against them that has not landed yet.
    Anyone can revoke a licence of an offer of their own, so the contract allows that at most
-   once an hour (plus the daily seal of every tree), and the client proves such a voided
-   settlement, merge or presentation once more and sends it again. The cost is that a
-   revocation waits up to an hour for its seal, and its offer's verifiers wait with it.
+   once an hour (plus the daily seal of every tree). The hour is counted from the last
+   revocation seal's time bound less its 300 s of slack, which is never later than that
+   seal's block: so a revocation waits at most an hour for its seal, and two revocation seals
+   are at least 55 minutes apart in block time. The client proves a voided settlement, merge
+   or presentation once more and sends it again. It recognises a stale root by the
+   contract's refusal ("... or the path is stale") anywhere in the error and what it wraps,
+   or by midnight-js reporting the transaction failed on chain; never after a timeout. What
+   a real node returns for a stale proof is not yet observed (the preprod run does not cover
+   it), and a retry after a failure recorded on chain pays a second fee. The cost of the
+   limit is that a revocation waits up to an hour for its seal, and its offer's verifiers
+   wait with it.
 7. **Licences are not tradable.** Tradable royalty rights pulled music-royalty and IP-token
    projects into securities trouble; Molecule keeps revenue rights off its tokens
    ([Molecule](https://molecule.xyz/blog/ipts-a-gain-of-function)).
@@ -338,5 +346,10 @@ None is a human or outside audit.
   revocable licence can lose its 30 days to settle, and a tiny payment to an ancestor is
   refused, not paid nothing (docs corrected); lowering a link's share could make a
   descendant's offer unsellable (the parent is warned first); the rounded top-up time uses
-  the payer's clock (documented). Regression tests: `royalties-hardening.test.ts` ("seals")
+  the payer's clock (documented). A verification pass of these fixes found 3 more low ones:
+  the hour was counted from the seal's bound, up to 300 s ahead of its block, so a revocation
+  could wait about 65 minutes (now counted from the bound less 300 s); the relax warning left
+  out closed and ended offers that still take split top-ups (now listed); the re-prove looked
+  only at midnight-js's on-chain failure (now also the contract's refusal anywhere in a
+  wrapped error, and the unverified part is said above). Regression tests: `royalties-hardening.test.ts` ("seals")
   and `royalties-attacks.test.ts` ("round 7").

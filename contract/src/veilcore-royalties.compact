@@ -102,11 +102,12 @@
 // anchored identity is read from veilcore.compact off chain (ledger 8 has no calls
 // between contracts). An offer id is never reused. REVOCATION follows veilcore.compact.
 // SEALS: a seal retires the licence tree's old roots when a revocation is waiting, at most
-// once an hour (REVOCATION_SEAL_INTERVAL), and every tree's at most daily (to bound
-// history). Retiring roots voids proofs made against them that are still in flight, so
-// anyone who can revoke a licence (on an offer of their own, say) can void in-flight
-// proofs at most once an hour, plus the daily seal; the client then proves once more. A
-// revocation waits up to an hour for its seal, and verifiers wait with it.
+// once an hour (REVOCATION_SEAL_INTERVAL, counted from no later than the last such seal's
+// block, so two are at least 55 minutes apart in block time), and every tree's at most
+// daily (to bound history). Retiring roots voids proofs made against them that are still
+// in flight, so anyone who can revoke a licence (on an offer of their own, say) can void
+// in-flight proofs that often, plus the daily seal; the client then proves once more. A
+// revocation waits at most an hour for its seal, and verifiers wait with it.
 //
 // WHAT CAN STILL LINK. Every root a proof uses is public. A chain of them can link a
 // presentation to a settlement, a settlement to the top-up that made its note, and the
@@ -268,7 +269,10 @@ export ledger linkSeq: Counter;
 export ledger lastLink: Bytes<32>;
 
 export ledger lastSealTime: Uint<64>;
-/** When a revocation last retired the licence tree's old roots: at most once every REVOCATION_SEAL_INTERVAL. */
+/**
+ * When a revocation last retired the licence tree's old roots, as the seal's bound less
+ * SEAL_SLACK: never later than that seal's block time, and at most SEAL_SLACK before it.
+ */
 export ledger lastRevocationReset: Uint<64>;
 /** When the trees that only grow (offers, notes, receipts) last had their old roots retired. */
 export ledger lastSlowSealTime: Uint<64>;
@@ -862,9 +866,9 @@ export circuit removeEnded(offer: Bytes<32>): [] {
  * stop proving), at most once every REVOCATION_SEAL_INTERVAL, and of every tree at most
  * daily (only to bound their history). Retiring roots voids proofs in flight, so this is
  * how often anyone can do that. A seal after mere sales or top-ups retires nothing. A seal
- * within the hour after the last revocation-triggered retirement leaves the revocation
- * waiting (unsealedChanges stays set, sealedRevocations does not move), so verifiers keep
- * waiting. Anyone may call it once the block time is SEAL_INTERVAL past the last seal, or
+ * before lastRevocationReset + REVOCATION_SEAL_INTERVAL (lastRevocationReset is no later
+ * than the last revocation seal's block time) leaves the revocation waiting
+ * (unsealedChanges stays set, sealedRevocations does not move), so verifiers keep waiting. Anyone may call it once the block time is SEAL_INTERVAL past the last seal, or
  * as soon as a waiting revocation is due (so a seal that did nothing cannot delay it).
  */
 export circuit sealRevocations(bound: Uint<64>): [] {
@@ -883,7 +887,10 @@ export circuit sealRevocations(bound: Uint<64>): [] {
     unsealedChanges = false;
   }
   if (revocationDue) {
-    lastRevocationReset = t;
+    // t is up to SEAL_SLACK ahead of the block time; t - SEAL_SLACK is no later than it
+    // (t >= SEAL_SLACK is checked above), so the next revocation seal is due at most an hour
+    // after this block, and a revocation never waits longer than that.
+    lastRevocationReset = (t - SEAL_SLACK()) as Uint<64>;
   }
   if (daily) {
     offerLeaves.resetHistory();

@@ -247,11 +247,15 @@ const sameKey = (a: JubjubPoint, b: JubjubPoint): boolean =>
 
 /**
  * Check 8's link: does `newer` name `older` in supersedes? `older` is the record the
- * claim names (its JSON recomputed to `olderCommitment`, check 4). A recordId is scoped
- * to its issuer, so another holder's record can carry the same one (8 October 2026
- * review): the link is accepted only when the recordId matches AND both records have the
- * same holder. A supersedes block that also states the superseded record's `commitment`
- * is matched by that instead, exactly. Anything less is reported as not named.
+ * claim names (its JSON recomputed to `olderCommitment`, check 4).
+ *  - A supersedes block that states the superseded record's `commitment` is matched by
+ *    that, exactly.
+ *  - Otherwise by recordId, which is unique only within its issuer (8 October 2026
+ *    review), so the holder is compared too. The holder is a field a correction may
+ *    change (veilcore-records, corrections.ts: `holder` is classified, material for both
+ *    descent and terms), so a different holder is accepted when the correction's own
+ *    supersedes block lists it among `changedFields` (as `holder` or `holder.<path>`,
+ *    the way supersedesFor names it), and not otherwise.
  */
 const supersedesCheck = (
   newer: Record<string, unknown>,
@@ -259,7 +263,7 @@ const supersedesCheck = (
   olderCommitment: string,
 ): [boolean, string] => {
   const sup = newer.supersedes as
-    | { recordId?: unknown; commitment?: unknown }
+    | { recordId?: unknown; commitment?: unknown; changedFields?: unknown }
     | undefined;
   if (sup === undefined || sup === null || typeof sup !== "object")
     return [false, "the correction does NOT name the original in supersedes"];
@@ -284,15 +288,26 @@ const supersedesCheck = (
     }
   };
   const oldHolder = holderOf(older);
-  if (oldHolder === undefined || holderOf(newer) !== oldHolder)
+  if (oldHolder !== undefined && holderOf(newer) === oldHolder)
     return [
-      false,
-      "the correction names a record with the original's recordId, but under another holder: a recordId is scoped to its issuer, so it may be another record",
+      true,
+      "the correction names the original in supersedes (same recordId, same holder)",
     ];
-  return [
-    true,
-    "the correction names the original in supersedes (same recordId, same holder)",
-  ];
+  const declared =
+    Array.isArray(sup.changedFields) &&
+    sup.changedFields.some(
+      (f) =>
+        typeof f === "string" && (f === "holder" || f.startsWith("holder.")),
+    );
+  return declared
+    ? [
+        true,
+        "the correction names the original in supersedes (same recordId); it changes the holder, and says so in changedFields",
+      ]
+    : [
+        false,
+        "the correction names the original's recordId but has a different holder, and its supersedes block does not list holder among changedFields: a recordId is unique only within its issuer, so this does not establish that it corrects this record",
+      ];
 };
 
 export const verifyClaim = (input: ClaimVerifyInput): ClaimVerdict => {

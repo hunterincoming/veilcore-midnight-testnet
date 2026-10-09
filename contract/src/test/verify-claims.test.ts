@@ -481,7 +481,7 @@ describe("verifyClaim", () => {
     );
   });
 
-  it("unchanged: supersedes must name the original by commitment, or by recordId under the same holder", () => {
+  it("unchanged: supersedes must name the original by commitment, or by recordId with the same or a declared new holder", () => {
     const corrected = [...VALUES];
     corrected[15] = { uint: "4100" };
     const sup = {
@@ -511,8 +511,33 @@ describe("verifyClaim", () => {
       supersedes: sup,
     });
     expect(judge(other).find((c) => !c.ok)?.detail).toMatch(
-      /under another holder/,
+      /different holder, and its supersedes block does not list holder/,
     );
+    // Verification review: the holder is a field a correction may change (the SDK's
+    // corrections.ts classifies it). Declared in changedFields, as supersedesFor writes
+    // it (flattened: holder.id), the holder change is accepted.
+    for (const declared of [
+      ["holder.id"],
+      ["holder"],
+      ["profileData.notes", "holder.id"],
+    ]) {
+      const reheld = sealRecord(corrected, "58".repeat(32), {
+        holder: { id: "new-holder-after-sale" },
+        supersedes: { ...sup, changedFields: declared },
+      });
+      expect(
+        judge(reheld).every((c) => c.ok),
+        declared.join(),
+      ).toBe(true);
+    }
+    const undeclared = sealRecord(corrected, "59".repeat(32), {
+      holder: { id: "new-holder-after-sale" },
+      supersedes: {
+        ...sup,
+        changedFields: ["profileData.notes", "holderName"],
+      },
+    });
+    expect(judge(undeclared).some((c) => !c.ok)).toBe(true);
     // Named by commitment: matched exactly, whatever the recordId.
     const byCommitment = sealRecord(corrected, "66".repeat(32), {
       supersedes: {

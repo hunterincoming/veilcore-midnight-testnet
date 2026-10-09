@@ -43,6 +43,14 @@ const mainnetBuild = (mode: string, command: string) => {
   const policy = readPolicyStatus();
   if (!policy.ok) throw new Error(`\n\nThe mainnet website was not built. ${policy.problem}\n`);
   const env = { ...loadEnv(mode, process.cwd(), 'VITE_'), ...process.env };
+  // The in-browser transactions (src/veilcore/chain/) are for test networks only: a
+  // mainnet build with the flag left in the shell from a test run is refused here, not
+  // only at run time.
+  if (env.VITE_REAL_CHAIN === '1') {
+    throw new Error(
+      '\n\nThe mainnet website was not built: VITE_REAL_CHAIN=1 is set (left from a test run?). It is for test networks only. Close this terminal or run: unset VITE_REAL_CHAIN VITE_SPONSOR_URL\n',
+    );
+  }
   if (env.VITE_NETWORK_ID !== 'mainnet') {
     throw new Error(
       '\n\nThe mainnet website was not built: bboard-ui/.env.mainnet must set VITE_NETWORK_ID=mainnet.\n',

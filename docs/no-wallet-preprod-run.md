@@ -13,8 +13,9 @@ it refuses any registry that does not say it anchors on preprod.
 small PDF to stand in for a DNA report; about 2 hours (the wallet sync and the first
 anchoring are slow).
 
-**Never paste to Claude or anyone:** the sponsor seed, the two operator tokens, the
-record-keys backup file. Everything this asks you to paste back is public.
+**Never paste to Claude or anyone:** the sponsor seed, the preprod registry's operator
+token, the sponsor's status token, the record-keys backup file. Everything this asks you to
+paste back is public.
 
 ## Part 1: the sponsor wallet (Mac, about 20 minutes, mostly waiting)
 
@@ -36,10 +37,12 @@ never re-registering NIGHT for DUST is about that mainnet wallet and does not ap
 3. Copy the line **"Using unshielded address: mn_addr_preprod1…"**. Paste it into the
    preprod faucet (https://midnight-tmnight-preprod.nethermind.dev/) and request tNIGHT.
 4. Wait in the tool. When the tNIGHT arrives it registers it for DUST by itself and shows a
-   DUST balance. When it asks deploy or join: **join** the practice contract from 7 October,
-   `72fe33436d424fcf247919c8e2f0de224175cc55061739be0ebffb2d650f2f73`, then `0` to exit.
+   DUST balance. When it asks deploy or join: **2 (join)** the practice contract from
+   7 October, `72fe33436d424fcf247919c8e2f0de224175cc55061739be0ebffb2d650f2f73`, then `0`
+   to exit.
 5. Run it once more with your **usual preprod wallet** (option 2, seed 2) only to copy its two
-   addresses: "Using unshielded address: …" and "This wallet's DUST address: …". Then `0`.
+   addresses: "Using unshielded address: …" and "This wallet's DUST address: …". Then `5`
+   (exit) at the deploy-or-join question.
    They go in a setting below so the sponsor can never run as your own wallet.
 
 ## Part 2: three services on Railway (about 30 minutes)
@@ -92,6 +95,8 @@ these variables:
   sponsor checks and refuses it, but don't make it.
 - `REGISTRY_OPERATOR_TOKEN=` the preprod registry token from B
 - `ANCHOR_EVERY_MINUTES=5` (for this test only)
+- `LIMIT_PER_NETWORK_HOUR=10` and `LIMIT_PER_NETWORK_DAY=30` (for this test only: the
+  normal limit is 3 an hour, and this run makes 3 calls plus any retry)
 - `SPONSOR_STATUS_TOKEN=` another `openssl rand -hex 32`
 
 Then, on the Mac: `railway link` (pick the project and `veilcore-sponsor`), then the
@@ -105,7 +110,8 @@ The first sync can take a long time.
 - If the log says **"anchorBatch key … is not the one on chain"**: your Mac's contract build
   is not the one 72fe… was deployed from. Tell Claude; the fix is a fresh demo contract.
 - If it **cannot reach the proof server**: give the proof server a public domain and set
-  `PROOF_SERVER_URL` to it.
+  `PROOF_SERVER_URL` to it. Anyone could then use it to make proofs (test network, costs
+  only CPU); remove that domain after the run.
 
 ## Part 3: the website on your Mac (about 20 minutes)
 
@@ -119,16 +125,18 @@ The first sync can take a long time.
    ```
    find ~ -name "bls_midnight_2p1[34]" -not -path "*/veilcore/*" 2>/dev/null | xargs shasum -a 256
    ```
-   **The values must match.** If they don't, stop and tell Claude.
-2. Build and start the site in test mode (one terminal, all lines):
+   **The values must match.** If they don't, stop and tell Claude. If the `find` line
+   prints nothing, the compiler keeps them somewhere else: tell Claude, don't skip it. Don't
+   commit `scripts/params.sha256.json` yourself: paste the two values back and Claude
+   commits them.
+2. Build and start the site in test mode. The settings go on the build line itself, not
+   `export`, so nothing stays in the terminal for a later deploy (a mainnet build refuses
+   them anyway). Replace the two `<…>` with the domains, keep it all on one line:
    ```
-   export VITE_REAL_CHAIN=1
-   export VITE_REAL_CHAIN_CONTRACT_ADDRESS=72fe33436d424fcf247919c8e2f0de224175cc55061739be0ebffb2d650f2f73
-   export VITE_SPONSOR_URL=https://<sponsor domain>
-   export VITE_API_BASE=https://<preprod registry domain>
-   npm run build
+   VITE_REAL_CHAIN=1 VITE_REAL_CHAIN_CONTRACT_ADDRESS=72fe33436d424fcf247919c8e2f0de224175cc55061739be0ebffb2d650f2f73 VITE_SPONSOR_URL=https://<sponsor domain> VITE_API_BASE=https://<preprod registry domain> npm run build
    npx vite preview --port 4173
    ```
+   When you are done with the whole run, close this terminal window.
 3. Open **http://localhost:4173** in Chrome. Time each step with your phone's stopwatch.
 
 ## Part 4: the test itself (about 30 minutes)

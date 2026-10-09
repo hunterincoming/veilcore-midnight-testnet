@@ -134,17 +134,47 @@ describe('record keys', () => {
     };
     setDnaOnChain('VEIL-D', d);
     expect(keysFor('VEIL-D')?.backedUpAt).toBeUndefined(); // the old backup lacks this salt
+    downloadBackup(keysFor('VEIL-D')!, {}); // a backup made while the send is in flight…
     setDnaOnChain('VEIL-D', { ...d, status: 'paired', txId: 'cc'.repeat(32) });
+    expect(keysFor('VEIL-D')?.backedUpAt).toBeUndefined(); // …is not current once it lands
     const withSalt = keysFor('VEIL-D')!;
     const file = { text: () => Promise.resolve(backupFile(withSalt, {})) } as unknown as File;
     forgetKeys('VEIL-D');
-    expect((await restoreBackup(file)).dnaOnChain).toMatchObject({ salt: d.salt, status: 'paired' });
+    const back = await restoreBackup(file);
+    expect(back.dnaOnChain).toMatchObject({ salt: d.salt, status: 'paired' });
+    expect(back.backedUpAt).toBeDefined(); // the file holds everything kept
 
     // An older backup, made before the pairing, does not wipe this browser's salt.
     const old = {
       text: () => Promise.resolve(backupFile({ ...withSalt, dnaOnChain: undefined }, {})),
     } as unknown as File;
-    expect((await restoreBackup(old)).dnaOnChain?.salt).toBe(d.salt);
+    const kept = await restoreBackup(old);
+    expect(kept.dnaOnChain?.salt).toBe(d.salt);
+    expect(kept.backedUpAt).toBeUndefined(); // the browser holds a salt that file does not
+    vi.unstubAllGlobals();
+  });
+
+  it('a change the browser could not write is not hidden by the older stored copy', async () => {
+    const { setDnaOnChain, keysFor } = await import('./record-keys');
+    const stored = JSON.stringify({
+      'VEIL-E': { recordId: 'VEIL-E', recordSecret: '11'.repeat(32), recoverySecret: '22'.repeat(32), createdAt: 1 },
+    });
+    vi.stubGlobal('localStorage', {
+      getItem: () => stored,
+      setItem: () => {
+        throw new Error('quota');
+      },
+      removeItem: () => undefined,
+    });
+    const d = {
+      fingerprint: 'd7'.repeat(32),
+      salt: '5a'.repeat(31) + '02',
+      identity: 'e0'.repeat(32),
+      binding: 'b1'.repeat(32),
+      status: 'sending' as const,
+    };
+    setDnaOnChain('VEIL-E', d);
+    expect(keysFor('VEIL-E')?.dnaOnChain?.salt).toBe(d.salt);
     vi.unstubAllGlobals();
   });
 

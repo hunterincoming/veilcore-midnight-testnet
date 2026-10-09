@@ -109,9 +109,10 @@ const readAll = (): Record<string, RecordKeys> => {
     const raw = localStorage.getItem(KEY);
     if (!raw) return { ...sessionOnly };
     const parsed = JSON.parse(raw) as Record<string, unknown>;
-    const out: Record<string, RecordKeys> = { ...sessionOnly };
+    const out: Record<string, RecordKeys> = {};
     for (const [id, v] of Object.entries(parsed)) if (isKeys(v)) out[id] = v;
-    return out;
+    // What could not be written (storage full or blocked) is newer than what was: it wins.
+    return { ...out, ...sessionOnly };
   } catch {
     return { ...sessionOnly };
   }
@@ -230,21 +231,29 @@ export const restoreBackup = async (file: File): Promise<RecordKeys> => {
   }
   // Restoring an older backup must not drop what this browser saved since (a pairing's
   // salt, an anchor): keep this browser's, unless the backup has the same pairing landed.
-  const merged: RecordKeys = existing
-    ? {
-        ...keys,
-        anchor: existing.anchor ?? keys.anchor,
-        dnaOnChain:
-          existing.dnaOnChain &&
-          !(
-            keys.dnaOnChain?.binding === existing.dnaOnChain.binding &&
-            keys.dnaOnChain.status === 'paired' &&
-            existing.dnaOnChain.status === 'sending'
-          )
-            ? existing.dnaOnChain
-            : keys.dnaOnChain,
-      }
-    : keys;
+  const dna =
+    existing?.dnaOnChain &&
+    !(
+      keys.dnaOnChain?.binding === existing.dnaOnChain.binding &&
+      keys.dnaOnChain.status === 'paired' &&
+      existing.dnaOnChain.status === 'sending'
+    )
+      ? existing.dnaOnChain
+      : keys.dnaOnChain;
+  const anchor = keys.anchor ?? existing?.anchor;
+  const sameAsFile =
+    JSON.stringify(dna ?? null) === JSON.stringify(keys.dnaOnChain ?? null) &&
+    JSON.stringify(anchor ?? null) === JSON.stringify(keys.anchor ?? null);
+  const { backedUpAt: _b, ...fromFile } = keys;
+  void _b;
+  // Marked backed up only when the file holds everything kept: otherwise the browser holds
+  // something (a newer salt, say) that no backup file has yet.
+  const merged: RecordKeys = {
+    ...fromFile,
+    ...(anchor ? { anchor } : {}),
+    ...(dna ? { dnaOnChain: dna } : {}),
+    ...(sameAsFile ? { backedUpAt: Date.now() } : {}),
+  };
   const all = readAll();
   if (!writeAll({ ...all, [keys.recordId]: merged })) sessionOnly = { ...sessionOnly, [keys.recordId]: merged };
   changed();
@@ -257,10 +266,19 @@ export const setAnchor = (recordId: string, anchor: ChainAnchor): void => update
 /** Save a bound pairing: before sending ('sending', with its salt), and once it lands. */
 export const setDnaOnChain = (recordId: string, dnaOnChain: DnaOnChain): void =>
   update(recordId, (k) => {
-    // A new salt is not in any backup made before it: ask for a fresh one.
-    const newSalt = k.dnaOnChain?.salt !== dnaOnChain.salt;
+    // A backup made before this change does not hold it (a new salt, or the transaction
+    // of a pairing that has now landed): ask for a fresh one.
+    const changed = k.dnaOnChain?.salt !== dnaOnChain.salt || k.dnaOnChain?.status !== dnaOnChain.status;
     const { backedUpAt, ...rest } = k;
-    return newSalt ? { ...rest, dnaOnChain } : { ...rest, backedUpAt, dnaOnChain };
+    return changed ? { ...rest, dnaOnChain } : { ...rest, backedUpAt, dnaOnChain };
+  });
+
+/** Forget a pairing that was never sent (the call failed before anything left the browser). */
+export const clearDnaOnChain = (recordId: string): void =>
+  update(recordId, (k) => {
+    const { dnaOnChain: _dropped, ...rest } = k;
+    void _dropped;
+    return rest;
   });
 
 /** Keys that exist only in this browser, with no backup made. */

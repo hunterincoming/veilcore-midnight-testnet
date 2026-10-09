@@ -8,7 +8,14 @@
 
 import React from 'react';
 import { Alert, Button, Paper, Stack, Typography } from '@mui/material';
-import { hexBytes, setDnaOnChain, useRecordKeys, type DnaOnChain } from '../../veilcore/record-keys';
+import {
+  clearDnaOnChain,
+  hexBytes,
+  keysFor,
+  setDnaOnChain,
+  useRecordKeys,
+  type DnaOnChain,
+} from '../../veilcore/record-keys';
 import { getRecord, useRecords } from '../../veilcore/records';
 import { CHAIN_CONTRACT, chainNotReady } from '../../veilcore/chain/config';
 import { dnaPairBinding, newPairingSalt, pairingEvidence } from '../../veilcore/chain/pairing';
@@ -72,6 +79,18 @@ export const PairDnaOnChainPanel: React.FC<{ recordId: string }> = ({ recordId }
       ) + '\n',
     );
 
+  // One dated pairing per record for now: dating another report would replace the first
+  // one's salt, and without it the first pairing could never be shown again.
+  const other = !mine && keys.dnaOnChain?.status === 'paired' ? keys.dnaOnChain : undefined;
+  if (other) {
+    return (
+      <Typography variant="caption" color="text.secondary">
+        This record already has a dated pairing of a different report. Dating a second one is not supported yet, so this
+        report is not dated. Keep the first one’s evidence file and backup.
+      </Typography>
+    );
+  }
+
   if (mine?.status === 'paired') {
     return (
       <Paper variant="outlined" sx={{ p: 2 }}>
@@ -84,7 +103,7 @@ export const PairDnaOnChainPanel: React.FC<{ recordId: string }> = ({ recordId }
           </Typography>
           {!keys.backedUpAt && (
             <Alert severity="warning" variant="outlined">
-              Download the record keys backup again: the one you have does not hold this pairing’s random number.
+              Download the record keys backup again: the one you have does not hold this pairing.
             </Alert>
           )}
           <Button variant="outlined" onClick={() => evidenceFile(mine)} sx={{ alignSelf: 'flex-start' }}>
@@ -98,23 +117,35 @@ export const PairDnaOnChainPanel: React.FC<{ recordId: string }> = ({ recordId }
   const pair = () =>
     call.run(async (progress) => {
       // The same salt again when an earlier send was not confirmed: the same binding, not a second one.
-      const pending =
-        mine?.status === 'sending'
-          ? mine
-          : (() => {
-              const salt = newPairingSalt();
-              const d: DnaOnChain = {
-                fingerprint,
-                salt,
-                identity: anchor.identity,
-                binding: dnaPairBinding(fingerprint, anchor.identity, salt),
-                status: 'sending',
-              };
-              setDnaOnChain(recordId, d); // saved before anything is sent
-              return d;
-            })();
+      const fresh = mine?.status !== 'sending';
+      const pending: DnaOnChain = fresh
+        ? (() => {
+            const salt = newPairingSalt();
+            return {
+              fingerprint,
+              salt,
+              identity: anchor.identity,
+              binding: dnaPairBinding(fingerprint, anchor.identity, salt),
+              status: 'sending' as const,
+            };
+          })()
+        : mine;
+      if (fresh) {
+        setDnaOnChain(recordId, pending); // saved before anything is sent
+        if (keysFor(recordId)?.dnaOnChain?.salt !== pending.salt) {
+          throw new Error('This browser could not save the pairing’s random number, so nothing was sent.');
+        }
+      }
       const { pairDnaOnChain } = await import('../../veilcore/chain/actions');
-      const r = await pairDnaOnChain(hexBytes(keys.recordSecret), pending.binding, { progress });
+      let r: Awaited<ReturnType<typeof pairDnaOnChain>>;
+      try {
+        r = await pairDnaOnChain(hexBytes(keys.recordSecret), pending.binding, { progress });
+      } catch (e) {
+        // Refused before anything left this browser: forget the attempt, so the page does
+        // not say it may have landed. Anything else keeps it, to resend the same code.
+        if (fresh && e instanceof Error && /Nothing was sent/.test(e.message)) clearDnaOnChain(recordId);
+        throw e;
+      }
       setDnaOnChain(recordId, {
         ...pending,
         status: 'paired',
@@ -135,15 +166,10 @@ export const PairDnaOnChainPanel: React.FC<{ recordId: string }> = ({ recordId }
           it to their own record. Afterwards you download an evidence file: with it and the report, anyone can check
           that this record’s holder had the report by that date.
         </Typography>
-        {mine?.status === 'sending' && (
+        {mine?.status === 'sending' && !call.busy && (
           <Alert severity="warning" variant="outlined">
             An earlier attempt was sent but not confirmed. It may have landed. Sending again uses the same code, so it
             cannot pair a second, different one.
-          </Alert>
-        )}
-        {mine && !keys.backedUpAt && (
-          <Alert severity="warning" variant="outlined">
-            Download the record keys backup again: the one you have does not hold this pairing’s random number.
           </Alert>
         )}
         <Button

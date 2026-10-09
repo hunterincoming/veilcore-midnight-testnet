@@ -291,6 +291,18 @@ describe('builds', () => {
     expect(`${r.stdout}${r.stderr}`).toMatch(/VITE_API_BASE \(the registry address\) is not set/);
   }, 300_000);
 
+  it('a mainnet build with the test-network transaction flag still set fails, saying why', () => {
+    const r = build('mainnet', path.join(tmp, 'dist-refused3'), {
+      VEILCORE_TEST_DEPLOY_GUARD: guardFile('dummy3', DUMMY, DUMMY_CLAIMS),
+      VITE_API_BASE: API,
+      VITE_REAL_CHAIN: '1',
+      VITE_SPONSOR_URL: 'https://sponsor.example.org',
+    });
+    expect(r.status).not.toBe(0);
+    expect(`${r.stdout}${r.stderr}`).toMatch(/VITE_REAL_CHAIN=1 is set .* test networks only/);
+    expect(fs.existsSync(path.join(tmp, 'dist-refused3', 'index.html'))).toBe(false);
+  }, 300_000);
+
   it('builds in mainnet mode with a pinned address, and in preprod mode', () => {
     const m = build('mainnet', mainDist, {
       VEILCORE_TEST_DEPLOY_GUARD: guardFile('dummy', DUMMY, DUMMY_CLAIMS),

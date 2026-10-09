@@ -421,6 +421,10 @@ const makeClaim = async (c: ClaimsMenuContext): Promise<void> => {
         .map((s) => slotByName(a.file, s));
       const mask = Array.from({ length: 16 }, (_, i) => slots.includes(i));
       if (mask.every(Boolean)) throw new ClaimsInputError('A mask of every slot says nothing. Nothing was sent.');
+      // Slots the schema does not describe are empty in every record: a mask over every
+      // described slot says nothing either, and verifyClaim refuses it (check 8).
+      if (schema.slots.every((d) => mask[d.slot]))
+        throw new ClaimsInputError('A mask of every slot the schema describes says nothing. Nothing was sent.');
       const labels = [...new Set(slots)].map((s) => slotLabel(a.file, s)).join(', ');
       if (!(await askYes(c, `Publish that only ${labels || 'no slot'} changed?`)))
         return c.logger.info('Nothing was sent.');

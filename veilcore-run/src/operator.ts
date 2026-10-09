@@ -505,9 +505,17 @@ export const licenceRequest = async (
   checkLabel(o.label);
   const p = ctx.vault.read();
   if (p.licences.some((l) => l.label === o.label)) throw new Error(`Licence "${o.label}" already exists.`);
-  const issuer = toHex(bytes32(o.issuerRecord, "The issuer's record"));
+  const given = bytes32(o.issuerRecord, "The issuer's record");
   const s = newSecret();
-  const lc = toHex(commit.license(s, fromHex(issuer)));
+  // Built against the issuer's CURRENT head when the chain is at hand: issueLicense keys
+  // the licence on it, so one built against an earlier commitment (an origin, after a
+  // rotation) could never be countersigned. The head is what is kept and used from here.
+  const built =
+    ctx.vc === undefined
+      ? { licenseCommitment: commit.license(s, given), issuerRecord: given }
+      : await ctx.vc.licenseRequest(s, given);
+  const issuer = toHex(built.issuerRecord);
+  const lc = toHex(built.licenseCommitment);
   const entry: HeldLicence = {
     label: o.label,
     role: 'licensee',

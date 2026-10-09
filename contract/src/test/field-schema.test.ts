@@ -10,6 +10,7 @@ import {
   type FieldSchema,
   type TypedSlotValue,
   canonicalise,
+  committedJsonDigest,
   fieldSchemaId,
   fieldSetSummary,
   sealFieldSetFile,
@@ -133,6 +134,61 @@ describe("a sealed field-set file is what the claims contract recomputes", () =>
     expect(numberFrom(slotValueOf({ uint: "18446744073709551615" }))).toBe(
       2n ** 64n - 1n,
     );
+  });
+
+  // 8 October 2026 review (pocs/client/kit-vs-sdk-canonical.mjs): this copy hashed a
+  // sparse array and a Uint8Array that veilcore-records 0.15 refuses.
+  it("refuses what the SDK refuses: an array hole, binary data, a value that contains itself", () => {
+    const sparse: number[] = [1];
+    sparse[2] = 3;
+    expect(() => canonicalise({ x: sparse })).toThrow(/missing element/);
+    expect(() => canonicalise([, 1])).toThrow(/missing element/); // eslint-disable-line no-sparse-arrays
+    expect(() => canonicalise({ x: new Uint8Array([1, 2]) })).toThrow(
+      /binary data/,
+    );
+    expect(() => canonicalise(new Uint8Array(0).buffer)).toThrow(/binary data/);
+    expect(() => canonicalise({ x: new DataView(new ArrayBuffer(2)) })).toThrow(
+      /binary data/,
+    );
+    const loop: Record<string, unknown> = { a: 1 };
+    loop.self = loop;
+    expect(() => canonicalise(loop)).toThrow(/contains itself/);
+    const arr: unknown[] = [];
+    arr.push(arr);
+    expect(() => canonicalise(arr)).toThrow(/contains itself/);
+    // Plain values, and the same object twice side by side, are unchanged.
+    expect(canonicalise({ x: [1, 2, 3] })).toBe('{"x":[1,2,3]}');
+    expect(canonicalise({ x: { 0: 1, 1: 2 } })).toBe('{"x":{"0":1,"1":2}}');
+    const shared = { k: 1 };
+    expect(canonicalise([shared, shared])).toBe('[{"k":1},{"k":1}]');
+  });
+
+  it("committedJsonDigest refuses the same inputs as the SDK's computeCommitment", () => {
+    const base = {
+      formatVersion: "1.0",
+      recordId: "r",
+      subjectType: "plant",
+      profile: "p",
+      sealedAt: "2026-10-08T00:00:00Z",
+      holder: "h",
+      commitmentAlgorithm: "sha256/fields/v1",
+      fieldSetRoot: "a".repeat(64),
+      fieldSchema: "b".repeat(64),
+    };
+    const sparse: number[] = [1];
+    sparse[2] = 3;
+    expect(() =>
+      committedJsonDigest({ ...base, profileData: { x: sparse } }),
+    ).toThrow(/missing element/);
+    expect(() =>
+      committedJsonDigest({
+        ...base,
+        profileData: { x: new Uint8Array([1, 2]) },
+      }),
+    ).toThrow(/binary data/);
+    expect(
+      committedJsonDigest({ ...base, profileData: { x: [1, 2, 3] } }),
+    ).toHaveLength(32);
   });
 
   it("refuses null in a schema document (it cannot be canonicalised)", () => {

@@ -64,7 +64,8 @@ import {
   type Prompt,
 } from './prompt';
 import { privateStatePassword, settlePassword } from './password';
-import { chooseStore, openStores } from './private-store';
+import { chooseStore, openStores, storeDirFor } from './private-store';
+import { StoreInUseError, lockStoreDir } from './store-lock';
 import { guardProcess, watchState } from './state-watch';
 import { ChallengeFile } from './challenge-file';
 import { redactThisSession } from './logger-utils';
@@ -638,13 +639,21 @@ const mainLoop = async (
             break;
           }
           case '7': {
-            const issuer = await ask32(rli, "Issuer's record (hex): ");
+            const given = await ask32(rli, "Issuer's record (hex): ");
             const secret = randomBytes(32);
+            // Built against the issuer's CURRENT head: issueLicense keys the licence on it, so
+            // one built against an earlier commitment (an origin) could never be countersigned.
+            const { licenseCommitment, issuerRecord } = await api.licenseRequest(secret, given);
             showSecret(
               'YOUR LICENCE SECRET — keep it; you need it to countersign, present and transfer:',
               toHex(secret),
             );
-            logger.info(`Send the issuer this licence commitment: ${toHex(C.licenseCommit(secret, issuer))}`);
+            if (toHex(issuerRecord) !== toHex(given))
+              logger.info(
+                `That record has moved on: the issuer acts as ${toHex(issuerRecord)} now. The licence is built ` +
+                  'against that one: give it, not the one you typed, when you countersign, present or transfer.',
+              );
+            logger.info(`Send the issuer this licence commitment: ${toHex(licenseCommitment)}`);
             break;
           }
           case '8': {
@@ -1125,6 +1134,15 @@ export const run = async (config: Config, testEnv: TestEnvironment, logger: Logg
   }
 
   try {
+    // One CLI per private-state store, held until this process ends: two at once overwrite
+    // each other's private state (store-lock.ts). Checked before anything is asked.
+    try {
+      lockStoreDir(storeDirFor(getNetworkId()));
+    } catch (e) {
+      if (!(e instanceof StoreInUseError)) throw e;
+      logger.error(e.message);
+      return;
+    }
     // Asked for up front, before the chain starts and the wallet syncs, so a password
     // midnight-js would refuse is found in the first second rather than after the sync.
     if (!(await settlePassword(askHidden, logger))) return;

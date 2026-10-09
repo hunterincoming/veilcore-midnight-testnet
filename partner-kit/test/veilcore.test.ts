@@ -24,6 +24,7 @@ const refusedByContract = async (p: Promise<unknown>): Promise<boolean> =>
     (e: unknown) => isContractRefusal(e),
   );
 const { VEILCORE_ADDR, chainLog, fakeChain } = await import('./local-chain');
+const Veilcore = await import('../../contract/src/managed/veilcore/contract/index.js');
 
 const same = (a: Uint8Array, b: Uint8Array): boolean => toHex(a) === toHex(b);
 
@@ -109,6 +110,37 @@ describe('a laboratory: anchor, prove possession, timestamp a batch, pair a repo
   });
 });
 
+describe('a licence requested after the issuer rotated (8 October 2026 review)', () => {
+  it("is built against the issuer's head, not the origin it was asked with, and can be countersigned", async () => {
+    const vc = await VeilCore.join(chain.conn, { address: VEILCORE_ADDR });
+    const first = newSecret();
+    const origin = commit.record(first);
+    await vc.useRecordSecret(first);
+    await vc.anchor(commit.recovery(newSecret()));
+    const second = newSecret();
+    await vc.rotateRecordSecret(second);
+
+    // Built offline against the origin (what a record's ledgerIdentity names): issued
+    // against the head, it can never be countersigned.
+    const L0 = newSecret();
+    await vc.issueLicense(commit.license(L0, origin));
+    expect(await refusedByContract(vc.countersignLicense(L0, origin))).toBe(true);
+    expect(await refusedByContract(vc.countersignLicense(L0, commit.record(second)))).toBe(true);
+
+    // licenseRequest resolves the head first.
+    const L = newSecret();
+    const req = await vc.licenseRequest(L, origin);
+    expect(same(req.issuerRecord, commit.record(second))).toBe(true);
+    expect(same(req.licenseCommitment, commit.license(L, commit.record(second)))).toBe(true);
+    await vc.issueLicense(req.licenseCommitment);
+    await vc.countersignLicense(L, req.issuerRecord);
+    const challenge = newChallenge();
+    const shown = await vc.proveLicense(L, req.issuerRecord, challenge);
+    const v = await checkPresentation({ ...read(), txId: shown.txId, issuer: origin, challenge, issuedAt: Date.now() });
+    expect(v.accepted).toBe(true);
+  });
+});
+
 describe('a breeder licenses a grower: issue, countersign, prove, verify, transfer, revoke', () => {
   it('runs end to end', async () => {
     const vc = await VeilCore.join(chain.conn, { address: VEILCORE_ADDR });
@@ -131,6 +163,17 @@ describe('a breeder licenses a grower: issue, countersign, prove, verify, transf
     expect(v.accepted).toBe(true);
     expect(v.reason).toMatch(/^the licence was live when presented/);
     expect((await vc.checkPresentation(shown.txId, breeder, challenge, issuedAt)).accepted).toBe(true);
+    // With the contract's history (every call's state), the issuer-scoped rule decides;
+    // a history that does not end with this presentation is refused.
+    const history = chainLog.filter((c) => c.address === VEILCORE_ADDR).map((c) => Veilcore.ledger(c.state.data));
+    const withHistory = { ...read(), txId: shown.txId, issuer: breeder, challenge, issuedAt };
+    expect((await checkPresentation({ ...withHistory, history })).accepted).toBe(true);
+    expect((await checkPresentation({ ...withHistory, history: history.slice(0, -1) })).reason).toMatch(
+      /does not end with this presentation/,
+    );
+    expect((await checkPresentation({ ...withHistory, history: history.slice(0, -1), rule: 'strict' })).accepted).toBe(
+      true,
+    );
     expect(
       (await checkPresentation({ ...read(), txId: shown.txId, issuer: breeder, challenge: newChallenge() })).accepted,
     ).toBe(false);

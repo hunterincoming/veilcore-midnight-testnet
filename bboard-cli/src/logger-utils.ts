@@ -35,13 +35,15 @@ const typedHex = new Set<string>();
 const typedText = new Set<string>();
 
 /**
- * Add a value the user typed to what every logger created here redacts, from now on.
- * A 64-hex value is redacted whatever its case, so an error message that quotes it back
- * in another form (compact-js upper- or lower-cases) is caught too.
+ * Add a secret typed or shown in this session to what every logger created here redacts,
+ * from now on. Hex of 32 characters or more (a 64-hex key or secret, a 128-hex wallet
+ * seed) is redacted whatever its case, so an error message that quotes it back in another
+ * form (compact-js upper- or lower-cases) is caught too.
  */
 export const redactThisSession = (value: string): void => {
   const t = value.trim();
-  if (/^(0x)?[0-9a-fA-F]{64}$/.test(t)) typedHex.add(t.replace(/^0x/i, '').toLowerCase());
+  const h = t.replace(/^0x/i, '');
+  if (/^[0-9a-fA-F]+$/.test(h) && h.length >= 32) typedHex.add(h.toLowerCase());
   else if (t.length >= 8) typedText.add(t);
 };
 
@@ -84,6 +86,15 @@ export const createLogger = async (logPath: string, secrets: readonly string[] =
 };
 
 let stdioScrubbed = false;
+/** The terminal's own write, from before scrubTerminal wrapped it. */
+let unscrubbedStdout: ((chunk: string) => boolean) | undefined;
+
+/**
+ * Write to the terminal past scrubTerminal: for showSecret alone, whose whole purpose is
+ * to show the person at the terminal a secret that every log line redacts.
+ */
+export const writeUnscrubbed = (text: string): boolean =>
+  (unscrubbedStdout ?? ((t: string) => process.stdout.write(t)))(text);
 
 /**
  * Scrub everything written to the terminal, not only what this logger writes. Libraries
@@ -97,6 +108,7 @@ export const scrubTerminal = (secrets: readonly string[]): void => {
   const wanted = secrets.filter((x) => x.length > 0);
   for (const stream of [process.stdout, process.stderr]) {
     const write = stream.write.bind(stream) as (...a: unknown[]) => boolean;
+    if (stream === process.stdout) unscrubbedStdout = (t: string) => write(t);
     stream.write = (chunk: unknown, ...rest: unknown[]): boolean => {
       if (typeof chunk === 'string') return write(scrub(chunk, wanted), ...rest);
       if (chunk instanceof Uint8Array) {

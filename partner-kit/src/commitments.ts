@@ -28,7 +28,12 @@ export const commit = {
   /** What anchor() fixes: compute it OFFLINE, on the machine that keeps the recovery secret. */
   recovery: (recoverySecret: Uint8Array): Uint8Array =>
     pureCircuits.recoveryCommit(bytes32(recoverySecret, 'A recovery secret')),
-  /** What a licensee sends the issuer: built from the licensee's secret and the issuer's record. */
+  /**
+   * What a licensee sends the issuer: built from the licensee's secret and the issuer's
+   * record, which must be the issuer's CURRENT head (currentHead, or VeilCore.licenseRequest,
+   * which reads it from the chain). Built against an identity's origin after it rotated,
+   * the licence can never be countersigned.
+   */
   license: (licenseSecret: Uint8Array, issuerRecord: Uint8Array): Uint8Array =>
     pureCircuits.licenseCommit(bytes32(licenseSecret, 'A licence secret'), bytes32(issuerRecord, 'A record')),
   /** The tag a licence presentation publishes, which only the verifier who chose the challenge can recognise. */

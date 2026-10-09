@@ -9,10 +9,11 @@
  * state returned is the one the indexer recorded for that call.
  *
  * The indexer is trusted for what it reports (design.md, trust model). For a decision
- * that matters, ask a second indexer or your own node and compare.
+ * that matters, give a second indexer (LookupCheck.secondIndexer): both must agree.
  */
 import { ContractState } from '@midnight-ntwrk/midnight-js-protocol/compact-runtime';
 import * as Veilcore from '../../contract/src/managed/veilcore/contract/index.js';
+import { type AuthorityReport, type StateRequirements, checkContractState } from './state-check.js';
 
 const QUERY = `query VEILCORE_PRESENTATION($offset: TransactionOffset!) {
   transactions(offset: $offset) {
@@ -59,25 +60,56 @@ export const matchEntryPoint = (raw: string, entryPoints: readonly string[]): st
   return entryPoints.find((e) => Buffer.from(e, 'utf8').toString('hex') === h.toLowerCase());
 };
 
+/**
+ * What a lookup checks besides the transaction itself (8 October 2026 review).
+ *  - `verifierKeys`, `authorityCounter`: what the state must carry besides its data
+ *    (state-check.ts). With `verifierKeys` given, a state whose circuits are not exactly
+ *    the pinned build's is refused with ContractStateMismatchError. The maintenance
+ *    authority is always reported.
+ *  - `secondIndexer`: another indexer, asked the same question. Both must report the same
+ *    transaction as succeeded, the same single call, in the same block, with byte-for-byte
+ *    the same contract state, or the lookup is refused. One indexer is trusted for
+ *    everything it reports; two that must agree make a lie cost two compromises.
+ */
+export type LookupCheck = StateRequirements & { readonly secondIndexer?: string };
+
+export type FoundCall = {
+  readonly entryPoint: string;
+  readonly state: ContractState;
+  readonly blockHeight?: number;
+  readonly blockTime?: number;
+  readonly authority: AuthorityReport;
+  /** 'pinned': every verifier key was compared with the pinned build and matched. */
+  readonly keys: 'pinned' | 'unchecked';
+};
+
 export const presentationState = (
   indexerUri: string,
   contractAddress: string,
   txId: string,
   timeoutMs = 20_000,
-): Promise<Veilcore.Ledger> => callState(indexerUri, contractAddress, txId, 'proveLicense', timeoutMs);
+  check: LookupCheck = {},
+): Promise<Veilcore.Ledger> => callState(indexerUri, contractAddress, txId, 'proveLicense', timeoutMs, check);
 
 /**
  * presentationState, with when the presentation landed: the block's height and time,
  * from the same indexer answer. Rule 5 needs the time: a presentation shows the licence
  * was live when it landed, so the verifier refuses one that is too old (verify.ts,
- * acceptPresentationAt).
+ * acceptPresentationAt). The maintenance authority at that transaction comes back too.
  */
 export const presentationWithTime = async (
   indexerUri: string,
   contractAddress: string,
   txId: string,
   timeoutMs = 20_000,
-): Promise<{ ledger: Veilcore.Ledger; blockHeight?: number; blockTime?: number }> => {
+  check: LookupCheck = {},
+): Promise<{
+  ledger: Veilcore.Ledger;
+  blockHeight?: number;
+  blockTime?: number;
+  authority: AuthorityReport;
+  keys: 'pinned' | 'unchecked';
+}> => {
   const found = await singleCallState(
     indexerUri,
     contractAddress,
@@ -85,8 +117,15 @@ export const presentationWithTime = async (
     ['proveLicense'],
     'That transaction is not a single licence presentation on this contract.',
     timeoutMs,
+    check,
   );
-  return { ledger: Veilcore.ledger(found.state.data), blockHeight: found.blockHeight, blockTime: found.blockTime };
+  return {
+    ledger: Veilcore.ledger(found.state.data),
+    blockHeight: found.blockHeight,
+    blockTime: found.blockTime,
+    authority: found.authority,
+    keys: found.keys,
+  };
 };
 
 /**
@@ -99,6 +138,7 @@ export const callState = async (
   txId: string,
   entryPoint: string,
   timeoutMs = 20_000,
+  check: LookupCheck = {},
 ): Promise<Veilcore.Ledger> => {
   const found = await singleCallState(
     indexerUri,
@@ -109,25 +149,22 @@ export const callState = async (
       ? 'That transaction is not a single licence presentation on this contract.'
       : `That transaction is not a single ${entryPoint} call on this contract.`,
     timeoutMs,
+    check,
   );
   return Veilcore.ledger(found.state.data);
 };
 
-/**
- * The contract state the indexer recorded for the ONE call a transaction made on a
- * contract, when that call is one of `entryPoints`. Any contract's state, so the claims
- * contract uses it too (claims-api.ts, readClaim). Refused, with `refusal`, when the
- * transaction made no call or several on this contract, or a call of another kind.
- */
-export const singleCallState = async (
+type RawCall = { entryPoint: string; stateHex: string; blockHeight?: number; blockTime?: number };
+
+/** One indexer's answer for the one call `txId` made on `contractAddress`. */
+const askIndexer = async (
   indexerUri: string,
   contractAddress: string,
   txId: string,
   entryPoints: readonly string[],
   refusal: string,
-  timeoutMs = 20_000,
-): Promise<{ entryPoint: string; state: ContractState; blockHeight?: number; blockTime?: number }> => {
-  if (!/^(0x)?[0-9a-fA-F]+$/.test(txId)) throw new Error('That is not a transaction id.');
+  timeoutMs: number,
+): Promise<RawCall> => {
   const res = await fetch(indexerUri, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -150,8 +187,54 @@ export const singleCallState = async (
   if (entryPoint === undefined || calls[0].state === undefined) throw new Error(refusal);
   return {
     entryPoint,
-    state: ContractState.deserialize(Uint8Array.from(Buffer.from(norm(calls[0].state), 'hex'))),
+    stateHex: norm(calls[0].state),
     blockHeight: typeof tx.block?.height === 'number' ? tx.block.height : undefined,
     blockTime: blockTimeMs(tx.block?.timestamp),
+  };
+};
+
+/**
+ * The contract state the indexer recorded for the ONE call a transaction made on a
+ * contract, when that call is one of `entryPoints`. Any contract's state, so the claims
+ * contract uses it too (claims-api.ts, readClaim). Refused, with `refusal`, when the
+ * transaction made no call or several on this contract, or a call of another kind.
+ * `check` adds the verifier-key, authority and second-indexer checks (LookupCheck).
+ */
+export const singleCallState = async (
+  indexerUri: string,
+  contractAddress: string,
+  txId: string,
+  entryPoints: readonly string[],
+  refusal: string,
+  timeoutMs = 20_000,
+  check: LookupCheck = {},
+): Promise<FoundCall> => {
+  if (!/^(0x)?[0-9a-fA-F]+$/.test(txId)) throw new Error('That is not a transaction id.');
+  const first = await askIndexer(indexerUri, contractAddress, txId, entryPoints, refusal, timeoutMs);
+  if (check.secondIndexer !== undefined) {
+    let second: RawCall;
+    try {
+      second = await askIndexer(check.secondIndexer, contractAddress, txId, entryPoints, refusal, timeoutMs);
+    } catch (e) {
+      throw new Error(
+        `The second indexer does not confirm that transaction (${e instanceof Error ? e.message : String(e)}). Refused.`,
+      );
+    }
+    const differs: string[] = [];
+    if (second.entryPoint !== first.entryPoint) differs.push('the call');
+    if (second.blockHeight !== first.blockHeight) differs.push('the block');
+    if (second.stateHex !== first.stateHex) differs.push('the contract state');
+    if (differs.length > 0)
+      throw new Error(`The two indexers disagree about that transaction (${differs.join(', ')}). Refused.`);
+  }
+  const state = ContractState.deserialize(Uint8Array.from(Buffer.from(first.stateHex, 'hex')));
+  const checked = checkContractState(state, check);
+  return {
+    entryPoint: first.entryPoint,
+    state,
+    blockHeight: first.blockHeight,
+    blockTime: first.blockTime,
+    authority: checked.authority,
+    keys: checked.keys,
   };
 };

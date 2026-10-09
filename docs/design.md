@@ -428,8 +428,11 @@ maintenance key can change the circuits ("Assumed" below, and "Governance").
   indexer (Blockfrost for mainnet). A wrong or compromised indexer can report any state:
   make a presentation pass, or a lineage look clean. For a decision that matters, give
   the checks a second indexer (`secondIndexer`, your own or another provider's): both
-  must report the same call, in the same block, with the same contract state, or the
-  check is refused. The partner kit's checks also refuse a network name that does not
+  must report the same call, in the same block, at the same block time, with the same
+  contract state, or the check is refused; the readers of the state now (`readLedger`,
+  for lineage, and the authority readers) refuse unless both report the same state. A
+  `history` given to the issuer-scoped rule 5 is not compared or key-checked: read it
+  from an indexer you trust. The partner kit's checks also refuse a network name that does not
   match the indexers or the address: a mainnet indexer or VeilCore's mainnet address
   under any other network name (which would skip the mainnet address pin), or a preprod
   or preview indexer under `mainnet`.

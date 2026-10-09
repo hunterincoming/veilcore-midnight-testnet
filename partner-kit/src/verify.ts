@@ -40,8 +40,11 @@ export type ReadOptions = {
   readonly indexer?: string;
   readonly blockfrostProjectId?: string;
   /**
-   * A second indexer (your own, or another provider's). When given, every check asks both,
-   * and refuses unless they report the same transaction, call, block and contract state.
+   * A second indexer (your own, or another provider's). When given, every check and reader
+   * here asks both: a check refuses unless they report the same transaction, call, block,
+   * block time and contract state; a read of the state now (readLedger, readAuthority,
+   * readClaimsAuthority, checkOwnership's current state) refuses unless both report the
+   * same state. Not covered: a `history` passed to checkPresentation.
    */
   readonly secondIndexer?: string;
   /** The contract's address. Default: pinned on mainnet (and only that one is accepted), known on preprod. */
@@ -146,10 +149,51 @@ const stateNow = async (indexer: string, address: string, timeoutMs = 20_000): P
   return ContractState.deserialize(Uint8Array.from(Buffer.from(hex.replace(/^0x/, ''), 'hex')));
 };
 
-/** VeilCore's ledger now: for checkLineage, identityOf, isLive and the other readers. */
+/** How often, and how far apart, two indexers are asked for the state now before they must agree. */
+const AGREE_TRIES = 3;
+const AGREE_WAIT_MS = 2_000;
+
+/**
+ * A contract's state now. With a second indexer, both are asked and must report the same
+ * state, byte for byte; two indexers a block apart can differ for a moment, so they are
+ * asked again (three times, two seconds apart) before the read is refused.
+ */
+const agreedStateNow = async (
+  o: ReadOptions,
+  w: { readonly indexer: string; readonly address: string },
+  waitMs = AGREE_WAIT_MS,
+): Promise<ContractState> => {
+  const second = o.secondIndexer;
+  if (second === undefined) return stateNow(w.indexer, w.address, o.timeoutMs);
+  for (let i = 1; ; i++) {
+    const [a, b] = await Promise.all([
+      stateNow(w.indexer, w.address, o.timeoutMs),
+      stateNow(second, w.address, o.timeoutMs).catch((e: unknown) => {
+        throw new Error(
+          `The second indexer does not confirm the contract's state (${e instanceof Error ? e.message : String(e)}). Refused.`,
+        );
+      }),
+    ]);
+    if (Buffer.from(a.serialize()).equals(Buffer.from(b.serialize()))) return a;
+    if (i >= AGREE_TRIES)
+      throw new Error(
+        "The two indexers disagree about the contract's state now (one may be behind; try again shortly). Refused.",
+      );
+    await new Promise((r) => setTimeout(r, waitMs));
+  }
+};
+
+/**
+ * VeilCore's ledger now: for checkLineage, identityOf, isLive and the other readers. With
+ * `secondIndexer`, both indexers must report the same state; where keys are pinned (always
+ * on mainnet), the state must carry the pinned build's verifier keys, or
+ * ContractStateMismatchError is thrown and nothing is returned.
+ */
 export const readLedger = async (o: ReadOptions): Promise<Veilcore.Ledger> => {
   const w = where(o, 'veilcore');
-  return Veilcore.ledger((await stateNow(w.indexer, w.address, o.timeoutMs)).data);
+  const state = await agreedStateNow(o, w);
+  checkContractState(state, w.check, 'the current state');
+  return Veilcore.ledger(state.data);
 };
 
 /**
@@ -166,8 +210,10 @@ export const checkPresentation = async (
     readonly challenge: Uint8Array;
     readonly issuedAt?: number;
     /**
-     * The contract's state after every call, from the last seal before the presentation up
-     * to and including it, from your indexer. With it the issuer-scoped rule decides, so a
+     * The contract's state after every call, ONE STATE PER CALL, from the last seal before
+     * the presentation up to and including it, from an indexer you trust. It gets neither
+     * the verifier-key check nor the second-indexer comparison (it is ledger data only);
+     * its last state must match this presentation's. With it the issuer-scoped rule decides, so a
      * third party's revocations cannot make an honest presentation fail (verify.ts,
      * acceptPresentationScoped). Its last state must be this presentation's.
      */
@@ -311,7 +357,12 @@ export const readClaim = async (
   };
 };
 
-/** The claims contract's maintenance authority now. `retired`: an empty committee, so nobody can change its circuits. */
+/**
+ * The claims contract's maintenance authority now. `retired`: an empty committee, so
+ * nobody can change its circuits. With `secondIndexer`, both indexers must agree on the
+ * state. The verifier keys are not checked here: this reports the authority whatever the
+ * circuits are.
+ */
 export const readClaimsAuthority = async (
   o: ReadOptions,
 ): Promise<{
@@ -321,16 +372,18 @@ export const readClaimsAuthority = async (
   readonly counter: bigint;
 }> => {
   const w = where(o, 'claims');
-  const a = (await stateNow(w.indexer, w.address, o.timeoutMs)).maintenanceAuthority;
+  const a = (await agreedStateNow(o, w)).maintenanceAuthority;
   return { retired: isProvablyRetired(a), keys: a.committee.length, threshold: a.threshold, counter: a.counter };
 };
 
 /**
  * VeilCore's main contract's maintenance authority now: committee size, threshold and
  * counter. Every maintenance update raises the counter; compare it with the value the
- * latest deployment record revision gives.
+ * latest deployment record revision gives. With `secondIndexer`, both indexers must agree
+ * on the state. The verifier keys are not checked here: this reports the authority
+ * whatever the circuits are.
  */
 export const readAuthority = async (o: ReadOptions): Promise<AuthorityReport> => {
   const w = where(o, 'veilcore');
-  return checkContractState(await stateNow(w.indexer, w.address, o.timeoutMs), {}).authority;
+  return checkContractState(await agreedStateNow(o, w), {}).authority;
 };

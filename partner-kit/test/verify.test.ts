@@ -15,7 +15,8 @@ import {
 } from '@midnight-ntwrk/compact-runtime';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Contract } from '../../contract/src/managed/veilcore/contract/index.js';
-import { checkBatchAnchor, checkOwnership, readAuthority } from '../src/verify';
+import { checkBatchAnchor, checkOwnership, readAuthority, readClaimsAuthority, readLedger } from '../src/verify';
+import { ContractStateMismatchError } from '../../api/src/state-check';
 import { MAINNET_ADDRESSES, PREPROD_ADDRESSES } from '../src/network';
 
 const COIN = '0'.repeat(64);
@@ -40,12 +41,23 @@ const forgedBatchState = (root: Uint8Array): string => {
 const forged = Uint8Array.from({ length: 32 }, (_, i) => 0xa0 + (i % 16));
 const STATE = forgedBatchState(forged);
 
-/** Indexers by URL: each answers the transaction lookup with `state` at `address`. */
-const indexers = (answers: Record<string, { address: string; state: string; height?: number }>) => {
+/** When every fake indexer says the block landed (the same for all, as for one real block). */
+const LANDED = Date.now();
+
+/**
+ * Indexers by URL: each answers the transaction lookup with `state` at `address`, and the
+ * contract-state query (the state now) with `now` (default: `state`).
+ */
+const indexers = (answers: Record<string, { address: string; state: string; height?: number; now?: string }>) => {
   const asked: string[] = [];
-  vi.stubGlobal('fetch', async (url: string) => {
+  vi.stubGlobal('fetch', async (url: string, init?: { body?: string }) => {
     asked.push(String(url));
     const a = answers[String(url)];
+    if ((init?.body ?? '').includes('contractAction(address'))
+      return {
+        ok: true,
+        json: async () => ({ data: { contractAction: a === undefined ? null : { state: a.now ?? a.state } } }),
+      };
     const transactions =
       a === undefined
         ? []
@@ -53,7 +65,7 @@ const indexers = (answers: Record<string, { address: string; state: string; heig
             {
               identifiers: [TX],
               transactionResult: { status: 'SUCCESS' },
-              block: { height: a.height ?? 2999999, timestamp: Date.now() },
+              block: { height: a.height ?? 2999999, timestamp: LANDED },
               contractActions: [{ address: a.address, state: a.state, entryPoint: 'anchorBatch' }],
             },
           ];
@@ -192,5 +204,44 @@ describe('the network name, the indexers and the address agree', () => {
       verifierKeys: 'report',
     });
     expect(r.accepted).toBe(true);
+  });
+});
+
+// Verification review: the readers of the state now ignored secondIndexer, though the
+// options said every check asks both; and readLedger (lineage) had no key check.
+describe('reading the state now', () => {
+  const ADDR = 'cd'.repeat(32);
+  const OTHER = forgedBatchState(new Uint8Array(32).fill(9));
+  const base = { network: 'undeployed' as const, indexer: 'http://one/', address: ADDR };
+
+  it('with two indexers that agree: read', async () => {
+    const asked = indexers({
+      'http://one/': { address: ADDR, state: STATE },
+      'http://two/': { address: ADDR, state: STATE },
+    });
+    expect((await readLedger({ ...base, secondIndexer: 'http://two/' })).batchSeq).toBe(1n);
+    expect((await readAuthority({ ...base, secondIndexer: 'http://two/' })).counter).toBe(16n);
+    expect(asked).toContain('http://two/');
+  });
+
+  it('REFUSED: readLedger, readAuthority and readClaimsAuthority when the second indexer disagrees or has nothing', async () => {
+    indexers({ 'http://one/': { address: ADDR, state: STATE }, 'http://two/': { address: ADDR, state: OTHER } });
+    await expect(readLedger({ ...base, secondIndexer: 'http://two/' })).rejects.toThrow(/disagree .*state now/);
+    await expect(readAuthority({ ...base, secondIndexer: 'http://two/' })).rejects.toThrow(/disagree/);
+    await expect(readClaimsAuthority({ ...base, secondIndexer: 'http://two/' })).rejects.toThrow(/disagree/);
+    indexers({ 'http://one/': { address: ADDR, state: STATE } });
+    await expect(readLedger({ ...base, secondIndexer: 'http://two/' })).rejects.toThrow(
+      /second indexer does not confirm/,
+    );
+  }, 30_000);
+
+  it('REFUSED: readLedger on a state that is not the pinned build (preprod checks keys by default)', async () => {
+    indexers({ 'http://one/': { address: PREPROD_ADDRESSES.veilcore, state: STATE } });
+    await expect(readLedger({ network: 'preprod', indexer: 'http://one/' })).rejects.toThrow(
+      ContractStateMismatchError,
+    );
+    expect((await readLedger({ network: 'preprod', indexer: 'http://one/', verifierKeys: 'report' })).batchSeq).toBe(
+      1n,
+    );
   });
 });

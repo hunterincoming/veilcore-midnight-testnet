@@ -133,6 +133,8 @@ A ledger contract may keep licences, lineage and obligations under an identity o
 
 **`ledgerIdentity` is committed.** It binds the record's content to that identity: anyone shown the record learns which identity speaks for it, and only the holder of that identity can act for it on the ledger. Without it, the link between a record's content and its ledger identity is the holder's statement, and a holder could point one identity's licences at a different record.
 
+The identity's own anchor date says nothing about who holds the record now, or about this record's content. A record can change hands through a key rotation or a recovery, which on the ledger looks the same as a holder replacing their own key; and the content is dated only by its own commitment's anchor.
+
 It reveals nothing about the secret behind the identity. It does link the record's content to everything that identity does on the ledger, for anyone shown the record; a holder who wants a record unlinkable leaves it out.
 
 ---
@@ -198,6 +200,8 @@ These rules follow **RFC 8785 (JSON Canonicalization Scheme)** where they overla
 8. **Numbers** are serialised per RFC 8785 section 3.2.2.3, which is ECMAScript's shortest round-trip representation. `1e-7` serialises as `1e-7`, never `1e-07`; `95.0` serialises as `95`, since JSON cannot distinguish them and JavaScript does not. Non-finite values are invalid. **A number whose magnitude exceeds 2^53 − 1 (9007199254740991) is invalid**, integer or not: beyond it a double no longer holds every integer, and an implementation that reads big integers exactly disagrees with one that rounds them. Such a value belongs in a string. This is stricter than RFC 8785.
 
    **A profile may require integers.** Where a value carries a laboratory measurement, a profile publisher should consider requiring it as a string rather than a float: implementations agree on integers within ±2^53 and on strings, and every remaining disagreement about numbers lives in the space between.
+
+> **Note (not normative).** This revision sets no maximum nesting depth and does not say what to do with a JSON text that repeats a key in one object. The implementations differ: the TypeScript one's depth limit depends on the stack it runs on, and the Rust one refuses input nested deeper than about 125 levels; a JSON parser commonly keeps one of two duplicate keys without saying so. A future revision will set a maximum depth (proposed: 64) and require rejecting duplicate keys. Until then, do not rely on a record nested deeper than 64 levels or one whose JSON text repeats a key.
 
 Rule 1 is easy to overlook and produces a failure invisible to a human reader: an accented character composed as a single code point and the same character composed as a base letter plus a combining accent are visually identical and hash differently.
 
@@ -274,7 +278,7 @@ Because `fieldSetRoot` is in the JSON, anyone shown the JSON sees which field se
 5. Whether the record is current. A claim states a fact about a record as sealed; where currency cannot be established, the claim shall be reported as about the record as sealed.
 6. For a laboratory-signed claim: the key belongs to a laboratory the verifier trusts and was valid at the time of the claim transaction (the signature can be made later than the record's anchor).
 7. For **distinct**: the reference record is identified by someone other than the prover.
-8. For **unchanged**: the newer record names the older in `supersedes`, and the mask is not every slot.
+8. For **unchanged**: the mask leaves at least one slot the schema describes unable to change. Slots the schema does not describe are empty in every record, so a mask over every described slot says nothing and the claim shall be refused, as one over all sixteen is. And the newer record names the older in `supersedes`. A `recordId` is scoped to its issuer, so a match on `recordId` counts only when both records have the same holder. Where the supersedes block also states the older record's `commitment` (optional; section 6 does not yet list it), match by that instead.
 9. What earlier claims on the same slot have already published (below).
 
 **Disclosure accounting.** Every published value or bound tells the world something, and a series of range claims narrows a hidden number: a refusal to prove leaks as much as a proof. An implementation that offers claims shall show the holder what claims already published on a slot reveal before proving another, and shall not prove a claim at a third party's request without the holder's confirmation.
@@ -522,7 +526,7 @@ Stated plainly, because a claim that overreaches is worse than no claim.
 
 **It does not establish that the record is true.** A commitment proves that a description existed on a date and is unaltered. It does not establish that the description is accurate. Accuracy comes from attestations by parties with something to lose.
 
-**It establishes prior possession of the record, not of material.** What is shown is that a party held this description, with its nonce, by the date of the anchor. It does not show that any material is the subject described, or that material was ever in their hands.
+**It establishes prior possession of the record, not of material.** What is shown is that a party held this description, with its nonce, by the date of the anchor. It does not show that the party presenting it now is that party: a ledger identity's anchor date says nothing about who holds the record today (section 3.6). Nor does the earlier of two records or ledger pairings carrying the same raw report hash show who had the report first; a hash, once seen, can be copied. It does not show that any material is the subject described, or that material was ever in their hands.
 
 **It does not identify material physically.** Whether a specimen is the subject described requires comparison of characteristics or genetic analysis. What the record establishes is that the description, and any analysis attached to it, existed before the dispute - which is what makes a later comparison meaningful rather than circular.
 

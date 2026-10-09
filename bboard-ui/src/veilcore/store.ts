@@ -26,6 +26,7 @@ export type SaveResult = {
 };
 
 export interface Store {
+  /** Rejects when the store cannot answer now (offline, refused): callers keep what they have. */
   load<T>(key: string, isValid: (v: unknown) => v is T): Promise<T[]>;
   save<T>(key: string, value: T[]): Promise<SaveResult>;
 }

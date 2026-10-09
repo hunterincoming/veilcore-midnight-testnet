@@ -9,7 +9,8 @@
 
 import { type Observable } from 'rxjs';
 import * as Veilcore from '../../contract/src/managed/veilcore/contract/index.js';
-import { identityOf, isLive, type LineageReport } from '../../contract/src/verify.js';
+import { identityOf, isLive, type LineageReport, type RawPairing } from '../../contract/src/verify.js';
+import { type ActionSource, indexerHistory } from '../../api/src/pairing-history.js';
 import { type SealResult, type TxRef, VeilcoreAPI } from '../../api/src/veilcore-api.js';
 import { type VeilcoreDerivedState, veilcorePrivateStateKey } from '../../api/src/veilcore-types.js';
 import { type PairingNote } from '../../contract/src/witnesses.js';
@@ -126,7 +127,9 @@ export class VeilCore {
    * SHA-256 (reportHashOf). The chain gets H("veilcore:v1:dnapair", reportHash, identity,
    * salt), which reveals nothing about the report. The salt is saved in your private state
    * before anything is sent (`pairings()`); keep it with the report, or the pairing can
-   * never be shown. To show it, give a verifier pairingEvidence(...) and the report file.
+   * never be shown. It is not derived from the record secret: back the evidence up. To show
+   * it, give a verifier pairingEvidence(...) and the report file. If the call fails after
+   * sending, findPairingTransactions() finds where it landed.
    */
   pairReport(reportHash: Uint8Array): Promise<
     TxRef & {
@@ -142,6 +145,19 @@ export class VeilCore {
   /** The bound pairings made from this private state, with their salts (hex). Oldest first. */
   pairings(): Promise<readonly PairingNote[]> {
     return this.#api.pairings();
+  }
+
+  /**
+   * For saved pairings with no transaction id (the call's confirmation failed): find the
+   * pairDna that paired each one under this identity in the contract's history, read over
+   * the indexer's subscription (endpoints.indexerWS), and save its id. Returns them all.
+   */
+  findPairingTransactions(): Promise<readonly PairingNote[]> {
+    return this.#api.findPairingTransactions(this.#history());
+  }
+
+  #history(): ActionSource {
+    return indexerHistory(this.#conn.endpoints.indexer, this.#conn.endpoints.indexerWS);
   }
 
   /**
@@ -343,16 +359,30 @@ export class VeilCore {
 
   /**
    * Rule 9: check a bound pairing by its txId, for `record` (any record of the identity),
-   * the report's SHA-256 (hash the file you were given) and the holder's salt. The
-   * verdict's `pairedAt` is the date that identity's holder had the report by.
+   * the report's SHA-256 (hash the file you were given: never take it from the holder) and
+   * the holder's salt. Accepted: whoever controlled this record's identity at `pairedAt` had
+   * this report, or its SHA-256, by then. The reason says when the report's hash was paired
+   * raw earlier (the contract's history is read over endpoints.indexerWS) and when the
+   * identity changed keys since. With `secondIndexer`, the call and the state now are read
+   * from both indexers and both must accept; the history comes from the first only.
    */
   checkPairing(
     txId: string,
     record: Uint8Array,
     reportHash: Uint8Array,
     salt: Uint8Array,
-  ): Promise<Verdict & { readonly pairedAt?: number }> {
-    return this.#api.checkPairing(this.#conn.endpoints.indexer, txId, record, reportHash, salt);
+    options: { readonly secondIndexer?: string } = {},
+  ): Promise<
+    Verdict & {
+      readonly pairedAt?: number;
+      readonly identityMoved?: boolean;
+      readonly publishedRawEarlier?: readonly RawPairing[];
+    }
+  > {
+    return this.#api.checkPairing(this.#conn.endpoints.indexer, txId, record, reportHash, salt, {
+      secondIndexer: options.secondIndexer,
+      history: this.#history(),
+    });
   }
 
   /**

@@ -100,6 +100,8 @@ export {
 export { numberFrom } from '../../contract/src/fields.js';
 export {
   PAIRING_EVIDENCE_FORMAT,
+  isWeakSalt,
+  newPairingSalt,
   pairingEvidence,
   readPairingEvidence,
   reportHashOf,
@@ -107,6 +109,7 @@ export {
   type ReadPairingEvidence,
 } from '../../contract/src/pairing.js';
 export { type PairingNote } from '../../contract/src/witnesses.js';
+export { indexerHistory, type ActionSource, type ContractActionRecord } from '../../api/src/pairing-history.js';
 
 // ── verifying (no wallet) ────────────────────────────────────────────────────
 export {
@@ -130,6 +133,7 @@ export {
   acceptOwnership,
   acceptOwnershipOnce,
   acceptPairing,
+  acceptPairingWithStates,
   acceptPresentation,
   acceptPresentationAt,
   acceptPresentationOnce,
@@ -144,6 +148,7 @@ export {
   type ChallengeEntry,
   type ChallengeKind,
   type LineageReport,
+  type RawPairing,
 } from '../../contract/src/verify.js';
 export {
   claimFromCells,

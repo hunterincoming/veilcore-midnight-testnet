@@ -19,7 +19,7 @@ const { labFlow } = (await import('../examples/lab.mjs')) as { labFlow: Flow };
 const { licenceFlow } = (await import('../examples/breeder-licence.mjs')) as { licenceFlow: Flow };
 const { claimsFlow } = (await import('../examples/claims.mjs')) as { claimsFlow: Flow };
 
-type Ctx = { vc: unknown; claims: unknown; network: string; endpoints: { indexer: string } };
+type Ctx = { vc: unknown; claims: unknown; network: string; endpoints: { indexer: string; indexerWS: string } };
 type Flow = (
   ctx: Ctx,
   io: { check: (ok: boolean, what: string) => void; say: (m: string) => void },
@@ -55,7 +55,7 @@ describe('the examples, run as partner-check runs them', () => {
     const lines = await run(labFlow);
     expect(lines).toHaveLength(9);
     expect(lines.join('\n')).toMatch(
-      /checks the pairing from the evidence file: whoever controlled this record had this report by/,
+      /checks the pairing from the evidence file: whoever controlled this record's identity at .* had this report, or its SHA-256, by then/,
     );
     expect(lines.every((l) => l.startsWith('PASS'))).toBe(true);
   });

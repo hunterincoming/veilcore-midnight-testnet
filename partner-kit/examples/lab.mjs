@@ -151,6 +151,7 @@ export const labFlow = async ({ vc, network, endpoints }, { check, say }) => {
   const shown = readPairingEvidence(JSON.stringify(evidence));
   const dated = await checkPairing({
     ...read,
+    indexerWS: endpoints.indexerWS, // the contract's history: was this report's hash ever paired raw?
     txId: shown.txId,
     record: shown.record,
     reportHash: reportHashOf(report),

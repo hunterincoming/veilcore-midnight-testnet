@@ -89,9 +89,13 @@ const verdict = await checkPresentation({ network: 'preprod', txId, issuer, chal
   `pairReport` puts a salted binding of the report to your record's identity there instead:
   it reveals nothing about the report, and it verifies for no other record. Give a verifier
   the report file and `pairingEvidence(...)` (record, report hash, salt, transaction id); they
-  check it with `checkPairing`, no wallet needed. The date it gives is when that record's
-  holder had the report, not who controls the record now. Keep the salt (it is also in your
-  private state: `pairings()`): without it the pairing can never be shown. Not in 0.2.0.
+  check it with `checkPairing`, no wallet needed, hashing the report file themselves. An
+  acceptance says: whoever controlled this record's identity at that date had this report,
+  or its SHA-256, by then; not who controls the record now. It also says when the report's
+  hash was paired raw earlier (then anyone could have made the pairing; 0.2.0's lab example
+  paired raw) and when the identity changed keys since. Keep the salt with the report and
+  back it up: it is also in your private state (`pairings()`), but not derived from the
+  record secret. Not in 0.2.0.
 - Not exposed, on purpose: deploying VeilCore's contracts, adding circuit keys, the
   maintenance authority. That code is bundled (the clients are built on it) but nothing
   reaches it from the package's exports. It is VeilCore's operator work.

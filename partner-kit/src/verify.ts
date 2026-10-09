@@ -14,9 +14,20 @@
 import { ContractState } from '@midnight-ntwrk/midnight-js-protocol/compact-runtime';
 import * as Veilcore from '../../contract/src/managed/veilcore/contract/index.js';
 import { CLAIMS_PROVABLE_CIRCUITS, claimsLedger } from '../../contract/src/claims.js';
-import { acceptOwnership, acceptPairing, acceptPresentationAt } from '../../contract/src/verify.js';
+import {
+  acceptOwnership,
+  acceptPairingWithStates,
+  acceptPresentationAt,
+  type RawPairing,
+} from '../../contract/src/verify.js';
+import { type ActionSource, indexerHistory, rawPairingsBefore } from '../../api/src/pairing-history.js';
 import { type Claim, claimFromCells } from '../../contract/src/verify-claims.js';
-import { type LookupCheck, presentationWithTime, singleCallState } from '../../api/src/presentation-lookup.js';
+import {
+  type LookupCheck,
+  contractStateNow,
+  presentationWithTime,
+  singleCallState,
+} from '../../api/src/presentation-lookup.js';
 import {
   type AuthorityReport,
   ContractStateMismatchError,
@@ -127,27 +138,8 @@ const where = (o: ReadOptions, kind: ContractKind): { indexer: string; address: 
 const refusedState = (e: unknown): (Verdict & WithAuthority) | undefined =>
   e instanceof ContractStateMismatchError ? { accepted: false, reason: e.message, authority: e.authority } : undefined;
 
-const STATE_QUERY = `query VEILCORE_STATE($address: HexEncoded!) { contractAction(address: $address) { state } }`;
-
 /** A contract's state now, as the indexer reports it. */
-const stateNow = async (indexer: string, address: string, timeoutMs = 20_000): Promise<ContractState> => {
-  const res = await fetch(indexer, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ query: STATE_QUERY, variables: { address } }),
-    signal: AbortSignal.timeout(timeoutMs),
-  });
-  if (!res.ok) throw new Error(`The indexer answered ${res.status}.`);
-  const body = (await res.json()) as {
-    data?: { contractAction?: { state?: string } | null };
-    errors?: { message: string }[];
-  };
-  if (body.errors?.length) throw new Error(`The indexer refused the query: ${body.errors[0].message}`);
-  const hex = body.data?.contractAction?.state;
-  if (typeof hex !== 'string' || !/^(0x)?[0-9a-fA-F]+$/.test(hex))
-    throw new Error(`The indexer has no contract at ${address}.`);
-  return ContractState.deserialize(Uint8Array.from(Buffer.from(hex.replace(/^0x/, ''), 'hex')));
-};
+const stateNow = contractStateNow;
 
 /** How often, and how far apart, two indexers are asked for the state now before they must agree. */
 const AGREE_TRIES = 3;
@@ -285,14 +277,25 @@ export const checkOwnership = async (
 /**
  * Rule 9: a bound DNA pairing. The holder gives you the report file, `txId`, `record` (any
  * record of the identity) and `salt` (an evidence file holds all but the report:
- * readPairingEvidence). Hash the report file yourself (reportHashOf) for `reportHash`.
+ * readPairingEvidence). Hash the report file yourself (reportHashOf) for `reportHash`:
+ * the hash alone is the holder's word, and a hash is all anyone needs to make a pairing.
  * Accepted only if that transaction is a single pairDna call that paired
- * H("veilcore:v1:dnapair", reportHash, identity, salt) for `record`'s identity; then
- * `pairedAt` (the block time, ms) is the date that identity's holder had the report by. A
- * binding copied to another record, a raw report hash, a wrong salt or report: refused.
- * It does not show who controls the record now (checkOwnership answers that). The state
- * now is read to resolve a record made after the pairing; with a second indexer, both
- * indexers' states now must agree with the verdict.
+ * H("veilcore:v1:dnapair", reportHash, identity, salt) for `record`'s identity. Then:
+ * whoever controlled this record's identity at `pairedAt` (block time, ms) had this
+ * report, or its SHA-256, by then. A binding copied to another record, a raw report hash,
+ * a wrong salt or report: refused. It does not show who controls the record now
+ * (checkOwnership answers that).
+ *
+ * The reason also says:
+ *  - when the report's hash was paired raw before this pairing (`publishedRawEarlier`):
+ *    from then on anyone could have made it. The contract's history is read over the
+ *    indexer's subscription: `indexerWS` (default: the network's, when `indexer` is not
+ *    given), or `history`. With neither, the reason says this was not checked. The history
+ *    comes from one indexer and gets no second-indexer comparison;
+ *  - when the identity changed keys since the pairing (`identityMoved`): a sale, a new key
+ *    and a recovery from a thief look the same, so an earlier key holder made it.
+ * The state now is read to resolve a record made after the pairing and to see key changes;
+ * with a second indexer, both indexers' states now must accept.
  */
 export const checkPairing = async (
   o: ReadOptions & {
@@ -300,8 +303,20 @@ export const checkPairing = async (
     readonly record: Uint8Array;
     readonly reportHash: Uint8Array;
     readonly salt: Uint8Array;
+    /** The indexer's subscription URL (wss://…/graphql/ws), for the contract's history. */
+    readonly indexerWS?: string;
+    /** The contract's history from elsewhere (pairing-history.ts), instead of `indexerWS`. */
+    readonly history?: ActionSource;
   },
-): Promise<Verdict & WhenLanded & WithAuthority & { readonly pairedAt?: number }> => {
+): Promise<
+  Verdict &
+    WhenLanded &
+    WithAuthority & {
+      readonly pairedAt?: number;
+      readonly identityMoved?: boolean;
+      readonly publishedRawEarlier?: readonly RawPairing[];
+    }
+> => {
   const w = where(o, 'veilcore');
   let found: Awaited<ReturnType<typeof singleCallState>>;
   const nows: ContractState[] = [];
@@ -325,16 +340,32 @@ export const checkPairing = async (
     if (r !== undefined) return r;
     throw e;
   }
-  const after = Veilcore.ledger(found.state.data);
-  let v: ReturnType<typeof acceptPairing> = { accepted: false, reason: 'no current state was read' };
-  for (const s of nows) {
-    v = acceptPairing(
-      after,
-      { record: o.record, reportHash: o.reportHash, salt: o.salt },
-      { landedAt: found.blockTime, blockHeight: found.blockHeight, now: Veilcore.ledger(s.data) },
-    );
-    if (!v.accepted) break;
-  }
+  const ws =
+    o.indexerWS ??
+    (o.indexer === undefined
+      ? endpointsFor(o.network, {}, { blockfrostProjectId: o.blockfrostProjectId }).indexerWS
+      : undefined);
+  const history =
+    o.history ?? (ws === undefined ? undefined : indexerHistory(w.indexer, ws, { timeoutMs: o.timeoutMs }));
+  const earlierRaw =
+    history === undefined
+      ? undefined
+      : (await rawPairingsBefore(history(w.address), o.reportHash, o.txId)).map((p) => ({
+          record: p.record,
+          landedAt: p.blockTime,
+          blockHeight: p.blockHeight,
+          txId: p.txId,
+        }));
+  const v = acceptPairingWithStates(
+    Veilcore.ledger(found.state.data),
+    { record: o.record, reportHash: o.reportHash, salt: o.salt },
+    {
+      landedAt: found.blockTime,
+      blockHeight: found.blockHeight,
+      nows: nows.map((s) => Veilcore.ledger(s.data)),
+      earlierRaw,
+    },
+  );
   return { ...v, blockHeight: found.blockHeight, blockTime: found.blockTime, authority: found.authority };
 };
 

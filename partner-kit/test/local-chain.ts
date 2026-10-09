@@ -156,6 +156,7 @@ export const fakeChain = (fake: Runner, network: Network = 'undeployed', claimsR
     return { deployTxData: { public: { contractAddress: o.contractAddress } }, callTx: c.callTx };
   };
   vi.stubGlobal('fetch', fakeIndexer(stateAt));
+  vi.stubGlobal('WebSocket', FakeIndexerSocket);
   const wallet = {
     balanceTx: async () => {
       throw new Error('the fake chain needs no wallet');
@@ -225,6 +226,56 @@ export const fakeIndexer =
                 },
               ],
       };
+    } else if (query.includes('VEILCORE_TIP')) {
+      const last = chainLog.filter((t) => t.address === String(variables.address)).at(-1);
+      data = { contractAction: last === undefined ? null : { transaction: { block: { height: last.height } } } };
     } else throw new Error(`unexpected query ${query.slice(0, 40)}`);
     return new Response(JSON.stringify({ data }), { status: 200, headers: { 'content-type': 'application/json' } });
   };
+
+/**
+ * The indexer's subscription endpoint (graphql-transport-ws), as the history reader uses it
+ * (api/src/pairing-history.ts): every call on the asked-for contract from chainLog, oldest
+ * first, then silence, as a live indexer is silent until the next call lands.
+ */
+export class FakeIndexerSocket {
+  onopen: ((ev: unknown) => void) | null = null;
+  onmessage: ((ev: { data: unknown }) => void) | null = null;
+  onerror: ((ev: unknown) => void) | null = null;
+  onclose: ((ev: unknown) => void) | null = null;
+  constructor(
+    readonly url: string,
+    readonly protocol: string,
+  ) {
+    setTimeout(() => this.onopen?.({}), 0);
+  }
+  private reply(m: unknown): void {
+    setTimeout(() => this.onmessage?.({ data: JSON.stringify(m) }), 0);
+  }
+  send(data: string): void {
+    const m = JSON.parse(data) as { type: string; id?: string; payload?: { variables?: { address?: string } } };
+    if (m.type === 'connection_init') this.reply({ type: 'connection_ack' });
+    if (m.type === 'subscribe')
+      for (const t of chainLog.filter((x) => x.address === m.payload?.variables?.address))
+        this.reply({
+          id: m.id,
+          type: 'next',
+          payload: {
+            data: {
+              contractActions: {
+                state: hex(t.state.serialize()),
+                entryPoint: t.entryPoint,
+                transaction: {
+                  block: { height: t.height, timestamp: t.time },
+                  identifiers: [t.txId],
+                  transactionResult: { status: 'SUCCESS' },
+                },
+              },
+            },
+          },
+        });
+  }
+  close(): void {
+    this.onclose = null;
+  }
+}

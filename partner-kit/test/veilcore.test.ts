@@ -126,10 +126,28 @@ describe('a bound DNA pairing (rule 9)', () => {
     expect(same(p.binding, commit.reportPairing(report, lab, p.salt))).toBe(true);
     expect((await vc.pairings()).map((n) => n.txId)).toEqual([p.txId]);
 
-    const ok = await checkPairing({ ...read(), txId: p.txId, record: lab, reportHash: report, salt: p.salt });
+    const ok = await checkPairing({
+      ...read(),
+      indexerWS: chain.endpoints.indexerWS,
+      txId: p.txId,
+      record: lab,
+      reportHash: report,
+      salt: p.salt,
+    });
     expect(ok.accepted).toBe(true);
     expect(ok.pairedAt).toBe(ok.blockTime);
-    expect((await vc.checkPairing(p.txId, lab, report, p.salt)).accepted).toBe(true);
+    expect(ok.reason).toMatch(
+      /^whoever controlled this record's identity at .* had this report, or its SHA-256, by then/,
+    );
+    expect(ok).toMatchObject({ publishedRawEarlier: [], identityMoved: false });
+    // No subscription URL with a custom indexer: the raw-pairing search is reported as not made.
+    expect(
+      (await checkPairing({ ...read(), txId: p.txId, record: lab, reportHash: report, salt: p.salt })).reason,
+    ).toMatch(/published raw earlier.*was not checked/);
+    const onClient = await vc.checkPairing(p.txId, lab, report, p.salt, {
+      secondIndexer: 'http://127.0.0.1:3/graphql',
+    });
+    expect(onClient).toMatchObject({ accepted: true, publishedRawEarlier: [], identityMoved: false });
     expect(
       (await checkPairing({ ...read(), txId: p.txId, record: lab, reportHash: report, salt: newSecret() })).accepted,
     ).toBe(false);
@@ -151,10 +169,42 @@ describe('a bound DNA pairing (rule 9)', () => {
     await vc.useRecordSecret(labSecret);
     const next = newSecret();
     await vc.rotateRecordSecret(next);
-    expect(
-      (await checkPairing({ ...read(), txId: p.txId, record: commit.record(next), reportHash: report, salt: p.salt }))
-        .accepted,
-    ).toBe(true);
+    const moved = await checkPairing({
+      ...read(),
+      txId: p.txId,
+      record: commit.record(next),
+      reportHash: report,
+      salt: p.salt,
+    });
+    expect(moved).toMatchObject({ accepted: true, identityMoved: true });
+    expect(moved.reason).toMatch(/changed keys since the pairing/);
+  });
+
+  it('review M1: a bound pairing of a hash that was paired raw earlier is flagged', async () => {
+    const vc = await VeilCore.join(chain.conn, { address: VEILCORE_ADDR });
+    const report = reportHashOf(new TextEncoder().encode("someone else's report (test data)"));
+    const victim = newSecret();
+    await vc.useRecordSecret(victim);
+    await vc.anchor(commit.recovery(newSecret()));
+    await vc.pairDna(report); // raw: an older client, or the 0.2.0 lab example
+    const mallory = newSecret();
+    await vc.useRecordSecret(mallory);
+    await vc.anchor(commit.recovery(newSecret()));
+    const p = await vc.pairReport((await vc.ledger()).lastPairedDna); // the hash, read off the chain
+    const v = await vc.checkPairing(p.txId, commit.record(mallory), report, p.salt);
+    expect(v.accepted).toBe(true);
+    expect(v.reason).toMatch(
+      /this report's hash was published raw on block \d+, .* by another record; anyone could have made a pairing from it after that/,
+    );
+    expect(v.publishedRawEarlier).toHaveLength(1);
+  });
+
+  it('review low (c): commit.reportPairing refuses a salt that hides nothing', () => {
+    const r = newSecret(),
+      id = newSecret();
+    expect(() => commit.reportPairing(r, id, new Uint8Array(32))).toThrow(/hides nothing/);
+    expect(() => commit.reportPairing(r, id, new Uint8Array(32).fill(0xab))).toThrow(/hides nothing/);
+    expect(commit.reportPairing(r, id, newSecret())).toHaveLength(32);
   });
 });
 

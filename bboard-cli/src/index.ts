@@ -497,7 +497,6 @@ const mainLoop = async (
   indexerUri: string,
   claimsProviders?: ClaimsProviders,
   royaltiesProviders?: RoyaltiesProviders,
-  ownWallet?: () => Uint8Array,
 ): Promise<void> => {
   const api = await deployOrJoin(providers, rli, logger, zkConfigPath, indexerUri, undefined, claimsProviders);
   if (api === null) return;
@@ -520,10 +519,6 @@ const mainLoop = async (
     during,
     mainAddress: api.deployedContractAddress,
     recordSecret: async () => (await providers.privateStateProvider.get(veilcorePrivateStateKey))?.geneticSecret,
-    ownWallet: () => {
-      if (ownWallet === undefined) throw new Error('This run has no wallet address to be paid at: type one.');
-      return ownWallet();
-    },
     api: undefined,
   };
 
@@ -1384,9 +1379,6 @@ export const run = async (config: Config, testEnv: TestEnvironment, logger: Logg
       walletProvider: walletProvider,
       midnightProvider: walletProvider,
     };
-    const ownWallet = (): Uint8Array =>
-      Uint8Array.from(Buffer.from(walletProvider.unshieldedKeystore.getAddress(), 'hex'));
-
     await mainLoop(
       providers,
       rli,
@@ -1395,7 +1387,6 @@ export const run = async (config: Config, testEnv: TestEnvironment, logger: Logg
       envConfiguration.indexer,
       claimsProviders,
       royaltiesProviders,
-      ownWallet,
     );
   } catch (e) {
     if (e instanceof SavedProgressNotOpenedError) logger.info(e.message);

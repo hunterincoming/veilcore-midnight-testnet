@@ -172,14 +172,24 @@ predates it fetch a new one.
 
 Why not drop old roots on every revocation, as version 0 did: then on chain anyone
 could revoke a throwaway licence of their own each block and make every older path
-fail. Sealing limits that on chain. It does not stop a griefer from costing honest
-licensees re-proofs: a presentation records whether a revocation was waiting when it was
-proved, so a revocation landing before it, or a seal, sends it back, and while one is
-waiting, a
-verifier following rule 5 refuses a presentation whose root has since moved on. That is
-a cost in re-proofs, paid in fees by the griefer too, never a wrong answer. A verifier
-that wants to accept more can check the presentation's root against every root since
-the last revocation or transfer, from the indexer's history. The client seals straight
+fail. Sealing limits that on chain. Under the strict rule 5 it does not stop a griefer
+from costing honest licensees re-proofs: a presentation records whether a revocation was
+waiting when it was proved, and while one is waiting, a verifier refuses a presentation
+whose root has since moved on. A griefer who keeps one revocation of their own waiting,
+plus cheap root changes, can make that refusal permanent.
+
+So rule 5 has a second, issuer-scoped form (`acceptPresentationScoped`, verify.ts). It
+accepts a presentation proved against an older root unless, since that root, the issuer
+asked about revoked, or approved the transfer of, a licence that was in the tree at that
+root.
+Revocations and transfers by other issuers cannot touch that issuer's licences and are
+ignored. It needs the caller to supply the contract's state after every call since the
+last seal before the presentation, ending with the presentation's own, from the indexer.
+It refuses when that history does not reach the root, is not one state per call, or does
+not end with the presentation. Without a history the strict rule applies, and it stays
+the default; `rule: 'strict'` keeps it even with one. Nothing here fetches that history
+yet: the partner kit's `checkPresentation` takes one from its caller, and the CLI and
+`VeilcoreAPI.checkPresentation` use the strict rule. The client seals straight
 after a revocation or transfer when allowed, and otherwise reports when it can. It does
 not seal after a countersign; the operator runs CLI option 15 ("Seal waiting
 revocations") for that (`docs/runbook.md`).
@@ -291,6 +301,20 @@ encrypted under `~/.veilcore/challenges`, one file per network
 (`bboard-cli/src/challenge-file.ts`). The tests exercise each rule
 (`rules-coverage-round11.test.ts` among them).
 
+Since 8 October every lookup a verdict rests on (`api/src/presentation-lookup.ts`,
+`api/src/state-check.ts`) also:
+
+- compares every circuit's verifier key in the state at that transaction with the pinned
+  build (`docs/fingerprints.md`) and refuses on any difference, a missing circuit or an
+  extra one. `VeilcoreAPI` and `ClaimsAPI` always do this on mainnet; the partner kit
+  does it on mainnet (always) and preprod (by default);
+- reports the maintenance authority in that state: committee size, threshold and
+  counter. Every maintenance update raises the counter, so a key swapped and put back
+  between two checks shows there even though both states carry the pinned keys. A
+  caller that knows the counter to expect can require it (`authorityCounter`);
+- with a second indexer (`secondIndexer`), asks both and refuses unless they report the
+  same call, in the same block, with the same contract state.
+
 1. **Resolve identity.** A commitment's identity is `originFor(x)`. It may act only if
    `headOf(identity) = x`, or it is an un-moved origin. Judge every action by the
    identity, not the commitment presented (`identityOf`, `isLive`, `commitmentsOf`).
@@ -310,7 +334,8 @@ encrypted under `~/.veilcore/challenges`, one file per network
    you the presentation's transaction id. Check that it is a successful transaction whose
    only call **on this contract's address** is one `proveLicense` (no seal or anything
    else bundled with it, not a later transaction, not a look-alike contract). Read the
-   contract state recorded for that call and accept only if:
+   contract state recorded for that call (its verifier keys must be the pinned build's,
+   as above) and accept only if:
    - its `lastPresentation` equals `presentationTag(c, challenge)` for some commitment
      `c` of the issuing identity (a licence issued after a rotation is tagged under the
      successor). Never take the tag from the licensee, who can compute any tag; and
@@ -318,6 +343,14 @@ encrypted under `~/.veilcore/challenges`, one file per network
      its `lastPresentationUnsealed` is false: no revocation was waiting when the
      presentation was proved. Never use the live `unsealedChanges` for this; a seal
      clears it without making an older root any safer.
+
+   Or, issuer-scoped: given the contract's state after every call from the last seal
+   before the presentation up to and including it, accept a presentation proved against
+   an older root unless, since that root, the asked-about issuer revoked or approved the
+   transfer of a licence that was in the tree at that root
+   (`acceptPresentationScoped`; `acceptPresentationAt` with `history`). Refuse when the
+   history does not reach that root, is not one state per call, or does not end with
+   this presentation. Without a history, use the strict form above.
 
    (`acceptPresentation`; `presentationState` in `api/src/presentation-lookup.ts` does
    the lookup, and `VeilcoreAPI.checkPresentation` both.) It proves that someone holding
@@ -379,6 +412,9 @@ maintenance key can change the circuits ("Assumed" below, and "Governance").
   and every change is visible on chain. Today one key does this, on paper in two copies,
   one per founder, so either founder's copy alone is enough. The plan to move it to a
   two-of-two or two-of-three committee is pending (`docs/maintenance-policy.md`).
+  The verifier checks refuse a state whose verifier keys are not the pinned build's and
+  report the authority's counter with every verdict, so a change shows. They cannot
+  prevent one.
 - **Record contents are the holder's assertion.** The chain proves when a claim was made
   and that it has not changed, not that the genetics are what the holder says.
 - **A parent edge is an agreement, not a genetic test.** It proves both holders said
@@ -390,8 +426,13 @@ maintenance key can change the circuits ("Assumed" below, and "Governance").
 - **Participation is voluntary.** A market-access filter, not enforcement.
 - **The indexer is trusted for what it reports.** Verifiers read chain state through an
   indexer (Blockfrost for mainnet). A wrong or compromised indexer can report any state:
-  make a presentation pass, or a lineage look clean. For a decision that matters, ask a
-  second indexer or your own node and compare.
+  make a presentation pass, or a lineage look clean. For a decision that matters, give
+  the checks a second indexer (`secondIndexer`, your own or another provider's): both
+  must report the same call, in the same block, with the same contract state, or the
+  check is refused. The partner kit's checks also refuse a network name that does not
+  match the indexers or the address: a mainnet indexer or VeilCore's mainnet address
+  under any other network name (which would skip the mainnet address pin), or a preprod
+  or preview indexer under `mainnet`.
 - **The VeilCore registry service is not the source of truth.** It stores records and
   answers lineage queries for the website, attested by VeilCore, not by the chain. Its
   lineage responses are labelled that way. It also holds what the website
@@ -427,6 +468,8 @@ on mainnet accepts only the address in the filed deployment record
 are refused until it is set). **The address is the contract's identity.** A verifier
 checking by hand reads the contract's verifier keys from the indexer and compares them
 with the published fingerprints, AND checks the address against the deployment record.
+Since 8 October the client's verifier checks make the key comparison themselves, on the
+state at each transaction they judge (Verifier rules).
 
 ## Governance: the maintenance authority
 
@@ -574,8 +617,9 @@ offline copy. Option 32 shows the record secret; do not confuse them). Holders s
 - **The client trusts its indexer for what it reports.** After a failed rotation,
   recovery or recovery-secret replacement, it believes the change landed only when two
   reads 30 seconds apart agree, tells the operator to keep both old and new secrets, and
-  offers a way back (CLI options 41 and 42). For decisions that matter, cross-check with
-  a second indexer or a node.
+  offers a way back (CLI options 41 and 42). Those reads use one indexer; only the
+  verifier checks take a second (`secondIndexer`). For decisions that matter, cross-check
+  the rest with a second indexer or a node.
 
 ---
 

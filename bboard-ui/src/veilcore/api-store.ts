@@ -6,7 +6,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { Store, SaveRefusal, SaveResult } from './store';
-import { holderKey } from './holder';
+import { holderKey, holderKeyIfAny } from './holder';
 import { readJson, isObject, isString } from './json';
 
 const BASE = import.meta.env.VITE_API_BASE ?? '';
@@ -16,18 +16,21 @@ const pathFor = (key: string): string => (key.includes('license') ? '/api/licens
 
 export const apiStore: Store = {
   async load<T>(key: string, isValid: (v: unknown) => v is T): Promise<T[]> {
-    try {
-      const res = await fetch(`${BASE}${pathFor(key)}`, {
-        headers: { 'x-holder-key': holderKey() },
-      });
-      if (!res.ok) return [];
-      const parsed = await readJson(res);
-      // Malformed rows are dropped rather than failing the whole set: one bad row
-      // should not blank a holder's records, and the rest are still theirs.
-      return Array.isArray(parsed) ? parsed.filter(isValid) : [];
-    } catch {
-      return [];
-    }
+    // No key means this browser has never saved anything: nothing to load, and no
+    // reason to mint an identifier and send it to the registry (attack round D).
+    const k = holderKeyIfAny();
+    if (!k) return [];
+    // A refusal (rate limit, server error) or no network is NOT an empty set: throw, so the
+    // caller keeps what it shows instead of blanking the holder's records.
+    const res = await fetch(`${BASE}${pathFor(key)}`, {
+      headers: { 'x-holder-key': k },
+    });
+    if (!res.ok) throw new Error(`the registry answered ${String(res.status)}`);
+    const parsed = await readJson(res);
+    if (!Array.isArray(parsed)) throw new Error('unexpected response from the registry');
+    // Malformed rows are dropped rather than failing the whole set: one bad row
+    // should not blank a holder's records, and the rest are still theirs.
+    return parsed.filter(isValid);
   },
 
   /**

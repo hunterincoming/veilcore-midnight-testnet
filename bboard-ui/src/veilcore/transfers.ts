@@ -7,7 +7,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-import { holderKey } from './holder';
+import { holderKey, holderKeyIfAny } from './holder';
 import { readJson, isObject, isString, isNumber, optional, arrayField } from './json';
 
 const BASE = import.meta.env.VITE_API_BASE ?? '';
@@ -96,10 +96,18 @@ export const offerTransfer = async (
  * Claiming is also the attestation: a second party, holding their own key, confirming
  * receipt of a specific record on a specific date.
  */
+export type ClaimResult = {
+  recordId: string;
+  descendedFrom: string;
+  /** The source record's commitment as the registry gave it with the claim, when it did. */
+  parentCommitment?: string;
+  quantity?: string;
+};
+
 export const claimTransfer = async (
   transferId: string,
   claimCode?: string,
-): Promise<{ recordId: string; descendedFrom: string } | { error: string }> => {
+): Promise<ClaimResult | { error: string }> => {
   try {
     const res = await fetch(`${BASE}/transfers/${encodeURIComponent(transferId)}/claim`, {
       method: 'POST',
@@ -109,7 +117,12 @@ export const claimTransfer = async (
     const body = await readJson(res);
     if (!isObject(body)) return unexpected;
     if (isString(body.recordId) && isString(body.descendedFrom)) {
-      return { recordId: body.recordId, descendedFrom: body.descendedFrom };
+      return {
+        recordId: body.recordId,
+        descendedFrom: body.descendedFrom,
+        ...(isString(body.parentCommitment) ? { parentCommitment: body.parentCommitment } : {}),
+        ...(isString(body.quantity) ? { quantity: body.quantity } : {}),
+      };
     }
     if (isString(body.error)) return { error: body.error };
     return unexpected;
@@ -131,6 +144,8 @@ export const pendingFor = async (handle: string): Promise<PendingTransfer[]> => 
 
 /** Transfers this holder has sent. */
 export const sentByMe = async (): Promise<SentTransfer[]> => {
+  // Nothing was ever sent from a browser with no key; do not make one to ask.
+  if (!holderKeyIfAny()) return [];
   try {
     const res = await fetch(`${BASE}/transfers/sent`, { headers: auth() });
     if (!res.ok) return [];
@@ -138,4 +153,79 @@ export const sentByMe = async (): Promise<SentTransfer[]> => {
   } catch {
     return [];
   }
+};
+
+/**
+ * The fingerprint the public verify endpoint reports for a record, or null. Used to
+ * cross-check the source commitment a lab is about to sign: still the registry's word,
+ * but two of its answers have to agree before a lab key signs anything.
+ */
+export const publicFingerprintOf = async (recordId: string): Promise<string | null> => {
+  try {
+    const res = await fetch(`${BASE}/verify/${encodeURIComponent(recordId)}?show=`);
+    if (!res.ok) return null;
+    const body = await readJson(res);
+    return isObject(body) && isString(body.recordFingerprint) ? body.recordFingerprint : null;
+  } catch {
+    return null;
+  }
+};
+
+const HEX64 = /^[0-9a-f]{64}$/;
+
+/** What the lab is asked to sign, shown in full before it does. */
+export type CustodySubject = {
+  receivedRecordId: string;
+  receivedRecordFingerprint: string;
+  sourceRecordId: string;
+  sourceCommitment: string;
+  cultivar: string;
+  quantity?: string;
+};
+
+/**
+ * Work out what a chain-of-custody signature would be over, or why nothing should be
+ * signed. Every source of the source commitment has to agree: the record the claim
+ * created, the claim's own answer, and the public verify endpoint.
+ */
+export const custodySubject = (input: {
+  receivedRecordId: string;
+  sealed?: {
+    recordFingerprint?: string;
+    receivedFromCommitment?: string;
+    receivedFrom?: string;
+    strainName?: string;
+    quantity?: string;
+  };
+  claim: { descendedFrom: string; parentCommitment?: string };
+  publicFingerprint: string | null;
+}): CustodySubject | { refuse: string } => {
+  const { sealed, claim, publicFingerprint } = input;
+  const c = sealed?.receivedFromCommitment;
+  if (!sealed || !c || !HEX64.test(c))
+    return { refuse: 'The registry did not say which record this came from, so there is nothing to sign.' };
+  if (!sealed.recordFingerprint)
+    return { refuse: 'Your received record could not be sealed, so there is nothing to sign it against.' };
+  if (sealed.receivedFrom !== undefined && sealed.receivedFrom !== claim.descendedFrom) {
+    return { refuse: 'The registry named two different source records for this transfer. Nothing was signed.' };
+  }
+  if (claim.parentCommitment !== undefined && claim.parentCommitment !== c) {
+    return { refuse: 'The registry gave two different fingerprints for the source record. Nothing was signed.' };
+  }
+  if (publicFingerprint !== c) {
+    return {
+      refuse:
+        publicFingerprint === null
+          ? 'The source record’s fingerprint could not be confirmed from the public registry, so nothing was signed.'
+          : 'The source record’s public fingerprint does not match the one given with the transfer. Nothing was signed.',
+    };
+  }
+  return {
+    receivedRecordId: input.receivedRecordId,
+    receivedRecordFingerprint: sealed.recordFingerprint,
+    sourceRecordId: claim.descendedFrom,
+    sourceCommitment: c,
+    cultivar: sealed.strainName ?? '',
+    ...(sealed.quantity ? { quantity: sealed.quantity } : {}),
+  };
 };

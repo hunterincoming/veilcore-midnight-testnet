@@ -56,6 +56,128 @@ export const resolveNetwork = (): string | null => {
   }
 };
 
+/**
+ * The VeilCore contract's address on mainnet, as the filed deployment record names it.
+ * Empty until the mainnet deploy: set it then, in a reviewed commit, to the address the
+ * deploy printed, and put the same address in the deployment record. Until it is set,
+ * joining on mainnet is refused (deploying, and finishing a deploy, are not joins by
+ * address and still work).
+ *
+ * Why: a contract with this build's exact circuits can be deployed by anyone, with any
+ * starting state (round D, D-1). Matching verifier keys show the code; only the address
+ * says which contract is VeilCore's.
+ */
+// Deployed 8 October 2026, deploy transaction 007553ba3c32d93d305ec8b828bb3481d3f9c79d9e6644fa12f19e623557141c70
+// (block 2922687); all 24 circuit keys on chain by 06:50 EDT.
+export const MAINNET_VEILCORE_ADDRESS: string = 'a04de0a2684f3713276325649540c7278ffd07cba8b014e7489844f319a02347';
+
+/**
+ * The VeilCore claims contract's address on mainnet, as the filed deployment record names
+ * it. Empty until the claims contract is deployed on mainnet: set it then, in a reviewed
+ * commit, to the address the deploy printed, and put the same address in the deployment
+ * record. Until it is set, joining (and so reading claims from) a claims contract on
+ * mainnet is refused; deploying it, and finishing its deploy, are not joins by address.
+ *
+ * Why: anyone can deploy a contract with the claims circuits, and keep a maintenance
+ * authority that could later swap a verifier key for one that accepts false claims.
+ * Verifiers are told one address, the one in the record; any other is not VeilCore's.
+ */
+// Deployed 8 October 2026, deploy transaction 0023acc5850b4fc87f97e12cee605d22e80570f40731e38d8574083984e7868f80;
+// maintenance authority retired to an empty committee in 0091979012d160ff9e4cb1162b8e29f18dfccdeb00068357a40913fccfe658335f
+// (block 2922874).
+export const MAINNET_CLAIMS_ADDRESS: string = 'ef763eb4ad1846b716dbfa90c00560a9a943ffb4d1fc638b0707df5adefd070d';
+
+/** Which contract a pin is for, as messages name it. */
+type Pin = { readonly contract: string; readonly constant: string; readonly why: string };
+
+const assertPinned = (address: string, pin: Pin, pinned: string, logger?: Logger): 'development' | 'pinned' => {
+  const network = resolveNetwork();
+  if (network !== null && RECORD_NOT_REQUIRED.has(network)) return 'development';
+  const want = pinned.trim().toLowerCase().replace(/^0x/, '');
+  if (want === '') {
+    throw new Error(
+      `Refusing to join a ${pin.contract} contract on ${network ?? 'an unknown network'}: this build pins no address yet ` +
+        `(${pin.constant} in api/src/deploy-guard.ts is empty until the deployed address is in the filed ` +
+        'deployment record). Nothing was sent.',
+    );
+  }
+  if (address.trim().toLowerCase().replace(/^0x/, '') !== want) {
+    throw new Error(
+      `Refusing to join ${address}: on ${network ?? 'this network'} the ${pin.contract} contract is ${want} ` +
+        `(the deployment record). ${pin.why} Nothing was sent.`,
+    );
+  }
+  logger?.info(`Contract address matches the pinned ${pin.contract} address for ${network ?? 'this network'}.`);
+  return 'pinned';
+};
+
+/**
+ * Throw unless the VeilCore contract at `address` may be joined on the configured
+ * network. Development networks accept any address ('development'); every other network,
+ * mainnet included, or no network at all, accepts only MAINNET_VEILCORE_ADDRESS
+ * ('pinned'), and nothing while that is empty. The same allowlist as the record gate and
+ * assertClaimsDeployAllowed.
+ */
+export const assertJoinAllowed = (
+  address: string,
+  logger?: Logger,
+  pinned: string = MAINNET_VEILCORE_ADDRESS,
+): 'development' | 'pinned' =>
+  assertPinned(
+    address,
+    {
+      contract: 'VeilCore',
+      constant: 'MAINNET_VEILCORE_ADDRESS',
+      why: 'Another address can carry the same circuits with a forged starting state.',
+    },
+    pinned,
+    logger,
+  );
+
+/**
+ * "Finish a deploy" (CLI option 4) joins the operator's own, just-deployed contract, before
+ * any pin exists, so it cannot use assertJoinAllowed. Once MAINNET_VEILCORE_ADDRESS is set,
+ * the only contract on a non-development network that may still need finishing is that
+ * one, so any other address is refused ('pinned'). While the pin is empty (deploy day) it
+ * allows ('unpinned'); development networks allow ('development').
+ */
+export const assertFinishAllowed = (
+  address: string,
+  pinned: string = MAINNET_VEILCORE_ADDRESS,
+): 'development' | 'unpinned' | 'pinned' => {
+  const network = resolveNetwork();
+  if (network !== null && RECORD_NOT_REQUIRED.has(network)) return 'development';
+  const want = pinned.trim().toLowerCase().replace(/^0x/, '');
+  if (want === '') return 'unpinned';
+  if (address.trim().toLowerCase().replace(/^0x/, '') !== want) {
+    throw new Error(
+      `Refusing to finish a deploy at ${address}: on ${network ?? 'this network'} VeilCore's contract is ${want} ` +
+        '(MAINNET_VEILCORE_ADDRESS, the deployment record), and no other contract is ours to finish. Nothing was sent.',
+    );
+  }
+  return 'pinned';
+};
+
+/**
+ * The same for the claims contract: on every network but a development one, only
+ * MAINNET_CLAIMS_ADDRESS, and nothing while that is empty.
+ */
+export const assertClaimsJoinAllowed = (
+  address: string,
+  logger?: Logger,
+  pinned: string = MAINNET_CLAIMS_ADDRESS,
+): 'development' | 'pinned' =>
+  assertPinned(
+    address,
+    {
+      contract: 'VeilCore claims',
+      constant: 'MAINNET_CLAIMS_ADDRESS',
+      why: 'Another address can carry the same circuits under an authority that could change what they accept.',
+    },
+    pinned,
+    logger,
+  );
+
 /** Throw unless `contractName` may be deployed to the configured network. */
 export const assertDeploymentRecordCurrent = (contractName: string, logger?: Logger): void => {
   const outcome = decide(resolveNetwork(), process.env[REVISION_VAR]);

@@ -11,9 +11,9 @@ Written agreements have a related problem. A contract binds the parties who sign
 VeilCore records what was held and when, lets licences be granted against a record, and lets an obligation on an ancestor be carried by everything derived from it.
 
 - **Prove prior possession** — on chain, an anchored record is dated by the block it lands in. (The web app does not anchor yet; see Current status.)
-- **Pair a DNA report** — record a DNA report fingerprint against your record. The contract binds whatever 32-byte value the holder submits: it is the holder's own statement that this report belongs to this record, not a check of the genetics. The web app keeps the pairing in the registry, not on chain.
+- **Pair a DNA report** — record a DNA report against your record. The contract binds whatever 32-byte value the holder submits: it is the holder's own statement that this report belongs to this record, not a check of the genetics. The client submits a salted binding of the report's hash to the record's identity, not the raw hash, so the pairing cannot be copied to another record. It shows that whoever controlled the record's identity at that date had the report, or its SHA-256, by then (verifier rule 9 in [`docs/design.md`](docs/design.md), which also flags a report hash paired raw earlier and key changes since). The web app keeps the pairing in the registry, not on chain.
 - **License against the record** — on chain a licence is only PENDING (issued) or ACTIVE (countersigned), and revoking removes it. The contract stores no terms and has no expiry. Terms, dates, expiry and the royalty log are kept by the app, in the VeilCore registry. A presentation proves "a live licence from this issuer", not which licence or on what terms.
-- **Prove a claim without showing the secret** — prove you hold a record, or a licence, without revealing the secret behind it. An ownership proof publishes the record's commitment. A licence presentation hides the licence and the licensee, and the issuer only among issuers with live licences; while only one issuer has live licences, as at launch, it names that issuer.
+- **Prove a claim without showing the secret** — prove you hold a record, or a licence, without revealing the secret behind it. A control proof publishes the record's commitment. A licence presentation hides the licence and the licensee, and the issuer only among issuers with live licences; while only one issuer has live licences, as at launch, it names that issuer.
 
 **What leaves your browser.** DNA reports and photos are hashed in the browser; only their fingerprints and the report's file name leave it. The web app stores the rest on the VeilCore registry (a server we run), keyed by a random holder key your browser keeps in `localStorage` and sends with every request (whoever has the key can read and change your set): each record's contents (cultivar, breeder, dates, notes, parents, method, your reference, the nonce behind its fingerprint, the fingerprints, the DNA pairing) and each licence in full (counterparty, terms, dates, status, royalty log). Anyone with a record's id can see its id, cultivar, fingerprint, the logging time you claimed and when the registry first saw it. On chain, only commitments are recorded, plus the public values listed under Known limits in [`docs/design.md`](docs/design.md).
 
@@ -39,7 +39,7 @@ bboard-ui/    # The web app — React + Vite
 Requires **Node 24** (`.nvmrc` pins `24.11.1`). No wallet, faucet or Docker needed for the app.
 
 ```bash
-npm install --legacy-peer-deps   # from the repo root (npm workspaces)
+npm ci                           # from the repo root: installs exactly what package-lock.json pins
 cd bboard-ui
 npm run dev                      # http://localhost:5173
 ```
@@ -51,11 +51,13 @@ Log a record, pair a DNA report, view the evidence package, issue and countersig
 `contract/src/managed/` is gitignored, so a fresh clone has no compiled contract. You need the Compact toolchain, and the packages build in order.
 
 ```bash
-# 1. Install the Compact toolchain
+# 1. Install the Compact toolchain: a fixed installer release, then the compiler version
+#    the deployed contract was built with (docs/fingerprints.md). Not "latest" for either.
 curl --proto '=https' --tlsv1.2 -LsSf \
-  https://github.com/midnightntwrk/compact/releases/latest/download/compact-installer.sh | sh
+  https://github.com/midnightntwrk/compact/releases/download/compact-v0.5.3/compact-installer.sh | sh
 # open a new terminal, then:
-compact update
+compact update 0.31.1
+compact compile --version        # must print 0.31.1
 
 # 2. Compile the contract (generates contract/src/managed/) and run its tests
 cd contract && npm run compact && npm test
@@ -68,7 +70,14 @@ cd ../bboard-ui && npm run build
 
 ## Current status
 
-**One contract, `contract/src/veilcore.compact`, protocol version 1, planned for mainnet and not deployed there yet.**
+**Two contracts, planned for mainnet and not deployed there yet.** `contract/src/veilcore.compact`
+(protocol version 1, frozen) covers records, licences and lineage. `contract/src/veilcore-claims.compact`
+proves one fact about a sealed record without showing the rest (a value, a bound on a number,
+that two records differ, that a correction changed only some values), optionally on values a
+laboratory signed; see [`docs/claims-design.md`](docs/claims-design.md) and SPEC 4.5 in veilcore-sdk.
+It is deployed with no maintenance authority (an empty committee).
+
+The main contract:
 It covers records, licences and lineage in 24 circuits. The design, the normative
 verifier rules and the trust model are in [`docs/design.md`](docs/design.md).
 
@@ -87,7 +96,7 @@ API, the registry or the website, and are tested there instead: `bboard-cli/src/
 formal security audit, and we do not call them one.
 
 The six commitment hashes (record, recovery, licence, licence key, presentation tag,
-obligation) are plain SHA-256 over a tag and their inputs, with published test vectors
+obligation), and the client's DNA pairing binding, are plain SHA-256 over a tag and their inputs, with published test vectors
 (`contract/vectors/v1.json`), so they can be recomputed in any language. The licence
 tree is not: its inner nodes use Midnight's own field hash, and verifier rule 5 compares
 tree roots, so checking a licence presentation, like reading any contract state, needs
@@ -97,7 +106,8 @@ Midnight's tooling.
 the chain. The CLI in `bboard-cli/` talks to a deployed contract. Its smoke test
 (`bboard-cli/src/smoke.ts`) deploys a fresh contract and calls 16 of the 24 circuits with
 real proofs, checking 26 results, including 8 attempts that must be refused (7 by the contract,
-1 by the verifier's transaction lookup). It does
+1 by the verifier's transaction lookup). An optional claims phase adds 11 checks (37 in all);
+it has run only against a local stand-in so far, not yet with real proofs. It does
 not call `anchorBatch`, `replaceRecoveryCommitment`, `withdrawTransfer`, `withdrawParent`,
 `proposeObligation`, `acceptObligation`, `rejectObligation` or `withdrawObligation`. It
 passed 26 of 26 on a local Midnight chain on this build (the state bounds, `ceb3a16`) on
@@ -122,9 +132,16 @@ Midnight's standards repository.
 
 Always use `--prebuilt`. A bare `vercel --prod` builds from source and has broken production before.
 
+The script runs the Vercel CLI pinned in `tools/vercel/` (exact version, own lockfile), never `npx vercel`, which would download whatever version is newest at deploy time. To upgrade it, change the version in `tools/vercel/package.json` and run `npm install --package-lock-only` in that folder.
+
 ```bash
 npm run deploy:prod
 ```
+
+`deploy:prod` publishes the test-network site. It first reads the registry's
+`/.well-known/veilcore-registry` and refuses once the registry anchors on mainnet (or if it
+cannot be read), because the test-network wording would then be false. After the mainnet
+launch the site is published with `npm run deploy:mainnet` (`docs/mainnet-day-site.md`).
 
 ## Licence
 

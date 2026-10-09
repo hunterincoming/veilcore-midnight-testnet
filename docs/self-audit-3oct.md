@@ -1,4 +1,4 @@
-# Self-audit, 3 October 2026
+# Self-review, 3 October 2026 (not an audit)
 
 A review run with methods that do not depend on a reviewer's judgement, chosen from how
 audit firms describe their own process (Trail of Bits' review checklist, OpenZeppelin's

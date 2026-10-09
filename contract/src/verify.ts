@@ -7,6 +7,7 @@ import {
   type Ledger,
   pureCircuits,
 } from "./managed/veilcore/contract/index.js";
+import { dnaPairBinding } from "./pairing.js";
 
 const hex = (b: Uint8Array): string => Buffer.from(b).toString("hex");
 const same = (a: Uint8Array, b: Uint8Array): boolean => hex(a) === hex(b);
@@ -21,6 +22,18 @@ export const isLive = (ledger: Ledger, record: Uint8Array): boolean => {
   return ledger.headOf.member(origin)
     ? same(ledger.headOf.lookup(origin), record)
     : same(origin, record);
+};
+
+/**
+ * The commitment that acts for a record's identity now: its head after any rotation or
+ * recovery, else the origin itself. issueLicense keys a licence on the ISSUER'S HEAD at
+ * the time, so a licensee must build commit.license(secret, record) with this, not with
+ * the origin a record's ledgerIdentity names (SPEC 3.6): a licence built against an
+ * identity's origin after it rotated can never be countersigned (8 October 2026 review).
+ */
+export const currentHead = (ledger: Ledger, record: Uint8Array): Uint8Array => {
+  const origin = identityOf(ledger, record);
+  return ledger.headOf.member(origin) ? ledger.headOf.lookup(origin) : origin;
 };
 
 /** Whether a commitment belongs to an anchored identity. */
@@ -192,6 +205,243 @@ export const acceptPresentation = (
   };
 };
 
+/** The sequence counters: each counted call raises exactly one of them by one. */
+const SEQ_COUNTERS = [
+  "anchorSeq",
+  "proofSeq",
+  "batchSeq",
+  "pairSeq",
+  "rotationSeq",
+  "transferSeq",
+  "presentationSeq",
+  "sealSeq",
+  "descentSeq",
+  "obligationSeq",
+] as const satisfies readonly (keyof Ledger)[];
+
+/**
+ * Rule 5, issuer-scoped (8 October 2026 review). acceptPresentation refuses a
+ * presentation proved against an older root while any revocation was waiting, whoever
+ * revoked. A griefer with one throwaway licence of their own, revoked again after every
+ * seal, plus cheap root changes (activating more of their own licences), makes that
+ * refusal permanent for every honest licensee (attack-licences.test.ts, ATTACK 1).
+ *
+ * This rule asks the narrower question that matters: could the licence behind this
+ * presentation have been taken away since the root it proved against? The leaf belongs
+ * to the asked-about issuer (the tag names one of its records), and only that issuer's
+ * identity can remove one of its leaves, by revoking it or by approving its transfer. So
+ * the presentation is accepted when no licence the issuer held at that root was revoked
+ * or transferred by the issuer between that root and the presentation. Revocations and
+ * transfers by anyone else cannot touch the issuer's leaves and are ignored.
+ *
+ * `history` MUST be the contract state after EVERY call on the contract, one state per
+ * call, in order, ending with the presentation's own (`afterTx`). It must reach back at
+ * least to the last seal before the presentation (a root proved against is never older
+ * than that). A per-transaction or per-block history, or one with a call missing, is not
+ * enough: a missing call could be the revocation, and two calls merged into one step can
+ * hide it (a revoke and a new licence placed at the same slot look like a replacement).
+ * A gap cannot be detected in general: calls such as issueLicense, countersignLicense
+ * and revokeLicense move no counter. The obvious ones are refused: a step where the
+ * sequence counters together rise by more than one, or where they and the licence tree
+ * show more than one call's worth of change, or where a counter goes down. The history
+ * comes from the indexer, which is trusted for it as for everything else; it gets no
+ * verifier-key or second-indexer check here, so read it from an indexer you trust.
+ *
+ * From each pair of consecutive states after that root, the presentation is refused when:
+ *  - the asked-about issuer's active count (`activeLicensesBy` of its identity) fell, for
+ *    whatever reason: only the issuer's own revocations lower it;
+ *  - a leaf the tree held at the root was REPLACED in its slot other than by a real
+ *    transfer (transferSeq up by one and lastTransferredLicense changed in that step);
+ *  - such a transfer was the issuer's: the new leaf is
+ *    licenseKey(lastTransferredLicense, r) for one of the issuer's records r.
+ * A leaf at the root that is REMOVED while the issuer's count holds was another issuer's.
+ * Anything the history cannot settle (the root is not in it) refuses.
+ */
+export const acceptPresentationScoped = (
+  history: readonly Ledger[],
+  issuer: Uint8Array,
+  challenge: Uint8Array,
+): { readonly accepted: boolean; readonly reason: string } => {
+  if (history.length === 0)
+    return { accepted: false, reason: "no contract history was given" };
+  const afterTx = history[history.length - 1];
+  const strict = acceptPresentation(afterTx, issuer, challenge);
+  if (
+    strict.accepted ||
+    !strict.reason.startsWith("proved against an older root")
+  )
+    return strict;
+  const root = afterTx.lastPresentationRoot.field;
+  let j = -1;
+  for (let i = history.length - 2; i >= 0; i--)
+    if (history[i].activeLicenses.root().field === root) {
+      j = i;
+      break;
+    }
+  if (j < 0)
+    return {
+      accepted: false,
+      reason:
+        "proved against an older root that the history given does not reach; give the history since the last seal, or ask again",
+    };
+  // The tree as it was at that root: slot -> licence key.
+  const atRoot = new Map<string, string>();
+  for (const [slot, k] of history[j].licenseAtSlot)
+    atRoot.set(String(slot), hex(k));
+  const origin = identityOf(afterTx, issuer);
+  const mine = commitmentsOf(afterTx, issuer);
+  const activeCount = (l: Ledger): bigint =>
+    l.activeLicensesBy.member(origin)
+      ? l.activeLicensesBy.lookup(origin).read()
+      : 0n;
+  const slots = (l: Ledger): Map<string, string> => {
+    const m = new Map<string, string>();
+    for (const [slot, k] of l.licenseAtSlot) m.set(String(slot), hex(k));
+    return m;
+  };
+  const notPerCall = {
+    accepted: false,
+    reason:
+      "proved against an older root, and the history given is not one state per call; ask again",
+  } as const;
+  for (let i = j + 1; i < history.length; i++) {
+    const before = history[i - 1];
+    const after = history[i];
+    // Every counted call raises exactly one sequence counter by one.
+    const deltas = SEQ_COUNTERS.map((c) => after[c] - before[c]);
+    if (deltas.some((d) => d < 0n)) return notPerCall;
+    const counted = deltas.reduce((a, d) => a + d, 0n);
+    if (counted > 1n) return notPerCall;
+    const transferStep =
+      after.transferSeq - before.transferSeq === 1n &&
+      !same(after.lastTransferredLicense, before.lastTransferredLicense);
+    if (activeCount(after) < activeCount(before))
+      return {
+        accepted: false,
+        reason:
+          "proved against an older root, and this issuer has revoked a licence since; ask again",
+      };
+    const prev = slots(before);
+    const next = slots(after);
+    let changes = 0;
+    let replaced = 0;
+    const touched: { slot: string; now: string | undefined }[] = [];
+    for (const [slot, key] of prev) {
+      const now = next.get(slot);
+      if (now === key) continue;
+      changes++;
+      if (now !== undefined) replaced++;
+      if (atRoot.get(slot) === key) touched.push({ slot, now });
+    }
+    for (const slot of next.keys()) if (!prev.has(slot)) changes++;
+    // One call changes at most one leaf, and approveTransfer is the one call that both
+    // replaces a leaf and raises a counter.
+    const calls =
+      Number(counted) + changes - (transferStep && replaced === 1 ? 1 : 0);
+    if (changes > 1 || calls > 1) return notPerCall;
+    if (touched.length === 0) continue;
+    const { now } = touched[0];
+    if (now === undefined) continue; // another issuer's revocation: the issuer's count held
+    // A leaf at the root replaced in place: only approveTransfer does that in one call.
+    if (!transferStep) return notPerCall;
+    const transferred = after.lastTransferredLicense;
+    if (mine.some((r) => hex(pureCircuits.licenseKey(transferred, r)) === now))
+      return {
+        accepted: false,
+        reason:
+          "proved against an older root, and this issuer has approved a transfer since; ask again",
+      };
+  }
+  return {
+    accepted: true,
+    reason:
+      "a live licence from this issuer, proved against an older root; the issuer has revoked or transferred none of its licences since",
+  };
+};
+
+/**
+ * How old a licence presentation may be when the verifier decides on it. A presentation
+ * shows the licence was live when it landed, nothing later: a licence revoked and sealed
+ * since still has its old presentation on chain (round D, D-7). An hour leaves time to
+ * look the transaction up; ask again for anything older.
+ */
+export const MAX_PRESENTATION_AGE_MS = 60 * 60 * 1000;
+
+/**
+ * Rule 5 with the time of the presentation. `landedAt` is the time (ms) of the block the
+ * presentation landed in, from the same indexer answer as `afterTx`. Refused when the
+ * time is unknown, when it landed before the challenge was issued (`issuedAt`, from the
+ * challenge book: no honest answer can come before the question), or when it is older
+ * than `maxAgeMs` at `now`. Otherwise acceptPresentation decides, and an acceptance says
+ * what it means: the licence was live WHEN PRESENTED.
+ *
+ * Given `history` (the state after every call, ending with this presentation's: see
+ * acceptPresentationScoped), the issuer-scoped rule decides instead, so a griefer's own
+ * revocations no longer send an honest presentation back. `rule: 'strict'` keeps the
+ * original rule even then. Without a history the strict rule applies, as before.
+ */
+export const acceptPresentationAt = (
+  afterTx: Ledger,
+  issuer: Uint8Array,
+  challenge: Uint8Array,
+  when: {
+    readonly landedAt: number | undefined;
+    readonly blockHeight?: number;
+    readonly issuedAt?: number;
+    readonly now?: number;
+    readonly maxAgeMs?: number;
+    readonly history?: readonly Ledger[];
+    readonly rule?: "strict" | "issuer-scoped";
+  },
+): { readonly accepted: boolean; readonly reason: string } => {
+  const scoped = when.history !== undefined && when.rule !== "strict";
+  if (scoped) {
+    const last = when.history[when.history.length - 1];
+    if (
+      last === undefined ||
+      last.presentationSeq !== afterTx.presentationSeq ||
+      !same(last.lastPresentation, afterTx.lastPresentation)
+    )
+      return {
+        accepted: false,
+        reason: "the history given does not end with this presentation",
+      };
+  }
+  const v = scoped
+    ? acceptPresentationScoped(when.history, issuer, challenge)
+    : acceptPresentation(afterTx, issuer, challenge);
+  if (!v.accepted) return v;
+  const { landedAt, blockHeight, issuedAt } = when;
+  const now = when.now ?? Date.now();
+  const maxAgeMs = when.maxAgeMs ?? MAX_PRESENTATION_AGE_MS;
+  if (landedAt === undefined)
+    return {
+      accepted: false,
+      reason: "the indexer did not say when the presentation landed; ask again",
+    };
+  // A minute of slack for clocks that disagree; anything earlier came before the question.
+  if (issuedAt !== undefined && landedAt < issuedAt - 60_000)
+    return {
+      accepted: false,
+      reason: "the presentation landed before you issued this challenge",
+    };
+  const age = now - landedAt;
+  if (age > maxAgeMs)
+    return {
+      accepted: false,
+      reason: `the presentation is ${Math.floor(age / 60_000)} minutes old (at most ${Math.floor(maxAgeMs / 60_000)}); the licence may have been revoked since. Ask for a new one`,
+    };
+  const at = `${blockHeight === undefined ? "" : `block ${blockHeight}, `}${new Date(landedAt).toISOString()}, ${Math.max(0, Math.floor(age / 60_000))} minutes ago`;
+  return {
+    accepted: true,
+    reason:
+      `the licence was live when presented (${at}); ${v.reason.replace(/^a live licence from this issuer[,;]? ?/, "")}`.replace(
+        /; $/,
+        "",
+      ),
+  };
+};
+
 /**
  * Rule 8. Accept an ownership proof. `afterTx` is the contract state recorded for the
  * proof's own `proveOwnership` call, found by transaction id. The verifier chose
@@ -243,6 +493,191 @@ export const acceptOwnership = (
     accepted: true,
     reason: "the holder of this record answered your challenge",
   };
+};
+
+/** A raw pairDna of a report's own hash, found in the contract's history (rule 9). */
+export type RawPairing = {
+  /** The record that paired it (lastPairedRecord). */
+  readonly record: Uint8Array;
+  /** Its block time (ms), height and transaction, as the indexer reported them. */
+  readonly landedAt?: number;
+  readonly blockHeight?: number;
+  readonly txId?: string;
+};
+
+/** The one line every rule 9 acceptance starts with. */
+export const pairingVerdictLine = (at: string): string =>
+  `whoever controlled this record's identity at ${at} had this report, or its SHA-256, by then`;
+
+const when = (landedAt: number | undefined, blockHeight?: number): string =>
+  `${blockHeight === undefined ? "" : `block ${blockHeight}, `}${landedAt === undefined ? "an unknown time" : new Date(landedAt).toISOString()}`;
+
+/**
+ * Rule 9. Accept a bound DNA pairing (pairing.ts). `afterTx` is the contract state recorded
+ * for the pairing's own `pairDna` call, found by transaction id; `landedAt` (ms) is its
+ * block time, from the same indexer answer, and the date the verdict gives. `now`, the
+ * contract state now, resolves a `record` made after the pairing (a later rotation or
+ * recovery) and shows whether the identity changed keys since; without it, `record` must
+ * be a commitment the identity had when it paired, and that is reported as not checked.
+ *
+ * Accepted only when `lastPairedDna` is H("veilcore:v1:dnapair", reportHash, identity,
+ * salt) for the identity of `lastPairedRecord`, and that identity is `record`'s. A binding
+ * copied to another record fails here: it holds only for the identity inside it. A raw
+ * report hash paired directly is refused: anyone who saw it could have paired it first.
+ *
+ * What an acceptance says, and nothing more: whoever controlled this record's identity at
+ * that date had this report, or its SHA-256, by then. Two things weaken it, and the reason
+ * says so when they apply:
+ *  - `earlierRaw`: raw pairings of the same report hash that landed before this one (the
+ *    lookup finds them in the contract's history). After the first, the hash was public:
+ *    anyone could have made a bound pairing of it without the report. `undefined` means
+ *    the history was not searched, and the reason says that too.
+ *  - the identity changed keys since (`now` differs from `afterTx` in its head, rotations
+ *    or recoveries): a sale, a new key and a recovery from a thief look the same, so an
+ *    earlier holder made this pairing, maybe not the one asking.
+ * It never shows who controls the record now (rule 8), that nobody else had the report
+ * earlier (its lab did), or anything about what the report says.
+ */
+export const acceptPairing = (
+  afterTx: Ledger,
+  claim: {
+    readonly record: Uint8Array;
+    readonly reportHash: Uint8Array;
+    readonly salt: Uint8Array;
+  },
+  context: {
+    readonly landedAt: number | undefined;
+    readonly blockHeight?: number;
+    readonly now?: Ledger;
+    readonly earlierRaw?: readonly RawPairing[];
+  },
+): {
+  readonly accepted: boolean;
+  readonly reason: string;
+  readonly pairedAt?: number;
+  /** Raw pairings of this report's hash that landed earlier (undefined: not searched). */
+  readonly publishedRawEarlier?: readonly RawPairing[];
+  /** The identity changed keys since the pairing (undefined: the state now was not given). */
+  readonly identityMoved?: boolean;
+} => {
+  const { record, reportHash, salt } = claim;
+  if (record.length !== 32 || reportHash.length !== 32 || salt.length !== 32)
+    return {
+      accepted: false,
+      reason: "the record, report hash and salt are 32 bytes each",
+    };
+  if (afterTx.pairSeq === 0n)
+    return {
+      accepted: false,
+      reason: "no pairing has been made on this contract",
+    };
+  const pairedBy = afterTx.lastPairedRecord;
+  const identity = identityOf(afterTx, pairedBy);
+  if (!isAnchored(afterTx, pairedBy))
+    return {
+      accepted: false,
+      reason: "the pairing record was not anchored",
+    };
+  if (!same(identityOf(context.now ?? afterTx, record), identity))
+    return {
+      accepted: false,
+      reason: "that transaction paired a different record",
+    };
+  const paired = afterTx.lastPairedDna;
+  if (!same(dnaPairBinding(reportHash, identity, salt), paired)) {
+    if (same(paired, reportHash))
+      return {
+        accepted: false,
+        reason:
+          "that transaction paired the raw report hash, which anyone who saw it could pair; it does not show who had the report first. Ask for a bound pairing",
+      };
+    return {
+      accepted: false,
+      reason:
+        "that transaction did not pair this report, with this salt, for this record's identity",
+    };
+  }
+  if (context.landedAt === undefined)
+    return {
+      accepted: false,
+      reason: "the indexer did not say when the pairing landed; ask again",
+    };
+  const notes: string[] = [];
+
+  // M1: a raw pairing of the same hash before this one made the hash public.
+  const raw = context.earlierRaw;
+  if (raw === undefined)
+    notes.push(
+      "whether this report's hash was published raw earlier, which would let anyone make such a pairing without the report, was not checked",
+    );
+  else if (raw.length > 0) {
+    const first = raw[0];
+    const by = same(identityOf(context.now ?? afterTx, first.record), identity)
+      ? "by this record's identity"
+      : "by another record";
+    notes.push(
+      `this report's hash was published raw on ${when(first.landedAt, first.blockHeight)} ${by}; anyone could have made a pairing from it after that`,
+    );
+  }
+
+  // M2: the identity changed keys since. Heads are never reused, so a different head, or
+  // a different rotation or recovery count, means a key change.
+  let identityMoved: boolean | undefined;
+  const now = context.now;
+  if (now === undefined)
+    notes.push(
+      "whether this record's identity changed keys since the pairing was not checked",
+    );
+  else {
+    const count = (l: Ledger, m: "rotationsOf" | "recoveriesOf"): bigint =>
+      l[m].member(identity) ? l[m].lookup(identity).read() : 0n;
+    const recoveries =
+      count(now, "recoveriesOf") - count(afterTx, "recoveriesOf");
+    identityMoved =
+      !same(currentHead(now, identity), pairedBy) ||
+      recoveries !== 0n ||
+      count(now, "rotationsOf") !== count(afterTx, "rotationsOf");
+    if (identityMoved)
+      notes.push(
+        recoveries > 0n
+          ? `this record's identity was recovered since the pairing (${recoveries} time${recoveries === 1n ? "" : "s"}): an earlier key holder made it, possibly someone who held a stolen key`
+          : "this record's identity changed keys since the pairing (a sale and a new key look the same): an earlier key holder made it",
+      );
+  }
+
+  return {
+    accepted: true,
+    reason: [
+      pairingVerdictLine(when(context.landedAt, context.blockHeight)),
+      ...notes,
+      "it does not show who controls the record now",
+    ].join(". "),
+    pairedAt: context.landedAt,
+    ...(raw === undefined ? {} : { publishedRawEarlier: raw }),
+    ...(identityMoved === undefined ? {} : { identityMoved }),
+  };
+};
+
+/**
+ * Rule 9 against several readings of the state now (one per indexer asked): accepted only
+ * if every one accepts, and if any shows the identity changed keys since, that verdict is
+ * the one returned. With none, as acceptPairing without `now`.
+ */
+export const acceptPairingWithStates = (
+  afterTx: Ledger,
+  claim: Parameters<typeof acceptPairing>[1],
+  context: Omit<Parameters<typeof acceptPairing>[2], "now"> & {
+    readonly nows: readonly Ledger[];
+  },
+): ReturnType<typeof acceptPairing> => {
+  const { nows, ...rest } = context;
+  if (nows.length === 0) return acceptPairing(afterTx, claim, rest);
+  const vs = nows.map((now) => acceptPairing(afterTx, claim, { ...rest, now }));
+  return (
+    vs.find((v) => !v.accepted) ??
+    vs.find((v) => v.identityMoved === true) ??
+    vs[0]
+  );
 };
 
 // ───────────────────────────────────────────── rules 5 and 8: each challenge used once
@@ -330,6 +765,11 @@ export class ChallengeBook {
         reason: "that challenge is too old; issue a new one",
       };
     return { ok: true, reason: "an unused challenge you issued" };
+  }
+
+  /** When `challenge` was issued (ms), if this book issued it. */
+  issuedAt(challenge: Uint8Array): number | undefined {
+    return this.book.get(hex(challenge))?.issuedAt;
   }
 
   /** Use `challenge` for `kind`: ok once, then never again. */

@@ -12,7 +12,7 @@
     "build": "rm -rf dist && tsc --project tsconfig.build.json",
     "ci": "npm run typecheck && npm run lint && npm run build && npm run test",
     "lint": "eslint src",
-    "test": "node test-deploy-guard.mjs && node --experimental-strip-types --no-warnings test-presentation-lookup.mjs",
+    "test": "node test-deploy-guard.mjs && node --experimental-strip-types --no-warnings --import ./test-ts-resolve.mjs test-presentation-lookup.mjs && node --experimental-strip-types --no-warnings --import ./test-ts-resolve.mjs test-state-check.mjs && node --experimental-strip-types --no-warnings test-maintenance.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   }
 }

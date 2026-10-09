@@ -1,12 +1,17 @@
-// The home page, laid out from Mako's 25 September template: hero with the live
-// fingerprint, where-to-go tiles, about, demos, team, updates, status, contact.
+// The home page, laid out from Mako's 25 September template. Order (5 October review,
+// site-review/PLAN.md): hero with the live fingerprint and a one-line status, what it's
+// for (one situation per reader), how it works, proving one fact (the claims contract),
+// what you get and where it stops, built to outlast us, questions, demos, team, updates,
+// status, contact by audience.
 //
 // The fingerprint in the hero is a real record commitment (veilcore-records), not a
 // stand-in hash: what a visitor sees change is what the format publishes.
 //
 // Content rules (Mako's): "prior possession", never "ownership"; no customer, pilot or
-// partner claims; the status tiles stay honest and current, and the status block says
-// plainly who holds the maintenance key (docs/maintenance-policy.md, PROPOSED).
+// partner claims; plant AND animal genetics; the three implementations have one author and
+// are never called independent; the status tiles stay honest and current, and the status
+// block says plainly who holds the maintenance key (docs/maintenance-policy.md, APPROVED 7 Oct).
+// Strings that flip on mainnet day are grouped in i18n/en.ts under "MAINNET DAY".
 //
 // SPDX-License-Identifier: Apache-2.0
 
@@ -15,6 +20,8 @@ import { Link as RouterLink, useLocation } from 'react-router-dom';
 import { computeCommitment, newNonce } from 'veilcore-records';
 import { useI18n } from '../../i18n';
 import { FOUNDERS_MAIL, SDK_REPO, SiteShell, X_HANDLE } from './SiteShell';
+import { FoldGroup, FoldItem, FoldPoint } from './Fold';
+import { IS_MAINNET, MAINNET_CLAIMS_ADDRESS, MAINNET_CONTRACT_ADDRESS, explorerFor } from '../../config/network';
 
 const TESTNET_REPO = 'https://github.com/hunterincoming/veilcore-midnight-testnet';
 
@@ -81,33 +88,38 @@ const Fingerprint: React.FC = () => {
             )
           : '—'}
       </div>
-      <p className="note">{t('m.hero.note')}</p>
+      <p className="note">
+        <span className="note-long">{t('m.hero.note')}</span>
+        <span className="note-short">{t('m.hero.noteShort')}</span>
+      </p>
     </div>
   );
 };
 
-const Icon: React.FC<{ d: React.ReactNode }> = ({ d }) => (
-  <svg className="ico" viewBox="0 0 24 24" aria-hidden="true">
-    {d}
-  </svg>
-);
-
-const Tile: React.FC<{ href: string; n: string; icon: React.ReactNode; title: string; text: string; go: string }> = ({
-  href,
-  n,
-  icon,
-  title,
-  text,
-  go,
-}) => (
-  <a className="tile" href={href}>
-    <Icon d={icon} />
-    <span className="n">{n}</span>
-    <h3>{title}</h3>
-    <p>{text}</p>
-    <span className="go">{go}</span>
-  </a>
-);
+/** Mainnet builds: the two contract addresses, in full, so anyone can look them up. */
+const Contracts: React.FC = () => {
+  const { t } = useI18n();
+  return (
+    <div className="contracts">
+      <h4>{t('m.addr.title')}</h4>
+      <dl>
+        <div>
+          <dt>{t('m.addr.main')}</dt>
+          <dd>
+            <code>{MAINNET_CONTRACT_ADDRESS}</code>
+          </dd>
+        </div>
+        <div>
+          <dt>{t('m.addr.claims')}</dt>
+          <dd>{MAINNET_CLAIMS_ADDRESS ? <code>{MAINNET_CLAIMS_ADDRESS}</code> : t('m.addr.claimsPending')}</dd>
+        </div>
+      </dl>
+      <a className="more" href={explorerFor('mainnet')} rel="noopener noreferrer" target="_blank">
+        {t('m.addr.explorer')}
+      </a>
+    </div>
+  );
+};
 
 const Post: React.FC<{
   href: string;
@@ -149,79 +161,50 @@ export const Home: React.FC = () => {
         <p className="lede">{t('m.hero.lede')}</p>
         <div className="hero-actions">
           <a className="btn solid" href="#demo">
-            {t('m.hero.chooseDemo')}
+            {t('m.nav.demo')}
           </a>
-          <a className="btn" href="#about">
+          <a className="btn" href="#how">
             {t('m.hero.how')}
           </a>
         </div>
+        <p className="hero-status">{t('m.hero.status')}</p>
         <Fingerprint key={lang} />
       </header>
 
-      <section id="choose">
+      <section id="about">
         <div className="wrap">
-          <div className="label">{t('m.choose.label')}</div>
-          <h2>{t('m.choose.title')}</h2>
-          <div className="choose">
-            <Tile
-              href="#about"
-              n="01"
-              icon={
-                <>
-                  <circle cx="12" cy="12" r="9" />
-                  <path d="M12 11v6M12 7.5v.5" />
-                </>
-              }
-              title={t('m.choose.about.title')}
-              text={t('m.choose.about.text')}
-              go={t('m.choose.about.go')}
-            />
-            <Tile
-              href="#demo"
-              n="02"
-              icon={<path d="M8 5l11 7-11 7z" />}
-              title={t('m.choose.demo.title')}
-              text={t('m.choose.demo.text')}
-              go={t('m.choose.demo.go')}
-            />
-            <Tile
-              href="#team"
-              n="03"
-              icon={
-                <>
-                  <circle cx="9" cy="8" r="3.2" />
-                  <circle cx="17" cy="9" r="2.6" />
-                  <path d="M3 19c.6-3.3 3-5 6-5s5.4 1.7 6 5M15 14.5c2.6-.3 4.6 1.2 5.2 4" />
-                </>
-              }
-              title={t('m.choose.team.title')}
-              text={t('m.choose.team.text')}
-              go={t('m.choose.team.go')}
-            />
-            <Tile
-              href="#updates"
-              n="04"
-              icon={
-                <>
-                  <path d="M5 4h10l4 4v12H5z" />
-                  <path d="M8 11h8M8 15h8M8 7h4" />
-                </>
-              }
-              title={t('m.choose.updates.title')}
-              text={t('m.choose.updates.text')}
-              go={t('m.choose.updates.go')}
-            />
+          <div className="label">{t('m.for.label')}</div>
+          <h2 className="wide">
+            {t('m.for.title1')} <em>{t('m.for.title2')}</em>
+          </h2>
+          <p className="lede">{t('m.for.lede')}</p>
+          <div className="points">
+            <FoldPoint mode="hide" defaultOpen title={t('m.for.1t')}>
+              {t('m.for.1p')}
+            </FoldPoint>
+            <FoldPoint mode="hide" title={t('m.for.2t')}>
+              {t('m.for.2p')} <a href="#claims">{t('m.for.2link')}</a>
+            </FoldPoint>
+            <FoldPoint mode="hide" title={t('m.for.3t')}>
+              {t('m.for.3p')}
+            </FoldPoint>
+            <FoldPoint mode="hide" title={t('m.for.4t')}>
+              {t('m.for.4p')}
+            </FoldPoint>
+            <FoldPoint mode="hide" title={t('m.for.5t')} wide>
+              {t('m.for.5p')}{' '}
+              <a href={`${FOUNDERS_MAIL}&subject=${encodeURIComponent('Animal records')}`}>{t('m.for.5ask')}</a>
+            </FoldPoint>
           </div>
         </div>
       </section>
 
-      <section id="about">
+      <section id="how">
         <div className="wrap">
-          <div className="label">{t('m.about.label')}</div>
+          <div className="label">{t('m.how.label')}</div>
           <h2>
-            {t('m.about.title1')} <em>{t('m.about.title2')}</em>
+            {t('m.how.title1')} <em>{t('m.how.title2')}</em>
           </h2>
-          <p className="lede">{t('m.about.lede')}</p>
           <div className="steps">
             {(['1', '2', '3', '4'] as const).map((n) => (
               <div className="step" key={n}>
@@ -231,27 +214,132 @@ export const Home: React.FC = () => {
               </div>
             ))}
           </div>
+        </div>
+      </section>
+
+      <section id="claims">
+        <div className="wrap">
+          <div className="label">{t('m.claims.label')}</div>
+          <h2>
+            {t('m.claims.title1')} <em>{t('m.claims.title2')}</em>
+          </h2>
+          <p className="lede">{t('m.claims.lede')}</p>
+          <div className="claims">
+            <ul className="claim-list">
+              {(['1', '2', '3', '4', '5'] as const).map((n) => (
+                <FoldItem key={n} mode="hide" lead={t(`m.claims.${n}t`)}>
+                  {t(`m.claims.${n}p`)}
+                </FoldItem>
+              ))}
+            </ul>
+            <div className="claim-notes">
+              <FoldItem tag="div" className="claim-limits" lead={t('m.claims.limitsTitle')}>
+                {t('m.claims.limits')}
+              </FoldItem>
+              <p>
+                <strong>{t('m.claims.statusTitle')}</strong> {t('m.claims.status')}
+              </p>
+              <RouterLink className="more" to="/docs/spec">
+                {t('m.claims.link')}
+              </RouterLink>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="value">
+        <div className="wrap">
+          <div className="label">{t('m.get.label')}</div>
+          <h2>
+            {t('m.get.title1')} <em>{t('m.get.title2')}</em>
+          </h2>
           <div className="isnt">
             <div className="y">
-              <h4>{t('m.is.title')}</h4>
+              <h4>{t('m.get.title')}</h4>
               <ul>
-                {(['1', '2', '3', '4', '5'] as const).map((n) => (
-                  <li key={n}>
-                    <strong>{t(`m.is.${n}a`)}</strong> {t(`m.is.${n}b`)}
-                  </li>
+                {(['1', '2', '3'] as const).map((n) => (
+                  <FoldItem key={n} lead={t(`m.get.${n}a`)}>
+                    {t(`m.get.${n}b`)}
+                  </FoldItem>
                 ))}
               </ul>
             </div>
-            <div className="no">
-              <h4>{t('m.isnt.title')}</h4>
+            <div className="lim">
+              <h4>{t('m.stops.title')}</h4>
               <ul>
                 {(['1', '2', '3', '4'] as const).map((n) => (
-                  <li key={n}>
-                    <strong>{t(`m.isnt.${n}a`)}</strong> {t(`m.isnt.${n}b`)}
-                  </li>
+                  <FoldItem key={n} lead={t(`m.stops.${n}a`)}>
+                    {t(`m.stops.${n}b`)}
+                  </FoldItem>
                 ))}
               </ul>
             </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="open">
+        <div className="wrap">
+          <div className="label">{t('m.open.label')}</div>
+          <h2>
+            {t('m.open.title1')} <em>{t('m.open.title2')}</em>
+          </h2>
+          <div className="points three">
+            <FoldPoint mode="clamp" title={t('m.open.1t')} span2>
+              {t('m.open.1p')} <RouterLink to="/implementations">{t('m.open.1link')}</RouterLink>
+            </FoldPoint>
+            <FoldPoint mode="clamp" title={t('m.open.2t')}>
+              {t('m.open.2p')}
+            </FoldPoint>
+            <FoldPoint mode="clamp" title={t('m.open.3t')}>
+              {t('m.open.3p')}
+            </FoldPoint>
+            <FoldPoint mode="clamp" title={t('m.open.4t')}>
+              {t('m.open.4p')}
+            </FoldPoint>
+            <FoldPoint mode="clamp" title={t('m.open.5t')}>
+              {t('m.open.5p')}
+            </FoldPoint>
+          </div>
+        </div>
+      </section>
+
+      <section id="questions">
+        <div className="wrap">
+          <div className="label">{t('m.faq.label')}</div>
+          <h2>
+            {t('m.faq.title1')} <em>{t('m.faq.title2')}</em>
+          </h2>
+          <div className="faq">
+            <details>
+              <summary>{t('m.faq.1q')}</summary>
+              <p>{t('m.faq.1a')}</p>
+            </details>
+            <details>
+              <summary>{t('m.faq.2q')}</summary>
+              <p>{t('m.faq.2a')}</p>
+            </details>
+            <details>
+              <summary>{t('m.faq.3q')}</summary>
+              <p>
+                {t('m.faq.3a')} <RouterLink to="/docs/evidence">{t('m.faq.3link')}</RouterLink>
+              </p>
+            </details>
+            <details>
+              <summary>{t('m.faq.4q')}</summary>
+              <p>
+                {t('m.faq.4a')} <RouterLink to="/privacy">{t('m.faq.4link1')}</RouterLink>{' '}
+                <RouterLink to="/docs/integrate">{t('m.faq.4link2')}</RouterLink>
+              </p>
+            </details>
+            <details>
+              <summary>{t('m.faq.5q')}</summary>
+              <p>{t('m.faq.5a')}</p>
+            </details>
+            <details>
+              <summary>{t('m.faq.6q')}</summary>
+              <p>{t('m.faq.6a')}</p>
+            </details>
           </div>
         </div>
       </section>
@@ -262,7 +350,12 @@ export const Home: React.FC = () => {
           <h2>
             {t('m.demo.title1')} <em>{t('m.demo.title2')}</em>
           </h2>
-          <p className="lede">{t('m.demo.lede')}</p>
+          <p className="lede">
+            {t('m.demo.lede')}{' '}
+            <RouterLink to="/privacy" className="inline">
+              {t('m.demo.privacy')}
+            </RouterLink>
+          </p>
           <div className="demos">
             <RouterLink className="demo" to="/new">
               <span className="ic">
@@ -369,35 +462,34 @@ export const Home: React.FC = () => {
           </h2>
           <div className="posts">
             <Post
-              href={`${TESTNET_REPO}/blob/main/docs/self-audit-3oct.md`}
-              iso="2026-10-03"
-              date={t('m.post1.date')}
-              tag={t('m.post1.tag')}
-              title={t('m.post1.title')}
-              text={t('m.post1.text')}
+              href={`${TESTNET_REPO}/blob/main/docs/preprod-run-4oct.md`}
+              iso="2026-10-04"
+              date={t('m.post0.date')}
+              tag={t('m.post0.tag')}
+              title={t('m.post0.title')}
+              text={t('m.post0.text')}
               go={t('m.updates.read')}
             />
-            <Post
-              href={`${TESTNET_REPO}/blob/main/docs/preprod-run-2oct.md`}
-              iso="2026-10-02"
-              date={t('m.post2.date')}
-              tag={t('m.post2.tag')}
-              title={t('m.post2.title')}
-              text={t('m.post2.text')}
-              go={t('m.updates.read')}
-            />
-            {/* Links to our own design note, not to the published Midnight deployment
-                record: that record still describes the older 13-circuit contract until
-                revision 4 is filed. */}
-            <Post
-              href={`${TESTNET_REPO}/blob/main/docs/design.md#licences`}
-              iso="2026-08-25"
-              date={t('m.post3.date')}
-              tag={t('m.post3.tag')}
-              title={t('m.post3.title')}
-              text={t('m.post3.text')}
-              go={t('m.updates.read')}
-            />
+            <FoldGroup label={t('m.updates.more')}>
+              <Post
+                href={`${TESTNET_REPO}/blob/main/docs/self-audit-3oct.md`}
+                iso="2026-10-03"
+                date={t('m.post1.date')}
+                tag={t('m.post1.tag')}
+                title={t('m.post1.title')}
+                text={t('m.post1.text')}
+                go={t('m.updates.read')}
+              />
+              <Post
+                href={`${TESTNET_REPO}/blob/main/docs/preprod-run-2oct.md`}
+                iso="2026-10-02"
+                date={t('m.post2.date')}
+                tag={t('m.post2.tag')}
+                title={t('m.post2.title')}
+                text={t('m.post2.text')}
+                go={t('m.updates.read')}
+              />
+            </FoldGroup>
           </div>
           <div className="subscribe">
             <a className="more" href={`${SDK_REPO}/commits/main`} rel="noopener noreferrer" target="_blank">
@@ -430,21 +522,22 @@ export const Home: React.FC = () => {
               <b>{t('m.stat2.b')}</b>
               <span>{t('m.stat2.s')}</span>
             </div>
-            <div className="stat no">
+            <div className="stat">
               <b>{t('m.stat3.b')}</b>
               <span>{t('m.stat3.s')}</span>
             </div>
-            <div className="stat no">
+            <div className="stat">
               <b>{t('m.stat4.b')}</b>
               <span>{t('m.stat4.s')}</span>
             </div>
           </div>
-          <p className="status-key">
-            <strong>{t('m.status.keyTitle')}</strong> {t('m.status.keyText')}{' '}
+          {IS_MAINNET && <Contracts />}
+          <FoldItem tag="div" className="status-key" lead={t('m.status.keyTitle')}>
+            {t('m.status.keyText')}{' '}
             <a href={`${TESTNET_REPO}/blob/main/docs/maintenance-policy.md`} rel="noopener noreferrer" target="_blank">
               {t('m.status.keyLink')}
             </a>
-          </p>
+          </FoldItem>
         </div>
       </section>
 
@@ -454,18 +547,50 @@ export const Home: React.FC = () => {
           <h2>
             {t('m.contact.title1')} <em>{t('m.contact.title2')}</em>
           </h2>
-          <p className="lede">{t('m.contact.lede')}</p>
-          <div className="contact">
-            <a className="btn solid" href={FOUNDERS_MAIL}>
-              {t('m.contact.email')}
-            </a>
-            <RouterLink className="btn" to="/docs/spec">
-              {t('m.contact.spec')}
-            </RouterLink>
-            <a className="btn" href={SDK_REPO} rel="noopener noreferrer" target="_blank">
-              GitHub
-            </a>
-          </div>
+          <dl className="audiences">
+            <div>
+              <dt>{t('m.contact.1t')}</dt>
+              <dd>
+                <p>{t('m.contact.1p')}</p>
+                <a className="btn solid" href={FOUNDERS_MAIL}>
+                  {t('m.contact.email')}
+                </a>
+              </dd>
+            </div>
+            <div>
+              <dt>{t('m.contact.2t')}</dt>
+              <dd>
+                <p>{t('m.contact.2p')}</p>
+                <a className="btn" href={FOUNDERS_MAIL}>
+                  {t('m.contact.email')}
+                </a>
+                <RouterLink className="btn" to="/docs/spec">
+                  {t('m.contact.spec')}
+                </RouterLink>
+              </dd>
+            </div>
+            <div>
+              <dt>{t('m.contact.3t')}</dt>
+              <dd>
+                <p>{t('m.contact.3p')}</p>
+                <RouterLink className="btn" to="/docs/integrate">
+                  {t('m.contact.integrate')}
+                </RouterLink>
+                <a className="btn" href={SDK_REPO} rel="noopener noreferrer" target="_blank">
+                  GitHub
+                </a>
+              </dd>
+            </div>
+            <div>
+              <dt>{t('m.contact.4t')}</dt>
+              <dd>
+                <p>{t('m.contact.4p')}</p>
+                <a className="btn" href="mailto:mako@veilcore.org">
+                  mako@veilcore.org
+                </a>
+              </dd>
+            </div>
+          </dl>
         </div>
       </section>
     </SiteShell>

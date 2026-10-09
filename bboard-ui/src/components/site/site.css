@@ -288,68 +288,15 @@ html:has(.vcm) {
 .vcm .digest .chg {
   color: var(--alert);
 }
+.vcm .note-short {
+  display: none;
+}
 .vcm .note {
   font-size: 14px;
   color: var(--text);
   opacity: 0.9;
   max-width: 62ch;
   margin-top: 16px;
-}
-
-/* choose */
-.vcm .choose {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 14px;
-  margin-top: 40px;
-}
-.vcm .tile {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  text-decoration: none;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  padding: 22px 20px 20px;
-  min-height: 190px;
-  transition:
-    border-color 0.25s,
-    transform 0.25s,
-    background 0.25s;
-}
-.vcm .tile:hover {
-  border-color: var(--mint);
-  transform: translateY(-3px);
-  background: var(--raise);
-}
-.vcm .tile .n {
-  font-family: var(--mono);
-  font-size: 12px;
-  color: var(--muted);
-}
-.vcm .tile h3 {
-  font-family: var(--display);
-  font-size: 1.35rem;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-}
-.vcm .tile p {
-  font-size: 0.93rem;
-  color: var(--muted);
-}
-.vcm .tile .go {
-  margin-top: auto;
-  font-family: var(--mono);
-  font-size: 12.5px;
-  color: var(--mint);
-}
-.vcm svg.ico {
-  width: 26px;
-  height: 26px;
-  stroke: var(--mint);
-  fill: none;
-  stroke-width: 1.6;
 }
 
 /* about */
@@ -668,6 +615,188 @@ html:has(.vcm) {
   margin-top: 32px;
 }
 
+/* hero status line: where things stand, in one sentence */
+.vcm .hero-status {
+  margin-top: 18px;
+  max-width: 62ch;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+/* titled paragraphs in a two- or three-column grid, divided by rules */
+.vcm h2.wide {
+  max-width: 24ch;
+}
+.vcm .points {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0 44px;
+  margin-top: 40px;
+}
+.vcm .points.three {
+  grid-template-columns: repeat(3, 1fr);
+}
+.vcm .pt {
+  border-top: 1px solid var(--line);
+  padding: 22px 0 26px;
+}
+.vcm .pt.wide {
+  grid-column: 1 / -1;
+}
+.vcm .pt.span2 {
+  grid-column: span 2;
+}
+.vcm .pt.wide p {
+  max-width: 78ch;
+}
+.vcm .pt h3 {
+  font-family: var(--display);
+  font-size: 1.15rem;
+  font-weight: 700;
+  line-height: 1.3;
+  margin-bottom: 6px;
+}
+.vcm .pt p {
+  font-size: 0.95rem;
+  color: var(--muted);
+}
+.vcm .pt a,
+.vcm .faq a,
+.vcm .lede a.inline,
+.vcm .verify-what a {
+  color: var(--mint);
+}
+
+/* prove one fact */
+.vcm .claims {
+  display: grid;
+  grid-template-columns: 1.15fr 1fr;
+  gap: 18px 44px;
+  margin-top: 40px;
+  align-items: start;
+}
+.vcm .claim-list {
+  list-style: none;
+}
+.vcm .claim-list li {
+  font-size: 0.95rem;
+  color: var(--muted);
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+}
+.vcm .claim-list li strong {
+  color: var(--text);
+  font-weight: 500;
+}
+.vcm .claim-notes {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 22px 22px 8px;
+  background: var(--surface);
+}
+.vcm .claim-notes p,
+.vcm .claim-notes .claim-limits {
+  font-size: 0.93rem;
+  color: var(--muted);
+  margin-bottom: 12px;
+}
+.vcm .claim-notes strong {
+  color: var(--text);
+  font-weight: 500;
+}
+.vcm .claim-notes .more {
+  margin: 0 0 14px;
+}
+.vcm .isnt .lim h4 {
+  color: var(--text);
+}
+
+/* questions */
+.vcm .faq {
+  margin-top: 36px;
+  max-width: 780px;
+  border-bottom: 1px solid var(--line);
+}
+.vcm .faq details {
+  border-top: 1px solid var(--line);
+}
+.vcm .faq summary {
+  list-style: none;
+  cursor: pointer;
+  font-family: var(--display);
+  font-size: 1.1rem;
+  font-weight: 500;
+  padding: 16px 32px 16px 0;
+  position: relative;
+}
+.vcm .faq summary::-webkit-details-marker {
+  display: none;
+}
+.vcm .faq summary::after {
+  content: '+';
+  position: absolute;
+  right: 4px;
+  top: 14px;
+  color: var(--mint);
+  font-size: 1.3rem;
+  line-height: 1.2;
+}
+.vcm .faq details[open] summary::after {
+  content: '\2212';
+}
+.vcm .faq summary:hover {
+  color: var(--mint);
+}
+.vcm .faq summary:focus-visible {
+  outline: 2px solid var(--mint);
+  outline-offset: 3px;
+}
+.vcm .faq p {
+  color: var(--muted);
+  font-size: 0.97rem;
+  max-width: 68ch;
+  padding-bottom: 18px;
+}
+
+/* contact, by audience */
+.vcm .audiences {
+  margin-top: 36px;
+  border-bottom: 1px solid var(--line);
+}
+.vcm .audiences > div {
+  display: grid;
+  grid-template-columns: minmax(0, 300px) minmax(0, 1fr);
+  gap: 24px;
+  padding: 22px 0;
+  border-top: 1px solid var(--line);
+}
+.vcm .audiences dt {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 1.05rem;
+}
+.vcm .audiences dd {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+.vcm .audiences dd p {
+  flex-basis: 100%;
+  color: var(--muted);
+  font-size: 0.97rem;
+}
+.vcm .audiences .btn {
+  padding: 10px 18px;
+}
+
+/* verify lookup: the one line for strangers */
+.vcm header.page p.verify-what {
+  font-size: 1rem;
+  margin-top: 14px;
+}
+
 /* footer */
 .vcm footer.bottom {
   border-top: 1px solid var(--line);
@@ -900,8 +1029,10 @@ html:has(.vcm) {
 }
 
 @media (max-width: 900px) {
-  .vcm .choose,
   .vcm .status {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .vcm .points.three {
     grid-template-columns: repeat(2, 1fr);
   }
   .vcm .steps {
@@ -953,10 +1084,19 @@ html:has(.vcm) {
   .vcm .team {
     grid-template-columns: 1fr;
   }
-  .vcm .choose,
   .vcm .steps,
-  .vcm .status {
+  .vcm .status,
+  .vcm .points,
+  .vcm .points.three,
+  .vcm .claims {
     grid-template-columns: 1fr;
+  }
+  .vcm .audiences > div {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  .vcm .pt.span2 {
+    grid-column: auto;
   }
   .vcm .step + .step {
     border-left: none;
@@ -1032,6 +1172,46 @@ html:has(.vcm) {
   }
 }
 
+/* status: the contract addresses (mainnet builds only) */
+.vcm .contracts {
+  margin-top: 18px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 20px;
+  background: var(--surface);
+}
+.vcm .contracts h4 {
+  margin: 0 0 12px;
+  font-family: var(--display);
+  font-size: 1rem;
+  font-weight: 600;
+}
+.vcm .contracts dl {
+  margin: 0 0 12px;
+  display: grid;
+  gap: 10px;
+}
+.vcm .contracts dt {
+  font-size: 0.8rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.vcm .contracts dd {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+.vcm .contracts code {
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.vcm .contracts .more {
+  margin: 0;
+}
+
 /* status: who can change the contract */
 .vcm .status-key {
   margin-top: 18px;
@@ -1049,4 +1229,747 @@ html:has(.vcm) {
 .vcm .status-key a {
   color: var(--mint);
   white-space: nowrap;
+}
+
+/* Phones (below MUI's 600px "sm" breakpoint). A comfort pass, not a redesign: small
+   labels and links come up to 13px or more, the secondary grey is lighter, every
+   navigation link is a finger-sized row, vertical rhythm is tighter, and groups of
+   boxes become one box with dividers. Nothing above 600px changes. */
+@media (max-width: 599.98px) {
+  .vcm {
+    /* #849995 is 6.7:1 on --bg; this is 9.2:1, still well below --text (17.9:1). */
+    --muted: #9fb3ae;
+  }
+  .vcm section {
+    padding-block: 44px;
+  }
+  .vcm .label {
+    letter-spacing: 0.24em;
+  }
+  .vcm h2 {
+    margin-top: 14px;
+  }
+  .vcm .lede {
+    margin-top: 14px;
+  }
+
+  /* nav */
+  .vcm .nav-in {
+    padding-block: 8px;
+  }
+  .vcm .brand {
+    min-height: 44px;
+  }
+  .vcm .menu-btn {
+    min-height: 44px;
+    padding: 0 16px;
+    font-size: 15px;
+  }
+  .vcm .nav-links {
+    padding: 0 var(--gutter) 10px;
+  }
+  .vcm .nav-links li + li {
+    border-top: 1px solid rgba(27, 57, 52, 0.6);
+  }
+  .vcm .nav-links a {
+    padding: 13px 0;
+    font-size: 16px;
+  }
+  .vcm .nav-links .nav-cta {
+    border: 0;
+    border-radius: 0;
+  }
+
+  /* hero */
+  .vcm header.hero {
+    padding-block: 32px 44px;
+  }
+  .vcm header.hero h1 {
+    margin-top: 18px;
+  }
+  .vcm .hero-actions {
+    margin-top: 28px;
+  }
+  .vcm .hash-demo {
+    margin-top: 40px;
+  }
+  .vcm .arrow {
+    height: 24px;
+    margin: 14px auto;
+  }
+  .vcm .digest {
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  .vcm .note {
+    font-size: 15px;
+  }
+
+  /* about */
+  .vcm .steps {
+    margin-top: 28px;
+  }
+  .vcm .step {
+    padding: 18px;
+  }
+  .vcm .step h3 {
+    margin: 6px 0 4px;
+  }
+  .vcm .isnt {
+    gap: 28px;
+    margin-top: 32px;
+  }
+  .vcm .isnt > div {
+    border: 0;
+    border-radius: 0;
+    padding: 0 2px;
+  }
+  .vcm .isnt h4 {
+    font-size: 13px;
+    letter-spacing: 0.22em;
+    margin-bottom: 4px;
+  }
+  .vcm .isnt li {
+    padding: 10px 0;
+  }
+
+  /* demos */
+  .vcm .demos {
+    gap: 10px;
+    margin-top: 28px;
+  }
+  .vcm .demo {
+    padding: 18px;
+    gap: 4px 14px;
+  }
+  .vcm .demo .ic {
+    width: 26px;
+    height: 30px;
+    border: 0;
+    border-radius: 0;
+    place-items: start;
+  }
+
+  /* team */
+  .vcm .team {
+    gap: 10px;
+    margin-top: 28px;
+  }
+  .vcm .person {
+    padding: 16px;
+    gap: 14px;
+    align-items: flex-start;
+  }
+  .vcm .avatar {
+    width: 56px;
+    height: 56px;
+  }
+  .vcm .more {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    margin-top: 10px;
+  }
+
+  /* updates */
+  .vcm .posts {
+    gap: 10px;
+    margin-top: 28px;
+  }
+  .vcm .post {
+    padding: 18px;
+    gap: 8px;
+  }
+  .vcm .subscribe {
+    margin-top: 12px;
+    gap: 0 10px;
+  }
+  .vcm .subscribe > span:nth-child(2) {
+    display: none;
+  }
+  .vcm .subscribe a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+
+  /* status: one box with dividers */
+  .vcm .status {
+    gap: 0;
+    margin-top: 28px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    overflow: hidden;
+    background: var(--surface);
+  }
+  .vcm .stat {
+    border: 0;
+    border-radius: 0;
+    padding: 16px 18px;
+    background: none;
+  }
+  .vcm .stat + .stat {
+    border-top: 1px solid var(--line);
+  }
+  .vcm .stat b {
+    font-size: 1.6rem;
+  }
+  .vcm .status-key {
+    margin-top: 12px;
+    padding: 16px 18px;
+  }
+  .vcm .status-key a,
+  .vcm .privacy-contact a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+  .vcm .contact {
+    margin-top: 24px;
+    gap: 10px;
+  }
+
+  /* type sizes: nothing secondary below 13px, body copy at 15px */
+  .vcm .step .n,
+  .vcm .post time,
+  .vcm .post .tag,
+  .vcm .chip,
+  .vcm .tags li,
+  .vcm .person .role,
+  .vcm .founder .role {
+    font-size: 13px;
+  }
+  .vcm .post .go,
+  .vcm .more {
+    font-size: 14px;
+  }
+  .vcm .pt p,
+  .vcm .claim-list li,
+  .vcm .claim-notes p,
+  .vcm .faq p,
+  .vcm .audiences dd p,
+  .vcm .step p,
+  .vcm .isnt li,
+  .vcm .demo p,
+  .vcm .person p,
+  .vcm .post p,
+  .vcm .stat span,
+  .vcm .status-key,
+  .vcm .subscribe {
+    font-size: 15px;
+  }
+
+  /* footer: every link a full row */
+  .vcm footer.bottom {
+    font-size: 14.5px;
+    padding: 28px 0 20px;
+  }
+  .vcm .foot {
+    gap: 22px 16px;
+  }
+  .vcm .foot > div:first-child {
+    grid-column: 1 / -1;
+  }
+  .vcm .foot h4 {
+    font-size: 13px;
+    letter-spacing: 0.22em;
+    margin-bottom: 2px;
+  }
+  .vcm .foot li {
+    margin-top: 0;
+  }
+  .vcm .foot li a {
+    display: block;
+    padding: 11px 0;
+  }
+  .vcm .fine {
+    margin-top: 14px;
+    font-size: 13px;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .vcm .fine a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+
+  /* new sections (5 October): tighter on phones */
+  .vcm section {
+    padding-block: 40px;
+  }
+  .vcm .hero-status {
+    margin-top: 14px;
+  }
+  /* status: the big word beside its sentence, not above it */
+  .vcm .stat {
+    display: grid;
+    grid-template-columns: 7.2rem 1fr;
+    gap: 12px;
+    align-items: baseline;
+  }
+  .vcm .stat b {
+    font-size: 1.15rem;
+    line-height: 1.25;
+  }
+  .vcm .step {
+    padding: 14px 16px;
+  }
+  .vcm .points,
+  .vcm .claims {
+    margin-top: 24px;
+  }
+  .vcm .pt {
+    padding: 16px 0 18px;
+  }
+  .vcm .pt h3 {
+    font-size: 1.1rem;
+  }
+  .vcm .claim-list li {
+    padding: 10px 0;
+  }
+  .vcm .claim-notes {
+    padding: 16px 18px 4px;
+  }
+  .vcm .faq,
+  .vcm .audiences {
+    margin-top: 24px;
+  }
+  .vcm .faq summary {
+    font-size: 1.05rem;
+    padding-block: 12px;
+    min-height: 44px;
+    box-sizing: border-box;
+  }
+  .vcm .faq summary::after {
+    top: 11px;
+  }
+  .vcm .audiences > div {
+    padding: 16px 0;
+  }
+  .vcm .audiences .btn {
+    min-height: 44px;
+    box-sizing: border-box;
+    padding: 11px 16px;
+  }
+  .vcm .lede a.inline,
+  .vcm .claim-notes .more {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+
+  /* founders */
+  .vcm header.page {
+    padding-block: 36px 32px;
+  }
+  .vcm header.page h1 {
+    margin-top: 18px;
+  }
+  .vcm header.page p {
+    margin-top: 18px;
+    font-size: 1.1rem;
+  }
+  .vcm .grid {
+    gap: 14px;
+    padding-bottom: 48px;
+  }
+  .vcm .fbody {
+    padding: 20px 18px;
+    gap: 12px;
+  }
+  .vcm .meta dt {
+    font-size: 13px;
+    letter-spacing: 0.22em;
+  }
+  .vcm .links a {
+    min-height: 44px;
+    box-sizing: border-box;
+    padding: 0 14px;
+    font-size: 14px;
+  }
+  .vcm .band {
+    padding: 48px 0;
+  }
+}
+
+/* Phones (5 October, second pass): the home page folds to stay under nine screens.
+   Fold.tsx renders these classes only below 600px; wider screens are unchanged. */
+@media (max-width: 599.98px) {
+  /* hero: the fingerprint box in less height */
+  .vcm .hash-demo {
+    margin-top: 28px;
+  }
+  .vcm .fields {
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .vcm .field input {
+    font-size: 15px;
+    padding: 11px 12px;
+    border-radius: 10px;
+  }
+  .vcm .field label {
+    top: -9px;
+    left: 8px;
+  }
+  .vcm .arrow {
+    height: 12px;
+    margin: 8px auto;
+  }
+  .vcm .note {
+    font-size: 14px;
+    margin-top: 8px;
+  }
+  .vcm .note-long {
+    display: none;
+  }
+  .vcm .note-short {
+    display: inline;
+  }
+
+  /* fold toggles */
+  .vcm .fold-btn {
+    display: flex;
+    width: 100%;
+    min-height: 44px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+  .vcm .fold-btn:focus-visible {
+    outline: 2px solid var(--mint);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+  .vcm .fold-i::after {
+    content: '+';
+    color: var(--mint);
+    font-size: 1.3rem;
+    line-height: 1;
+  }
+  .vcm .fold.is-open > h3 .fold-i::after,
+  .vcm .fold.is-open > .fold-btn .fold-i::after {
+    content: '\2212';
+  }
+  .vcm .fold-body.clamp:not(.open) {
+    display: -webkit-box;
+    -webkit-line-clamp: 1;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .vcm .pt.fold {
+    padding: 4px 0 8px;
+  }
+  .vcm .pt.fold h3 {
+    margin-bottom: 0;
+  }
+  .vcm .pt.fold .fold-body {
+    margin-top: -4px;
+  }
+  .vcm .pt.fold .fold-body.open {
+    padding-bottom: 6px;
+  }
+  .vcm .isnt li.fold {
+    padding: 2px 0 10px;
+  }
+  .vcm .isnt li.fold .fold-btn {
+    min-height: 40px;
+  }
+
+  /* updates: the latest, then one toggle for the rest */
+  .vcm .fold-group .fold-btn {
+    padding: 0 16px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    color: var(--mint);
+  }
+  .vcm .fold-group .fold-body.open {
+    margin-top: 10px;
+  }
+
+  /* team: names and roles only; the photos and bios are on /founders */
+  .vcm .team {
+    gap: 8px;
+    margin-top: 20px;
+  }
+  .vcm .person {
+    padding: 12px 16px;
+  }
+  .vcm .person .avatar,
+  .vcm .person p {
+    display: none;
+  }
+  .vcm .person > span:last-child {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 2px 10px;
+  }
+  .vcm .person h3 {
+    font-size: 1.05rem;
+    margin: 0;
+  }
+
+  /* tighter rhythm */
+  .vcm section {
+    padding-block: 34px;
+  }
+  .vcm .steps,
+  .vcm .points,
+  .vcm .claims,
+  .vcm .faq,
+  .vcm .audiences,
+  .vcm .demos,
+  .vcm .posts,
+  .vcm .status {
+    margin-top: 20px;
+  }
+
+  /* steps: number and title on one line */
+  .vcm .step {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    column-gap: 10px;
+    align-items: baseline;
+    padding: 12px 16px;
+  }
+  .vcm .step h3 {
+    margin: 0;
+  }
+  .vcm .step p {
+    grid-column: 1 / -1;
+    margin-top: 2px;
+  }
+
+  /* claims: titles, tap for the line under each */
+  .vcm .claim-list li.fold {
+    padding: 0;
+  }
+  .vcm .claim-list li.fold .fold-body.open {
+    padding-bottom: 10px;
+  }
+
+  /* status: who can change the contract, first line then tap */
+  .vcm .status-key.fold {
+    padding: 6px 18px 12px;
+  }
+  .vcm .status-key.fold .fold-btn {
+    min-height: 40px;
+  }
+
+  /* demo cards: one line of description */
+  .vcm .demo {
+    padding: 14px 16px;
+  }
+  .vcm .demo p {
+    display: -webkit-box;
+    -webkit-line-clamp: 1;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  /* contact */
+  .vcm .audiences > div {
+    padding: 12px 0;
+    gap: 6px;
+  }
+
+  /* footer: links run in rows instead of one per line */
+  .vcm .foot {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+  .vcm .foot ul {
+    display: flex;
+    flex-wrap: wrap;
+    column-gap: 20px;
+  }
+  .vcm .foot li a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    padding: 0;
+  }
+
+  /* the h2 names each section on a phone; the small label above it is dropped */
+  .vcm section .label {
+    display: none;
+  }
+  .vcm section h2 {
+    margin-top: 0;
+  }
+  .vcm .lede {
+    font-size: 1rem;
+  }
+
+  /* claims: limits as first line then tap; status stays in full */
+  .vcm .claim-limits {
+    font-size: 15px;
+    color: var(--muted);
+    margin-bottom: 10px;
+  }
+  .vcm .claim-limits .fold-btn {
+    min-height: 40px;
+  }
+
+  /* status tiles: word and sentence run together */
+  .vcm .stat {
+    display: block;
+    padding: 12px 18px;
+  }
+  .vcm .stat b {
+    display: inline;
+    margin-right: 6px;
+  }
+
+  /* footer: the about line is on every page above it */
+  .vcm .foot > div:first-child p {
+    display: none;
+  }
+
+  .vcm header.hero .label {
+    display: none;
+  }
+  .vcm header.hero h1 {
+    margin-top: 0;
+  }
+  .vcm section h2 {
+    font-size: 1.75rem;
+  }
+
+  /* demo cards: the time sits beside the title */
+  .vcm .demo h3 {
+    grid-column: 2;
+    grid-row: 1;
+    padding-right: 64px;
+  }
+  .vcm .demo .meta-row {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: end;
+    align-self: center;
+    margin-top: 0;
+  }
+  .vcm .demo .meta-row .chip:first-child {
+    display: none;
+  }
+
+  /* the h2 already says "What you get" */
+  .vcm .isnt .y h4 {
+    display: none;
+  }
+  .vcm .isnt li.fold {
+    padding: 0 0 8px;
+  }
+  .vcm .post {
+    padding: 16px;
+    gap: 6px;
+  }
+  .vcm .subscribe {
+    margin-top: 6px;
+  }
+  .vcm .audiences > div {
+    gap: 2px;
+  }
+  .vcm .audiences dd {
+    gap: 8px;
+  }
+  /* footer: "Explore" repeats the menu at the top of the page */
+  .vcm .foot > div:nth-child(2) {
+    display: none;
+  }
+
+  .vcm section {
+    padding-block: 28px;
+  }
+  .vcm section h2 {
+    font-size: 1.6rem;
+  }
+  .vcm .hero-actions {
+    margin-top: 20px;
+  }
+  .vcm .hash-demo {
+    margin-top: 22px;
+  }
+  /* steps: title and sentence in one run of text */
+  .vcm .step {
+    display: block;
+  }
+  .vcm .step .n {
+    margin-right: 8px;
+  }
+  .vcm .step h3,
+  .vcm .step p {
+    display: inline;
+  }
+  .vcm .step h3::after {
+    content: '.';
+  }
+  .vcm .step p {
+    margin-left: 4px;
+  }
+
+  /* the GitHub and X links are also in the footer */
+  .vcm .subscribe {
+    display: none;
+  }
+  .vcm .fine {
+    flex-direction: row;
+    flex-wrap: wrap;
+    column-gap: 14px;
+    align-items: center;
+  }
+  .vcm .claim-notes {
+    padding: 12px 16px 2px;
+  }
+  .vcm #status .lede {
+    display: none;
+  }
+
+  /* steps: the order is the numbering; the small step name repeats the title */
+  .vcm .step .n {
+    display: none;
+  }
+  .vcm .steps {
+    counter-reset: step;
+  }
+  .vcm .step h3::before {
+    counter-increment: step;
+    content: counter(step) '. ';
+    color: var(--mint);
+  }
+  .vcm header.hero {
+    padding-block: 24px 32px;
+  }
+  .vcm .faq summary {
+    padding-block: 10px;
+  }
+  .vcm .stat {
+    padding-block: 10px;
+  }
+  .vcm .person {
+    padding-block: 10px;
+  }
+  /* 5 Oct fact-check pass: the honest sentences are longer; the rhythm gives way */
+  .vcm section {
+    padding-block: 24px;
+  }
+  .vcm section h2 {
+    font-size: 1.5rem;
+  }
+  .vcm .audiences > div {
+    padding-block: 8px;
+  }
+  .vcm .claim-list li.fold .fold-btn {
+    min-height: 40px;
+  }
 }

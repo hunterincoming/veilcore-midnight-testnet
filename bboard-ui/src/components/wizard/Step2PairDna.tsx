@@ -1,6 +1,6 @@
 // Step 2 — Pair a lab report. The breeder picks the report their testing lab returned;
 // the file is fingerprinted locally and never uploaded. Its fingerprint and file name are
-// saved with the record on VeilCore's test server. Pairing is the holder's own statement
+// saved with the record on VeilCore's server. Pairing is the holder's own statement
 // that this report belongs to this record; it is not a check of the genetics.
 // SPDX-License-Identifier: Apache-2.0
 
@@ -13,6 +13,8 @@ import { fingerprintFile, shortFingerprint } from '../../veilcore/commitment';
 import { getRecord, pairDna, conflictsFor, type StrainRecord } from '../../veilcore/records';
 import { FingerprintReveal } from './FingerprintReveal';
 import { Dropzone } from './Dropzone';
+import { THIS_SITE } from '../../config/copy';
+import { utcDate } from '../../veilcore/time';
 import { REAL_CHAIN } from '../../veilcore/chain/config';
 import { PairDnaOnChainPanel } from '../chain/PairDnaOnChainPanel';
 
@@ -85,19 +87,17 @@ export const Step2PairDna: React.FC<{
             {conflicts.length === 1 ? '' : 's'} you hold
             {yoursFirst
               ? '. This record was sealed earliest, by the clocks of the devices that sealed them.'
-              : `. ${priority.strainName} was sealed earlier (${new Date(
-                  priority.loggedAt,
-                ).toLocaleDateString()}, by its device's clock).`}
+              : `. ${priority.strainName} was sealed earlier (${utcDate(priority.loggedAt)}, by its device's clock).`}
           </Alert>
         )}
         <Alert severity="success" variant="outlined">
-          Paired. The record now carries your lab report&apos;s fingerprint, as your statement that this report belongs
-          to it. It is not a check of the genetics.
+          Paired. Your lab report&apos;s fingerprint is saved with the record, as your statement that this report
+          belongs to it. It is not a check of the genetics, and in {THIS_SITE} the pairing isn&apos;t dated yet.
         </Alert>
         {REAL_CHAIN && <PairDnaOnChainPanel recordId={paired.id} />}
         <Box>
           <Button variant="contained" size="large" onClick={onDone}>
-            Continue — see your certificate
+            Continue: see the certificate
           </Button>
         </Box>
       </Stack>
@@ -122,9 +122,9 @@ export const Step2PairDna: React.FC<{
       </Box>
 
       <Alert icon={<ScienceIcon />} severity="info" variant="outlined">
-        You get a DNA report from a testing lab. VeilCore doesn&apos;t sequence anything — you pair the report you
-        already have. It&apos;s read and fingerprinted on your device; the file is never uploaded. Its fingerprint and
-        file name are saved with your record.
+        VeilCore doesn&apos;t test DNA: you pair the report your testing lab gave you. It&apos;s read and fingerprinted
+        on your device; the file is never uploaded. Its fingerprint and file name are saved with your record. In{' '}
+        {THIS_SITE} the pairing isn&apos;t dated yet; on VeilCore&apos;s contract it is.
       </Alert>
 
       <Dropzone
@@ -140,6 +140,11 @@ export const Step2PairDna: React.FC<{
         </Alert>
       )}
 
+      <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+        A lab can also sign a report with its own key; a signed report carries more weight than one you pair yourself.
+        Here, pair the report file you have.
+      </Typography>
+
       <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
         <Button variant="text" onClick={onBack}>
           Back
@@ -151,17 +156,11 @@ export const Step2PairDna: React.FC<{
           startIcon={busy ? <CircularProgress size={18} color="inherit" /> : undefined}
           onClick={onPair}
         >
-          {busy ? 'Fingerprinting locally…' : 'Pair to my cultivar'}
+          {busy ? 'Fingerprinting on your device…' : 'Pair this report'}
         </Button>
         {onSkip && (
-          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-            If you sent the sample through VeilCore, the lab&apos;s report arrives here signed by them — you don&apos;t
-            need to do anything. Upload one yourself only if your lab doesn&apos;t use VeilCore.
-          </Typography>
-        )}
-        {onSkip && (
           <Button variant="text" color="inherit" onClick={onSkip}>
-            Don&apos;t have the report back yet — skip
+            No report yet: skip
           </Button>
         )}
       </Stack>

@@ -21,39 +21,25 @@ import {
 import KeyIcon from '@mui/icons-material/VpnKeyOutlined';
 import ContentCopyIcon from '@mui/icons-material/ContentCopyOutlined';
 import DownloadIcon from '@mui/icons-material/FileDownloadOutlined';
-import { holderKey, setHolderKey } from '../veilcore/holder';
+import { holderKeyIfAny, setHolderKey, downloadHolderKey } from '../veilcore/holder';
 import { TEAL } from '../config/theme';
 
 export const HolderKeyPanel: React.FC = () => {
   const [open, setOpen] = useState(false);
   const [restoreValue, setRestoreValue] = useState('');
   const [copied, setCopied] = useState(false);
-  const key = holderKey();
+  // Read, never created: opening this panel is not a reason to mint a key.
+  const key = holderKeyIfAny();
 
   const copy = async () => {
+    if (!key) return;
     await navigator.clipboard.writeText(key);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
   const download = () => {
-    const blob = new Blob(
-      [
-        'VeilCore holder key\n\n',
-        `${key}\n\n`,
-        "This key is how you get back to your records. VeilCore's server receives it\n",
-        'with every save and stores it to find your records. Anyone with this key can\n',
-        'read and change your records. We cannot recover it for you, so store it\n',
-        'somewhere safe.\n',
-      ],
-      { type: 'text/plain' },
-    );
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'veilcore-holder-key.txt';
-    a.click();
-    URL.revokeObjectURL(url);
+    if (key) downloadHolderKey(key);
   };
 
   const restore = () => {
@@ -94,15 +80,15 @@ export const HolderKeyPanel: React.FC = () => {
                   color: TEAL,
                 }}
               >
-                {key}
+                {key ?? 'No key yet. One is made the first time you save a record in this browser.'}
               </Box>
             </Box>
 
             <Stack direction="row" spacing={1}>
-              <Button size="small" variant="outlined" startIcon={<ContentCopyIcon />} onClick={copy}>
+              <Button size="small" variant="outlined" startIcon={<ContentCopyIcon />} onClick={copy} disabled={!key}>
                 {copied ? 'Copied' : 'Copy'}
               </Button>
-              <Button size="small" variant="outlined" startIcon={<DownloadIcon />} onClick={download}>
+              <Button size="small" variant="outlined" startIcon={<DownloadIcon />} onClick={download} disabled={!key}>
                 Download
               </Button>
             </Stack>

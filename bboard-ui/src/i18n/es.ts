@@ -4,11 +4,7 @@ import type { Strings } from './en';
 
 export const es: Strings = {
   // Header and footer
-  'nav.newCultivar': 'Nuevo cultivar',
-  'nav.licenses': 'Licencias',
   'nav.language': 'Idioma',
-  'footer.about':
-    'Un formato de registro abierto para la genética vegetal. Para comprobar un registro que usted tiene solo se necesitan SHA-256 y la especificación abierta: es gratuito y no requiere cuenta. Buscar un registro por su identificador en este sitio usa nuestro servidor.',
   'footer.documents': 'Documentos',
   'footer.spec': 'Especificación',
   'footer.evidence': 'Registros como prueba',
@@ -35,78 +31,20 @@ export const es: Strings = {
   'm.hero.label': 'Prueba de lo que usted tiene',
   'm.hero.title1': 'Demuestre que lo tuvo primero.',
   'm.hero.title2': 'Sin mostrarle a nadie qué es.',
-  'm.hero.lede':
-    'Para obtentores, empresas de semillas y laboratorios: un formato de registro abierto para la genética vegetal. Sus datos genéticos se quedan con usted. Solo una huella se registra en una blockchain pública (Midnight) y, una vez anclada, cualquiera puede comprobar su fecha.',
-  'm.hero.chooseDemo': 'Elija una demo',
   'm.hero.how': 'Cómo funciona',
   'm.hero.cultivar': 'Cultivar',
   'm.hero.bredBy': 'Obtenido por',
   'm.hero.bredByDefault': 'Su nombre aquí',
   'm.hero.demoLabel': 'Demo de huella en vivo',
-  'm.hero.note':
-    'Cambie lo que quiera arriba; no sale de esta página. La línea en verde menta es la huella: treinta y dos bytes que no se pueden revertir, porque se mezcla un valor aleatorio. Es la única parte que esta demo publicaría.',
-  'm.choose.label': 'Empiece aquí',
-  'm.choose.title': '¿A dónde quiere ir?',
-  'm.choose.about.title': 'Acerca de',
-  'm.choose.about.text': 'Qué es el formato, cómo funciona y lo que no hace.',
-  'm.choose.about.go': 'Leer →',
-  'm.choose.demo.title': 'Demo',
-  'm.choose.demo.text': 'Cree un registro o verifique uno.',
-  'm.choose.demo.go': 'Elija una demo →',
-  'm.choose.team.title': 'Equipo',
-  'm.choose.team.text': 'Dos fundadores, en Tokio y Nueva Jersey.',
-  'm.choose.team.go': 'Conózcalos →',
-  'm.choose.updates.title': 'Novedades',
-  'm.choose.updates.text': 'Qué cambió, qué publicamos y qué aprendimos.',
-  'm.choose.updates.go': 'Lo último →',
-  'm.about.label': 'Acerca de',
-  'm.about.title1': 'Un formato de registro probatorio',
-  'm.about.title2': 'para la genética vegetal.',
-  'm.about.lede':
-    'Cuando una genética aparece donde no debería, toda disputa se reduce a una pregunta: ¿qué tenía usted y cuándo? Los cuadernos y los informes de laboratorio los fecha quien los tiene. La solución habitual, un registro compartido, pide a todos que entreguen justamente lo que intentan proteger. VeilCore no hace ninguna de las dos cosas.',
+  'm.foot.demo': 'Demo',
   'm.step1.n': '01 · Registro',
-  'm.step1.title': 'Describa el lote',
-  'm.step1.text':
-    'Un obtentor o un laboratorio redacta un registro del material: qué es, de dónde proviene, resultados de análisis.',
   'm.step2.n': '02 · Huella',
-  'm.step2.title': 'Calcúlela localmente',
-  'm.step2.text':
-    'Se calcula una huella de 32 bytes en su propia computadora. Los datos genéticos y los archivos de laboratorio nunca salen de ella.',
   'm.step3.n': '03 · Anclaje',
-  'm.step3.title': 'Publique la fecha',
-  'm.step3.text':
-    'Solo la huella recibe un sello de tiempo en una red pública (Midnight). La fecha la fija la red, no nosotros, y queda en su historial público. En la demo, nuestro operador ancla los registros por lotes, no al instante.',
   'm.step4.n': '04 · Verificación',
   'm.step4.title': 'Muéstrelo después',
-  'm.step4.text':
-    'Muestre el registro a un comprador, un inspector o un tribunal. Cualquiera puede comprobar que coincide, gratis y sin cuenta.',
-  'm.is.title': 'Qué es',
-  'm.is.1a': 'Prueba de posesión previa:',
-  'm.is.1b': 'qué tenía usted y cuándo.',
-  'm.is.2a': 'Sin custodia de la genética:',
-  'm.is.2b': 'los datos genéticos y los archivos de laboratorio nunca nos llegan.',
-  'm.is.3a': 'Un formato abierto:',
-  'm.is.3b': 'gratuito de implementar, gratuito de verificar, con una especificación publicada.',
-  'm.is.4a': 'Licencias:',
-  'm.is.4b':
-    'otorgan derechos sobre un registro. Un licenciatario puede demostrar que una licencia es válida sin revelar cuál es ni quién la tiene.',
-  'm.is.5a': 'Linaje acordado:',
-  'm.is.5b':
-    'un vínculo de parentesco solo cuenta cuando ambos titulares lo confirman. Las obligaciones como las regalías solo pasan a los descendientes declarados de esta forma, hasta que el beneficiario las libere. VeilCore registra lo que se debe; no lo cobra.',
-  'm.isnt.title': 'Qué no es',
-  'm.isnt.1a': 'No es propiedad.',
-  'm.isnt.1b': 'No crea ningún derecho legal que usted no tenga ya.',
-  'm.isnt.2a': 'No es una máquina de la verdad.',
-  'm.isnt.2b': 'Prueba cuándo escribió algo, no que sea cierto.',
-  'm.isnt.3a': 'No es una prueba de ADN.',
-  'm.isnt.3b': 'La complementa, para que un resultado siga significando algo años después.',
-  'm.isnt.4a': 'No es una prueba de pedigrí.',
-  'm.isnt.4b': 'Un vínculo de parentesco significa que ambos titulares lo acordaron, no que el ADN lo demuestre.',
   'm.demo.label': 'Demo',
   'm.demo.title1': 'Elija cómo',
   'm.demo.title2': 'quiere verlo.',
-  'm.demo.lede':
-    'Sin cuenta, sin billetera. Los datos genéticos y los archivos de laboratorio se quedan en su navegador. La demo guarda el resto de un registro (nombres, fechas, huella) en nuestro servidor de pruebas para que pueda volver a consultarlo, así que use datos inventados. Las licencias en la demo son simuladas: no se envía nada a la red.',
   'm.demo.create.title': 'Crear un registro',
   'm.demo.create.text': 'Complete un registro de ejemplo, genere su huella y descargue el certificado.',
   'm.demo.verify.title': 'Verificar un registro',
@@ -137,44 +75,26 @@ export const es: Strings = {
   'm.post1.tag': 'Formato',
   'm.post1.title': 'Tres implementaciones, una respuesta',
   'm.post1.text':
-    'Una prueba diferencial encontró que nuestras implementaciones en TypeScript, Python y Rust no coincidían en algunos números. Corregido: ahora coinciden en cada una de 81 000 entradas, y 55 vectores de conformidad lo fijan.',
+    'Una prueba diferencial encontró que nuestras implementaciones en TypeScript, Python y Rust no coincidían en algunos números. Corregido: ahora coinciden en cada una de 81 000 entradas, y los vectores de prueba compartidos lo comprueban.',
   'm.post2.date': '2 oct 2026',
   'm.post2.tag': 'Contrato',
   'm.post2.title': 'Una ejecución completa en la red de pruebas de Midnight',
   'm.post2.text':
     'El contrato se desplegó en la red de pruebas de Midnight y pasó las 26 comprobaciones de extremo a extremo, usando 16 de sus 24 operaciones con pruebas reales.',
-  'm.post3.date': '25 ago 2026',
-  'm.post3.tag': 'Contrato',
-  'm.post3.title': 'Por qué la transferencia de una licencia es una cesión',
-  'm.post3.text':
-    'Rediseñamos la transferencia tras descubrir que la versión anterior permitía a la parte saliente conservar sus facultades.',
   'm.status.label': 'Dónde estamos',
   'm.status.title1': 'Con franqueza sobre',
   'm.status.title2': 'dónde estamos.',
-  'm.status.lede': 'Preferimos decirlo ahora a que salga a la luz más tarde.',
-  'm.stat1.b': '55 / 55',
-  'm.stat1.s':
-    'vectores de conformidad superados por implementaciones en tres lenguajes (escritas por el mismo equipo)',
-  'm.stat2.b': 'Red de pruebas',
-  'm.stat2.s': 'Probado en la red de pruebas de Midnight. Aún no está en la red en producción.',
+  'm.status.lede': 'Lo que está hecho y lo que aún no.',
   'm.stat3.b': 'Sin auditoría',
-  'm.stat3.s':
-    'Todavía no hay una auditoría de seguridad independiente. Nuestras propias revisiones están publicadas en el repositorio.',
-  'm.stat4.b': 'Aún sin usuarios',
-  'm.stat4.s': 'Nadie lo usa todavía para registros reales. Buscamos al primero.',
   'm.status.keyTitle': 'Quién puede cambiar el contrato.',
   'm.status.keyText':
-    'Los fundadores tienen una clave de mantenimiento del contrato de VeilCore en Midnight. Con ella se puede cambiar cómo funciona el contrato de ahí en adelante. No puede reescribir los registros ya anclados en el historial de la red. Una política para su uso está propuesta, no decidida.',
-  'm.status.keyLink': 'Leer la política propuesta →',
+    'Una clave de mantenimiento puede cambiar cómo funciona el contrato de VeilCore en Midnight. Quien la tenga puede añadir o reemplazar operaciones del contrato, lo que podría permitirle tomar el control de la identidad de cualquier registro, añadir licencias en nombre de cualquier emisor, añadir o quitar obligaciones y vínculos de parentesco, o desactivar operaciones. No puede antedatar los tiempos de bloque de la red, y cada cambio queda a la vista en la cadena. Hoy la clave está en papel, una copia en manos de cada fundador, y cualquiera de las dos copias basta por sí sola para usarla. Pasarla a un grupo de claves que deban estar de acuerdo está previsto, pero aún no está hecho. Cada uso se anuncia públicamente, según una política de mantenimiento escrita.',
+  'm.status.keyLink': 'Leer la política de mantenimiento →',
   'm.contact.label': 'Contacto',
   'm.contact.title1': 'Díganos',
   'm.contact.title2': 'dónde falla.',
-  'm.contact.lede':
-    'Si dirige un programa de mejoramiento, un laboratorio, una agencia de certificación de semillas o un organismo de derechos de obtentor, nos gustaría conversar. Comprobar e implementar es gratuito. Aún no hemos fijado precio a nada.',
   'm.contact.email': 'Escriba a los fundadores',
   'm.contact.spec': 'Lea la especificación',
-  'm.foot.about':
-    'Un formato de registro probatorio para la genética vegetal. Diseñado para anclarse en Midnight; en pruebas en la red de pruebas de Midnight.',
   'm.foot.explore': 'Explorar',
   'm.foot.build': 'Desarrollo',
   'm.foot.contact': 'Contacto',
@@ -184,12 +104,10 @@ export const es: Strings = {
   'm.verify.label': 'Verificar',
   'm.verify.title': 'Compruebe un registro',
   'm.verify.lede':
-    'Ingrese el identificador de registro impreso en un certificado o que le hayan compartido. Verá lo que su titular decidió divulgar y si está intacto.',
+    'Ingrese el identificador de registro impreso en un certificado o que le hayan compartido. Verá lo que su titular decidió compartir y lo que esta página pudo comprobar por sí misma: si el registro está en un lote sellado y si las firmas de laboratorio, si las hay, son válidas.',
   'm.verify.field': 'Identificador de registro',
   'm.verify.go': 'Comprobar',
   'm.founders.label': 'Fundadores',
-  'm.founders.lede':
-    'VeilCore es un formato de registro probatorio para la genética vegetal. Ofrece prueba de posesión previa sin que nadie tenga que entregar sus datos genéticos.',
   'm.founders.leads': 'Dirige',
   'm.founders.also': 'Además',
   'm.founders.languages': 'Idiomas',
@@ -234,5 +152,18 @@ export const es: Strings = {
   'm.privacy.delete.title': 'Eliminación',
   'm.privacy.delete.text':
     'Para que eliminemos sus datos de la demo de nuestro servidor, escriba a hunter@veilcore.org con los identificadores de sus registros.',
+  'm.privacy.browser.title': 'Se guarda en su navegador',
+  'm.privacy.browser.text':
+    'Su navegador guarda, en este dispositivo: su clave de titular (también se envía una copia a nuestro servidor, como se indica arriba), la clave de firma de un laboratorio si configuró una (su parte privada nunca sale de este dispositivo), el rol que eligió y su idioma. Para borrarlos, elimine los datos de este sitio en la configuración de su navegador. Guarde antes su clave de titular: sin ella, este navegador ya no podrá encontrar sus registros.',
+  'm.privacy.hosts.title': 'Alojamiento',
+  'm.privacy.hosts.text':
+    'Este sitio web está alojado en Vercel, que registra direcciones IP y solicitudes. Nuestro servidor de registro funciona en Railway, que registra solicitudes.',
+  'm.privacy.who.title': 'Quién lo guarda y durante cuánto tiempo',
+  'm.privacy.who.text':
+    'VeilCore aún no está constituida como empresa; sus fundadores gestionan este sitio y el registro. No hay un plazo de conservación fijado: lo que guarda el registro se queda allí hasta que nos pida que lo eliminemos. Contacto: hunter@veilcore.org.',
+  'm.notfound.title': 'Página no encontrada.',
+  'm.notfound.text':
+    'No hay ninguna página en esta dirección. Si alguien le dio un enlace a un registro, compruebe que esté completo.',
+  'm.notfound.home': 'Inicio de VeilCore →',
   'm.privacy.contact': 'Preguntas: hunter@veilcore.org',
 };

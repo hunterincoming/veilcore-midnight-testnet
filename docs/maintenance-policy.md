@@ -1,7 +1,8 @@
 # Maintenance policy
 
-**Status: PROPOSED, 3 October 2026. Not in force until both founders approve it and it
-is published with deployment record revision 4.**
+**Status: APPROVED by both founders: proposed 3 October 2026, approved by Hunter Roberts on
+6 October and by Mako Steiner on 7 October 2026. In force from its publication with
+deployment record revision 4.**
 
 The VeilCore contract on Midnight mainnet keeps a maintenance authority. This page says
 what that authority can do, why it is kept, who holds it, how it is used, and how
@@ -24,6 +25,17 @@ that size means deploying a new contract version.
 
 Whoever holds the authority controls the contract's rules. Holders of VeilCore records
 should know that, and this policy is how we limit it.
+
+In plain terms, a new or replaced circuit can write any of the contract's data. So the key
+holder could:
+
+- add or replace circuits, which could rewrite any identity's head or recovery commitment
+  (take over any identity);
+- insert licences for any issuer;
+- add or remove obligations and parent edges;
+- remove circuit keys, so those circuits stop working.
+
+The key holder cannot backdate block time, and every change is visible on chain.
 
 ## Why it is kept, and not retired on a date
 
@@ -51,11 +63,13 @@ network upgrades.
 **At launch:** one signing key, as midnight-js 4.x supports only one
 (`deployContract` and `replaceAuthority` take a single key). It exists only on paper:
 two copies, one held by each founder (Hunter Roberts, Makoto Steiner), stored
-separately and securely. It is never typed into a chat, email, notes app, photo,
-password manager or cloud document. The deploy tool removes it from the deploying
-computer when the deploy finishes.
+separately and securely. Either copy alone is enough to use the authority. It is never typed into a chat, email, notes app, photo,
+password manager or cloud document. The deploy tool never writes it to the deploying
+computer: it holds it in memory for the deploy and drops it at the end, and finishing an
+interrupted deploy or retiring asks for it from paper again (round D, 4 October 2026;
+before that, a "removed" key could stay readable in the local store's files).
 
-**Next:** a committee of three keys with a threshold of two, one held by each founder
+**Next (pending, not done yet):** a committee of three keys with a threshold of two, one held by each founder
 and one by an independent party named publicly when chosen. The Midnight ledger supports
 this (`ContractMaintenanceAuthority(committee, threshold)`). midnight-js does not yet, so
 it needs our own maintenance code. That is built and tested as part of the move to
@@ -74,11 +88,19 @@ Every use of the authority:
 3. Follows `docs/release-checklist.md` in full: tests, adversarial review, preprod run,
    regenerated fingerprints.
 4. Is published afterwards in a new revision of the deployment record: the transaction,
-   the circuits changed, and the fingerprints of the new build, so anyone can check the
-   chain against the source as `join` does.
+   the circuits changed, the fingerprints of the new build, and the authority's counter
+   after it, so anyone can check the chain against the source as `join` does.
 
 The authority's counter is public on chain. Any change shows up there and through the
-indexer, whether or not we announce it.
+indexer, whether or not we announce it. Every maintenance update raises it (adding the
+remaining circuit keys after the deploy did too). Since 8 October VeilCore's verifier
+checks report it with every verdict, the partner kit's `readAuthority` reads it, and a
+verifier can require the value it expects (`authorityCounter`), so any later change
+becomes a refusal.
+
+**TODO (not yet recorded):** the main contract's counter on mainnet today. Read it from
+the chain with `readAuthority({ network: 'mainnet', ... })` and record it here and in the
+deployment record. Until then this document gives no expected value.
 
 ## If a key is lost or exposed
 

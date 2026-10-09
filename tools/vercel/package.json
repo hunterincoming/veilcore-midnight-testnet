@@ -1,0 +1,13 @@
+{
+  "name": "@veilcore/deploy-tools",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The Vercel CLI that `npm run deploy:prod` runs, pinned to one version with its own lockfile so a deploy never downloads whatever is newest. Not a workspace: its dependency tree stays out of the app's lockfile and audit. Never run `vc upgrade` / `vercel upgrade` with it: 62.2.0 is deprecated upstream for a self-upgrade bug; change the version here, in a reviewed commit, instead. The tar override moves tar past a critical advisory (the version the CLI's own @vercel/fun already pins).",
+  "license": "Apache-2.0",
+  "devDependencies": {
+    "vercel": "62.2.0"
+  },
+  "overrides": {
+    "tar": "7.5.22"
+  }
+}

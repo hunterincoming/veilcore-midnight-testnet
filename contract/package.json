@@ -1,5 +1,6 @@
 {
   "name": "@veilcore/contract",
+  "private": true,
   "type": "module",
   "main": "./dist/veilcore.js",
   "module": "./dist/veilcore.js",
@@ -10,17 +11,35 @@
       "require": "./dist/veilcore.js",
       "import": "./dist/veilcore.js",
       "default": "./dist/veilcore.js"
+    },
+    "./claims": {
+      "types": "./dist/claims.d.ts",
+      "import": "./dist/claims.js",
+      "default": "./dist/claims.js"
+    },
+    "./field-schema": {
+      "types": "./dist/field-schema.d.ts",
+      "import": "./dist/field-schema.js",
+      "default": "./dist/field-schema.js"
+    },
+    "./verify-claims": {
+      "types": "./dist/verify-claims.d.ts",
+      "import": "./dist/verify-claims.js",
+      "default": "./dist/verify-claims.js"
     }
   },
   "scripts": {
-    "build": "rm -rf dist && tsc --project tsconfig.build.json && cp -Rf ./src/managed ./dist/managed && cp ./src/veilcore.compact ./dist",
+    "build": "rm -rf dist && tsc --project tsconfig.build.json && cp -Rf ./src/managed ./dist/managed && cp ./src/veilcore.compact ./src/veilcore-claims.compact ./dist",
     "ci": "npm run compact && npm run typecheck && npm run lint && npm run build && npm run test",
-    "compact": "compact compile src/veilcore.compact ./src/managed/veilcore",
+    "compact": "compact compile src/veilcore.compact ./src/managed/veilcore && compact compile src/veilcore-claims.compact ./src/managed/veilcore-claims",
     "lint": "eslint src",
     "prepack": "npm run build",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "fingerprints": "node fingerprints.mjs"
+    "sizes": "bash scripts/circuit-sizes.sh",
+    "fingerprints": "node fingerprints.mjs",
+    "fingerprints:claims": "node fingerprints.mjs --claims",
+    "fingerprints:check": "node fingerprints.mjs --check"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.5",
@@ -31,6 +50,6 @@
     "eslint-plugin-prettier": "^5.5.6",
     "globals": "^17.6.0",
     "typescript": "^5.9.3",
-    "vitest": "^4.1.0"
+    "vitest": "^4.1.11"
   }
 }

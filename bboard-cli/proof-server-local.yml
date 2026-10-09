@@ -4,4 +4,4 @@ services:
     command: ['midnight-proof-server', '-v']
     container_name: "proof-server-local"
     ports:
-      - '6300:6300'
+      - '127.0.0.1:6300:6300'

@@ -3,11 +3,7 @@
 import type { Strings } from './en';
 export const fr: Strings = {
   // Header and footer
-  'nav.newCultivar': 'Nouvelle variété',
-  'nav.licenses': 'Licences',
   'nav.language': 'Langue',
-  'footer.about':
-    "Un format d'enregistrement ouvert pour la génétique végétale. Pour vérifier un enregistrement que vous détenez, il suffit de SHA-256 et de la spécification ouverte : c'est gratuit et sans compte. Rechercher un enregistrement par son identifiant sur ce site passe par notre serveur.",
   'footer.documents': 'Documents',
   'footer.spec': 'Spécification',
   'footer.evidence': 'Les enregistrements comme preuve',
@@ -33,78 +29,20 @@ export const fr: Strings = {
   'm.hero.label': 'La preuve de ce que vous détenez',
   'm.hero.title1': "Prouvez que vous l'aviez en premier.",
   'm.hero.title2': "Sans montrer à personne ce que c'est.",
-  'm.hero.lede':
-    "Pour les sélectionneurs, les semenciers et les laboratoires : un format d'enregistrement ouvert pour la génétique végétale. Vos données génétiques restent chez vous. Seule une empreinte est inscrite sur une blockchain publique (Midnight) et, une fois ancrée, n'importe qui peut en vérifier la date.",
-  'm.hero.chooseDemo': 'Choisir une démo',
   'm.hero.how': 'Comment ça marche',
   'm.hero.cultivar': 'Cultivar',
   'm.hero.bredBy': 'Obtenu par',
   'm.hero.bredByDefault': 'Votre nom ici',
   'm.hero.demoLabel': "Démo d'empreinte en direct",
-  'm.hero.note':
-    "Modifiez ce que vous voulez ci-dessus ; cela reste sur cette page. La ligne en vert menthe est l'empreinte : trente-deux octets impossibles à inverser, car une valeur aléatoire y est mêlée. C'est la seule partie que cette démo publierait.",
-  'm.choose.label': 'Commencer ici',
-  'm.choose.title': 'Où souhaitez-vous aller ?',
-  'm.choose.about.title': 'À propos',
-  'm.choose.about.text': "Ce qu'est le format, comment il fonctionne et ce qu'il ne fait pas.",
-  'm.choose.about.go': 'Lire →',
-  'm.choose.demo.title': 'Démo',
-  'm.choose.demo.text': 'Créez un enregistrement ou vérifiez-en un.',
-  'm.choose.demo.go': 'Choisir une démo →',
-  'm.choose.team.title': 'Équipe',
-  'm.choose.team.text': 'Deux fondateurs, à Tokyo et dans le New Jersey.',
-  'm.choose.team.go': 'Les découvrir →',
-  'm.choose.updates.title': 'Actualités',
-  'm.choose.updates.text': 'Ce qui a changé, ce que nous avons livré et ce que nous avons appris.',
-  'm.choose.updates.go': 'Les dernières →',
-  'm.about.label': 'À propos',
-  'm.about.title1': "Un format d'enregistrement probatoire",
-  'm.about.title2': 'pour la génétique végétale.',
-  'm.about.lede':
-    "Quand une génétique apparaît là où elle ne devrait pas, tout litige se ramène à une question : qu'aviez-vous, et quand ? Les cahiers et les rapports de laboratoire sont datés par ceux qui les détiennent. La solution habituelle, un registre partagé, demande à chacun de remettre précisément ce qu'il cherche à protéger. VeilCore ne fait ni l'un ni l'autre.",
+  'm.foot.demo': 'Démo',
   'm.step1.n': '01 · Enregistrement',
-  'm.step1.title': 'Décrire le lot',
-  'm.step1.text':
-    "Un obtenteur ou un laboratoire rédige un enregistrement du matériel : ce que c'est, sa provenance, les résultats d'analyse.",
   'm.step2.n': '02 · Empreinte',
-  'm.step2.title': 'Hacher localement',
-  'm.step2.text':
-    "Une empreinte de 32 octets est calculée sur votre propre ordinateur. Les données génétiques et les fichiers de laboratoire n'en sortent jamais.",
   'm.step3.n': '03 · Ancrage',
-  'm.step3.title': 'Publier la date',
-  'm.step3.text':
-    "Seule l'empreinte est horodatée sur un réseau public (Midnight). La date est fixée par le réseau, pas par nous, et reste dans son historique public. Dans la démo, notre opérateur ancre les enregistrements par lots, pas instantanément.",
   'm.step4.n': '04 · Vérification',
   'm.step4.title': 'Le présenter plus tard',
-  'm.step4.text':
-    "Présentez l'enregistrement à un acheteur, un inspecteur ou un tribunal. N'importe qui peut vérifier qu'il correspond, gratuitement et sans compte.",
-  'm.is.title': "Ce que c'est",
-  'm.is.1a': 'Preuve de possession antérieure :',
-  'm.is.1b': 'ce que vous déteniez, et quand.',
-  'm.is.2a': 'Aucune garde de la génétique :',
-  'm.is.2b': 'les données génétiques et les fichiers de laboratoire ne nous parviennent jamais.',
-  'm.is.3a': 'Un format ouvert :',
-  'm.is.3b': 'gratuit à implémenter, gratuit à vérifier, avec une spécification publiée.',
-  'm.is.4a': 'Licences :',
-  'm.is.4b':
-    "accordent des droits sur un enregistrement. Un licencié peut prouver qu'une licence est valide sans révéler laquelle ni qui la détient.",
-  'm.is.5a': 'Lignée convenue :',
-  'm.is.5b':
-    "un lien de parenté ne compte que si les deux détenteurs le confirment. Les obligations comme les redevances ne passent qu'aux descendants déclarés de cette façon, tant que le bénéficiaire ne les a pas levées. VeilCore enregistre ce qui est dû ; il ne l'encaisse pas.",
-  'm.isnt.title': "Ce que ce n'est pas",
-  'm.isnt.1a': 'Pas une propriété.',
-  'm.isnt.1b': "Il ne crée aucun droit légal que vous n'ayez déjà.",
-  'm.isnt.2a': 'Pas une machine à vérité.',
-  'm.isnt.2b': "Il prouve quand vous avez écrit quelque chose, pas que c'est vrai.",
-  'm.isnt.3a': 'Pas un test ADN.',
-  'm.isnt.3b': "Il en complète un, pour qu'un résultat ait encore un sens des années plus tard.",
-  'm.isnt.4a': 'Pas un test de pedigree.',
-  'm.isnt.4b': "Un lien de parenté signifie que les deux détenteurs l'ont accepté, pas que l'ADN le prouve.",
   'm.demo.label': 'Démo',
   'm.demo.title1': 'Choisissez comment',
   'm.demo.title2': 'vous voulez le voir.',
-  'm.demo.lede':
-    "Pas de compte, pas de portefeuille. Les données génétiques et les fichiers de laboratoire restent dans votre navigateur. La démo conserve le reste d'un enregistrement (noms, dates, empreinte) sur notre serveur de test pour que vous puissiez y revenir : utilisez donc des données fictives. Les licences sont simulées dans la démo : rien n'est envoyé au réseau.",
   'm.demo.create.title': 'Créer un enregistrement',
   'm.demo.create.text': "Remplissez un enregistrement d'exemple, générez son empreinte et téléchargez le certificat.",
   'm.demo.verify.title': 'Vérifier un enregistrement',
@@ -137,43 +75,26 @@ export const fr: Strings = {
   'm.post1.tag': 'Format',
   'm.post1.title': 'Trois implémentations, une seule réponse',
   'm.post1.text':
-    'Un test différentiel a révélé que nos implémentations TypeScript, Python et Rust divergeaient sur certains nombres. Corrigé : elles concordent désormais sur chacune des 81 000 entrées, et 55 vecteurs de conformité le figent.',
+    'Un test différentiel a révélé que nos implémentations TypeScript, Python et Rust divergeaient sur certains nombres. Corrigé : elles concordent désormais sur chacune des 81 000 entrées, et les vecteurs de test partagés le vérifient.',
   'm.post2.date': '2 oct. 2026',
   'm.post2.tag': 'Contrat',
   'm.post2.title': 'Une exécution complète sur le réseau de test de Midnight',
   'm.post2.text':
     'Le contrat a été déployé sur le réseau de test de Midnight et a passé les 26 vérifications de bout en bout, en utilisant 16 de ses 24 opérations avec de vraies preuves.',
-  'm.post3.date': '25 août 2026',
-  'm.post3.tag': 'Contrat',
-  'm.post3.title': "Pourquoi le transfert d'une licence est une cession",
-  'm.post3.text':
-    "Nous avons repensé le transfert après avoir constaté que l'ancienne version permettait à la partie sortante de conserver ses pouvoirs.",
   'm.status.label': 'Où nous en sommes',
   'm.status.title1': 'Franchement,',
   'm.status.title2': 'où nous en sommes.',
-  'm.status.lede': 'Nous préférons le dire maintenant plutôt que cela se sache plus tard.',
-  'm.stat1.b': '55 / 55',
-  'm.stat1.s':
-    'vecteurs de conformité réussis par des implémentations dans trois langages (écrites par la même équipe)',
-  'm.stat2.b': 'Réseau de test',
-  'm.stat2.s': 'Testé sur le réseau de test de Midnight. Pas encore sur le réseau principal.',
+  'm.status.lede': "Ce qui est fait, et ce qui ne l'est pas encore.",
   'm.stat3.b': 'Aucun audit',
-  'm.stat3.s': "Pas encore d'audit de sécurité indépendant. Nos propres revues sont publiées dans le dépôt.",
-  'm.stat4.b': "Pas encore d'utilisateurs",
-  'm.stat4.s': "Personne ne l'utilise encore pour de vrais enregistrements. Nous cherchons le premier.",
   'm.status.keyTitle': 'Qui peut modifier le contrat.',
   'm.status.keyText':
-    "Les fondateurs détiennent une clé de maintenance du contrat de VeilCore sur Midnight. Elle permet de modifier le fonctionnement du contrat à partir de ce moment. Elle ne peut pas réécrire les enregistrements déjà ancrés dans l'historique du réseau. Une politique d'utilisation est proposée, pas décidée.",
-  'm.status.keyLink': 'Lire la politique proposée →',
+    "Une clé de maintenance peut modifier le fonctionnement du contrat de VeilCore sur Midnight. Son détenteur peut ajouter ou remplacer des opérations du contrat, ce qui pourrait lui permettre de prendre le contrôle de l'identité de n'importe quel enregistrement, d'ajouter des licences au nom de n'importe quel émetteur, d'ajouter ou de retirer des obligations et des liens de parenté, ou de désactiver des opérations. Elle ne peut pas antidater les heures de bloc du réseau, et chaque modification est visible sur la chaîne. Aujourd'hui, la clé est sur papier, une copie chez chaque fondateur, et une seule copie suffit pour l'utiliser. Le passage à un groupe de clés qui doivent s'accorder est prévu, mais pas encore fait. Chaque utilisation est annoncée publiquement, selon une politique de maintenance écrite.",
+  'm.status.keyLink': 'Lire la politique de maintenance →',
   'm.contact.label': 'Nous contacter',
   'm.contact.title1': 'Dites-nous',
   'm.contact.title2': 'où ça échoue.',
-  'm.contact.lede':
-    "Si vous dirigez un programme de sélection, un laboratoire, un organisme de certification des semences ou un organisme de protection des obtentions végétales, nous aimerions échanger avec vous. Vérifier et implémenter sont gratuits. Aucun prix n'est encore fixé.",
   'm.contact.email': 'Écrire aux fondateurs',
   'm.contact.spec': 'Lire la spécification',
-  'm.foot.about':
-    "Un format d'enregistrement probatoire pour la génétique végétale. Conçu pour être ancré sur Midnight ; en test sur le réseau de test de Midnight.",
   'm.foot.explore': 'Explorer',
   'm.foot.build': 'Développement',
   'm.foot.contact': 'Contact',
@@ -183,12 +104,10 @@ export const fr: Strings = {
   'm.verify.label': 'Vérifier',
   'm.verify.title': 'Vérifier un enregistrement',
   'm.verify.lede':
-    "Saisissez l'identifiant d'enregistrement imprimé sur un certificat ou qui vous a été communiqué. Vous verrez ce que son détenteur a choisi de divulguer, et s'il est intact.",
+    "Saisissez l'identifiant d'enregistrement imprimé sur un certificat ou qui vous a été communiqué. Vous verrez ce que son détenteur a choisi de partager, et ce que cette page a pu vérifier elle-même : si l'enregistrement est dans un lot scellé, et si les éventuelles signatures de laboratoire sont valides.",
   'm.verify.field': "Identifiant d'enregistrement",
   'm.verify.go': 'Vérifier',
   'm.founders.label': 'Fondateurs',
-  'm.founders.lede':
-    "VeilCore est un format d'enregistrement probatoire pour la génétique végétale. Il apporte une preuve de possession antérieure sans que personne n'ait à remettre ses données génétiques.",
   'm.founders.leads': 'Dirige',
   'm.founders.also': 'Également',
   'm.founders.languages': 'Langues',
@@ -233,5 +152,18 @@ export const fr: Strings = {
   'm.privacy.delete.title': 'Suppression',
   'm.privacy.delete.text':
     'Pour faire supprimer vos données de démo de notre serveur, écrivez à hunter@veilcore.org en indiquant les identifiants de vos enregistrements.',
+  'm.privacy.browser.title': 'Conservé dans votre navigateur',
+  'm.privacy.browser.text':
+    "Votre navigateur conserve, sur cet appareil : votre clé de détenteur (une copie est aussi envoyée à notre serveur, voir plus haut), la clé de signature d'un laboratoire si vous en avez configuré une (sa partie privée ne quitte jamais cet appareil), le rôle choisi et votre langue. Pour les supprimer, effacez les données de ce site dans les réglages de votre navigateur. Sauvegardez d'abord votre clé de détenteur : sans elle, ce navigateur ne retrouvera plus vos enregistrements.",
+  'm.privacy.hosts.title': 'Hébergement',
+  'm.privacy.hosts.text':
+    'Ce site est hébergé chez Vercel, qui enregistre les adresses IP et les requêtes. Notre serveur de registre fonctionne chez Railway, qui enregistre les requêtes.',
+  'm.privacy.who.title': 'Qui les conserve, et combien de temps',
+  'm.privacy.who.text':
+    "VeilCore n'est pas encore constituée en société ; les fondateurs de VeilCore exploitent ce site et le registre. Il n'y a pas de durée de conservation fixée : ce que le registre détient y reste jusqu'à ce que vous nous demandiez de le supprimer. Contact : hunter@veilcore.org.",
+  'm.notfound.title': 'Page introuvable.',
+  'm.notfound.text':
+    "Il n'y a pas de page à cette adresse. Si quelqu'un vous a donné un lien vers un enregistrement, vérifiez qu'il est complet.",
+  'm.notfound.home': 'Accueil de VeilCore →',
   'm.privacy.contact': 'Questions : hunter@veilcore.org',
 };

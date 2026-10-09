@@ -166,6 +166,9 @@ export const VerifyLookup: React.FC = () => {
         <div className="label">{t('m.verify.label')}</div>
         <h1>{t('m.verify.title')}</h1>
         <p>{t('m.verify.lede')}</p>
+        <p className="verify-what">
+          {t('m.verify.what')} <RouterLink to="/">{t('m.verify.home')}</RouterLink>
+        </p>
         <form className="lookup" onSubmit={go}>
           <div className="field">
             <label htmlFor="vid">{t('m.verify.field')}</label>
@@ -175,6 +178,9 @@ export const VerifyLookup: React.FC = () => {
             {t('m.verify.go')}
           </button>
         </form>
+        <p className="verify-what">
+          <RouterLink to="/verify/example">{t('m.verify.example')}</RouterLink>
+        </p>
       </header>
     </SiteShell>
   );

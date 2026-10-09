@@ -1,0 +1,81 @@
+{
+  "name": "@veilcore/contracts",
+  "version": "0.2.0",
+  "description": "Integrate VeilCore's Midnight contracts into your own systems: anchor records, licences, lineage, obligations and claims, and verify what others show you.",
+  "author": "VeilCore",
+  "license": "Apache-2.0",
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=24.11.1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hunterincoming/veilcore-midnight-testnet.git",
+    "directory": "partner-kit"
+  },
+  "homepage": "https://github.com/hunterincoming/veilcore-midnight-testnet/blob/main/docs/PARTNERS.md",
+  "keywords": [
+    "veilcore",
+    "midnight",
+    "provenance",
+    "genetics",
+    "zero-knowledge"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/types/partner-kit/src/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "types": "./dist/types/partner-kit/src/index.d.ts",
+  "bin": {
+    "veilcore-keys": "./dist/veilcore-keys.js"
+  },
+  "files": [
+    "dist/index.js",
+    "dist/veilcore-keys.js",
+    "dist/managed/**/contract/index.js",
+    "dist/managed/**/contract/index.js.map",
+    "dist/managed/**/contract/index.d.ts",
+    "dist/types/**/*.d.ts",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "fingerprints": "node scripts/gen-fingerprints.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.examples.json",
+    "lint": "eslint src test examples scripts",
+    "test": "for f in test/*.test.ts; do vitest run --maxWorkers=1 \"$f\" || exit 1; done",
+    "ci": "npm run typecheck && npm run lint && npm run build && npm run test",
+    "check:preprod": "npm run build && node dist/veilcore-keys.js check --quiet --dir \"${VEILCORE_KEYS_DIR:-../contract/src/managed}\" && node --no-deprecation examples/check.mjs",
+    "local:up": "docker compose -f local/compose.yml up -d --wait",
+    "local:down": "docker compose -f local/compose.yml down",
+    "local:deploy": "node --no-deprecation scripts/local-deploy.mjs",
+    "keys:stage": "node scripts/stage-keys.mjs",
+    "prepack": "npm run build"
+  },
+  "dependencies": {
+    "@midnight-ntwrk/compact-runtime": "0.16.0",
+    "@midnight-ntwrk/midnight-js-contracts": "4.1.1",
+    "@midnight-ntwrk/midnight-js-http-client-proof-provider": "4.1.1",
+    "@midnight-ntwrk/midnight-js-indexer-public-data-provider": "4.1.1",
+    "@midnight-ntwrk/midnight-js-level-private-state-provider": "4.1.1",
+    "@midnight-ntwrk/midnight-js-network-id": "4.1.1",
+    "@midnight-ntwrk/midnight-js-protocol": "4.1.1",
+    "@midnight-ntwrk/midnight-js-types": "4.1.1",
+    "@midnight-ntwrk/midnight-js-utils": "4.1.1",
+    "@midnight-ntwrk/wallet-sdk": "1.2.0",
+    "@scure/bip39": "2.2.0",
+    "pino": "^10.3.1",
+    "rxjs": "^7.8.2"
+  },
+  "devDependencies": {
+    "veilcore-records": "^0.15.0"
+  }
+}

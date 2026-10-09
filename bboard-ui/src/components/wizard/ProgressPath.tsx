@@ -8,75 +8,101 @@ import CheckIcon from '@mui/icons-material/Check';
 import RemoveIcon from '@mui/icons-material/Remove';
 import { TEAL } from '../../config/theme';
 
-export const STEP_LABELS = ['Log cultivar', 'Send to a lab', 'Pair DNA', 'Evidence', 'Prove', 'Share / license'];
+export const STEP_LABELS = [
+  'Seal it',
+  'Send to a lab',
+  'Pair report',
+  'Certificate',
+  'What others see',
+  'Share or license',
+];
 
+// On a phone six labels under six circles come out at 10px in 48px columns; there the
+// circles stand alone and the current step is named once, underneath, at reading size.
 export const ProgressPath: React.FC<{ current: number; skipped?: number[] }> = ({ current, skipped = [] }) => (
-  <Stack direction="row" sx={{ alignItems: 'flex-start', width: '100%', maxWidth: 720, mx: 'auto' }}>
-    {STEP_LABELS.map((label, i) => {
-      const n = i + 1;
-      const isSkipped = skipped.includes(n);
-      const active = n === current;
-      const done = n < current && !isSkipped;
-      const passed = n < current; // step is behind the cursor (done or skipped) — used for the connector
+  <Box sx={{ width: '100%', maxWidth: 720, mx: 'auto' }}>
+    <Stack direction="row" sx={{ alignItems: 'flex-start', width: '100%' }}>
+      {STEP_LABELS.map((label, i) => {
+        const n = i + 1;
+        const isSkipped = skipped.includes(n);
+        const active = n === current;
+        const done = n < current && !isSkipped;
+        const passed = n < current; // step is behind the cursor (done or skipped) — used for the connector
 
-      return (
-        <React.Fragment key={label}>
-          <Stack sx={{ alignItems: 'center', flex: '0 0 auto', width: { xs: 48, sm: 72 } }}>
-            <Box
-              sx={{
-                width: 34,
-                height: 34,
-                borderRadius: '50%',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontWeight: 700,
-                fontFamily: '"Space Grotesk", sans-serif',
-                color: active ? '#02110d' : done ? TEAL : 'text.secondary',
-                background: active ? TEAL : 'transparent',
-                border: '2px solid',
-                borderColor: isSkipped ? 'divider' : active || done ? TEAL : 'divider',
-                borderStyle: isSkipped ? 'dashed' : 'solid',
-                boxShadow: active ? `0 0 18px ${TEAL}` : 'none',
-                opacity: isSkipped ? 0.7 : 1,
-                transition: 'all 0.3s',
-              }}
-            >
-              {isSkipped ? <RemoveIcon fontSize="small" /> : done ? <CheckIcon fontSize="small" /> : n}
-            </Box>
-            <Typography
-              variant="caption"
-              sx={{
-                mt: 1,
-                fontSize: { xs: 10, sm: 12 },
-                textAlign: 'center',
-                lineHeight: 1.2,
-                color: active ? 'text.primary' : 'text.secondary',
-                textDecoration: isSkipped ? 'line-through' : 'none',
-              }}
-            >
-              {label}
-            </Typography>
-            {isSkipped && (
-              <Typography variant="caption" sx={{ fontSize: 10, color: 'text.disabled', lineHeight: 1 }}>
-                skipped
+        return (
+          <React.Fragment key={label}>
+            <Stack sx={{ alignItems: 'center', flex: '0 0 auto', width: { xs: 48, sm: 72 } }}>
+              <Box
+                sx={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: '50%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontWeight: 700,
+                  fontFamily: '"Space Grotesk", sans-serif',
+                  color: active ? '#02110d' : done ? TEAL : 'text.secondary',
+                  background: active ? TEAL : 'transparent',
+                  border: '2px solid',
+                  borderColor: isSkipped ? 'divider' : active || done ? TEAL : 'divider',
+                  borderStyle: isSkipped ? 'dashed' : 'solid',
+                  boxShadow: active ? `0 0 18px ${TEAL}` : 'none',
+                  opacity: isSkipped ? 0.7 : 1,
+                  transition: 'all 0.3s',
+                }}
+              >
+                {isSkipped ? <RemoveIcon fontSize="small" /> : done ? <CheckIcon fontSize="small" /> : n}
+              </Box>
+              <Typography
+                variant="caption"
+                sx={{
+                  mt: 1,
+                  display: { xs: 'none', sm: 'block' },
+                  fontSize: 12,
+                  textAlign: 'center',
+                  lineHeight: 1.2,
+                  color: active ? 'text.primary' : 'text.secondary',
+                  textDecoration: isSkipped ? 'line-through' : 'none',
+                }}
+              >
+                {label}
               </Typography>
+              {isSkipped && (
+                <Typography
+                  variant="caption"
+                  sx={{ display: { xs: 'none', sm: 'block' }, fontSize: 10, color: 'text.disabled', lineHeight: 1 }}
+                >
+                  skipped
+                </Typography>
+              )}
+            </Stack>
+            {n < STEP_LABELS.length && (
+              <Box
+                sx={{
+                  flex: 1,
+                  minWidth: 8,
+                  height: 2,
+                  mt: '16px',
+                  background: passed ? TEAL : 'rgba(255,255,255,0.12)',
+                  transition: 'background 0.3s',
+                }}
+              />
             )}
-          </Stack>
-          {n < STEP_LABELS.length && (
-            <Box
-              sx={{
-                flex: 1,
-                minWidth: 8,
-                height: 2,
-                mt: '16px',
-                background: passed ? TEAL : 'rgba(255,255,255,0.12)',
-                transition: 'background 0.3s',
-              }}
-            />
-          )}
-        </React.Fragment>
-      );
-    })}
-  </Stack>
+          </React.Fragment>
+        );
+      })}
+    </Stack>
+    {current <= STEP_LABELS.length && (
+      <Typography
+        variant="body2"
+        sx={{ display: { xs: 'block', sm: 'none' }, mt: 1.5, textAlign: 'center', color: 'text.secondary' }}
+      >
+        Step {current} of {STEP_LABELS.length}:{' '}
+        <Box component="span" sx={{ color: 'text.primary', fontWeight: 600 }}>
+          {STEP_LABELS[current - 1]}
+        </Box>
+      </Typography>
+    )}
+  </Box>
 );

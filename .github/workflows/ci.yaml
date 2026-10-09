@@ -10,7 +10,7 @@ permissions: {}
 
 jobs:
   install-and-test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
     steps:
@@ -19,31 +19,64 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Setup Compact Compiler
-        uses: midnightntwrk/setup-compact-action@836895c8fffbbea6bd986af2b17e8941ff29d1f8
-        with:
-          compact-version: '0.31.1'
+      # The compiler is a fixed release asset checked against a recorded SHA-256, not the
+      # "latest" installer piped to sh. If the download, the checksum or the version check
+      # fails, CI fails: there is no fallback to whatever compiler happens to be current.
+      # To move to a new compiler: change both values below together, taking the hash from
+      # a download you have checked against the GitHub release page.
+      - name: Install Compact compiler (pinned, checksummed)
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COMPACTC_VERSION: "0.31.1"
+          COMPACTC_SHA256: "e291b4bab4d4e857707008f8b1c25c2b8e0c843f6c737d0ee6c0d9ac69a6bbfb"
+        run: |
+          set -euo pipefail
+          dir="$RUNNER_TEMP/compactc"
+          zip="$RUNNER_TEMP/compactc.zip"
+          curl -fsSL --retry 3 -o "$zip" \
+            "https://github.com/midnightntwrk/compact/releases/download/compactc-v${COMPACTC_VERSION}/compactc_v${COMPACTC_VERSION}_x86_64-unknown-linux-musl.zip"
+          echo "${COMPACTC_SHA256}  ${zip}" | sha256sum -c -
+          mkdir -p "$dir"
+          unzip -q "$zip" -d "$dir"
+          # contract/package.json calls `compact compile`. CI does not install the compact
+          # CLI (it would fetch more unpinned binaries), so `compact compile` here goes
+          # straight to the pinned compactc and nothing else is available.
+          cat > "$dir/compact" <<'SHIM'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          if [ "${1:-}" != "compile" ]; then echo "compact (CI): only 'compile' is available" >&2; exit 2; fi
+          shift
+          exec compactc "$@"
+          SHIM
+          chmod +x "$dir/compact"
+          echo "$dir" >> "$GITHUB_PATH"
+
+      - name: Assert compiler version
+        run: |
+          v="$(compact compile --version)"
+          echo "compactc $v"
+          test "$v" = "0.31.1"
 
       - name: Install Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  #v6.4.0
         with:
-          node-version: "24"
+          # Exact version from .nvmrc (24.11.1), the same one used locally.
+          node-version-file: .nvmrc
 
-      # A bug in npm optional dependencies fails the build, which is fixed in npm 11 or later
-      # but the setup-node action isn't using a newer version of npm yet
-      # See https://github.com/npm/cli/issues/4828
-      - name: Update NPM
+      # npm comes with Node, so pinning Node pins npm. Node 24.11.1 ships npm 11.6.2, which
+      # already has the optional-dependency fix the old `npm install -g npm@latest` step was
+      # for (npm/cli#4828). Fail rather than run with an npm nobody chose.
+      - name: Check npm version
         run: |
-          npm install -g npm@latest
           npm --version
+          test "$(npm --version)" = "11.6.2"
 
-      # We use --legacy-peer-deps because as of v3.4.1 vite-plugin-wasm doesn't play well with vite 7
-      # So this allows them to be installed regardless; They *have* implemented support, they just haven't published a release yet
-      # https://github.com/Menci/vite-plugin-wasm/pull/73
       - name: Install dependencies
-        run: npm ci --legacy-peer-deps
+        run: npm ci
+
+      # Advisories in anything that ships (the site bundle, the CLI, the contract package).
+      # Dev-only tooling is left out so a test-runner advisory doesn't block a release.
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
 
       - name: Compile and test contract
         working-directory: contract
@@ -54,6 +87,15 @@ jobs:
         working-directory: api
         run: |
           npm run ci
+
+      - name: Partner kit (@veilcore/contracts)
+        working-directory: partner-kit
+        run: |
+          npm run ci
+
+      - name: VeilCore-run (managed service)
+        run: |
+          npm run managed:check
 
       - name: Compile bboard-cli
         working-directory: bboard-cli

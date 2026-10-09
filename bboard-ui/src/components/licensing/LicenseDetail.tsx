@@ -23,14 +23,17 @@ import {
   FEE_NOTE,
   veilcoreFee,
   dealValueOf,
+  signedByTwoParties,
   type License,
 } from '../../veilcore/licenses';
+import { canonicalUrl } from '../../config/network';
 import { getRecord, childrenOf } from '../../veilcore/records';
 import { shortFingerprint } from '../../veilcore/commitment';
 import { AppHeader } from '../AppHeader';
 import { LicenseStateChip } from './LicenseStateChip';
 import { ShareLicense } from './ShareLicense';
 import { AgreementTypeChip } from './AgreementTypeChip';
+import { AGREEMENTS_SIMULATED, SIMULATED_TAG } from '../../config/copy';
 
 const money = (n: number) => `$${n.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
 
@@ -67,9 +70,12 @@ export const LicenseDetail: React.FC = () => {
       <Box>
         <AppHeader />
         <Paper sx={{ p: 4, textAlign: 'center' }}>
-          <Typography sx={{ mb: 1 }}>License not found.</Typography>
+          <Typography sx={{ mb: 1 }}>This agreement isn&apos;t in this browser.</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Agreements open only in the browser that made them, or one where you restored the same holder key.
+          </Typography>
           <Button component={RouterLink} to="/licenses" startIcon={<ArrowBackIcon />}>
-            Licensing hub
+            Your agreements
           </Button>
         </Paper>
       </Box>
@@ -79,7 +85,7 @@ export const LicenseDetail: React.FC = () => {
   const state = effectiveState(license);
   const type = agreementType(license);
   const record = getRecord(license.recordId);
-  const signLink = `${window.location.origin}/license/${license.id}/sign`;
+  const signLink = canonicalUrl(`/license/${encodeURIComponent(license.id)}/sign`);
   // Breeder-share lineage: if the counterparty may breed with the material, any cultivar
   // they later log with this one as a parent is exposed through the lineage graph.
   const showLineageNote = type === 'breeder-share' && license.terms.mayBreed;
@@ -109,7 +115,7 @@ export const LicenseDetail: React.FC = () => {
     addRoyalty(license.id, n, owed(n), royaltyNote.trim());
     setRoyaltyInput('');
     setRoyaltyNote('');
-    setToast('Royalty obligation recorded.');
+    setToast('Royalty owed recorded.');
   };
 
   const totalOwed = license.royaltyLog.reduce((s, e) => s + e.amountOwed, 0);
@@ -122,7 +128,7 @@ export const LicenseDetail: React.FC = () => {
     <Box>
       <AppHeader />
       <Button component={RouterLink} to="/licenses" size="small" startIcon={<ArrowBackIcon />} sx={{ mb: 2 }}>
-        Licensing hub
+        All agreements
       </Button>
 
       <Stack
@@ -168,22 +174,24 @@ export const LicenseDetail: React.FC = () => {
         {/* lifecycle actions */}
         <Paper sx={{ p: { xs: 2.5, md: 3 } }}>
           <Typography variant="overline" sx={{ display: 'block', mb: 0.5 }}>
-            Status &amp; actions
+            Status and actions
           </Typography>
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.75 }}>
-            Demo — signatures and settlement are simulated locally; nothing is recorded on a live network yet.
+            {AGREEMENTS_SIMULATED}
           </Typography>
 
           {state === 'draft' && (
             <Stack spacing={1.5} sx={{ alignItems: 'flex-start' }}>
               <Typography variant="body2" color="text.secondary">
-                Draft — not yet issued. Signing produces a link you send to the licensee to counter-sign.
+                Draft, not issued yet. Issuing it makes a link you send to the other party to counter-sign.
               </Typography>
               <Button
                 variant="contained"
-                onClick={() => (issueLicense(license.id), setToast('Issued — send the link to your licensee.'))}
+                onClick={() =>
+                  void issueLicense(license.id).then(() => setToast('Issued. Send the link to the other party.'))
+                }
               >
-                Issue &amp; sign
+                Issue it
               </Button>
             </Stack>
           )}
@@ -191,11 +199,11 @@ export const LicenseDetail: React.FC = () => {
           {state === 'sent' && (
             <Stack spacing={1.5}>
               <Alert severity="warning" variant="outlined">
-                You&apos;ve signed. Awaiting the licensee&apos;s counter-signature — the license is{' '}
-                <b>not active yet</b>.
+                Issued, waiting for the other party to counter-sign: it is <b>not active yet</b>. For now the
+                counter-sign link opens only in your own browser; they can&apos;t sign from theirs yet.
               </Alert>
               <TextField
-                label="Counter-sign link (send to licensee)"
+                label="Counter-sign link (for the other party)"
                 value={signLink}
                 fullWidth
                 size="small"
@@ -209,8 +217,8 @@ export const LicenseDetail: React.FC = () => {
                 >
                   Copy link
                 </Button>
-                <Button component={RouterLink} to={`/license/${license.id}/sign`} variant="text">
-                  Open counter-sign page (demo)
+                <Button component={RouterLink} to={`/license/${encodeURIComponent(license.id)}/sign`} variant="text">
+                  Open the counter-sign page {SIMULATED_TAG}
                 </Button>
                 <Button color="error" variant="text" onClick={onRevoke}>
                   Revoke
@@ -222,7 +230,9 @@ export const LicenseDetail: React.FC = () => {
           {state === 'active' && (
             <Stack spacing={1.5}>
               <Alert severity="success" variant="outlined">
-                Active — both parties signed. Effective{' '}
+                {signedByTwoParties(license)
+                  ? 'Active: issued and counter-signed from two different holder keys. Effective '
+                  : 'Marked active from the issuer’s own browser; the other party has not signed anything in VeilCore. Effective '}
                 {new Date(license.licenseeSignedAt ?? license.createdAt).toLocaleDateString()}.
               </Alert>
               <Stack direction="row" spacing={1.5} sx={{ flexWrap: 'wrap' }}>
@@ -256,7 +266,7 @@ export const LicenseDetail: React.FC = () => {
 
           {state === 'revoked' && (
             <Alert severity="error" variant="outlined">
-              Revoked {license.revokedAt ? new Date(license.revokedAt).toLocaleDateString() : ''} —{' '}
+              Revoked{license.revokedAt ? ` ${new Date(license.revokedAt).toLocaleDateString()}` : ''}:{' '}
               {license.revokedReason}
             </Alert>
           )}
@@ -271,7 +281,7 @@ export const LicenseDetail: React.FC = () => {
               Royalty obligations
             </Typography>
             <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
-              VeilCore records obligations. It does not process payments — no money moves here.
+              VeilCore records what is owed. It doesn&apos;t process payments: no money moves here.
             </Typography>
             {state === 'active' && (
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ mb: 2 }}>
@@ -307,7 +317,7 @@ export const LicenseDetail: React.FC = () => {
                       <Row k="Deal value" v={money(dv)} />
                       <Row k="Your royalty" v={money(e.amountOwed)} />
                       {SHOW_VEILCORE_FEE && (
-                        <Row k={`Veilcore fee (${VEILCORE_FEE_PCT}%)`} v={money(veilcoreFee(dv))} />
+                        <Row k={`VeilCore fee (${VEILCORE_FEE_PCT}%)`} v={money(veilcoreFee(dv))} />
                       )}
                     </Box>
                   );
@@ -339,7 +349,8 @@ export const LicenseDetail: React.FC = () => {
               </Stack>
             ) : (
               <Typography variant="body2" color="text.secondary">
-                No obligations recorded yet.{SHOW_VEILCORE_FEE ? ` ${FEE_NOTE}` : ''}
+                Nothing recorded yet. Enter sales or units above as the licensee reports them.
+                {SHOW_VEILCORE_FEE ? ` ${FEE_NOTE}` : ''}
               </Typography>
             )}
           </Paper>

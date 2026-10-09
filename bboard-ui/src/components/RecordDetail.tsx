@@ -30,12 +30,14 @@ import { CorrectRecord } from './CorrectRecord';
 import { LicenseStateChip } from './licensing/LicenseStateChip';
 import { AgreementTypeChip } from './licensing/AgreementTypeChip';
 import { AppHeader } from './AppHeader';
+import { linkCard } from './a11y';
 import { Step2PairDna } from './wizard/Step2PairDna';
 import { Step3Certificate } from './wizard/Step3Certificate';
 import { Step4CheckReport } from './wizard/Step4CheckReport';
+import { Step5ProveDisclosure } from './wizard/Step5ProveDisclosure';
+import { utcStamp as fmt } from '../veilcore/time';
 
-type Mode = 'overview' | 'pair' | 'cert' | 'check';
-const fmt = (ms: number) => new Date(ms).toLocaleString();
+type Mode = 'overview' | 'pair' | 'cert' | 'check' | 'share';
 
 const Field: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
   <Box>
@@ -52,6 +54,7 @@ export const RecordDetail: React.FC = () => {
   const { id = '' } = useParams();
   const navigate = useNavigate();
   const [mode, setMode] = useState<Mode>('overview');
+  const [exportError, setExportError] = useState<string | null>(null);
   const record = getRecord(id);
 
   if (!record) {
@@ -60,11 +63,20 @@ export const RecordDetail: React.FC = () => {
         <AppHeader />
         <Paper sx={{ p: 4, textAlign: 'center' }}>
           <Typography variant="h6" sx={{ mb: 1 }}>
-            Record not found
+            This record isn&apos;t in this browser
           </Typography>
-          <Button component={RouterLink} to="/records" startIcon={<ArrowBackIcon />}>
-            Back to your cultivars
-          </Button>
+          <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 480, mx: 'auto', mb: 2 }}>
+            If you sealed it in another browser, copy the holder key there (Holder key, in the header) and restore it
+            here. If it is someone else&apos;s record, open the verify link they gave you instead.
+          </Typography>
+          <Stack direction="row" spacing={1} sx={{ justifyContent: 'center', flexWrap: 'wrap', gap: 1 }}>
+            <Button component={RouterLink} to="/records" startIcon={<ArrowBackIcon />}>
+              Your records
+            </Button>
+            <Button component={RouterLink} to="/verify">
+              Check a record
+            </Button>
+          </Stack>
         </Paper>
       </Box>
     );
@@ -78,12 +90,12 @@ export const RecordDetail: React.FC = () => {
       <AppHeader />
 
       <Button component={RouterLink} to="/records" size="small" startIcon={<ArrowBackIcon />} sx={{ mb: 2 }}>
-        All cultivars
+        All records
       </Button>
 
       <Stack direction="row" sx={{ alignItems: 'baseline', justifyContent: 'space-between', flexWrap: 'wrap', mb: 1 }}>
         <Typography variant="h4">{record.strainName}</Typography>
-        <Typography variant="caption" color="text.secondary">
+        <Typography variant="caption" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>
           {record.id}
         </Typography>
       </Stack>
@@ -127,14 +139,14 @@ export const RecordDetail: React.FC = () => {
               {record.taxon && <Field label="Species">{record.taxon}</Field>}
               {record.breedingMethod && <Field label="Breeding method">{record.breedingMethod}</Field>}
               {record.parents && record.parents.length > 0 && (
-                <Field label="Parents">{record.parents.map((p) => p.name).join('  ×  ')}</Field>
+                <Field label="Parents">{record.parents.map((p) => p.name).join(' × ')}</Field>
               )}
               <Field label="Stated creation date (breeder's claim)">{record.dateCreated}</Field>
               <Field label="Sealed (this device's clock)">{fmt(record.loggedAt)}</Field>
               {record.refId && <Field label="Reference / lot ID">{record.refId}</Field>}
               {record.photoFingerprints && record.photoFingerprints.length > 0 && (
                 <Field label="Photos">
-                  {record.photoFingerprints.length} sealed (fingerprints only — images never stored)
+                  {record.photoFingerprints.length} sealed (fingerprints only; the images were never uploaded)
                 </Field>
               )}
               {record.notes && <Field label="Notes">{record.notes}</Field>}
@@ -163,9 +175,8 @@ export const RecordDetail: React.FC = () => {
 
           {/* Every other panel answers "what is true now". A dispute asks "what happened,
               and in what order" — a different question the app could not answer. */}
-          <Paper sx={{ p: { xs: 2.5, md: 3 } }}>
-            <RecordHistory record={record} />
-          </Paper>
+          {/* Its own panel, drawn only when there is a history to show. */}
+          <RecordHistory record={record} />
 
           {/* Only rendered when there is lineage. An empty panel saying "no lineage
               recorded" is a row the reader has to process to learn nothing. */}
@@ -196,7 +207,7 @@ export const RecordDetail: React.FC = () => {
                   <Stack
                     key={l.id}
                     direction="row"
-                    onClick={() => navigate(`/license/${l.id}`)}
+                    {...linkCard(() => navigate(`/license/${l.id}`), `Open agreement ${l.id}`)}
                     sx={{
                       justifyContent: 'space-between',
                       alignItems: 'center',
@@ -204,7 +215,7 @@ export const RecordDetail: React.FC = () => {
                       gap: 1,
                       p: 1,
                       borderRadius: 1,
-                      '&:hover': { background: 'rgba(255,255,255,0.03)' },
+                      '&:hover, &:focus-visible': { background: 'rgba(255,255,255,0.05)', outline: 'none' },
                     }}
                   >
                     <Typography variant="body2" sx={{ minWidth: 0 }} noWrap>
@@ -227,7 +238,7 @@ export const RecordDetail: React.FC = () => {
               </Button>
             )}
             <Button variant="outlined" startIcon={<DescriptionIcon />} onClick={() => setMode('cert')}>
-              Evidence package
+              Certificate
             </Button>
             <Button variant="outlined" startIcon={<VerifiedIcon />} onClick={() => setMode('check')}>
               Check a report matches
@@ -237,14 +248,33 @@ export const RecordDetail: React.FC = () => {
             <CorrectRecord record={record} />
             {/* The wire format. Any implementation can read this and recompute the
                 commitment without our code, our chain, or our permission. */}
-            <Button variant="text" startIcon={<CodeIcon />} onClick={() => exportEnvelope(record.id)}>
+            <Button
+              variant="text"
+              startIcon={<CodeIcon />}
+              onClick={() => {
+                setExportError(null);
+                exportEnvelope(record.id).catch((e: unknown) =>
+                  setExportError(e instanceof Error ? e.message : 'The record could not be exported.'),
+                );
+              }}
+            >
               Export record
             </Button>
+            {/* The grant is kept on the registry, so it has to be changeable after the
+                wizard, not only during it. */}
+            <Button variant="outlined" startIcon={<ShareIcon />} onClick={() => setMode('share')}>
+              What others see
+            </Button>
           </Stack>
+          {exportError && (
+            <Alert severity="error" variant="outlined">
+              {exportError}
+            </Alert>
+          )}
 
           <Box>
             <Typography variant="overline" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-              Start an agreement — terms attached to this record
+              Start an agreement: terms attached to this record
             </Typography>
             <Stack direction="row" spacing={1.5} sx={{ flexWrap: 'wrap' }}>
               <Button
@@ -278,6 +308,7 @@ export const RecordDetail: React.FC = () => {
           {mode === 'pair' && <Step2PairDna recordId={record.id} onBack={back} onDone={back} />}
           {mode === 'cert' && <Step3Certificate recordId={record.id} onBack={back} onDone={back} />}
           {mode === 'check' && <Step4CheckReport onBack={back} onRestart={back} />}
+          {mode === 'share' && <Step5ProveDisclosure recordId={record.id} onBack={back} onDone={back} />}
         </Paper>
       )}
     </Box>

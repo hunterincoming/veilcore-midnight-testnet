@@ -36,14 +36,34 @@ export const PASSWORD_RULES =
   'The password needs: 16 or more characters; at least 3 of capital letters, small letters, ' +
   'numbers and symbols; no character more than 3 times in a row; no run of 4 in order like 1234 or abcd.';
 
+export const PASSWORD_VAR = 'VEILCORE_PRIVATE_STATE_PASSWORD';
+
+/** The password settlePassword accepted, held in this process only. */
+let settled: string | undefined;
+
+/**
+ * The private-state password: the one settled at startup. It is kept in memory, never in
+ * the environment, so child processes (git, docker, anything they run) do not inherit it
+ * (round D, D-6). The environment variable is read only by settlePassword, which then
+ * removes it from this process's environment; it is consulted here only if something
+ * set it again after that.
+ */
+export const privateStatePassword = (): string | undefined => process.env[PASSWORD_VAR] || settled;
+
+/** Forget the settled password (tests). */
+export const forgetPassword = (): void => {
+  settled = undefined;
+};
+
 /**
  * The private-state password, settled before anything starts: from
  * VEILCORE_PRIVATE_STATE_PASSWORD, or typed (hidden) twice. Either way it must pass the
  * rule midnight-js applies when it opens the store, or nothing is started. Returns false
- * when the CLI should stop.
+ * when the CLI should stop. Once settled it is held in memory (privateStatePassword) and
+ * the environment variable is removed, so no child process inherits it.
  */
 export const settlePassword = async (ask: (q: string) => Promise<string>, logger: Logger): Promise<boolean> => {
-  const fromEnv = process.env.VEILCORE_PRIVATE_STATE_PASSWORD;
+  const fromEnv = process.env[PASSWORD_VAR];
   if (fromEnv) {
     const problem = passwordProblem(fromEnv);
     if (problem !== null) {
@@ -53,6 +73,8 @@ export const settlePassword = async (ask: (q: string) => Promise<string>, logger
       return false;
     }
     redactThisSession(fromEnv);
+    settled = fromEnv;
+    delete process.env[PASSWORD_VAR];
     // Said, so nobody wonders why they were not asked; the value itself is never shown.
     logger.info('Using the password from VEILCORE_PRIVATE_STATE_PASSWORD.');
     return true;
@@ -71,6 +93,6 @@ export const settlePassword = async (ask: (q: string) => Promise<string>, logger
     return false;
   }
   redactThisSession(typed);
-  process.env.VEILCORE_PRIVATE_STATE_PASSWORD = typed;
+  settled = typed;
   return true;
 };

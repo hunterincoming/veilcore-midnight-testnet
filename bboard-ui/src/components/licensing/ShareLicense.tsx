@@ -27,6 +27,7 @@ import ShareIcon from '@mui/icons-material/IosShareOutlined';
 import { exportCertificate, type LicenseGrant } from '../../veilcore/license-certificate';
 import type { License } from '../../veilcore/licenses';
 import { TEAL } from '../../config/theme';
+import { THIS_SITE } from '../../config/copy';
 
 /** Named after what the recipient learns, not the field revealed. */
 const GRANTS: { key: LicenseGrant; label: string; why: string }[] = [
@@ -65,7 +66,7 @@ export const ShareLicense: React.FC<{ license: License }> = ({ license }) => {
   return (
     <>
       <Button variant="outlined" startIcon={<ShareIcon />} onClick={() => setOpen(true)}>
-        Share licence
+        Share license
       </Button>
 
       <Dialog open={open} onClose={() => setOpen(false)} maxWidth="sm" fullWidth>
@@ -77,9 +78,9 @@ export const ShareLicense: React.FC<{ license: License }> = ({ license }) => {
                 Always included
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                That this licence exists, its current state, the record it was issued against, and whether it carries an
-                obligation to declared descendants. Anyone can verify these without your permission — that is what makes
-                the licence checkable rather than a claim.
+                That this license exists, its current state, the record it was issued against, and whether it carries an
+                obligation on declared offspring: the license&apos;s public side. In {THIS_SITE} the license itself is
+                simulated, so this file is for trying the format.
               </Typography>
             </Box>
 
@@ -107,8 +108,8 @@ export const ShareLicense: React.FC<{ license: License }> = ({ license }) => {
             </Box>
 
             <Alert severity="info" variant="outlined">
-              What you leave unchecked is not in the file at all — not hidden, absent. They cannot read it however they
-              open it.
+              What you leave unchecked isn&apos;t in the file at all: not hidden, absent. They can&apos;t read it
+              however they open it.
             </Alert>
           </Stack>
         </DialogContent>

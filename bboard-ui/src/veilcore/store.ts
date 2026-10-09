@@ -1,5 +1,5 @@
 // Storage adapter. The app talks to this, never to localStorage directly, so the
-// backing store can be swapped (server API, NIGHTGATE) without touching callers.
+// backing store can be swapped (server API, or another backend) without touching callers.
 //
 // `load` takes a guard rather than just a type parameter. A store does not know what
 // it is storing — the type argument is erased at runtime, so a store that promised
@@ -26,6 +26,7 @@ export type SaveResult = {
 };
 
 export interface Store {
+  /** Rejects when the store cannot answer now (offline, refused): callers keep what they have. */
   load<T>(key: string, isValid: (v: unknown) => v is T): Promise<T[]>;
   save<T>(key: string, value: T[]): Promise<SaveResult>;
 }

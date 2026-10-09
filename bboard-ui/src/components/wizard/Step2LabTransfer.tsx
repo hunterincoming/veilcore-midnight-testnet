@@ -7,9 +7,9 @@ import React, { useState } from 'react';
 import { Alert, Box, Button, Divider, Stack, Typography } from '@mui/material';
 import ScienceIcon from '@mui/icons-material/ScienceOutlined';
 import { getRecord } from '../../veilcore/records';
-import { createLicense, type LicenseTerms } from '../../veilcore/licenses';
-import { fingerprintText } from '../../veilcore/commitment';
+import { createLicense, sealAgreement, type LicenseTerms } from '../../veilcore/licenses';
 import { AgreementTermsFields, emptyTermsFor, type SetTerm } from '../licensing/LicenseTermsFields';
+import { THIS_SITE } from '../../config/copy';
 
 export const Step2LabTransfer: React.FC<{
   recordId: string;
@@ -30,9 +30,7 @@ export const Step2LabTransfer: React.FC<{
     if (!canSeal) return;
     setBusy(true);
     try {
-      const agreementFingerprint = await fingerprintText(
-        JSON.stringify({ type: 'lab-transfer', terms: t, record: record.recordFingerprint }),
-      );
+      const { agreementFingerprint, agreementSalt } = await sealAgreement('lab-transfer', t, record.recordFingerprint);
       const lic = createLicense({
         type: 'lab-transfer',
         recordId: record.id,
@@ -40,6 +38,7 @@ export const Step2LabTransfer: React.FC<{
         dnaFingerprint: record.dnaFingerprint,
         terms: t,
         agreementFingerprint,
+        agreementSalt,
       });
       onDone(lic.id);
     } finally {
@@ -60,8 +59,9 @@ export const Step2LabTransfer: React.FC<{
       </Box>
 
       <Alert icon={<ScienceIcon />} severity="info" variant="outlined">
-        This puts the transfer terms on the record before the material leaves your hands. It&apos;s custody, not a sale:
-        no royalty, no fee.
+        This puts the terms on the record before the material leaves your hands. It&apos;s custody, not a sale: no
+        royalty, no fee. In {THIS_SITE}, agreements are simulated: the lab doesn&apos;t sign anything here, and nothing
+        is sent to Midnight.
       </Alert>
 
       <AgreementTermsFields type="lab-transfer" terms={t} set={set} />
@@ -72,10 +72,10 @@ export const Step2LabTransfer: React.FC<{
           Back
         </Button>
         <Button variant="contained" size="large" disabled={busy || !canSeal} onClick={onSeal}>
-          {busy ? 'Sealing transfer…' : 'Seal transfer & continue'}
+          {busy ? 'Saving…' : 'Attach these terms and continue'}
         </Button>
         <Button variant="text" color="inherit" onClick={onSkip}>
-          Not sending it anywhere yet — skip
+          Not sending it anywhere yet: skip
         </Button>
       </Stack>
     </Stack>

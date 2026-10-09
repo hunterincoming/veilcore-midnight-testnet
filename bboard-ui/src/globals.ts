@@ -20,10 +20,13 @@ import { Buffer } from 'buffer';
 // because we also use third-party libraries within the browser (such as Apollo Client),
 // that might expect it.
 //
+// `MODE` is the build's network mode (preprod, mainnet, preview), not a Node environment:
+// mapping it straight through made the published site report NODE_ENV "preprod", and a
+// library checking for "production" took its development path (attack round D).
 // @ts-expect-error - support third-party libraries that require `NODE_ENV`.
 globalThis.process = {
   env: {
-    NODE_ENV: import.meta.env.MODE, // Map `MODE` to `process.env.NODE_ENV`.
+    NODE_ENV: import.meta.env.PROD ? 'production' : 'development',
   },
 };
 

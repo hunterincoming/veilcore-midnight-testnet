@@ -23,7 +23,16 @@ export const Dropzone: React.FC<{
 
   return (
     <Box
+      role="button"
+      tabIndex={0}
+      aria-label={file ? `${title}. Chosen: ${file.name}` : title}
       onClick={() => inputRef.current?.click()}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          inputRef.current?.click();
+        }
+      }}
       onDragOver={(e) => {
         e.preventDefault();
         setOver(true);
@@ -43,7 +52,11 @@ export const Dropzone: React.FC<{
         p: 4,
         textAlign: 'center',
         transition: 'all 0.2s',
-        '&:hover': { borderColor: 'primary.main', background: 'rgba(47,240,207,0.04)' },
+        '&:hover, &:focus-visible': {
+          borderColor: 'primary.main',
+          background: 'rgba(47,240,207,0.04)',
+          outline: 'none',
+        },
       }}
     >
       <input
@@ -63,7 +76,8 @@ export const Dropzone: React.FC<{
               {file.name}
             </Typography>
             <Typography variant="caption" color="text.secondary">
-              {(file.size / 1024).toFixed(0)} KB · ready to fingerprint locally
+              {Math.max(1, Math.round(file.size / 1024))} KB · ready to fingerprint on this device · choose again to
+              replace it
             </Typography>
           </Box>
         </Stack>

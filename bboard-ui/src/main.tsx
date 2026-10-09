@@ -14,8 +14,14 @@
 // limitations under the License.
 
 /**
- * A Single Page Application (SPA) for connecting to and managing deployed
- * bulletin boards.
+ * VeilCore's website: public pages, the record app and the verify page.
+ *
+ * The site loads no wallet connector or logger from the Midnight template it started as.
+ * A mainnet build sends no transactions. A test-network build with VITE_REAL_CHAIN=1 can
+ * send three calls from the visitor's own device, paid by the sponsor service
+ * (veilcore/chain/); it sets the network id there, when a call is made. It still runs the compiled `commit`
+ * circuit in the browser for fingerprints (veilcore/commitment.ts), which is what pulls in
+ * the on-chain runtime's WebAssembly.
  *
  * @packageDocumentation
  */
@@ -25,30 +31,16 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import { ThemeProvider } from '@mui/material';
-import { setNetworkId, NetworkId } from '@midnight-ntwrk/midnight-js-network-id';
 import App from './App';
 import { LanguageProvider } from './i18n';
 import CssBaseline from '@mui/material/CssBaseline';
 import { theme } from './config/theme';
-import '@midnight-ntwrk/dapp-connector-api';
-import * as pino from 'pino';
 import '@fontsource/space-grotesk/400.css';
 import '@fontsource/space-grotesk/500.css';
 import '@fontsource/space-grotesk/600.css';
 import '@fontsource/inter/400.css';
 import '@fontsource/inter/500.css';
 import '@fontsource/inter/600.css';
-
-const networkId = import.meta.env.VITE_NETWORK_ID;
-// Ensure that the network IDs are set within the Midnight libraries.
-setNetworkId(networkId);
-
-// Create a default `pino` logger and configure it with the configured logging level.
-export const logger = pino.pino({
-  level: import.meta.env.VITE_LOGGING_LEVEL as string,
-});
-
-logger.trace(`networkId = ${networkId}`);
 
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
   <React.StrictMode>

@@ -27,10 +27,11 @@ export type {
 } from 'veilcore-records';
 export { FORMAT_VERSION, COMMITMENT_ALGORITHM } from 'veilcore-records';
 
-import type { Envelope, Attestation, ParentRef, Anchor } from 'veilcore-records';
+import type { Envelope, Attestation, Anchor, InclusionProof } from 'veilcore-records';
 import { computeCommitment } from 'veilcore-records';
 import { FORMAT_VERSION, COMMITMENT_ALGORITHM } from 'veilcore-records';
 import type { StrainRecord } from './records';
+import { committedRecordFields } from './commitment';
 
 /** The profile every new record is sealed under: plant varieties, any crop. */
 export const PLANT_VARIETY_PROFILE = 'veilcore/profile/plant-variety/v1';
@@ -150,4 +151,88 @@ export const sealEnvelope = async (r: StrainRecord, holderId: string, anchor?: P
   const draft = toEnvelope(r, holderId, anchor);
   const commitment = await computeCommitment(draft);
   return { ...draft, commitment };
+};
+
+/** The extension that ties an exported envelope to what the registry stores and anchors. */
+export const REGISTERED_EXTENSION = 'org.veilcore.registered-fingerprint';
+
+type CheckedProof = { status: 'none' } | { status: 'pending' | 'anchor-reported'; proof: InclusionProof };
+
+const LEDGER_NETWORKS: readonly Anchor['network'][] = ['mainnet', 'preview', 'preprod'];
+
+/**
+ * The envelope a holder downloads (attack round D).
+ *
+ * The registry stores, batches and anchors the record's own fingerprint: SHA-256 over
+ * the canonical app fields (commitment.ts). The envelope's `commitment` is computed over
+ * the envelope, so it is a different value, and an export used to carry only that one:
+ * nothing in the file could be tied to the anchor. Now the export carries, inside the
+ * committed `extensions`, the registered fingerprint and the exact fields it covers, so
+ * anyone can recompute it (sha256 over canonicalise(fields)) and match it to the leaf
+ * of an inclusion proof. The anchor, which is not committed, is filled from an
+ * inclusion proof that was checked against that fingerprint, and says it is the
+ * registry's report.
+ *
+ * A DNA report paired after sealing is not covered by the registered fingerprint, and
+ * the export used to put it under the original sealing date. `sealedAt` is now the
+ * latest time any committed content was added, and the extension names what the
+ * registered fingerprint covers and what it does not.
+ */
+export const exportEnvelopeFor = async (
+  r: StrainRecord,
+  holderId: string,
+  integrity: 'match' | 'mismatch' | 'unsealed' | 'no-nonce',
+  proof: CheckedProof,
+): Promise<Envelope> => {
+  if (integrity === 'mismatch') {
+    throw new Error(
+      `${r.id}: its fingerprint does not match its stored fields, so an export could not be tied to what the registry holds. Nothing was exported.`,
+    );
+  }
+  const base = toEnvelope(r, holderId);
+  const pairedLater = r.dnaFingerprint && r.dnaPairedAt && r.dnaPairedAt > r.loggedAt ? r.dnaPairedAt : undefined;
+
+  const registered =
+    r.recordFingerprint && integrity === 'match' && r.nonce
+      ? {
+          fingerprint: r.recordFingerprint,
+          algorithm: COMMITMENT_ALGORITHM,
+          recompute: 'sha256 over the canonical serialisation (SPEC section 3) of `fields`',
+          fields: committedRecordFields({ ...r, nonce: r.nonce }),
+          sealedAt: rfc3339(r.loggedAt),
+          notCovered: [
+            ...(r.dnaFingerprint
+              ? [`identification.reportHash (DNA report paired ${rfc3339(r.dnaPairedAt ?? r.loggedAt)}, after sealing)`]
+              : []),
+          ],
+        }
+      : r.recordFingerprint
+        ? {
+            fingerprint: r.recordFingerprint,
+            algorithm: COMMITMENT_ALGORITHM,
+            recompute: 'not possible: this record predates stored nonces',
+          }
+        : undefined;
+
+  const reported = proof.status === 'anchor-reported' ? proof.proof.anchor : undefined;
+  const anchor: Partial<Anchor> | undefined =
+    reported && LEDGER_NETWORKS.includes(reported.network as Anchor['network'])
+      ? {
+          kind: 'ledger',
+          chain: reported.chain,
+          network: reported.network as Anchor['network'],
+          ...(reported.contractAddress ? { contractAddress: reported.contractAddress } : {}),
+          ...(reported.txHash ? { txHash: reported.txHash } : {}),
+          ...(reported.anchoredAt ? { anchoredAt: reported.anchoredAt } : {}),
+          commitmentAlgorithm: `${REGISTERED_EXTENSION}: the anchored leaf is extensions["${REGISTERED_EXTENSION}"].fingerprint, in batch ${proof.status === 'anchor-reported' ? proof.proof.batchId : ''} (SPEC section 5). Reported by the registry; not looked up on the chain by the app that exported this.`,
+        }
+      : undefined;
+
+  const draft: Envelope = {
+    ...base,
+    anchor: { ...base.anchor, ...anchor },
+    ...(pairedLater ? { sealedAt: rfc3339(pairedLater) } : {}),
+    ...(registered ? { extensions: { [REGISTERED_EXTENSION]: registered } } : {}),
+  };
+  return { ...draft, commitment: await computeCommitment(draft) };
 };

@@ -76,6 +76,17 @@
         "commit(s3)"
       ],
       "out": "a81042757459e8b0e14612cbd10ed18a9b7c3c9b354005145bb84d286ba000c8"
+    },
+    {
+      "circuit": "dnaPairBinding",
+      "tag": "veilcore:v1:dnapair",
+      "args": [
+        "s2",
+        "commit(s1)",
+        "s3"
+      ],
+      "out": "d58e4e9a8c031f45dda92d0e934a782807c2f477a6738916e26e8bb432d3dc43",
+      "note": "Not a circuit: computed off chain (contract/src/pairing.ts) and passed to pairDna. Inputs: the report's SHA-256, the pairing record's identity, the holder's salt."
     }
   ]
 }

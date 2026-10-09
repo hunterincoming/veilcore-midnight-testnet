@@ -1,7 +1,7 @@
 # VeilCore: Technical Design
 
 **Provenance, licensing and heritable obligations for plant and animal genetics on Midnight**
-Protocol version 1 · last updated 1 October 2026 (evening: state bounds)
+Protocol version 1 · last updated 9 October 2026 (bound DNA pairing)
 
 ---
 
@@ -14,7 +14,9 @@ does not exist yet.
 
 VeilCore is one Midnight contract, `contract/src/veilcore.compact`, that records:
 
-1. **Records.** Who held a genetic record, and when, without disclosing the genetics.
+1. **Records.** That a genetic record existed by a date, and who controls its identity
+   now, without disclosing the genetics. Evidence of prior possession of the record, not
+   ownership.
 2. **Licences.** Rights granted against a record, presentable to a verifier without
    naming the licence or the licensee.
 3. **Lineage.** Parentage both holders agreed to, and obligations (royalties, use
@@ -35,8 +37,9 @@ through an indexer it trusts (see Trust model).
   anchored records, not with how often anyone calls. The bound for every field is under
   "State bounds"; where it does not hold, "Known limits" says so.
 - **Browser-viable proving.** 24 circuits, each under 700 ZKIR operations.
-- **Independent recomputation of commitments.** The six commitment hashes are plain
-  SHA-256 (next section), so anyone can recompute one without Midnight tooling. The
+- **Independent recomputation of commitments.** The six commitment hashes, and the
+  client's DNA pairing binding, are plain SHA-256 (next section), so anyone can recompute
+  one without Midnight tooling. The
   licence tree is the exception: its inner nodes use Midnight's field hash. Reading
   contract state at all, and checking a presentation (rule 5), needs Midnight's tooling.
 
@@ -56,9 +59,17 @@ bytes to 32), then each input. This is exactly Compact's `persistentHash` over
 | `licenseKey` | `veilcore:v1:lickey` | licence commitment, issuing record |
 | `presentationTag` | `veilcore:v1:present` | issuing record, verifier challenge |
 | `obligationKey` | `veilcore:v1:obligation` | record identity, obligation commitment, beneficiary identity |
+| `dnaPairBinding` (client, not a circuit) | `veilcore:v1:dnapair` | report SHA-256, pairing record's identity, salt |
+
+`dnaPairBinding` is computed off chain (`contract/src/pairing.ts`) and passed to `pairDna`
+as its value; the contract never computes it and does not know it is one. It has the same
+layout as `obligationKey`: the test suite checks it against Compact's `persistentHash`
+over `Vector<4, Bytes<32>>` and checks that the same function gives `obligationKey` with
+that tag (`src/test/pairing.test.ts`). See `pairDna` below and rule 9.
 
 Test vectors: `contract/vectors/v1.json`. The test suite checks each vector against the
-compiled contract and against a plain SHA-256 implementation. The contract publishes
+compiled contract (the binding: against the client's function) and against a plain SHA-256
+implementation. The contract publishes
 `protocolVersion = 1`; a change to any tag or input order is a new version.
 
 **Not SHA-256: the licence tree.** `activeLicenses` is a ledger `HistoricMerkleTree`.
@@ -81,7 +92,7 @@ A record secret is 32 random bytes held by the record's holder. Its commitment i
 - A commitment **may act only while it is its identity's head**. The identity of any
   commitment is `originFor(x)`: `originOf(x)` if set, else `x`.
 - A rotation or recovery target must have no history, so two identities never merge.
-- **Only an anchored identity acts as a record holder**: ownership proofs, DNA pairing,
+- **Only an anchored identity acts as a record holder**: control proofs, DNA pairing,
   issuing licences and lineage all require one. (Licensees, sealing, batch roots and
   recovery act without a record.) An unanchored commitment therefore has no events to
   carry into an identity it is later rotated into, and an anchored one can never be a
@@ -108,8 +119,8 @@ every rotation and recovery, and a retired secret controls nothing.
 | Circuit | Effect |
 |---|---|
 | `anchor(recoveryCommitment)` | Anchors the caller's record. Refuses the zero commitment and the zero secret's commitment. |
-| `proveOwnership(challenge)` | Publishes the caller's live record in `lastOwnershipProof` and the verifier's challenge in `lastOwnershipChallenge`, so the proof answers one verifier (rule 8). The interval since its anchor is the evidence of prior possession. |
-| `pairDna(dnaCommitment)` | Records any non-zero 32-byte value the holder chooses against the caller's record. It is the holder's own statement that a report belongs to the record; the contract cannot check it. |
+| `proveOwnership(challenge)` | Publishes the caller's live record in `lastOwnershipProof` and the verifier's challenge in `lastOwnershipChallenge`, so the proof answers one verifier (rule 8). It shows present control of the record's identity, and only that: not ownership, and not who held it before. The identity's anchor date says nothing about who holds it now, or about any content: a holder can anchor, then rotate to a buyer, and on chain a sale looks like a key rotation. Treat any rotation or recovery since the anchor as a possible change of hands. Content is dated only by its own commitment's anchor (its batch root, or its pairing). |
+| `pairDna(dnaCommitment)` | Records any non-zero 32-byte value the holder chooses against the caller's record. It is the holder's own statement that a report belongs to the record; the contract cannot check it. Once sent, the value is public: anyone watching can pair the same value to a record of their own, and can front-run a pairing still waiting to land. So a raw report hash paired directly shows nothing about who had the report first. **The client pairs a binding instead** (`pairReport`): `dnaPairBinding(reportHash, identity, salt)`, with the report file's SHA-256, the caller's identity (its origin, so it holds across rotation and recovery) and 32 random bytes the holder keeps. It reveals nothing about the report; copied to another record it verifies for nobody (rule 9 recomputes it with the pairing record's identity); and making one for another identity needs the report's hash, which stays private until the holder shows it, unless it was ever paired raw (then anyone can, from that block on; rule 9 looks for that). So a bound pairing shows: whoever controlled this record's identity at that date had this report, or its SHA-256, by then. Not who controls the record now: a holder can pair, then rotate to a buyer, and a thief holding the key can pair before the owner recovers (rule 9 says when the identity changed keys since). Not that nobody had the report earlier: the lab that wrote it did. |
 | `rotateRecordSecret(newRecord)` | Moves the identity; the caller must hold the new secret. Anchored identities only. At most 16 since the anchor or the last recovery. |
 | `recoverRecordSecret(origin, newRecord, newRecoveryCommitment)` | Moves the identity with the recovery secret, whoever holds the head. At most 16 per identity; each one resets the rotation count. |
 | `replaceRecoveryCommitment(origin, new)` | Replaces a recovery secret that may have leaked. |
@@ -170,14 +181,24 @@ predates it fetch a new one.
 
 Why not drop old roots on every revocation, as version 0 did: then on chain anyone
 could revoke a throwaway licence of their own each block and make every older path
-fail. Sealing limits that on chain. It does not stop a griefer from costing honest
-licensees re-proofs: a presentation records whether a revocation was waiting when it was
-proved, so a revocation landing before it, or a seal, sends it back, and while one is
-waiting, a
-verifier following rule 5 refuses a presentation whose root has since moved on. That is
-a cost in re-proofs, paid in fees by the griefer too, never a wrong answer. A verifier
-that wants to accept more can check the presentation's root against every root since
-the last revocation or transfer, from the indexer's history. The client seals straight
+fail. Sealing limits that on chain. Under the strict rule 5 it does not stop a griefer
+from costing honest licensees re-proofs: a presentation records whether a revocation was
+waiting when it was proved, and while one is waiting, a verifier refuses a presentation
+whose root has since moved on. A griefer who keeps one revocation of their own waiting,
+plus cheap root changes, can make that refusal permanent.
+
+So rule 5 has a second, issuer-scoped form (`acceptPresentationScoped`, verify.ts). It
+accepts a presentation proved against an older root unless, since that root, the issuer
+asked about revoked, or approved the transfer of, a licence that was in the tree at that
+root.
+Revocations and transfers by other issuers cannot touch that issuer's licences and are
+ignored. It needs the caller to supply the contract's state after every call since the
+last seal before the presentation, ending with the presentation's own, from the indexer.
+It refuses when that history does not reach the root, is not one state per call, or does
+not end with the presentation. Without a history the strict rule applies, and it stays
+the default; `rule: 'strict'` keeps it even with one. Nothing here fetches that history
+yet: the partner kit's `checkPresentation` takes one from its caller, and the CLI and
+`VeilcoreAPI.checkPresentation` use the strict rule. The client seals straight
 after a revocation or transfer when allowed, and otherwise reports when it can. It does
 not seal after a countersign; the operator runs CLI option 15 ("Seal waiting
 revocations") for that (`docs/runbook.md`).
@@ -276,15 +297,32 @@ total created by one party with many anchors.
 
 ## Verifier rules
 
-These are normative. `contract/src/verify.ts` implements rules 1 to 5 and 8, with one
-gap: rule 5's "refuse a presentation that landed before you issued its challenge" is
-not implemented, because it needs the block time of the presentation's transaction.
+These are normative. `contract/src/verify.ts` implements rules 1 to 5, 8 and 9. Rule 5's
+"refuse a presentation that landed before you issued its challenge" needs the block time
+of the presentation's transaction: since round D, `acceptPresentationAt` takes it (the
+lookup reads it in the same indexer query) with the challenge's issue time, and also
+refuses a presentation older than an hour (`MAX_PRESENTATION_AGE_MS`), because it shows
+the licence was live when presented, not since. The CLI's option 27 uses it.
 "Use each challenge once" is implemented by `ChallengeBook` with `acceptPresentationOnce`
 and `acceptOwnershipOnce`: a challenge is accepted once, only for the kind it was issued
-for (licence or ownership), and only within 7 days of issue. The CLI keeps the book
+for (licence or control proof), and only within 7 days of issue. The CLI keeps the book
 encrypted under `~/.veilcore/challenges`, one file per network
 (`bboard-cli/src/challenge-file.ts`). The tests exercise each rule
 (`rules-coverage-round11.test.ts` among them).
+
+Since 8 October every lookup a verdict rests on (`api/src/presentation-lookup.ts`,
+`api/src/state-check.ts`) also:
+
+- compares every circuit's verifier key in the state at that transaction with the pinned
+  build (`docs/fingerprints.md`) and refuses on any difference, a missing circuit or an
+  extra one. `VeilcoreAPI` and `ClaimsAPI` always do this on mainnet; the partner kit
+  does it on mainnet (always) and preprod (by default);
+- reports the maintenance authority in that state: committee size, threshold and
+  counter. Every maintenance update raises the counter, so a key swapped and put back
+  between two checks shows there even though both states carry the pinned keys. A
+  caller that knows the counter to expect can require it (`authorityCounter`);
+- with a second indexer (`secondIndexer`), asks both and refuses unless they report the
+  same call, in the same block, with the same contract state.
 
 1. **Resolve identity.** A commitment's identity is `originFor(x)`. It may act only if
    `headOf(identity) = x`, or it is an un-moved origin. Judge every action by the
@@ -305,7 +343,8 @@ encrypted under `~/.veilcore/challenges`, one file per network
    you the presentation's transaction id. Check that it is a successful transaction whose
    only call **on this contract's address** is one `proveLicense` (no seal or anything
    else bundled with it, not a later transaction, not a look-alike contract). Read the
-   contract state recorded for that call and accept only if:
+   contract state recorded for that call (its verifier keys must be the pinned build's,
+   as above) and accept only if:
    - its `lastPresentation` equals `presentationTag(c, challenge)` for some commitment
      `c` of the issuing identity (a licence issued after a rotation is tagged under the
      successor). Never take the tag from the licensee, who can compute any tag; and
@@ -313,6 +352,14 @@ encrypted under `~/.veilcore/challenges`, one file per network
      its `lastPresentationUnsealed` is false: no revocation was waiting when the
      presentation was proved. Never use the live `unsealedChanges` for this; a seal
      clears it without making an older root any safer.
+
+   Or, issuer-scoped: given the contract's state after every call from the last seal
+   before the presentation up to and including it, accept a presentation proved against
+   an older root unless, since that root, the asked-about issuer revoked or approved the
+   transfer of a licence that was in the tree at that root
+   (`acceptPresentationScoped`; `acceptPresentationAt` with `history`). Refuse when the
+   history does not reach that root, is not one state per call, or does not end with
+   this presentation. Without a history, use the strict form above.
 
    (`acceptPresentation`; `presentationState` in `api/src/presentation-lookup.ts` does
    the lookup, and `VeilcoreAPI.checkPresentation` both.) It proves that someone holding
@@ -328,27 +375,62 @@ encrypted under `~/.veilcore/challenges`, one file per network
    `lastProposedObligation`, `lastProposedAgainst` and `lastProposedBy` only by
    `proposeObligation`.
 7. **Batch roots are not possession.** `anchorBatch` is unauthenticated.
-8. **Ownership proofs.** Send the holder a fresh 32-byte random challenge and use it once.
+8. **Control proofs** (`proveOwnership`, a name the live contract keeps). A proof shows that
+   whoever answered controls the identity's live record now: prior possession of the record,
+   not ownership, and not who held it before (see `proveOwnership` above). Send the holder a
+   fresh 32-byte random challenge and use it once.
    The holder gives you the transaction id of a `proveOwnership(challenge)` call. Look
    it up as in rule 5 (successful, its only call on this contract) and accept only if
    `lastOwnershipChallenge` is your challenge and `lastOwnershipProof` is the live,
    anchored head of the identity you asked about (`acceptOwnership`;
    `VeilcoreAPI.checkOwnership`). Never accept a proof made for someone else's challenge:
    anyone can point you at the real holder's. The challenge becomes public with the
-   proof, so never use one challenge for both an ownership proof and a licence
+   proof, so never use one challenge for both a control proof and a licence
    presentation: published, it would let anyone recognise the presentation's tag and
    name its issuer. Also read the current state and refuse the proof if the proving
    commitment is no longer its identity's head: a proof made with a stolen secret is
-   then refused once the owner has recovered (`acceptOwnership` with its `now`
-   argument; `checkOwnership` always passes it). An ownership proof publishes the
+   then refused once the holder has recovered (`acceptOwnership` with its `now`
+   argument; `checkOwnership` always passes it). A control proof publishes the
    record's commitment. Like a presentation, a proof shows that the holder of the secret
    answered your challenge, not that the party in front of you is that holder: a
    middleman can relay it. Answer challenges only from the party you are dealing with.
+9. **Bound DNA pairings.** The holder gives you the report file and an evidence file
+   (`pairingEvidence`): the record (its identity), the report's SHA-256, the salt and the
+   `pairDna` transaction id. Hash the report file yourself; never take the hash from the
+   holder. Look the transaction up as in rule 5 (successful, its only call on this contract
+   is one `pairDna`, verifier keys pinned) and accept only if `lastPairedDna` is
+   `dnaPairBinding(reportHash, identity, salt)` where `identity` is the identity of
+   `lastPairedRecord` in that state, and that is the identity of the record you were given
+   (resolve the record with the state now, so a record made by a later rotation works).
+   Refuse a raw report hash paired directly: anyone could have copied it. Refuse when you
+   were not given the report file: its hash alone is all anyone needs to make a pairing.
+   An acceptance says, and only says: whoever controlled this record's identity at the
+   block's date had this report, or its SHA-256, by then. Two more checks qualify it, and
+   the verdict states them:
+   - **The hash published raw earlier.** Search the contract's history (every `pairDna`
+     call, from the indexer's subscription) for a raw pairing of the same report hash
+     before this one. From the first such block, the hash was public and anyone could have
+     made this pairing without the report: "this report's hash was published raw on
+     <date> by another record; anyone could have made a pairing from it after that". The
+     history comes from one indexer; when it was not searched, the verdict says so.
+   - **Key changes since.** Compare the identity's head, rotation and recovery counts at
+     the pairing with the state now. If they differ, the identity changed keys since: a
+     sale, a new key and a recovery from a thief look the same, so an earlier key holder
+     made the pairing ("recovered since" when a recovery is among them).
+   It does not show who controls the record now (rule 8 does), or that nobody else had
+   the report earlier. The client keeps every salt in private state, saved before the
+   pairing is sent, and can find the transaction of a pairing whose confirmation failed
+   from its binding in the same history (`acceptPairing`, `acceptPairingWithStates`;
+   `VeilcoreAPI.pairReport`, `checkPairing`, `findPairingTransactions`;
+   `api/src/pairing-history.ts`; CLI options 3, 44 and 45).
 
 ## Trust model
 
+Everything under "Proven by the contract" holds for the circuits as deployed. The
+maintenance key can change the circuits ("Assumed" below, and "Governance").
+
 **Proven by the contract**
-- A record's holder knew its secret when anchoring, proving ownership, or acting.
+- A record's holder knew its secret when anchoring, proving control, or acting.
 - A retired commitment can do nothing.
 - A licence presentation came from someone holding the secret of a licence from the
   named issuer that was in the tree at a root the contract still accepted. On its own
@@ -359,7 +441,22 @@ encrypted under `~/.veilcore/challenges`, one file per network
 **Proven by the contract plus verifier rule 5**
 - A presentation came from someone holding a live licence from the named issuer.
 
+**Proven by the contract plus verifier rule 9** (and SHA-256)
+- Whoever controlled an identity when a bound pairing landed had the report, or its
+  SHA-256, by then. Which of the two, the chain cannot say.
+
 **Assumed, and stated plainly**
+- **The maintenance key holder does not abuse it.** As long as the key exists,
+  whoever holds it can add or replace circuits, and a new circuit can write any ledger
+  entry. So the key holder could rewrite any identity's head or recovery commitment (take
+  over any identity), insert licences for any issuer, add or remove obligations and parent
+  edges, or remove circuit keys so circuits stop working. It cannot backdate block time,
+  and every change is visible on chain. Today one key does this, on paper in two copies,
+  one per founder, so either founder's copy alone is enough. The plan to move it to a
+  two-of-two or two-of-three committee is pending (`docs/maintenance-policy.md`).
+  The verifier checks refuse a state whose verifier keys are not the pinned build's and
+  report the authority's counter with every verdict, so a change shows. They cannot
+  prevent one.
 - **Record contents are the holder's assertion.** The chain proves when a claim was made
   and that it has not changed, not that the genetics are what the holder says.
 - **A parent edge is an agreement, not a genetic test.** It proves both holders said
@@ -371,8 +468,16 @@ encrypted under `~/.veilcore/challenges`, one file per network
 - **Participation is voluntary.** A market-access filter, not enforcement.
 - **The indexer is trusted for what it reports.** Verifiers read chain state through an
   indexer (Blockfrost for mainnet). A wrong or compromised indexer can report any state:
-  make a presentation pass, or a lineage look clean. For a decision that matters, ask a
-  second indexer or your own node and compare.
+  make a presentation pass, or a lineage look clean. For a decision that matters, give
+  the checks a second indexer (`secondIndexer`, your own or another provider's): both
+  must report the same call, in the same block, at the same block time, with the same
+  contract state, or the check is refused; the readers of the state now (`readLedger`,
+  for lineage, and the authority readers) refuse unless both report the same state. A
+  `history` given to the issuer-scoped rule 5 is not compared or key-checked: read it
+  from an indexer you trust. The partner kit's checks also refuse a network name that does not
+  match the indexers or the address: a mainnet indexer or VeilCore's mainnet address
+  under any other network name (which would skip the mainnet address pin), or a preprod
+  or preview indexer under `mainnet`.
 - **The VeilCore registry service is not the source of truth.** It stores records and
   answers lineage queries for the website, attested by VeilCore, not by the chain. Its
   lineage responses are labelled that way. It also holds what the website
@@ -389,31 +494,66 @@ each remaining key in its own transaction (`VeilcoreAPI.deploy`,
 ledger state and every circuit are the ones compiled; only which keys ride the first
 transaction differs. Joining the contract checks every key on chain against the local
 build, and refuses a contract carrying any circuit the build does not have, and on mainnet the local build is first checked against `docs/fingerprints.md`.
-Anyone can do the same: read the contract's verifier keys from the indexer and compare
-them with the published fingerprints.
+
+**Matching keys show the code, not the contract.** Midnight does not run the constructor
+on chain: a deploy carries whatever starting state its deployer built, so anyone can
+deploy this exact build, every key byte-identical, with a forged ledger (records anchored,
+parents confirmed) and even hand its authority to VeilCore's public key (round D, D-1).
+So joining also compares the ledger data of the deploy transaction's state with what
+this build's constructor produces (`startsFromConstructor`, contract/src/veilcore.ts),
+reading the ContractDeploy action in the deploy transaction itself
+(api/src/starting-state.ts; not midnight-js's `queryDeployContractState`, which after a
+maintenance update returns the current state). When the indexer cannot lead back to the
+deploy (the latest action is a maintenance update) and no deploy transaction id is given,
+it accepts a ledger still equal to the constructor's (maintenance updates never change
+ledger data), on mainnet relies on the pinned address, and elsewhere asks for the deploy
+transaction id; it calls a contract forged only after reading its deploy. And it
+on mainnet accepts only the address in the filed deployment record
+(`MAINNET_VEILCORE_ADDRESS`, api/src/deploy-guard.ts; empty until the deploy, and joins
+are refused until it is set). **The address is the contract's identity.** A verifier
+checking by hand reads the contract's verifier keys from the indexer and compares them
+with the published fingerprints, AND checks the address against the deployment record.
+Since 8 October the client's verifier checks make the key comparison themselves, on the
+state at each transaction they judge (Verifier rules).
 
 ## Governance: the maintenance authority
 
 midnight-js always installs a maintenance authority on deployment. It can add and remove
 verifier keys, so it can repair or disable any circuit, and a key for a new circuit could
-rewrite state: whoever holds it controls the contract. VeilCore keeps it for launch, held offline by the deployer (the client shows it before
-deploying and removes it from the local store afterwards), and
-keeps it under `docs/maintenance-policy.md` (proposed 3 October 2026): no retirement
+rewrite state: whoever holds it controls the contract. In plain terms, the key holder can:
+
+- add or replace circuits, which could rewrite any identity's head or recovery commitment
+  (take over any identity);
+- insert licences for any issuer;
+- add or remove obligations and parent edges;
+- remove circuit keys, so those circuits can no longer be called.
+
+It cannot backdate block time, and every change is visible on chain. Today it is one key,
+on paper in two copies, one held by each founder: either copy alone can do all of the
+above. Moving it to a two-of-two or two-of-three committee is planned and pending.
+
+VeilCore keeps it for launch, held offline by the deployer (the client shows it before
+deploying and never writes it to disk: it is held in memory for the deploy, and typed from
+paper whenever it is needed again), and
+keeps it under `docs/maintenance-policy.md` (approved by both founders, 6 and 7 October 2026): no retirement
 date, because Midnight network upgrades can require verifier-key updates; every use
-announced ahead and published with fingerprints; custody moving to a two-of-three
-committee with an independent holder. Retiring stays possible through
-`retireMaintenanceAuthority` (api/src/maintenance.ts; CLI main menu option 33, which asks
-for the key from the offline copy. Option 32 shows the record secret; do not confuse
-them). Holders should treat the circuit set as changeable by VeilCore under that policy.
+announced ahead and published with fingerprints; custody planned to move to a committee
+(pending). Retiring stays possible through
+`VeilcoreAPI.retireMaintenanceAuthority`, which since round D replaces the authority with
+an empty committee (`retireMaintenanceAuthorityProvably`, api/src/maintenance.ts, as the
+claims contract does): no key can satisfy it, no replacement key is made or stored, and
+anyone can see it on chain (CLI main menu option 33, which asks for the key from the
+offline copy. Option 32 shows the record secret; do not confuse them). Holders should treat the circuit set as changeable by VeilCore under that policy.
 
 ## Known limits
 
 - **What a thief does before recovery stands.** Someone holding an identity's current
   secret acts as that identity until recovery: they can revoke its licences, accept
   obligations on it (including ones owed to themselves), and confirm parentage.
-  Recovery stops them from then on; it does not undo those acts, and no one can remove a
+  Recovery stops them from then on; it does not undo those acts, and no circuit removes a
   confirmed edge. Disputes of that kind are for the parties and, while it is held, the
-  maintenance authority, which could add a remedy circuit. Keep secrets on devices you
+  maintenance key holder, who could add a circuit that does (see Governance: the same
+  power could remove a true edge). Keep secrets on devices you
   control and the recovery secret offline.
 - **Licence activity is public apart from presentations.** Issue, countersign, approve
   and revoke publish the licence key and the issuing record; a transfer proposal and its
@@ -473,7 +613,15 @@ them). Holders should treat the circuit set as changeable by VeilCore under that
 - **The web app's file fingerprints** (DNA reports, photos) are run through the record
   commitment, so whoever holds a report could anchor its fingerprint as a record of their
   own, and could find a record paired with it. The app does not put these on chain today;
-  before it does, they get their own salted tag.
+  when it does, a DNA report goes on chain through the bound pairing (rule 9), which has
+  its own salted tag, not as a record.
+- **A bound pairing can be lost.** Without its salt it can never be shown. The client saves
+  the salt before sending; the holder must keep it with the report. The salt is not derived
+  from the record secret, so a paper copy of that does not bring it back: back up the
+  evidence files.
+- **A report hash paired raw is public for good.** Anyone can make a bound pairing of it
+  after that block, without the report. Rule 9 finds the raw pairing and says so; it
+  cannot tell who among those holding the hash had the report itself.
 - **Record commitments are stable pseudonyms.** Actions under one record link to each
   other.
 - **Licences issued by a thief** before recovery stay PENDING under the identity until
@@ -511,9 +659,20 @@ them). Holders should treat the circuit set as changeable by VeilCore under that
   that does not stop a revoked licensee who makes a new licence secret: the new
   commitment cannot be linked to them. An issuer must know who it is issuing to or
   approving.
-- **A retired maintenance authority looks the same on chain as a live one.** Retiring
-  replaces the authority's key with one nobody stores. The chain cannot show that nobody
-  holds it, so outsiders take the deployer's word for it.
+- **A retirement is visible; a live authority's custody is not.** Since round D both
+  contracts retire by installing an empty committee (threshold 1), which anyone can read
+  from the contract state and no key can satisfy. While the authority is live, the chain
+  cannot show who holds its key; outsiders rely on the maintenance policy.
+- **A licence presentation shows the licence was live when it landed, not later.**
+  Presentations are unlinkable, so a later revocation cannot be tied to one. The client
+  refuses a presentation older than an hour, or one that landed before its challenge
+  was issued (`acceptPresentationAt`, verify.ts); ask again for anything older.
+- **The client trusts its indexer for what it reports.** After a failed rotation,
+  recovery or recovery-secret replacement, it believes the change landed only when two
+  reads 30 seconds apart agree, tells the operator to keep both old and new secrets, and
+  offers a way back (CLI options 41 and 42). Those reads use one indexer; only the
+  verifier checks take a second (`secondIndexer`). For decisions that matter, cross-check
+  the rest with a second indexer or a node.
 
 ---
 
@@ -524,10 +683,11 @@ compiled contract, in the style of Midnight's examples (`veilcore-simulator.ts`)
 
 | Suite | Covers |
 |---|---|
-| `records.test.ts` | Anchoring, ownership, rotation, recovery; recovery against a thief who keeps rotating |
+| `records.test.ts` | Anchoring, control proofs, rotation, recovery; recovery against a thief who keeps rotating |
 | `licences.test.ts` | Lifecycle, forgery through transfer, squatting, starvation of revocation, sealing and its rate limit, slot contention |
 | `lineage.test.ts` | Consent, release by beneficiary only, survival across rotation and recovery, identity merging, the verifier walk |
 | `interface.test.ts` | Published vectors, protocol version, the circuit list, no secret or caller record as an argument |
+| `pairing.test.ts` | Rule 9: the binding's hash layout against the contract's, a copied binding (even one that landed first), wrong salt or report, a raw pairing, rotation and recovery, the evidence file |
 | `attack-*.test.ts` | The contract-side attacks from rounds 8 to 12. Most tests assert the refusal or the fix directly; a few blocked attacks are kept as `it.fails`, so they still run and must still fail. `attack-bounds.test.ts` is round 12, the attack on the state bounds (F1 to F7) |
 | `state-bounds.test.ts` | Each per-identity cap, the moves that free a place, and that repeated calls by one identity leave state where it started. The 1024-active-licence test runs only with `SLOW_TESTS=1` |
 | `rules-coverage-round11.test.ts` | Round 11: one test for each rule in this file and the README that had none (40), including limits the docs had wrong |
@@ -571,4 +731,7 @@ and verifying key, every circuit's ZKIR and the compiled contract code in
 `docs/fingerprints.md`, the table the deployment record carries. A mainnet deploy from
 the CLI is refused unless the local build matches that table as committed
 (`bboard-cli/src/keys-check.ts`), and unless the deployment record revision is declared
-(`api/src/deploy-guard.ts`).
+(`api/src/deploy-guard.ts`). The claims contract has its own table in the same file
+(`npm run fingerprints:claims`), checked the same way before a mainnet claims deploy, join
+or finish; a mainnet claims deploy is also refused unless it ends with no maintenance
+authority (`assertClaimsDeployAllowed`, `api/src/claims-api.ts`).

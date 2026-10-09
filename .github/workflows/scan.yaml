@@ -13,10 +13,6 @@ concurrency:
   group: ${{ github.event_name != 'merge_group' && format('{0}-{1}', github.workflow, github.head_ref) || github.run_id }}
   cancel-in-progress: true
 
-env:
-  # needed to stop rate limiting of compact download.
-  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
 jobs:
   scan:
     runs-on: ubuntu-latest

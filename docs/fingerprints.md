@@ -101,3 +101,31 @@ Commit `ceb3a16`, compiler `0.31.1`, built with `npm run compact`.
 | `zkir/withdrawTransfer.bzkir` | `a6cc18da40ece2ee34c8cfb93c87683ff010e320dfc8a4f9c57ead589f6d23b7` |
 | `zkir/withdrawTransfer.zkir` | `64cc7b9bb7b3f13cb206126548394e3156ae5ee88b9877943411e200879d9a99` |
 | `contract/index.js` | `4e23ffc28f3de3ce670d9cea2896301dfeec8b4593d1b65332eb18f74ba5d286` |
+
+## Claims contract (`veilcore-claims`)
+
+Commit `c75c155`, compiler `0.31.1`, built with `npm run compact`. Paths are under `contract/src/managed/veilcore-claims/`.
+
+| Artefact | SHA-256 |
+|---|---|
+| `keys/proveAttested.prover` | `2abb918cd2a749716e61346e82d69550ff3015e5892a540c69d2b2512310e451` |
+| `keys/proveAttested.verifier` | `3a26f2f34082eccb6a1c96fc9ec20243247d2c723666f218bd61a479432d9f38` |
+| `keys/proveDistinct.prover` | `79c10171a6438316f79fb9d3c0c0b262c82514d51009b0696cfde6867a156ae1` |
+| `keys/proveDistinct.verifier` | `6d1b1166d5ca9e8e3e2e2dcfb83079bfa192f8fdd8a617a74bb15166e921cf24` |
+| `keys/proveRange.prover` | `f13517970ac4f81537d766f1d48e3567c5d3525420e9071df5c01096f2119397` |
+| `keys/proveRange.verifier` | `54c8245f19f8296a60dc1110fade6e1b52ba6a3e72ba5be832206c86c145c1ae` |
+| `keys/proveUnchanged.prover` | `f01607396d5d01a3fb3756dea3fddcb98f35ab730fab316fd6629b40ff432fb2` |
+| `keys/proveUnchanged.verifier` | `cb7d9e9cdbaa82f7b9cc9046405174b40b5b070037d8e79d4d54859b4150b103` |
+| `keys/proveValue.prover` | `e1f159dbaa4649f8d5622f8d2703770125bc16f54c0bc92a78b8af1002423ab7` |
+| `keys/proveValue.verifier` | `af639a1af8e84cde7bf44c4df401db73ecd8ec46074e34e2d9e8a4679834c2ef` |
+| `zkir/proveAttested.bzkir` | `ed892e54325bce35ff5d3e17e843b413f3d813e4b7dc4639a74931f37008d762` |
+| `zkir/proveAttested.zkir` | `b932d410ae925ba8f951d680d8e8aaf821733f27d6e1b7940fce40c99d881c70` |
+| `zkir/proveDistinct.bzkir` | `5dcf734ae7015016b77e3faf7ea4e06d9426cef9dd63d500f51a4320a64d1605` |
+| `zkir/proveDistinct.zkir` | `3894b23a38800483eb7aa6e926e654caee836a0e5299def9a5211c6c5b3e558d` |
+| `zkir/proveRange.bzkir` | `cb4cacefd457dfb627338733fd449998b33a5580ef14c103b26dc30289947206` |
+| `zkir/proveRange.zkir` | `60db0e31b6f4b52d9ce040b073a05904665718786ff9e5b6c2c648c517b11c56` |
+| `zkir/proveUnchanged.bzkir` | `3cd33cbcfd6e3797f96f4919428bcec2d12d8b5ca40f99888249d228aaf24175` |
+| `zkir/proveUnchanged.zkir` | `74b4bb9c579dc31adbbdb639db11a2115bae29ec18edf9296537c0fcc18bd622` |
+| `zkir/proveValue.bzkir` | `efb54476e612e61d0bda9cba3517da16eae508366f33f32b207f0fd2c1e334e1` |
+| `zkir/proveValue.zkir` | `d7e2e4309c0e79fc39a09f6c35350ae0d30c98f5d62b872eb40de3f7505dc34a` |
+| `contract/index.js` | `b549c631fa3e3f2e4adf554434519e447844d7f83748cec44f8145ae1f6ecd65` |

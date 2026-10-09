@@ -12,6 +12,11 @@ declare global {
     readonly VITE_API_BASE: string;
     /** Midnight network the UI talks to. */
     readonly VITE_NETWORK_ID: string;
+    /** Mainnet builds only, from api/src/deploy-guard.ts (vite.config.ts). Display only. */
+    readonly VITE_MAINNET_CONTRACT_ADDRESS: string;
+    readonly VITE_MAINNET_CLAIMS_ADDRESS: string;
+    /** Mainnet builds only: 'true' when docs/maintenance-policy.md says APPROVED (vite.config.ts). */
+    readonly VITE_MAINTENANCE_POLICY_APPROVED: string;
     /** "1" turns on real transactions from the demo (veilcore/chain/config.ts). Off otherwise. */
     readonly VITE_REAL_CHAIN?: string;
     /** The demo contract on the test network, 64 hex characters. */

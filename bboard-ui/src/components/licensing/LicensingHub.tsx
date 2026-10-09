@@ -1,4 +1,5 @@
-// LicensingHub (/licenses) — every license across all cultivars, as a managed portfolio.
+// LicensingHub (/licenses) — every agreement this browser holds (licenses, lab transfers,
+// breeder shares), across all records. Simulated in the web demo, and says so.
 // SPDX-License-Identifier: Apache-2.0
 
 import React from 'react';
@@ -11,6 +12,8 @@ import { getRecord } from '../../veilcore/records';
 import { AppHeader } from '../AppHeader';
 import { LicenseStateChip } from './LicenseStateChip';
 import { AgreementTypeChip } from './AgreementTypeChip';
+import { AGREEMENTS_SIMULATED } from '../../config/copy';
+import { linkCard } from '../a11y';
 
 const MPaper = motion(Paper);
 
@@ -23,19 +26,20 @@ export const LicensingHub: React.FC = () => {
     <Box>
       <AppHeader />
       <Typography variant="h4" sx={{ mb: 0.5 }}>
-        Licensing hub
+        Agreements
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-        Every agreement you&apos;ve issued — licenses, lab transfers, and breeder shares — across all your cultivars.
+        Every agreement you&apos;ve made (licenses, lab transfers and breeder shares) across all your records.{' '}
+        {AGREEMENTS_SIMULATED}
       </Typography>
 
       {licenses.length === 0 ? (
         <Paper sx={{ p: 4, textAlign: 'center', borderStyle: 'dashed' }}>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-            No agreements yet. Open a cultivar and choose License, Send to a lab, or Share with a breeder to draft one.
+            No agreements yet. Open one of your records and choose License, Send to a lab, or Share with a breeder.
           </Typography>
           <RouterLink to="/records" style={{ color: '#2ff0cf' }}>
-            Go to your cultivars
+            Go to your records
           </RouterLink>
         </Paper>
       ) : (
@@ -47,8 +51,12 @@ export const LicensingHub: React.FC = () => {
                 key={l.id}
                 initial={{ opacity: 0, y: 6 }}
                 animate={{ opacity: 1, y: 0 }}
-                onClick={() => navigate(`/license/${l.id}`)}
-                sx={{ p: 2.5, cursor: 'pointer', '&:hover': { borderColor: 'primary.main' } }}
+                {...linkCard(() => navigate(`/license/${l.id}`), `Open agreement ${l.id}`)}
+                sx={{
+                  p: 2.5,
+                  cursor: 'pointer',
+                  '&:hover, &:focus-visible': { borderColor: 'primary.main', outline: 'none' },
+                }}
               >
                 <Stack
                   direction="row"

@@ -75,7 +75,7 @@ export const Step4CheckReport: React.FC<{ onBack: () => void; onRestart: () => v
 
       {result && !result.ok && (
         <Alert icon={<GppBadIcon />} severity="error" variant="outlined">
-          No record you hold has this report paired. Log the cultivar and pair the report first.
+          None of your records has this report paired. Pair it with the right record first, then check again.
         </Alert>
       )}
 
@@ -108,7 +108,7 @@ export const Step4CheckReport: React.FC<{ onBack: () => void; onRestart: () => v
             startIcon={busy ? <CircularProgress size={18} color="inherit" /> : undefined}
             onClick={onCheck}
           >
-            {busy ? 'Checking locally…' : 'Check match'}
+            {busy ? 'Checking on your device…' : 'Check it'}
           </Button>
         ) : onDone ? (
           <Button variant="contained" onClick={onDone}>

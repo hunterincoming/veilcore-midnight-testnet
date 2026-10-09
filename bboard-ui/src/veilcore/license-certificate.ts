@@ -17,7 +17,7 @@
 
 import { fingerprintText } from './commitment';
 import type { License, LicenseTerms, AgreementType, LicenseState } from './licenses';
-import { createsHeritableObligation } from './licenses';
+import { createsHeritableObligation, signedByTwoParties } from './licenses';
 
 export const CERT_VERSION = '0.1';
 
@@ -37,6 +37,12 @@ export type PublicFace = {
    * needs to know an obligation exists without learning what it is.
    */
   readonly encumbersDescendants: boolean;
+  /**
+   * True only when the issue and the counter-signature came from two different holder
+   * keys. "active" alone means only that it was marked active, which in this version is
+   * done from the issuer's own browser.
+   */
+  readonly countersignedByOtherParty: boolean;
   readonly anchor?: { chain: string; network: string; txHash?: string };
 };
 
@@ -69,6 +75,7 @@ const publicFaceOf = (l: License): PublicFace => ({
   activatedAt: l.licenseeSignedAt,
   revokedAt: l.revokedAt,
   encumbersDescendants: createsHeritableObligation(l.type, l.terms),
+  countersignedByOtherParty: signedByTwoParties(l),
 });
 
 /**
@@ -95,15 +102,36 @@ export const certificateFor = (l: License, grants: LicenseGrant[]): LicenseCerti
   if (on.has('royalty')) disclosed.royalty = { type: t.royaltyType, amount: t.royaltyAmount, basis: t.unitBasis };
   if (on.has('offspring')) disclosed.offspring = { royaltyPct: t.offspringRoyaltyPct ?? null };
   if (on.has('parties')) disclosed.parties = { licensee: t.licensee };
+  // What anyone needs to recompute the agreement fingerprint from the full terms. Only
+  // with the full terms: with the salt and part of the terms, the rest could be guessed
+  // again (attack round D).
+  if (grants.includes('full')) {
+    disclosed.full = {
+      type: l.type,
+      terms: t,
+      record: l.recordFingerprint,
+      ...(l.agreementSalt
+        ? {
+            salt: l.agreementSalt,
+            fingerprintScheme: 'sha256 over canonicalise({ v: "veilcore/agreement/v2", type, terms, record, salt })',
+          }
+        : { fingerprintScheme: 'unsalted, made before 4 October 2026' }),
+    };
+  }
 
-  return { public: publicFaceOf(l), disclosed, grants: [...on] };
+  return {
+    public: publicFaceOf(l),
+    disclosed,
+    grants: [...on, ...(grants.includes('full') ? (['full'] as LicenseGrant[]) : [])],
+  };
 };
 
 /**
- * The commitment over a certificate's public face.
+ * A hash of a certificate's public face.
  *
- * Lets a recipient check the public face has not been altered, without needing the
- * private side at all.
+ * Not a signature: anyone who edits the public face can recompute it, so it catches an
+ * accidental change and nothing deliberate. The export says so. Proving the public face
+ * came from the issuer needs it signed with a key the recipient can check; not built.
  */
 export const certificateFingerprint = async (cert: LicenseCertificate): Promise<string> =>
   fingerprintText(JSON.stringify(cert.public));
@@ -111,12 +139,17 @@ export const certificateFingerprint = async (cert: LicenseCertificate): Promise<
 /** Export a certificate as a file the holder can send. */
 export const exportCertificate = async (l: License, grants: LicenseGrant[]): Promise<void> => {
   const cert = certificateFor(l, grants);
-  const payload = { ...cert, publicFingerprint: await certificateFingerprint(cert) };
+  const payload = {
+    ...cert,
+    publicFingerprint: await certificateFingerprint(cert),
+    publicFingerprintNote:
+      'A hash of the public face, not a signature: anyone who edits the public face can recompute it. Check the state with the issuer.',
+  };
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `${l.id}.licence.json`;
+  a.download = `${l.id}.license.json`;
   a.click();
   URL.revokeObjectURL(url);
 };

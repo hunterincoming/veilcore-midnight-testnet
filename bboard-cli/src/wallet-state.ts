@@ -19,6 +19,7 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import type { Logger } from 'pino';
+import { privateStatePassword } from './password.js';
 
 export type SavedWalletState = {
   readonly shielded: string;
@@ -40,7 +41,7 @@ export class WalletStateFile {
     networkId: string,
     masterSeed: string,
     directory = path.join(os.homedir(), '.veilcore', 'wallet-state'),
-    password = process.env.VEILCORE_PRIVATE_STATE_PASSWORD,
+    password = privateStatePassword(),
   ) {
     // The name says which wallet without revealing the seed.
     const id = createHash('sha256').update(`veilcore:wallet-state:${networkId}:${masterSeed}`).digest('hex');
@@ -75,10 +76,12 @@ export class WalletStateFile {
     }
     try {
       if (!blob.subarray(0, MAGIC.length).equals(MAGIC)) throw new Error('not a wallet-state file');
+      // Header, salt, iv and a full 16-byte tag, then at least one byte of ciphertext.
+      if (blob.length <= 49) throw new Error('damaged');
       const salt = blob.subarray(5, 21);
       const iv = blob.subarray(21, 33);
       const tag = blob.subarray(33, 49);
-      const decipher = createDecipheriv('aes-256-gcm', this.key(salt), iv);
+      const decipher = createDecipheriv('aes-256-gcm', this.key(salt), iv, { authTagLength: 16 });
       decipher.setAuthTag(tag);
       const plain = Buffer.concat([decipher.update(blob.subarray(49)), decipher.final()]);
       const parsed = JSON.parse(plain.toString('utf8')) as Partial<SavedWalletState>;

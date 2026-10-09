@@ -1,0 +1,345 @@
+// VeilCore claims: prove one fact about a sealed record without disclosing the rest.
+// SPDX-License-Identifier: Apache-2.0
+//
+// A record sealed with commitment algorithm `sha256/fields/v1` binds a set of 16 slots
+// (SPEC section 4.5). Each circuit here recomputes the record commitment from values the
+// prover holds and records one claim about it:
+//
+//   proveValue      slot i holds exactly v                      (publishes v)
+//   proveRange      the number in slot i is >= t, or <= t        (never the number)
+//   proveDistinct   two records differ in >= k comparable slots  (never which, or how many)
+//   proveUnchanged  a correction changed only the slots in a mask
+//   proveAttested   a laboratory signed the record (Schnorr over Jubjub)
+//
+// A laboratory's signature is its own claim, on the record commitment, which binds every
+// value. Any other claim on the same record, read together with it, is a claim about
+// values a laboratory sealed, not values the holder typed. The signing key is published;
+// whether it belongs to a laboratory the verifier trusts is the verifier's decision
+// (SPEC section 7), not this contract's.
+//
+// Size. Every circuit here is at most 2^17 rows, so a holder can prove any claim on an
+// ordinary computer and never hand the values to someone else to prove for them. Each
+// SHA-256 block costs about 1,940 rows; the field-set layout (SPEC 4.5) is chosen for
+// that, and scripts/circuit-sizes.sh fails the build if a circuit grows past 2^17.
+//
+// A claim the sealed values do not support cannot be proved, so nothing is published.
+//
+// No state grows with use: claims are written to event cells, which verifiers read per
+// transaction from the indexer (as for ownership proofs in veilcore.compact). The
+// contract holds no rights and no funds. Design and limits: docs/claims-design.md.
+
+pragma language_version 0.23;
+
+import CompactStandardLibrary;
+import "schnorr" prefix Schnorr_;
+
+export enum ClaimKind { NONE, VALUE, RANGE, DISTINCT, UNCHANGED, ATTESTED }
+export enum RangeOp { AT_LEAST, AT_MOST }
+
+/** The private half of one record's field set. Never published. */
+export struct FieldSet {
+  /** The 16 slot values, each 32 bytes (SPEC 4.5: uint little-endian, digest, or zero). */
+  values: Vector<16, Bytes<32>>,
+  /** The 16 slot salts, 23 bytes each. */
+  salts: Vector<16, Bytes<23>>,
+  /** SHA-256 of the canonical JSON of the record's other committed fields. */
+  jsonDigest: Bytes<32>,
+}
+
+/** One slot, its salt, and all 16 leaves of its record. Never published. */
+export struct SlotOpening {
+  value: Bytes<32>,
+  salt: Bytes<23>,
+  /** The 16 leaves; the opened slot's is recomputed from its value and salt. */
+  leaves: Vector<16, Bytes<32>>,
+  jsonDigest: Bytes<32>,
+}
+
+/** What a schema fixes for claims (comparable slots, k, numeric slots), and its document digest. */
+export struct SchemaTerms {
+  documentDigest: Bytes<32>,
+  comparable: Vector<16, Boolean>,
+  k: Uint<8>,
+  /** Slots declared `uint`: only these can carry a range claim. */
+  numeric: Vector<16, Boolean>,
+}
+
+// ─────────────────────────────────────────────────────────────── state
+
+/** Protocol version of every hash below (their tags read "veilcore:v1:f..."). */
+export sealed ledger protocolVersion: Uint<16>;
+
+export ledger claimSeq: Counter;
+
+// Event cells: the most recent claim. Read per transaction from the indexer.
+export ledger lastClaimKind: ClaimKind;
+/** The record the claim is about (for distinct: the first; for unchanged: the old one). */
+export ledger lastClaimRecord: Bytes<32>;
+/** The second record (distinct: the other one; unchanged: the correction). */
+export ledger lastClaimOther: Bytes<32>;
+export ledger lastClaimSchema: Bytes<32>;
+export ledger lastClaimSlot: Uint<8>;
+/** value: the value. range: the bound. unchanged: the mask of slots allowed to change. */
+export ledger lastClaimParam: Bytes<32>;
+export ledger lastClaimOp: RangeOp;
+/** The laboratory key that signed the record (attested claims), or (0, 0). */
+export ledger lastClaimAttesterX: Field;
+export ledger lastClaimAttesterY: Field;
+
+constructor() {
+  protocolVersion = 1;
+}
+
+// ─────────────────────────────────────────────────────────────── witnesses
+
+witness firstFieldSet(): FieldSet;
+witness secondFieldSet(): FieldSet;
+witness slotOpening(): SlotOpening;
+/** The number in the opened slot, for a range claim. */
+witness slotNumber(): Uint<64>;
+witness schemaTerms(): SchemaTerms;
+/** The laboratory's signing key, and its signature on the record. */
+witness attesterKey(): JubjubPoint;
+witness attesterSignature(): Schnorr_SchnorrSignature;
+
+// ─────────────────────────────────────────────────────────────── hashes (SPEC 4.5)
+
+/** SHA-256(value || salt): 55 bytes, one SHA-256 block. */
+export circuit fieldLeaf(value: Bytes<32>, salt: Bytes<23>): Bytes<32> {
+  return persistentHash<[Bytes<32>, Bytes<23>]>([value, salt]);
+}
+
+/** SHA-256("veilcore:v1:fset" || schemaId || the 16 leaves): 560 bytes, nine blocks. */
+export circuit fieldSetRoot(schemaId: Bytes<32>, leaves: Vector<16, Bytes<32>>): Bytes<32> {
+  return persistentHash<[Bytes<16>, Bytes<32>, Vector<16, Bytes<32>>]>([pad(16, "veilcore:v1:fset"), schemaId, leaves]);
+}
+
+export circuit fieldRecord(setRoot: Bytes<32>, jsonDigest: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<3, Bytes<32>>>([pad(32, "veilcore:v1:frecord"), setRoot, jsonDigest]);
+}
+
+export circuit schemaId(documentDigest: Bytes<32>, terms: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<3, Bytes<32>>>([pad(32, "veilcore:v1:fschema"), documentDigest, terms]);
+}
+
+/**
+ * An unsigned number as a slot value: little-endian in bytes 0-7, with byte 8 set to 1 to
+ * mark it present. An absent slot is all zeros, so it can never pass as the number 0 (a
+ * record with no test result must not prove "at most 0.3%").
+ */
+export circuit numberBytes(n: Uint<64>): Bytes<32> {
+  return ((n as Field) + 18446744073709551616) as Bytes<32>;
+}
+
+/** A 16-slot mask as a number (slot i is bit i). */
+circuit maskNumber(mask: Vector<16, Boolean>): Field {
+  const weights: Vector<16, Field> = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768];
+  return fold((acc: Field, b: Boolean, w: Field) => acc + (b ? w : 0 as Field), 0 as Field, mask, weights);
+}
+
+/** A 16-slot mask, little-endian in 32 bytes (published with an unchanged claim). */
+export circuit maskBytes(mask: Vector<16, Boolean>): Bytes<32> {
+  return maskNumber(mask) as Bytes<32>;
+}
+
+/**
+ * A schema's terms in one 32-byte element: the comparable mask in bytes 0-1, the numeric
+ * mask in bytes 2-3 (little-endian), k in byte 4, the rest zero.
+ */
+export circuit termsBytes(t: SchemaTerms): Bytes<32> {
+  return (maskNumber(t.comparable) + 65536 * maskNumber(t.numeric) + 4294967296 * (t.k as Field)) as Bytes<32>;
+}
+
+/** The schema id from its terms. */
+circuit schemaOf(t: SchemaTerms): Bytes<32> {
+  return schemaId(t.documentDigest, termsBytes(t));
+}
+
+/** Whether `slot` is set in a 16-slot mask. */
+circuit maskHas(mask: Vector<16, Boolean>, slot: Uint<8>): Boolean {
+  const indexes: Vector<16, Uint<8>> = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+  return fold((acc: Boolean, b: Boolean, i: Uint<8>) => acc || (b && i == slot), false, mask, indexes);
+}
+
+/** The commitment of a record from its whole field set. */
+circuit recordOf(schema: Bytes<32>, fs: FieldSet): Bytes<32> {
+  return fieldRecord(fieldSetRoot(schema, map(fieldLeaf, fs.values, fs.salts)), fs.jsonDigest);
+}
+
+/** The field-set root from one opened slot, after checking the slot's leaf is in its place. */
+circuit setRootFromSlot(schema: Bytes<32>, slot: Uint<8>, o: SlotOpening): Bytes<32> {
+  const mine = fieldLeaf(o.value, o.salt);
+  const indexes: Vector<16, Uint<8>> = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+  assert(fold((acc: Boolean, l: Bytes<32>, i: Uint<8>) => acc || (i == slot && l == mine), false, o.leaves, indexes),
+         "The opening is for a different slot");
+  return fieldSetRoot(schema, o.leaves);
+}
+
+// ─────────────────────────────────────────────────────────────── laboratory signatures
+
+/**
+ * What a laboratory signs: a domain tag and the RECORD commitment, so a signature cannot
+ * be moved to another record built around the same field set (attack round A1/B-H1).
+ * A Field holds 31 of the commitment's 32 bytes, so a tagged hash of it is signed too,
+ * which covers the byte the first element drops (A2).
+ */
+export pure circuit attestationMessage(record: Bytes<32>): Vector<3, Field> {
+  return [degradeToTransient(pad(32, "veilcore:v1:fattest")),
+          degradeToTransient(record),
+          degradeToTransient(persistentHash<Vector<2, Bytes<32>>>([pad(32, "veilcore:v1:fattest2"), record]))];
+}
+
+/** The full Schnorr challenge for an attestation, for the off-chain signer. */
+export pure circuit attestationChallenge(annX: Field, annY: Field, pkX: Field, pkY: Field, record: Bytes<32>): Field {
+  return Schnorr_schnorrChallenge<3>(annX, annY, pkX, pkY, attestationMessage(record));
+}
+
+circuit assertAttested(record: Bytes<32>, key: JubjubPoint, sig: Schnorr_SchnorrSignature): [] {
+  Schnorr_schnorrVerify<3>(attestationMessage(record), sig, key);
+}
+
+circuit publishAttester(key: JubjubPoint): [] {
+  lastClaimAttesterX = disclose(jubjubPointX(key));
+  lastClaimAttesterY = disclose(jubjubPointY(key));
+}
+
+circuit assertSlot(slot: Uint<8>): [] {
+  assert(slot < 16, "A field set has 16 slots, numbered 0 to 15");
+}
+
+circuit publish(kind: ClaimKind, record: Bytes<32>, other: Bytes<32>, schema: Bytes<32>,
+                slot: Uint<8>, param: Bytes<32>, op: RangeOp): [] {
+  claimSeq.increment(1);
+  lastClaimKind = kind;
+  lastClaimRecord = record;
+  lastClaimOther = other;
+  lastClaimSchema = schema;
+  lastClaimSlot = slot;
+  lastClaimParam = param;
+  lastClaimOp = op;
+  lastClaimAttesterX = 0;
+  lastClaimAttesterY = 0;
+}
+
+// ─────────────────────────────────────────────────────────────── claim checks
+
+/** Check a value claim; returns the field-set root it rests on. */
+circuit checkValue(r: Bytes<32>, s: Bytes<32>, i: Uint<8>, v: Bytes<32>): Bytes<32> {
+  assertSlot(i);
+  const o = slotOpening();
+  assert(o.value == v, "The opened slot does not hold that value");
+  const root = setRootFromSlot(s, i, o);
+  assert(fieldRecord(root, o.jsonDigest) == r, "The opening does not belong to that record");
+  return root;
+}
+
+/** Check a range claim; returns the field-set root it rests on. */
+circuit checkRange(r: Bytes<32>, s: Bytes<32>, i: Uint<8>, p: RangeOp, t: Uint<64>): Bytes<32> {
+  assertSlot(i);
+  const terms = schemaTerms();
+  assert(schemaOf(terms) == s, "Those are not the terms of that schema");
+  assert(maskHas(terms.numeric, i), "That slot is not a number slot in its schema");
+  const o = slotOpening();
+  const n = slotNumber();
+  assert(o.value == numberBytes(n), "The opened slot does not hold that number");
+  const root = setRootFromSlot(s, i, o);
+  assert(fieldRecord(root, o.jsonDigest) == r, "The opening does not belong to that record");
+  assert(p == RangeOp.AT_LEAST ? n >= t : n <= t, "The sealed number does not meet the bound");
+  return root;
+}
+
+/** Check a distinctness claim; returns the schema id. */
+circuit checkDistinct(a: Bytes<32>, b: Bytes<32>): Bytes<32> {
+  assert(a != b, "A record is not distinct from itself");
+  const terms = schemaTerms();
+  assert(terms.k >= 1, "A schema's distinctness threshold must be at least 1");
+  const s = disclose(schemaOf(terms));
+  const fa = firstFieldSet();
+  const fb = secondFieldSet();
+  assert(recordOf(s, fa) == a, "The first field set does not belong to the first record");
+  assert(recordOf(s, fb) == b, "The second field set does not belong to the second record");
+  const zero = default<Bytes<32>>;
+  const differing = fold(
+    (acc: Uint<8>, c: Boolean, x: Bytes<32>, y: Bytes<32>) =>
+      (c && x != y && x != zero && y != zero ? acc + 1 : acc) as Uint<8>,
+    0 as Uint<8>, terms.comparable, fa.values, fb.values);
+  assert(differing >= terms.k, "The records do not differ in enough comparable slots");
+  return s;
+}
+
+// ─────────────────────────────────────────────────────────────── claims
+
+/**
+ * Slot `slot` of `record` holds exactly `value`. Publishes the value: this establishes
+ * that a value someone was shown is the sealed one. It hides nothing.
+ */
+export circuit proveValue(record: Bytes<32>, schema: Bytes<32>, slot: Uint<8>, value: Bytes<32>): [] {
+  const r = disclose(record);
+  const s = disclose(schema);
+  const i = disclose(slot);
+  const v = disclose(value);
+  checkValue(r, s, i, v);
+  publish(ClaimKind.VALUE, r, default<Bytes<32>>, s, i, v, RangeOp.AT_LEAST);
+}
+
+/**
+ * The number in slot `slot` of `record` is at least (or at most) `bound`. The number
+ * itself is never published.
+ */
+export circuit proveRange(record: Bytes<32>, schema: Bytes<32>, slot: Uint<8>, op: RangeOp, bound: Uint<64>): [] {
+  const r = disclose(record);
+  const s = disclose(schema);
+  const i = disclose(slot);
+  const p = disclose(op);
+  const t = disclose(bound);
+  checkRange(r, s, i, p, t);
+  publish(ClaimKind.RANGE, r, default<Bytes<32>>, s, i, numberBytes(t), p);
+}
+
+/**
+ * Records `first` and `second` differ in at least k of their schema's comparable slots.
+ * The comparable slots and k are fixed by the schema id, so they cannot be chosen per
+ * claim. A slot counts only when both values are present (non-zero). Which slots differ,
+ * and how many, are never published.
+ */
+export circuit proveDistinct(first: Bytes<32>, second: Bytes<32>): [] {
+  const a = disclose(first);
+  const b = disclose(second);
+  const s = checkDistinct(a, b);
+  publish(ClaimKind.DISTINCT, a, b, s, 0, default<Bytes<32>>, RangeOp.AT_LEAST);
+}
+
+/**
+ * `corrected` differs from `original` only in the slots set in `mayChange`. Salts may
+ * differ (a correction is sealed afresh); values outside the mask are equal.
+ */
+export circuit proveUnchanged(original: Bytes<32>, corrected: Bytes<32>, schema: Bytes<32>, mayChange: Vector<16, Boolean>): [] {
+  const a = disclose(original);
+  const b = disclose(corrected);
+  const s = disclose(schema);
+  const m = disclose(mayChange);
+  assert(a != b, "A correction is a different record");
+  const fa = firstFieldSet();
+  const fb = secondFieldSet();
+  assert(recordOf(s, fa) == a, "The first field set does not belong to the original");
+  assert(recordOf(s, fb) == b, "The second field set does not belong to the correction");
+  const kept = fold(
+    (ok: Boolean, change: Boolean, x: Bytes<32>, y: Bytes<32>) => ok && (change || x == y),
+    true, m, fa.values, fb.values);
+  assert(kept, "A slot outside the mask changed");
+  publish(ClaimKind.UNCHANGED, a, b, s, 0, maskBytes(m), RangeOp.AT_LEAST);
+}
+
+/**
+ * A laboratory signed `record` (its commitment, which binds every value in the field set
+ * and the committed JSON). Publishes the laboratory's key. Read together with a value,
+ * range, distinct or unchanged claim on the same record, it makes that claim about values
+ * the laboratory sealed. Distinct over two signed records needs one attested claim each.
+ */
+export circuit proveAttested(record: Bytes<32>): [] {
+  const r = disclose(record);
+  const key = attesterKey();
+  assertAttested(r, key, attesterSignature());
+  publish(ClaimKind.ATTESTED, r, default<Bytes<32>>, default<Bytes<32>>, 0, default<Bytes<32>>, RangeOp.AT_LEAST);
+  publishAttester(key);
+}

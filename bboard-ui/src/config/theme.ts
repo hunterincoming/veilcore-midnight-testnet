@@ -10,6 +10,8 @@ const INK = '#04070a'; // near-black canvas
 const PANEL = '#0a1114'; // raised surface
 const TEXT = '#e7f4f1';
 const MUTED = '#7f9a95';
+/** Below MUI's "sm" breakpoint (600px). */
+const PHONE = '@media (max-width:599.95px)';
 
 export const theme = createTheme({
   palette: {
@@ -46,7 +48,9 @@ export const theme = createTheme({
     h6: { fontFamily: '"Space Grotesk", sans-serif', fontWeight: 500, letterSpacing: '0.01em' },
     button: { textTransform: 'none', fontWeight: 600, letterSpacing: '0.01em' },
     allVariants: { color: TEXT },
-    overline: { letterSpacing: '0.28em', color: MUTED },
+    // Phones: the two smallest variants come up from 12px to 13px. Desktop unchanged.
+    overline: { letterSpacing: '0.28em', color: MUTED, [PHONE]: { fontSize: '0.8125rem', letterSpacing: '0.22em' } },
+    caption: { [PHONE]: { fontSize: '0.8125rem' } },
   },
   components: {
     MuiPaper: {

@@ -1,16 +1,20 @@
-// Wizard step 5 — Share what you choose. The breeder makes a share link for a specific
-// recipient and picks exactly which facts that recipient sees. A live preview shows
-// precisely what they'll get; the genetics are never disclosable. The link carries a
-// fingerprint computed on this device (the `commit` hash, run as a plain function). No
-// zero-knowledge proof is made here and nothing is sent to a network.
+// Wizard step 5 — Choose what a stranger sees. The holder picks which facts about this
+// record anyone holding its id is shown; the genetics are never disclosable. A live
+// preview shows what the verify page will show.
+//
+// The choice is saved to the registry as the record's disclosure grant BEFORE any link
+// is shown or copied (attack round D). It used to live only in the link's ?show=, which
+// the recipient could edit to read parent names and breeding method, and the "Proof
+// sealed locally" token on screen was a hash that went nowhere. The grant applies to the
+// record, so to everyone with its id — this link, the certificate QR code, anything
+// forwarded — and the copy says that rather than "a recipient-specific proof".
 // SPDX-License-Identifier: Apache-2.0
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Alert,
   Box,
   Button,
-  Chip,
   CircularProgress,
   Divider,
   FormControlLabel,
@@ -26,14 +30,21 @@ import ContentCopyIcon from '@mui/icons-material/ContentCopyOutlined';
 import VisibilityIcon from '@mui/icons-material/VisibilityOutlined';
 import VerifiedIcon from '@mui/icons-material/VerifiedOutlined';
 import { getRecord } from '../../veilcore/records';
-import { fingerprintText, shortFingerprint } from '../../veilcore/commitment';
 import {
   DISCLOSURE_FIELDS,
   GENETICS_LABEL,
   defaultDisclosure,
-  encodeDisclosure,
+  disclosureFrom,
+  keysOn,
+  loadGrant,
+  saveGrant,
+  labelOf,
   type Disclosure,
+  type DisclosureKey,
 } from '../../veilcore/disclosure';
+import { canonicalUrl } from '../../config/network';
+import { CLAIMS_WHERE } from '../../config/copy';
+import { verifyPath } from '../../veilcore/verify-link';
 import { DisclosedFacts } from '../verify/DisclosedFacts';
 
 export const Step5ProveDisclosure: React.FC<{ recordId: string; onDone: () => void; onBack: () => void }> = ({
@@ -42,32 +53,58 @@ export const Step5ProveDisclosure: React.FC<{ recordId: string; onDone: () => vo
   onBack,
 }) => {
   const record = getRecord(recordId);
-  const [recipient, setRecipient] = useState('');
   const [disclosure, setDisclosure] = useState<Disclosure>(defaultDisclosure());
+  // What the registry holds now, so the switches start from the truth rather than from
+  // defaults that may not be what strangers currently see.
+  const [stored, setStored] = useState<{ show: string[]; updatedAt: string | null } | 'loading' | 'unknown'>('loading');
   const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<{ absolute: string; relative: string; token: string }>();
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<{ absolute: string; relative: string }>();
   const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    let live = true;
+    void loadGrant(recordId).then((g) => {
+      if (!live) return;
+      if (g && !('error' in g)) {
+        setStored(g);
+        // A record with no grant yet starts from the defaults, which are not saved
+        // until the holder presses the button.
+        if (g.updatedAt !== null) setDisclosure(disclosureFrom(g.show));
+      } else {
+        setStored('unknown');
+      }
+    });
+    return () => {
+      live = false;
+    };
+  }, [recordId]);
 
   if (!record) return <Typography>Record not found.</Typography>;
 
   const toggle = (key: keyof Disclosure) => {
     setDisclosure((p) => ({ ...p, [key]: !p[key] }));
-    setResult(undefined); // selection changed — the old link no longer matches
+    setResult(undefined); // selection changed — not saved until the button is pressed
+    setError(null);
   };
 
-  const onGenerate = async () => {
+  const onSave = async () => {
     setBusy(true);
+    setError(null);
+    setResult(undefined);
     try {
-      const show = encodeDisclosure(disclosure);
-      // A fingerprint of exactly what this recipient will see, computed on this device with
-      // the commit hash. Not a zero-knowledge proof, and nothing is sent to a network.
-      const token = await fingerprintText(JSON.stringify({ r: record.recordFingerprint, show, to: recipient.trim() }));
-      const query = `show=${show}${recipient.trim() ? `&to=${encodeURIComponent(recipient.trim())}` : ''}`;
-      setResult({
-        absolute: `${window.location.origin}/verify/${record.id}?${query}`,
-        relative: `/verify/${record.id}?${query}`,
-        token,
-      });
+      const out = await saveGrant(record.id, disclosure);
+      if ('error' in out) {
+        // No link without a stored grant: a link shown now would show strangers
+        // whatever the registry held before, not what is on screen.
+        setError(`Your choice was not saved, so no link was made: ${out.error}.`);
+        return;
+      }
+      setStored(out);
+      // The link names the record's fingerprint, so the page checks against the record
+      // this holder means rather than whatever fingerprint the registry answers with.
+      const relative = verifyPath(record.id, record.recordFingerprint);
+      setResult({ absolute: canonicalUrl(relative), relative });
     } finally {
       setBusy(false);
     }
@@ -80,36 +117,31 @@ export const Step5ProveDisclosure: React.FC<{ recordId: string; onDone: () => vo
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const unsaved =
+    stored === 'loading' || stored === 'unknown' || stored.updatedAt === null
+      ? true
+      : stored.show.join(',') !== keysOn(disclosure).join(',');
+
   return (
     <Stack spacing={2.5}>
       <Box>
         <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mb: 0.5 }}>
           <VerifiedIcon sx={{ color: 'primary.main' }} />
-          <Typography variant="h5">Prove what you choose</Typography>
+          <Typography variant="h5">Choose what a stranger sees</Typography>
         </Stack>
         <Typography variant="body2" color="text.secondary">
-          Prove what matters. Reveal nothing else. They get certainty about exactly what they need — and no access to
-          anything they don&apos;t.
+          Anyone who has this record&apos;s id — from a link you send, the QR code on its certificate, or a message
+          someone forwards — can open its verify page. Pick which facts that page shows. The choice is saved with the
+          record on VeilCore&apos;s registry and applies to everyone with the id; you can change it here at any time,
+          and links already sent then show the new choice.
         </Typography>
       </Box>
-
-      <TextField
-        label="Who is this link for? (optional)"
-        placeholder="e.g. a potential licensee, a lab, a buyer"
-        helperText="The link is prepared for this recipient."
-        value={recipient}
-        onChange={(e) => {
-          setRecipient(e.target.value);
-          setResult(undefined);
-        }}
-        fullWidth
-      />
 
       <Stack direction={{ xs: 'column', md: 'row' }} spacing={2.5} sx={{ alignItems: 'stretch' }}>
         {/* the choices */}
         <Box sx={{ flex: 1, minWidth: 0 }}>
           <Typography variant="overline" color="text.secondary">
-            Choose what they see
+            Shown on the verify page
           </Typography>
           <Stack sx={{ mt: 0.5 }}>
             {DISCLOSURE_FIELDS.map((f) => (
@@ -126,33 +158,44 @@ export const Step5ProveDisclosure: React.FC<{ recordId: string; onDone: () => vo
               </Typography>
             </Stack>
           </Stack>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+            {stored === 'loading'
+              ? 'Checking what is shared now…'
+              : stored === 'unknown'
+                ? 'Could not read what is shared now from the registry.'
+                : stored.updatedAt === null
+                  ? 'Nothing beyond the basics is shared yet.'
+                  : `Saved choice: ${stored.show.length ? stored.show.map((k) => labelOf(k as DisclosureKey)).join('; ') : 'nothing beyond the basics'}.`}
+            {unsaved && stored !== 'loading' ? ' The switches above are not saved yet.' : ''}
+          </Typography>
         </Box>
 
         {/* live preview */}
         <Box sx={{ flex: 1, minWidth: 0 }}>
           <Typography variant="overline" color="text.secondary">
-            Here&apos;s exactly what they&apos;ll see
+            What a stranger with the id will see
           </Typography>
           <Paper variant="outlined" sx={{ p: 2, mt: 0.5, background: 'rgba(255,255,255,0.02)' }}>
-            {recipient.trim() && (
-              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-                Prepared for {recipient.trim()}
-              </Typography>
-            )}
             <DisclosedFacts record={record} disclosure={disclosure} />
           </Paper>
         </Box>
       </Stack>
 
-      {result ? (
+      {error && (
+        <Alert severity="error" variant="outlined">
+          {error}
+        </Alert>
+      )}
+
+      {result && !unsaved ? (
         <Alert severity="success" variant="outlined" icon={<VerifiedIcon />}>
-          <Typography variant="subtitle2">
-            Share link ready · fingerprint computed on your device {shortFingerprint(result.token)}
-          </Typography>
+          <Typography variant="subtitle2">Saved on the registry</Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, mb: 1 }}>
-            Share this recipient-specific link. It shows only what you selected — the withheld facts are not shown, and
-            the genetics are never disclosed. Proving a withheld fact without revealing it needs the per-field scheme,
-            which the specification does not yet define.
+            Anyone who opens this link, or has this record&apos;s id any other way, sees the facts on the right and
+            nothing else; the registry does not send the rest, and editing the link cannot add to it. The genetics are
+            never disclosed. This choice controls what the verify page shows. Proving one hidden value (a marker, a
+            range, or that two varieties differ) without showing the rest is done by VeilCore&apos;s claims contract.{' '}
+            {CLAIMS_WHERE}
           </Typography>
           <TextField
             value={result.absolute}
@@ -184,19 +227,12 @@ export const Step5ProveDisclosure: React.FC<{ recordId: string; onDone: () => vo
             size="large"
             disabled={busy}
             startIcon={busy ? <CircularProgress size={18} color="inherit" /> : undefined}
-            onClick={onGenerate}
+            onClick={() => void onSave()}
           >
-            {busy ? 'Computing on your device…' : 'Make the share link'}
+            {busy ? 'Saving…' : 'Save this choice & get the link'}
           </Button>
         </Box>
       )}
-
-      <Chip
-        size="small"
-        variant="outlined"
-        label="Checked on your device. Nothing was sent to the network (the demo simulates that step)."
-        sx={{ alignSelf: 'flex-start', height: 'auto', '& .MuiChip-label': { whiteSpace: 'normal', py: 0.5 } }}
-      />
 
       <Divider />
       <Stack direction="row" spacing={1.5} sx={{ flexWrap: 'wrap' }}>
@@ -204,7 +240,7 @@ export const Step5ProveDisclosure: React.FC<{ recordId: string; onDone: () => vo
           Back
         </Button>
         <Button variant="contained" onClick={onDone}>
-          Continue — share or license
+          Continue: share or license
         </Button>
       </Stack>
     </Stack>

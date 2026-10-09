@@ -1,22 +1,29 @@
-// CounterSignPage (/license/:id/sign) — the licensee's view. They review the terms and
-// counter-sign; in this demo that records the time of signing in the registry and marks
-// the agreement active. It is not a cryptographic signature (licenses.ts sets
-// licenseeSignedAt and nothing else), so the page must not call it one.
+// CounterSignPage (/license/:id/sign) — meant as the licensee's view. It is not one yet:
+// the agreement is read from this browser's own registry set, so the page only opens for
+// the issuer, and the issuer is the only one who can press "sign" (attack round D). It
+// says so, records which holder key pressed it, and never says "both parties have
+// signed" unless two different keys did. Counter-signing by the other party needs the
+// registry to serve the agreement to them and take their key's signature; not built.
 // SPDX-License-Identifier: Apache-2.0
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Alert, Box, Button, Chip, Container, Divider, Paper, Stack, Typography } from '@mui/material';
 import { useParams } from 'react-router-dom';
 import {
   useLicenses,
   getLicense,
   countersignLicense,
+  signedByTwoParties,
+  isIssuer,
+  startLicenseSync,
   effectiveState,
   agreementType,
   agreementRows,
   AGREEMENT_LABEL,
 } from '../../veilcore/licenses';
 import { TEAL } from '../../config/theme';
+import { startRecordSync } from '../../veilcore/records';
+import { AGREEMENTS_SIMULATED, LICENSE_PROOF_NOTE, SIMULATED_TAG, THIS_SITE } from '../../config/copy';
 
 const Line: React.FC<{ k: string; v: string }> = ({ k, v }) => (
   <Stack direction="row" spacing={2} sx={{ justifyContent: 'space-between' }}>
@@ -31,8 +38,16 @@ const Line: React.FC<{ k: string; v: string }> = ({ k, v }) => (
 
 export const CounterSignPage: React.FC = () => {
   useLicenses();
+  useEffect(() => {
+    startLicenseSync();
+    startRecordSync();
+  }, []);
   const { id = '' } = useParams();
   const license = getLicense(id);
+  const [issuerHere, setIssuerHere] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (license) void isIssuer(license).then(setIssuerHere);
+  }, [license]);
 
   return (
     <Box sx={{ minHeight: '100vh', background: '#04070a' }}>
@@ -46,7 +61,11 @@ export const CounterSignPage: React.FC = () => {
 
         {!license ? (
           <Paper sx={{ p: 4, textAlign: 'center' }}>
-            <Typography>No license found for this link.</Typography>
+            <Typography sx={{ mb: 1 }}>This agreement can&apos;t be opened in this browser.</Typography>
+            <Typography variant="body2" color="text.secondary">
+              For now an agreement opens only in the browser that made it: counter-signing from the other party&apos;s
+              own browser isn&apos;t built yet. If someone sent you this link, ask them for the terms directly.
+            </Typography>
           </Paper>
         ) : (
           <Paper sx={{ p: { xs: 3, md: 4 } }}>
@@ -55,7 +74,7 @@ export const CounterSignPage: React.FC = () => {
               <Chip size="small" variant="outlined" label={AGREEMENT_LABEL[agreementType(license)]} />
             </Stack>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2.5 }}>
-              Read the terms below. It becomes active in this demo when you counter-sign.
+              Read the terms below. In {THIS_SITE} it becomes active when it is counter-signed here.
             </Typography>
 
             <Stack spacing={1}>
@@ -75,27 +94,39 @@ export const CounterSignPage: React.FC = () => {
 
             {effectiveState(license) === 'sent' && (
               <Stack spacing={1.5}>
+                {issuerHere !== false && (
+                  <Alert severity="warning" variant="outlined">
+                    This browser holds the key that issued this agreement, so pressing the button below records that the
+                    issuer marked it active — not that the other party agreed. They cannot open or sign it from their
+                    own browser yet.
+                  </Alert>
+                )}
                 <Typography variant="body2" color="text.secondary">
-                  In this demo, signing records the time you signed in VeilCore&apos;s registry. It is not a
+                  This records a time and the holder key that pressed it in VeilCore&apos;s registry. It is not a
                   cryptographic signature and not a qualified (eIDAS) electronic signature.
                 </Typography>
-                <Button variant="contained" size="large" onClick={() => countersignLicense(license.id)}>
-                  Review complete — sign &amp; accept
+                <Button variant="contained" size="large" onClick={() => void countersignLicense(license.id)}>
+                  {issuerHere === false
+                    ? 'Review complete — sign & accept'
+                    : `Mark active as the issuer ${SIMULATED_TAG}`}
                 </Button>
               </Stack>
             )}
 
             {effectiveState(license) === 'draft' && (
               <Alert severity="info" variant="outlined">
-                This license hasn&apos;t been issued yet — ask the breeder to issue it.
+                This license hasn&apos;t been issued yet. Ask the breeder to issue it.
               </Alert>
             )}
 
             {effectiveState(license) === 'active' && (
               <Stack spacing={1.5}>
-                <Alert severity="success" variant="outlined">
-                  Active in this demo: both parties have signed (signing is simulated). The terms are attached to the
-                  record. What they are worth in a dispute is for the parties and, if it comes to it, a court.
+                <Alert severity={signedByTwoParties(license) ? 'success' : 'info'} variant="outlined">
+                  {signedByTwoParties(license)
+                    ? 'Active: issued and counter-signed from two different holder keys (not cryptographic signatures).'
+                    : 'Marked active by the issuer. The other party has not signed anything in VeilCore.'}{' '}
+                  The terms are attached to the record. What they are worth in a dispute is for the parties and, if it
+                  comes to it, a court.
                 </Alert>
                 {/* This button used to set a boolean and render "license proven". No
                     circuit ran, nothing was checked, and the word next to it was
@@ -104,9 +135,7 @@ export const CounterSignPage: React.FC = () => {
                     it is. Wiring it to proveLicense means a wallet, a proof server and
                     a deployed contract, which the web app does not have. */}
                 <Alert severity="info" variant="outlined">
-                  Proving a licence without revealing its terms runs the proveLicense circuit, which needs a wallet and
-                  a proof server. The CLI in <code>bboard-cli</code> does it against the deployed contract. This page
-                  cannot, and will not pretend to.
+                  {LICENSE_PROOF_NOTE}
                 </Alert>
               </Stack>
             )}
@@ -118,12 +147,12 @@ export const CounterSignPage: React.FC = () => {
             )}
             {effectiveState(license) === 'revoked' && (
               <Alert severity="error" variant="outlined">
-                This license was revoked — {license.revokedReason}.
+                This license was revoked: {license.revokedReason}.
               </Alert>
             )}
 
             <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 2.5 }}>
-              Demo — signing and settlement are simulated locally.
+              {AGREEMENTS_SIMULATED}
             </Typography>
           </Paper>
         )}

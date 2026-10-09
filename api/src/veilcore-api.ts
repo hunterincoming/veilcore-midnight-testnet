@@ -5,22 +5,33 @@
 // the contract derives the caller from it. Secrets travel to the circuits as witnesses,
 // never as arguments, and the ones needed for a single call (a recovery secret, a
 // secret being rotated into) are cleared from private state when that call ends,
-// whether it succeeded or not.
+// whether it succeeded or not. Clearing a value is not the same as it never reaching
+// disk: the CLI wraps its store so these, and the maintenance key, are kept in memory
+// only (memory-overlays.ts, round D).
 
 import {
   type ContractAddress,
+  type ContractState,
   sampleSigningKey,
   type SigningKey,
 } from '@midnight-ntwrk/midnight-js-protocol/compact-runtime';
-import { inspect } from 'node:util';
 import { type Logger } from 'pino';
 import * as Veilcore from '../../contract/src/managed/veilcore/contract/index.js';
 import { CompiledVeilcore, PROVABLE_CIRCUITS, compiledVeilcoreDeploying } from '../../contract/src/veilcore';
-import { type VeilcorePrivateState, createVeilcorePrivateState } from '../../contract/src/witnesses.js';
+import {
+  type PairingNote,
+  type VeilcorePrivateState,
+  createVeilcorePrivateState,
+} from '../../contract/src/witnesses.js';
+import { dnaPairBinding, newPairingSalt } from '../../contract/src/pairing.js';
 import {
   acceptOwnership,
-  acceptPresentation,
+  acceptPairing,
+  acceptPairingWithStates,
+  type RawPairing,
+  acceptPresentationAt,
   checkLineage,
+  currentHead,
   identityOf,
   isLive,
   type LineageReport,
@@ -28,16 +39,23 @@ import {
 import {
   createCircuitMaintenanceTxInterfaces,
   createUnprovenDeployTx,
-  DeployTxFailedError,
   findDeployedContract,
   submitTxAsync,
 } from '@midnight-ntwrk/midnight-js-contracts';
-import { SucceedEntirely } from '@midnight-ntwrk/midnight-js-types';
 import { combineLatest, map, from, defer, type Observable } from 'rxjs';
 import { toHex } from '@midnight-ntwrk/midnight-js-utils';
-import { assertDeploymentRecordCurrent } from './deploy-guard.js';
-import { retireMaintenanceAuthority } from './maintenance.js';
-import { callState, presentationState } from './presentation-lookup.js';
+import { assertDeploymentRecordCurrent, assertJoinAllowed, resolveNetwork } from './deploy-guard.js';
+import { FIRST_FRAGMENT, addMissingKeys, deployInFragments, unknownCircuits } from './deploy-fragments.js';
+import { retireMaintenanceAuthorityProvably } from './maintenance.js';
+import { type LookupCheck, contractStateNow, presentationWithTime, singleCallState } from './presentation-lookup.js';
+import { type ActionSource, type PairingSeen, findBindingPairings, rawPairingsBefore } from './pairing-history.js';
+import {
+  type AuthorityReport,
+  ContractStateMismatchError,
+  checkContractState,
+  withMainnetPins,
+} from './state-check.js';
+import { checkStartingState } from './starting-state.js';
 import * as utils from './utils/index.js';
 import {
   type VeilcoreProviders,
@@ -47,39 +65,10 @@ import {
   veilcorePrivateStateKey,
 } from './veilcore-types.js';
 
-/** Circuit keys carried by the deploy transaction itself; the rest follow it. */
-export const FIRST_FRAGMENT = 8;
+// The deploy helpers live in deploy-fragments.ts, shared with the claims contract.
+export { FIRST_FRAGMENT, isBlockLimit, isStaleDustTime, nodeRefusal } from './deploy-fragments.js';
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
-const operationName = (o: string | Uint8Array): string => (typeof o === 'string' ? o : Buffer.from(o).toString('utf8'));
-
-/**
- * The refusal of a transaction too big for a block, however it is wrapped: the wallet's
- * fee computation ("exceeded block limit in transaction fee computation") or the node's
- * LedgerApiError::BlockLimitExceededError (1010, custom error 154). A bare 1010 is any
- * refusal at all, so it is not enough: a stale-clock DUST refusal (171) must not be
- * taken for size and retried smaller at new addresses.
- */
-export const isBlockLimit = (e: unknown): boolean =>
-  /block limit|BlockLimitExceeded|ExhaustsResources|Custom error:\s*154\b/i.test(inspect(e, { depth: 6 }));
-
-/**
- * The node's "custom error 171", OutOfDustValidityWindow: the fee payment was built with a
- * time the chain is already past, which happens when the indexer the wallet reads the
- * chain's time from is behind the chain. Nothing landed; retrying later is the remedy.
- */
-export const isStaleDustTime = (e: unknown): boolean => /Custom error:\s*171\b/i.test(inspect(e, { depth: 6 }));
-
-/**
- * A refusal by the node's transaction pool ("1010: Invalid Transaction"): the transaction
- * was never admitted, so it cannot land in a block. Returns the node's custom error code
- * when it gives one, or 'none'.
- */
-export const nodeRefusal = (e: unknown): string | undefined => {
-  const text = inspect(e, { depth: 6 });
-  if (!/\b1010:\s*Invalid Transaction/i.test(text)) return undefined;
-  return /Custom error:\s*(\d+)/i.exec(text)?.[1] ?? 'none';
-};
 
 /** A landed transaction. Give a verifier `txId`: it finds the state right after it. */
 export type TxRef = { readonly txId: string; readonly txHash: string; readonly blockHeight: number };
@@ -152,10 +141,95 @@ export class VeilcoreAPI {
     return { ...this.logged('proveOwnership', txData), commitment: txData.private.result };
   }
 
-  /** Bind a DNA report fingerprint to the caller's record (lastPairedRecord, lastPairedDna). */
+  /**
+   * Pair any non-zero 32 bytes with the caller's record (lastPairedRecord, lastPairedDna),
+   * as given. COPYABLE: the value is public once sent, even before it lands, so anyone can
+   * pair the same value to a record of their own, first. Pairing a raw report hash this way
+   * does not show who had the report first. Use pairReport.
+   */
   async pairDna(dnaCommitment: Uint8Array): Promise<TxRef & { recordCommitment: Uint8Array }> {
     const txData = await this.deployedContract.callTx.pairDna(dnaCommitment);
     return { ...this.logged('pairDna', txData), recordCommitment: txData.private.result };
+  }
+
+  /**
+   * Pair a report with the caller's record so the pairing dates the report and cannot be
+   * copied (contract/src/pairing.ts; design.md, rule 9). `reportHash` is the SHA-256 of the
+   * report file. What goes on chain is H("veilcore:v1:dnapair", reportHash, identity, salt):
+   * `identity` is the record's identity (its origin), `salt` 32 fresh random bytes. Nothing
+   * about the report can be learnt from it, and it verifies for no other identity.
+   *
+   * The salt is saved in private state BEFORE the call is sent, and the pairing with its
+   * transaction id once it lands (`pairings()`). Keep the salt with the report: without it
+   * the pairing can never be shown, and it is not derived from the record secret, so a
+   * paper copy of that does not bring it back: back up the evidence files. To show it, give
+   * a verifier the report, the salt, the record and `txId` (pairingEvidence, pairing.ts).
+   * If the call fails after sending, `findPairingTransactions` finds where it landed.
+   */
+  async pairReport(reportHash: Uint8Array): Promise<
+    TxRef & {
+      readonly binding: Uint8Array;
+      readonly salt: Uint8Array;
+      readonly identity: Uint8Array;
+      readonly recordCommitment: Uint8Array;
+    }
+  > {
+    if (!(reportHash instanceof Uint8Array) || reportHash.length !== 32)
+      throw new Error("A report hash is 32 bytes: the report file's SHA-256.");
+    const ledger = await this.currentLedger();
+    const me = Veilcore.pureCircuits.commit(await this.currentSecret());
+    const identity = identityOf(ledger, me);
+    if (!ledger.recoveryOf.member(identity)) throw new Error('Anchor this record before pairing a report with it.');
+    if (!isLive(ledger, me))
+      throw new Error('This record secret was rotated or recovered away; act under the current one to pair.');
+    const salt = newPairingSalt(); // the platform's crypto generator; never a weak value
+    const binding = dnaPairBinding(reportHash, identity, salt);
+    const note: PairingNote = {
+      binding: toHex(binding),
+      reportSha256: toHex(reportHash),
+      identity: toHex(identity),
+      salt: toHex(salt),
+    };
+    // Saved before sending: a pairing that lands with its confirmation failing still has its salt.
+    await this.patchPrivateState({ pairings: [...(await this.pairings()), note] });
+    const txData = await this.deployedContract.callTx.pairDna(binding);
+    const ref = this.logged('pairDna', txData);
+    await this.patchPrivateState({
+      pairings: (await this.pairings()).map((p) => (p.binding === note.binding ? { ...p, txId: ref.txId } : p)),
+    });
+    return { ...ref, binding, salt, identity, recordCommitment: txData.private.result };
+  }
+
+  /** The bound pairings this client made (pairReport), with their salts. Oldest first. */
+  async pairings(): Promise<readonly PairingNote[]> {
+    const ps = await this.providers.privateStateProvider.get(veilcorePrivateStateKey);
+    return ps?.pairings ?? [];
+  }
+
+  /**
+   * For saved pairings with no transaction id (sent, but the confirmation failed): look for
+   * the pairDna call that paired each binding under its identity in the contract's history
+   * (`history`: pairing-history.ts, indexerHistory), and save the transaction id found.
+   * Returns every saved pairing afterwards. One whose binding is not on chain stays without
+   * an id: it was never sent, or the indexer does not show it yet.
+   */
+  async findPairingTransactions(history: ActionSource): Promise<readonly PairingNote[]> {
+    const notes = await this.pairings();
+    const open = notes.filter((n) => n.txId === undefined);
+    if (open.length === 0) return notes;
+    const found = await findBindingPairings(
+      history(this.deployedContractAddress),
+      open.map((n) => Uint8Array.from(Buffer.from(n.binding, 'hex'))),
+    );
+    const ledger = await this.currentLedger();
+    const mine = (n: PairingNote, p: PairingSeen): boolean => toHex(identityOf(ledger, p.record)) === n.identity;
+    const updated = notes.map((n) => {
+      if (n.txId !== undefined) return n;
+      const hit = (found.get(n.binding) ?? []).find((p) => mine(n, p));
+      return hit?.txId === undefined ? n : { ...n, txId: hit.txId };
+    });
+    await this.patchPrivateState({ pairings: updated });
+    return updated;
   }
 
   /** Timestamp a batch root. Unauthenticated by design: inclusion is not possession. */
@@ -227,16 +301,53 @@ export class VeilcoreAPI {
     return this.logged('recoverRecordSecret', txData);
   }
 
-  /** Replace a recovery commitment that may have leaked, gated by the current recovery secret. */
+  /**
+   * Replace a recovery commitment that may have leaked, gated by the current recovery secret.
+   *
+   * If the call fails, the chain is checked as for a rotation (round D, D-3): when two
+   * reads at least `landedCheck.confirmGapMs` apart both show `newRecoveryCommitment`
+   * installed, it landed and only its confirmation failed, and this throws
+   * {@link RecoveryReplacedButUnconfirmedError}. Any other error means it was not seen on
+   * chain, which is not the same as "it did not land": keep both recovery secrets until
+   * {@link recoverySecretIsCurrent} says which one the chain holds.
+   */
   async replaceRecoveryCommitment(
     recordCommitment: Uint8Array,
     newRecoveryCommitment: Uint8Array,
     recoverySecret: Uint8Array,
   ): Promise<TxRef> {
-    const txData = await this.withPrivate({ recoverySecret }, { recoverySecret: ZERO32() }, () =>
-      this.deployedContract.callTx.replaceRecoveryCommitment(recordCommitment, newRecoveryCommitment),
-    );
+    let txData;
+    try {
+      txData = await this.withPrivate({ recoverySecret }, { recoverySecret: ZERO32() }, () =>
+        this.deployedContract.callTx.replaceRecoveryCommitment(recordCommitment, newRecoveryCommitment),
+      );
+    } catch (e) {
+      const shows = async (): Promise<boolean | undefined> => {
+        try {
+          const l = await this.currentLedger();
+          const origin = identityOf(l, recordCommitment);
+          return l.recoveryOf.member(origin) && toHex(l.recoveryOf.lookup(origin)) === toHex(newRecoveryCommitment);
+        } catch {
+          return undefined; // the chain could not be read this time
+        }
+      };
+      if (await this.seenTwice(shows)) throw new RecoveryReplacedButUnconfirmedError(e);
+      throw e;
+    }
     return this.logged('replaceRecoveryCommitment', txData);
+  }
+
+  /**
+   * Whether `recoverySecret` is the one the chain holds for `record`'s identity now.
+   * Read-only: nothing is sent, and the secret is only hashed here.
+   */
+  async recoverySecretIsCurrent(record: Uint8Array, recoverySecret: Uint8Array): Promise<boolean> {
+    const l = await this.currentLedger();
+    const origin = identityOf(l, record);
+    return (
+      l.recoveryOf.member(origin) &&
+      toHex(l.recoveryOf.lookup(origin)) === toHex(Veilcore.pureCircuits.recoveryCommit(recoverySecret))
+    );
   }
 
   // ─────────────────────────────────────────────────────────── licences
@@ -248,6 +359,22 @@ export class VeilcoreAPI {
   async issueLicense(licenseCommitment: Uint8Array): Promise<TxRef> {
     await this.refuseRevoked(licenseCommitment, 'issue a licence to');
     return this.logged('issueLicense', await this.deployedContract.callTx.issueLicense(licenseCommitment));
+  }
+
+  /**
+   * As licensee: the licence commitment to send an issuer, built against the issuer's
+   * CURRENT head. `issuerRecord` may be any commitment of the issuer's identity (its
+   * origin, say, from a record's ledgerIdentity): issueLicense keys the licence on the
+   * issuer's head, so one built against an earlier commitment could never be
+   * countersigned. Keep the returned `issuerRecord`: countersigning, presenting and
+   * transferring this licence all name it. Nothing is sent.
+   */
+  async licenseRequest(
+    secret: Uint8Array,
+    issuerRecord: Uint8Array,
+  ): Promise<{ readonly licenseCommitment: Uint8Array; readonly issuerRecord: Uint8Array }> {
+    const head = currentHead(await this.currentLedger(), issuerRecord);
+    return { licenseCommitment: Veilcore.pureCircuits.licenseCommit(secret, head), issuerRecord: head };
   }
 
   /**
@@ -457,38 +584,185 @@ export class VeilcoreAPI {
   }
 
   /**
-   * As a verifier, check a licence presentation (design.md rule 5). `txId` is what the
-   * licensee gave you; it must be a successful proveLicense call on this contract, and
-   * the check is made on the state right after it (presentation-lookup.ts).
+   * Rule 8: check a control proof the holder made for your challenge (proveOwnership:
+   * the contract's name; it proves control of the record now, not ownership). On mainnet the
+   * state at the proof and the state now must both carry the pinned build's verifier keys
+   * (state-check.ts); `check` adds a second indexer or a required authority counter.
    */
-  /** Rule 8: check an ownership proof the holder made for your challenge. */
   async checkOwnership(
     indexerUri: string,
     txId: string,
     record: Uint8Array,
     challenge: Uint8Array,
-  ): Promise<ReturnType<typeof acceptOwnership>> {
-    // The state now as well as the state after the proof: if the proving commitment is
-    // no longer the head (rotated, or recovered away from a thief), the proof is refused.
-    return acceptOwnership(
-      await callState(indexerUri, this.deployedContractAddress, txId, 'proveOwnership'),
-      record,
-      challenge,
-      await this.currentLedger(),
-    );
+    check: LookupCheck = {},
+  ): Promise<ReturnType<typeof acceptOwnership> & { readonly authority?: AuthorityReport }> {
+    const req = this.lookupCheck(check);
+    let found: Awaited<ReturnType<typeof singleCallState>>;
+    try {
+      found = await singleCallState(
+        indexerUri,
+        this.deployedContractAddress,
+        txId,
+        ['proveOwnership'],
+        'That transaction is not a single proveOwnership call on this contract.',
+        undefined,
+        req,
+      );
+    } catch (e) {
+      if (e instanceof ContractStateMismatchError)
+        return { accepted: false, reason: e.message, authority: e.authority };
+      throw e;
+    }
+    // The state now as well as the state after the proof, read once: if the proving
+    // commitment is no longer the head (rotated, or recovered away from a thief), the
+    // proof is refused; where keys are pinned (mainnet), the state now must carry them too.
+    const nowState = await this.currentState();
+    if (req.verifierKeys !== undefined || req.authorityCounter !== undefined) {
+      try {
+        checkContractState(nowState, req, 'the current state');
+      } catch (e) {
+        if (e instanceof ContractStateMismatchError)
+          return { accepted: false, reason: e.message, authority: found.authority };
+        throw e;
+      }
+    }
+    const v = acceptOwnership(Veilcore.ledger(found.state.data), record, challenge, Veilcore.ledger(nowState.data));
+    // The authority reported is the one at the proof, as for a licence presentation.
+    return { ...v, authority: found.authority };
   }
 
+  /**
+   * Rule 9: check a bound DNA pairing. The holder gives `txId`, `record` (any record of the
+   * identity), the report (hash it yourself: `reportHash` is its SHA-256) and the `salt`.
+   * Accepted when that transaction is a single pairDna call on this contract that paired
+   * H("veilcore:v1:dnapair", reportHash, identity, salt) for `record`'s identity. Then:
+   * whoever controlled this record's identity at `pairedAt` (block time, ms) had this
+   * report, or its SHA-256, by then. The reason also says when the identity changed keys
+   * since (an earlier key holder made it), and, given `check.history`, when the report's
+   * hash was paired raw earlier (anyone could have made the pairing from it after that);
+   * without `history` it says that was not checked. It does not show who controls the
+   * record now (checkOwnership).
+   *
+   * On mainnet the state at the pairing and the state now must carry the pinned build's
+   * verifier keys. With `check.secondIndexer`, the pairing's call and the state now are read
+   * from both indexers too, and both must accept. The history comes from one indexer.
+   */
+  async checkPairing(
+    indexerUri: string,
+    txId: string,
+    record: Uint8Array,
+    reportHash: Uint8Array,
+    salt: Uint8Array,
+    check: LookupCheck & { readonly history?: ActionSource } = {},
+  ): Promise<
+    ReturnType<typeof acceptPairing> & {
+      readonly blockHeight?: number;
+      readonly authority?: AuthorityReport;
+    }
+  > {
+    const { history, ...lookup } = check;
+    const req = this.lookupCheck(lookup);
+    let found: Awaited<ReturnType<typeof singleCallState>>;
+    const nows: ContractState[] = [];
+    try {
+      found = await singleCallState(
+        indexerUri,
+        this.deployedContractAddress,
+        txId,
+        ['pairDna'],
+        'That transaction is not a single pairDna call on this contract.',
+        undefined,
+        req,
+      );
+      // The state now resolves a record made after the pairing (a later rotation), and shows
+      // whether the identity changed keys since. With a second indexer, its reading too.
+      nows.push(await this.currentState());
+      if (req.secondIndexer !== undefined) {
+        try {
+          nows.push(await contractStateNow(req.secondIndexer, this.deployedContractAddress));
+        } catch (e) {
+          throw new Error(
+            `The second indexer does not confirm the contract's state now (${e instanceof Error ? e.message : String(e)}). Refused.`,
+          );
+        }
+      }
+      if (req.verifierKeys !== undefined || req.authorityCounter !== undefined)
+        for (const n of nows) checkContractState(n, req, 'the current state');
+    } catch (e) {
+      if (e instanceof ContractStateMismatchError)
+        return { accepted: false, reason: e.message, authority: e.authority };
+      throw e;
+    }
+    let earlierRaw: RawPairing[] | undefined;
+    if (history !== undefined)
+      earlierRaw = (await rawPairingsBefore(history(this.deployedContractAddress), reportHash, txId)).map((p) => ({
+        record: p.record,
+        landedAt: p.blockTime,
+        blockHeight: p.blockHeight,
+        txId: p.txId,
+      }));
+    const v = acceptPairingWithStates(
+      Veilcore.ledger(found.state.data),
+      { record, reportHash, salt },
+      {
+        landedAt: found.blockTime,
+        blockHeight: found.blockHeight,
+        nows: nows.map((n) => Veilcore.ledger(n.data)),
+        earlierRaw,
+      },
+    );
+    return { ...v, blockHeight: found.blockHeight, authority: found.authority };
+  }
+
+  /**
+   * As a verifier, check a licence presentation (design.md rule 5). `txId` is what the
+   * licensee gave you; it must be a successful proveLicense call on this contract, and
+   * the check is made on the state right after it (presentation-lookup.ts).
+   *
+   * `issuedAt` is when the verifier issued `challenge` (its challenge book). The
+   * presentation is also refused when the indexer gives no time for it, when it landed
+   * before the challenge was issued, or when it is older than MAX_PRESENTATION_AGE_MS
+   * (verify.ts, acceptPresentationAt): it shows the licence was live when presented, not now.
+   * On mainnet the state must carry the pinned build's verifier keys; the maintenance
+   * authority at that transaction comes back with the verdict.
+   */
   async checkPresentation(
     indexerUri: string,
     txId: string,
     issuer: Uint8Array,
     challenge: Uint8Array,
-  ): Promise<ReturnType<typeof acceptPresentation>> {
-    return acceptPresentation(
-      await presentationState(indexerUri, this.deployedContractAddress, txId),
-      issuer,
-      challenge,
-    );
+    issuedAt?: number,
+    check: LookupCheck = {},
+  ): Promise<ReturnType<typeof acceptPresentationAt> & { readonly authority?: AuthorityReport }> {
+    let found: Awaited<ReturnType<typeof presentationWithTime>>;
+    try {
+      found = await presentationWithTime(
+        indexerUri,
+        this.deployedContractAddress,
+        txId,
+        undefined,
+        this.lookupCheck(check),
+      );
+    } catch (e) {
+      if (e instanceof ContractStateMismatchError)
+        return { accepted: false, reason: e.message, authority: e.authority };
+      throw e;
+    }
+    const v = acceptPresentationAt(found.ledger, issuer, challenge, {
+      landedAt: found.blockTime,
+      blockHeight: found.blockHeight,
+      issuedAt,
+    });
+    return { ...v, authority: found.authority };
+  }
+
+  /**
+   * What a verification lookup requires here: on mainnet, the pinned build's verifier
+   * keys, always (a caller cannot turn that off or replace them with its own table);
+   * elsewhere, whatever the caller asks.
+   */
+  private lookupCheck(check: LookupCheck): LookupCheck {
+    return withMainnetPins(check, 'veilcore', resolveNetwork());
   }
 
   // ─────────────────────────────────────────────────────────── plumbing
@@ -498,40 +772,54 @@ export class VeilcoreAPI {
     await this.patchPrivateState({ geneticSecret });
   }
 
-  /** The chain as this client reads it now. */
-  async currentLedger(): Promise<Veilcore.Ledger> {
-    const contractState = await this.providers.publicDataProvider.queryContractState(this.deployedContractAddress);
-    if (contractState === null) throw new Error('the VeilCore contract has no state at its address');
-    return Veilcore.ledger(contractState.data);
+  /**
+   * Act as `geneticSecret` from now on, if the chain shows it can act: its commitment is
+   * its identity's current head, or is not anchored at all (a fresh secret). A secret that
+   * was rotated or recovered away controls nothing and is refused; nothing changes then.
+   * This is the way back after a rotation or recovery the client adopted on the strength
+   * of the indexer (round D, D-4), and the way to restore a client from a paper copy.
+   */
+  async useRecordSecret(geneticSecret: Uint8Array): Promise<{ readonly anchored: boolean }> {
+    const l = await this.currentLedger();
+    const mine = Veilcore.pureCircuits.commit(geneticSecret);
+    if (!isLive(l, mine)) {
+      throw new Error(
+        'That record secret is not the current one of its identity (it was rotated or recovered away), so it ' +
+          'controls nothing. This client still acts as before.',
+      );
+    }
+    await this.actAs(geneticSecret);
+    return { anchored: l.recoveryOf.member(identityOf(l, mine)) };
   }
 
-  /** Give up the maintenance authority permanently. See maintenance.ts. */
+  /** The chain as this client reads it now. */
+  async currentLedger(): Promise<Veilcore.Ledger> {
+    return Veilcore.ledger((await this.currentState()).data);
+  }
+
+  /** The contract's whole state now (data, circuits, authority), as this client reads it. */
+  private async currentState(): Promise<ContractState> {
+    const contractState = await this.providers.publicDataProvider.queryContractState(this.deployedContractAddress);
+    if (contractState === null || contractState === undefined)
+      throw new Error('the VeilCore contract has no state at its address');
+    return contractState;
+  }
+
   /**
-   * Retire the maintenance authority for good. `currentKey` is the authority's signing key
-   * from the deployer's offline copy: deploy removes it from the local store.
+   * Retire the maintenance authority for good, PROVABLY: it is replaced with an empty
+   * committee (threshold 1), which no key can satisfy and anyone reading the contract can
+   * see (maintenance.ts, the path the claims contract uses). No replacement key is made,
+   * so none is stored anywhere. `currentKey` is the authority's signing key from the
+   * deployer's paper copy; without it, the key must already be in the provider (deploy).
+   * Either way it is removed from the provider when this ends, landed or not.
    */
   async retireMaintenanceAuthority(currentKey?: SigningKey): Promise<void> {
-    if (currentKey === undefined) {
-      await retireMaintenanceAuthority(
-        this.deployedContract,
-        this.providers.privateStateProvider,
-        this.deployedContractAddress,
-        this.logger,
-      );
-      return;
-    }
-    await this.providers.privateStateProvider.setSigningKey(this.deployedContractAddress, currentKey);
+    const store = this.providers.privateStateProvider;
+    if (currentKey !== undefined) await store.setSigningKey(this.deployedContractAddress, currentKey);
     try {
-      await retireMaintenanceAuthority(
-        this.deployedContract,
-        this.providers.privateStateProvider,
-        this.deployedContractAddress,
-        this.logger,
-      );
+      await retireMaintenanceAuthorityProvably(this.providers as never, this.deployedContractAddress, this.logger);
     } finally {
-      // The key was typed in for this one transaction. Whether it landed or not, it does
-      // not stay on this machine: the deployer still has the offline copy.
-      await this.providers.privateStateProvider.removeSigningKey(this.deployedContractAddress);
+      await store.removeSigningKey(this.deployedContractAddress);
     }
   }
 
@@ -545,8 +833,29 @@ export class VeilcoreAPI {
     throw new Error('could not find a free licence slot; the tree is nearly full');
   }
 
-  /** How long to look for a rotation or recovery on chain after its call failed. */
-  landedCheck = { tries: 6, intervalMs: 10_000 };
+  /**
+   * How long to look for a rotation, recovery or recovery replacement on chain after its
+   * call failed. A change is believed only when two reads at least `confirmGapMs` apart
+   * both show it (round D, D-4: one read of a lagging or forked indexer is not enough).
+   */
+  landedCheck: { tries: number; intervalMs: number; confirmGapMs?: number } = {
+    tries: 6,
+    intervalMs: 10_000,
+    confirmGapMs: 30_000,
+  };
+
+  /** True when `shows` says yes twice, `confirmGapMs` apart, within `tries` attempts. */
+  private async seenTwice(shows: () => Promise<boolean | undefined>): Promise<boolean> {
+    const { tries, intervalMs, confirmGapMs = 30_000 } = this.landedCheck;
+    for (let i = 0; i < tries; i++) {
+      if (i > 0) await sleep(intervalMs);
+      if ((await shows()) !== true) continue;
+      await sleep(confirmGapMs);
+      if ((await shows()) === true) return true;
+      this.logger?.warn('Two reads of the chain disagreed about whether the change landed; reading again.');
+    }
+    return false;
+  }
 
   private async currentSecret(): Promise<Uint8Array> {
     const s = (await this.providers.privateStateProvider.get(veilcorePrivateStateKey))?.geneticSecret;
@@ -555,10 +864,12 @@ export class VeilcoreAPI {
   }
 
   /**
-   * After a rotation or recovery call failed: if the chain shows `fromRecord`'s identity
-   * now headed by `newRecord`, the call landed and only its confirmation failed. Then act
-   * as the new secret (the old one can do nothing any more) and say so. Otherwise
-   * return, and the caller rethrows the original error.
+   * After a rotation or recovery call failed: if two reads of the chain, apart, both show
+   * `fromRecord`'s identity now headed by `newRecord`, the call landed and only its
+   * confirmation failed. Then act as the new secret and say so. The old secret is not
+   * forgotten by the operator: the indexer could still be wrong, and useRecordSecret
+   * goes back to it if the chain later shows it is still the head. Otherwise return, and
+   * the caller rethrows the original error.
    */
   private async adoptIfLanded(
     what: 'rotation' | 'recovery',
@@ -567,20 +878,19 @@ export class VeilcoreAPI {
     newSecret: Uint8Array,
     cause: unknown,
   ): Promise<void> {
-    const { tries, intervalMs } = this.landedCheck;
-    for (let i = 0; i < tries; i++) {
-      if (i > 0) await sleep(intervalMs);
+    const shows = async (): Promise<boolean | undefined> => {
       let ledger: Veilcore.Ledger;
       try {
         ledger = await this.currentLedger();
       } catch {
-        continue; // the chain could not be read this time; try again
+        return undefined; // the chain could not be read this time; try again
       }
       const origin = identityOf(ledger, fromRecord);
-      if (ledger.headOf.member(origin) && toHex(ledger.headOf.lookup(origin)) === toHex(newRecord)) {
-        await this.patchPrivateState({ geneticSecret: newSecret });
-        throw new LandedButUnconfirmedError(what, cause);
-      }
+      return ledger.headOf.member(origin) && toHex(ledger.headOf.lookup(origin)) === toHex(newRecord);
+    };
+    if (await this.seenTwice(shows)) {
+      await this.patchPrivateState({ geneticSecret: newSecret });
+      throw new LandedButUnconfirmedError(what, cause);
     }
   }
 
@@ -634,114 +944,72 @@ export class VeilcoreAPI {
   /**
    * Deploy the contract. `signingKey` becomes the maintenance authority, which can add
    * and remove verifier keys and so decides which circuits the network accepts. Pass
-   * `null` to retire it immediately (maintenance.ts): the contract can then never be
-   * changed or repaired, by anyone. Sealed records verify either way, by SHA-256.
+   * `null`, or `retire: true`, to retire it provably once every key is on (maintenance.ts):
+   * the contract can then never be changed or repaired, by anyone. Sealed records verify
+   * either way, by SHA-256. With `null` the key is random and exists only in this process,
+   * so a deploy that stops partway cannot be finished: the CLI always passes a key the
+   * operator wrote on paper.
    */
   static async deploy(
     providers: VeilcoreProviders,
     signingKey: SigningKey | null,
     logger?: Logger,
     firstFragment = FIRST_FRAGMENT,
+    options: { readonly retire?: boolean } = {},
   ): Promise<VeilcoreAPI> {
+    const retire = options.retire ?? signingKey === null;
     assertDeploymentRecordCurrent('veilcore', logger);
-    // The network refuses a deploy carrying a verifier key for every circuit ("exceeded
-    // block limit"). Deploy with the first `size` keys, halving on that refusal, then add
-    // the rest one maintenance transaction each. The authority's key, which those
-    // transactions need, stays in the local store until every key is on chain.
-    let size = Math.min(Math.max(1, firstFragment), PROVABLE_CIRCUITS.length);
-    let address: ContractAddress;
-    for (;;) {
-      const keep = PROVABLE_CIRCUITS.slice(0, size);
-      // What deployContract does, in an order that survives a confirmation that fails or
-      // hangs. midnight-js stores the authority's key and the private state only AFTER the
-      // deploy is confirmed, so a deploy that landed unconfirmed left the address unknown
-      // and the key nowhere. Here the address is known before anything is sent: it is
-      // logged, and the key and private state are stored, first.
-      const unsubmitted = await createUnprovenDeployTx(providers, {
-        compiledContract: compiledVeilcoreDeploying(keep),
-        initialPrivateState: createVeilcorePrivateState(utils.randomBytes(32)),
-        signingKey: signingKey ?? sampleSigningKey(),
-      });
-      const candidate = unsubmitted.public.contractAddress;
-      providers.privateStateProvider.setContractAddress(candidate);
-      await providers.privateStateProvider.set(veilcorePrivateStateKey, unsubmitted.private.initialPrivateState);
-      await providers.privateStateProvider.setSigningKey(candidate, unsubmitted.private.signingKey);
-      logger?.info(`Contract address: ${candidate}`);
-      try {
-        const txId = await submitTxAsync(providers, { unprovenTx: unsubmitted.private.unprovenTx });
-        logger?.info(`deploy transaction submitted (${txId}); waiting for it to be confirmed`);
-        const finalized = await providers.publicDataProvider.watchForTxData(txId);
-        if (finalized.status !== SucceedEntirely) throw new DeployTxFailedError(finalized);
-        logger?.info({
-          contractDeployed: { ...finalized, contractAddress: candidate },
-          circuitKeysInDeploy: keep.length,
-        });
-        address = candidate;
-        break;
-      } catch (e) {
-        if (size > 1 && isBlockLimit(e)) {
-          // Refused by the network: that contract never existed, so its key goes.
-          await providers.privateStateProvider.removeSigningKey(candidate);
-          size = Math.ceil(size / 2);
-          logger?.info(
-            `the deploy was over the block limit, so contract ${candidate} was never created; ` +
-              `trying again with ${size} circuit keys in it (a new address)`,
-          );
-          continue;
-        }
-        if (isBlockLimit(e)) {
-          // Too big even with one key: refused or never built, so that contract never existed.
-          await providers.privateStateProvider.removeSigningKey(candidate);
-          logger?.error(
-            `The deploy is over the block limit even with one circuit key. Nothing was created at ${candidate} ` +
-              'and nothing was spent. Send this message to Claude.',
-          );
-          throw e;
-        }
-        if (isStaleDustTime(e)) {
-          // Refused before entering a block: that contract never existed, so its key goes.
-          await providers.privateStateProvider.removeSigningKey(candidate);
-          logger?.error(
-            `The network refused the deploy (custom error 171, OutOfDustValidityWindow): the indexer ` +
-              `this wallet reads the chain's time from is behind the chain. Nothing was created at ${candidate} ` +
-              'and nothing was spent. Wait, then run again; if it repeats, the indexer is lagging.',
-          );
-          throw e;
-        }
-        const refused = nodeRefusal(e);
-        if (refused !== undefined) {
-          // Refused before entering a block: that contract never existed, so its key goes.
-          await providers.privateStateProvider.removeSigningKey(candidate);
-          logger?.error(
-            `The network refused the deploy (1010, custom error ${refused}). Nothing was created at ${candidate} ` +
-              'and nothing was spent. Do not try again until the cause is known: send this message to Claude.',
-          );
-          throw e;
-        }
-        logger?.error(
-          `The deploy did not complete. It may still have landed at contract address ${candidate}. ` +
-            'The maintenance key is kept in the local store for it: finish it with "Finish a deploy" and that address.',
+    // The confirmed deploy is the last transaction submitted (a refused one is retried at a
+    // new address). Its id lets join read the deploy itself (starting-state.ts).
+    let deployTxId: string | undefined;
+    const address = await deployInFragments({
+      providers,
+      circuits: PROVABLE_CIRCUITS,
+      firstFragment,
+      create: (keep) =>
+        createUnprovenDeployTx(providers, {
+          compiledContract: compiledVeilcoreDeploying(keep),
+          initialPrivateState: createVeilcorePrivateState(utils.randomBytes(32)),
+          signingKey: signingKey ?? sampleSigningKey(),
+        }),
+      submit: async (unprovenTx) => (deployTxId = await submitTxAsync(providers, { unprovenTx })),
+      store: async (candidate, unsubmitted) => {
+        providers.privateStateProvider.setContractAddress(candidate);
+        await providers.privateStateProvider.set(
+          veilcorePrivateStateKey,
+          unsubmitted.private.initialPrivateState as VeilcorePrivateState,
         );
-        throw e;
-      }
-    }
+        await providers.privateStateProvider.setSigningKey(candidate, unsubmitted.private.signingKey);
+      },
+      finish: 'Finish a deploy',
+      keyOnPaper: true,
+      logger,
+    });
+    logger?.info(
+      `Deploy transaction id: ${deployTxId}. Keep it with the contract address: on a network with no pinned ` +
+        'address, a verifier may be asked for it to check how the contract started.',
+    );
     let api: VeilcoreAPI;
     try {
       await VeilcoreAPI.addMissingCircuitKeys(providers, address, logger);
-      api = await VeilcoreAPI.join(providers, address, logger); // checks every key on chain
+      // Checks every key on chain, and the starting state, read from the deploy transaction
+      // itself. Not the mainnet address pin: this IS the deploy that makes the address the
+      // record will name.
+      api = await VeilcoreAPI.join(providers, address, logger, { deploying: true, deployTxId });
     } catch (e) {
       // The contract exists from here on. Deploying again would make a second one.
       logger?.error(
         `The contract IS on chain at ${address}, but not every circuit key was added. ` +
-          'Do NOT choose Deploy again. The maintenance key is kept on this computer for it: run again with ' +
-          'the same password and wallet, choose "Finish a deploy", and give it this address.',
+          'Do NOT choose Deploy again. Run again with the same password and wallet, choose "Finish a deploy", ' +
+          'give it this address, and type the maintenance key from your paper when it asks.',
       );
       throw e;
     }
-    if (signingKey === null) await api.retireMaintenanceAuthority();
-    // midnight-js keeps the authority's signing key in the local private-state store.
-    // The deployer was shown it before deploying and holds it offline; it should not
-    // also sit on this machine. To use it later: privateStateProvider.setSigningKey.
+    if (retire) await api.retireMaintenanceAuthority();
+    // midnight-js keeps the authority's signing key in the private-state provider. The
+    // deployer was shown it before deploying and holds it on paper; it should not stay
+    // here. (The CLI's provider holds signing keys in memory only, so it never reached
+    // disk; this clears the memory copy too.)
     await providers.privateStateProvider.removeSigningKey(address);
     return api;
   }
@@ -756,50 +1024,48 @@ export class VeilcoreAPI {
     address: ContractAddress,
     logger?: Logger,
   ): Promise<void> {
-    const onChain = async (): Promise<Set<string>> => {
-      for (let i = 0; i < 30; i++) {
-        const state = await providers.publicDataProvider.queryContractState(address);
-        if (state !== null && state !== undefined) return new Set(state.operations().map(operationName));
-        await sleep(2_000);
-      }
-      throw new Error(
-        `The indexer shows no contract at ${address} after a minute. Either the deploy never landed, or the ` +
-          'indexer is behind. Wait 15 minutes and choose Finish a deploy again. Do not choose Deploy again ' +
-          'until a block explorer also shows nothing at this address.',
-      );
-    };
-    const present = await onChain();
-    const todo = PROVABLE_CIRCUITS.filter((c) => !present.has(c));
     const maintenance = createCircuitMaintenanceTxInterfaces(providers, CompiledVeilcore, address);
     type Circuit = keyof typeof maintenance;
-    for (const [i, circuit] of todo.entries()) {
-      logger?.info(`adding circuit key ${i + 1} of ${todo.length}: ${circuit}`);
-      const vk = await providers.zkConfigProvider.getVerifierKey(circuit as Circuit);
-      try {
-        await maintenance[circuit as Circuit].insertVerifierKey(vk);
-      } catch (e) {
-        // It may have landed with only the confirmation failing; the chain decides.
-        if (!(await onChain()).has(circuit)) throw e;
-      }
-      // The next insert signs over the authority's counter as the indexer reports it, so
-      // wait until the indexer shows this one before building the next.
-      for (let tries = 0; !(await onChain()).has(circuit); tries++) {
-        if (tries >= 30)
-          throw new Error(
-            `The indexer has not shown the key for ${circuit} after a minute; it may be behind. ` +
-              'Wait 15 minutes, then choose Finish a deploy again with the same address.',
-          );
-        await sleep(2_000);
-      }
-    }
-    logger?.info(`all ${PROVABLE_CIRCUITS.length} circuit keys are on chain`);
+    await addMissingKeys({
+      providers,
+      address,
+      circuits: PROVABLE_CIRCUITS,
+      insert: async (circuit) =>
+        maintenance[circuit as Circuit].insertVerifierKey(
+          await providers.zkConfigProvider.getVerifierKey(circuit as Circuit),
+        ),
+      finish: 'Finish a deploy',
+      logger,
+    });
   }
 
+  /**
+   * Join the contract at `contractAddress`. Refused, before anything is read, on a
+   * network that pins VeilCore's address (mainnet: deploy-guard.ts) when this is another
+   * address; `deploying` skips only that pin, for a deploy and "Finish a deploy", which
+   * work on an address their own deploy made. Then refused unless every circuit of this
+   * build has its key on chain, no unknown circuit is there, and the contract STARTED from
+   * this build's constructor, checked from its deploy transaction (starting-state.ts:
+   * found by `deployTxId` when given, else through the indexer's latest action).
+   * Throws StartingStateUnreachableError, never a forgery verdict, when the deploy cannot
+   * be reached and nothing else settles it; join again with `deployTxId` then.
+   */
   static async join(
     providers: VeilcoreProviders,
     contractAddress: ContractAddress,
     logger?: Logger,
+    options: { readonly deploying?: boolean; readonly deployTxId?: string } = {},
   ): Promise<VeilcoreAPI> {
+    const pinned = options.deploying !== true && assertJoinAllowed(contractAddress, logger) === 'pinned';
+    // Checked before anything is written for this address. Matching keys show the code,
+    // not the contract: anyone can deploy this build with a forged starting ledger.
+    await checkStartingState({
+      publicDataProvider: providers.publicDataProvider,
+      address: contractAddress,
+      deployTxId: options.deployTxId,
+      pinned,
+      logger,
+    });
     providers.privateStateProvider.setContractAddress(contractAddress);
     const existing = await providers.privateStateProvider.get(veilcorePrivateStateKey);
     const deployed = await findDeployedContract<VeilcoreContract>(providers, {
@@ -811,9 +1077,7 @@ export class VeilcoreAPI {
     // findDeployedContract checks every circuit in this build has its key on chain. Also
     // refuse a contract carrying a circuit this build does not know: one the maintenance
     // authority added would otherwise pass silently.
-    const onChain =
-      (await providers.publicDataProvider.queryContractState(contractAddress))?.operations().map(operationName) ?? [];
-    const extra = onChain.filter((c) => !PROVABLE_CIRCUITS.includes(c));
+    const extra = await unknownCircuits(providers, contractAddress, PROVABLE_CIRCUITS);
     if (extra.length > 0) {
       throw new Error(`The contract carries circuits this build does not have: ${extra.join(', ')}. Do not use it.`);
     }
@@ -840,10 +1104,27 @@ export class LandedButUnconfirmedError extends Error {
     readonly what: 'rotation' | 'recovery',
     cause: unknown,
   ) {
-    super(`The ${what} DID land on chain; only confirming it failed. This client now uses the new record secret.`, {
-      cause,
-    });
+    super(
+      `The chain shows the ${what} DID land (two reads agree); only confirming it failed. This client now uses the ` +
+        'new record secret. Keep BOTH record secrets, the old and the new, until option 31 shows "Current: yes".',
+      { cause },
+    );
     this.name = 'LandedButUnconfirmedError';
+  }
+}
+
+/**
+ * A recovery-secret replacement the chain shows as done (two reads agree), though
+ * confirming it failed. Only the NEW recovery secret works now.
+ */
+export class RecoveryReplacedButUnconfirmedError extends Error {
+  constructor(cause: unknown) {
+    super(
+      'The chain shows the recovery secret WAS replaced (two reads agree); only confirming it failed. ' +
+        'Only the NEW recovery secret works now.',
+      { cause },
+    );
+    this.name = 'RecoveryReplacedButUnconfirmedError';
   }
 }
 

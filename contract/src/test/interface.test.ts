@@ -4,10 +4,17 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { dnaPairBinding } from "../pairing.js";
 import { C, VeilcoreSimulator, hex } from "./veilcore-simulator.js";
 
 const here = (p: string): string => new URL(p, import.meta.url).pathname;
-type Vector = { circuit: string; tag: string; args: string[]; out: string };
+type Vector = {
+  circuit: string;
+  tag: string;
+  args: string[];
+  out: string;
+  note?: string;
+};
 const vectors = JSON.parse(
   readFileSync(here("../../vectors/v1.json"), "utf8"),
 ) as {
@@ -52,10 +59,15 @@ describe("published vectors (vectors/v1.json)", () => {
   for (const v of vectors.vectors) {
     it(`${v.circuit}(${v.args.join(", ")})`, () => {
       const args = v.args.map(resolve);
-      const compiled = (
-        C as unknown as Record<string, (...a: Uint8Array[]) => Uint8Array>
-      )[v.circuit](...args);
-      expect(hex(compiled)).toBe(v.out);
+      // Every hash the contract computes is a pure circuit. The bound DNA pairing is not:
+      // it is computed off chain and passed to pairDna, so it is checked against the
+      // client's function (and its layout against the contract in pairing.test.ts).
+      const fns: Record<string, (...a: Uint8Array[]) => Uint8Array> = {
+        ...(C as unknown as Record<string, (...a: Uint8Array[]) => Uint8Array>),
+        dnaPairBinding: (a, b, c) => dnaPairBinding(a, b, c),
+      };
+      const computed = fns[v.circuit](...args);
+      expect(hex(computed)).toBe(v.out);
       expect(sha256Tagged(v.tag, args)).toBe(v.out);
     });
   }

@@ -1,9 +1,10 @@
 # VeilCore contract: attack pass, 30 Sep 2026
 
-Last updated 1 October 2026 (final audit, night). Twelve rounds in all: round 1 (this
+Last updated 1 October 2026 (final review, night). Twelve rounds in all: round 1 (this
 first pass and the lineage pass, our own) and rounds 2 to 7 by reviewers who had not seen
 the fixes, on 30 September; rounds 8 to 12 on 1 October, rounds 8, 11 and 12 each followed
-by an independent re-attack of their fixes. A final audit followed (last section). Times in headings are commit times from `git log` (EDT); they
+by a fresh-session AI re-attack of their fixes. A final review followed (last section).
+None of these rounds is an audit: they are AI reviews in fresh sessions, directed by the founders. Times in headings are commit times from `git log` (EDT); they
 replace earlier time-of-day labels that were out of order.
 
 > **Note, 30 Sep (round 4).** The contracts were merged into one, `veilcore.compact`, and
@@ -141,7 +142,7 @@ The logs are gitignored, so they haven't been committed. But they sit unencrypte
 - **Fix:** key the maps by `hash(lc, issuerRecord)`, or accept the griefing risk and correct the comment.
 
 **M4. `proveOwnership` still works for a retired secret.**
-- There's no `assertLive` check, so a thief holding the old secret keeps producing "ownership" proofs after the owner has rotated away.
+- There's no `assertLive` check, so a thief holding the old secret keeps producing control proofs after the owner has rotated away.
 - **Fix:** add `assertLive`. Or keep the current behaviour and have verifiers check `rotatedTo`, but then document that.
 
 **M5. The single licence-tree root is a bottleneck anyone can jam.**
@@ -186,7 +187,7 @@ If you choose "with", keep the key off the laptop (see H4) and say so publicly. 
 4. **H2** and **M1**, once the recovery design is decided.
 5. **M2**, **M3**, **M4**, then the lows.
 6. Rerun the full test suite and add one regression test per finding.
-7. **Second pass:** get someone who didn't write this to attack it (Max, or Timur at Guvenkaya) before mainnet.
+7. **Second pass:** get someone who didn't write this to attack it (an outside Midnight developer, or a paid security firm) before mainnet.
 
 
 ---
@@ -221,7 +222,7 @@ Fixed in `api/src/maintenance.ts`. "No" now means: deploy, then immediately repl
 
 ---
 
-# Round 2: independent review (30 Sep, morning; fixes in 6a499a5 at 07:31)
+# Round 2: fresh-session AI review (30 Sep, morning; fixes in 6a499a5 at 07:31)
 
 A separate reviewer, who had not written or seen the fixes being made, attacked both contracts. They demonstrated every finding below against the compiled build. All are now fixed, and each has a regression test in `attack-30sep.mjs`.
 
@@ -242,7 +243,7 @@ A side effect of the tree change: the CLI and API no longer keep their own licen
 
 ---
 
-# Round 3: second independent review (30 Sep, morning; ddbfe3a at 07:42)
+# Round 3: second fresh-session AI review (30 Sep, morning; ddbfe3a at 07:42)
 
 A fresh reviewer attacked the fixed build and found **no critical or high issues**. What they found:
 
@@ -257,7 +258,7 @@ A fresh reviewer attacked the fixed build and found **no critical or high issues
 
 ---
 
-# Round 4: third independent review, at the "standards body" bar (30 Sep, morning; 6f35bee at 09:11)
+# Round 4: third fresh-session AI review, at the "standards body" bar (30 Sep, morning; 6f35bee at 09:11)
 
 A fresh reviewer, told to review as a senior Midnight engineer and a standards body
 would, attacked the fixed build and the registry service. Every finding below was
@@ -283,7 +284,7 @@ contract, and is tracked for the registry.
 
 ---
 
-# Round 5: fourth independent review (30 Sep, morning; c9d649f at 09:33)
+# Round 5: fourth fresh-session AI review (30 Sep, morning; c9d649f at 09:33)
 
 A fresh reviewer attacked the merged contract. No forgery or starvation issue was found
 in the contract. Findings and fixes:
@@ -304,7 +305,7 @@ in the contract. Findings and fixes:
 
 ---
 
-# Round 6: fifth independent review, of round 5's changes (30 Sep, morning; 0560946 at 09:47)
+# Round 6: fifth fresh-session AI review, of round 5's changes (30 Sep, morning; 0560946 at 09:47)
 
 | # | Finding | Fix |
 |---|---|---|
@@ -321,7 +322,7 @@ in the contract. Findings and fixes:
 
 ---
 
-# Round 7: sixth independent review, of round 6's changes (30 Sep, morning; 5b23836 at 09:57)
+# Round 7: sixth fresh-session AI review, of round 6's changes (30 Sep, morning; 5b23836 at 09:57)
 
 | # | Finding | Fix |
 |---|---|---|
@@ -333,7 +334,7 @@ in the contract. Findings and fixes:
 
 ---
 
-# Round 8: four independent attackers, one per area (1 Oct, morning; fe3ae54 at 07:07)
+# Round 8: four fresh-session AI attackers, one per area (1 Oct, morning; fe3ae54 at 07:07)
 
 Licences, lineage, identity and recovery, and the verifier and client, each attacked by a
 reviewer who had seen none of the earlier rounds and was asked to prove every finding
@@ -388,12 +389,12 @@ authority can insert keys during the fragmented deploy, and rerunning it is safe
 
 # Round 10: front-running, disclosure, witness tampering, hash domains; and the web layer (1 Oct, morning; eac09c7 at 08:42)
 
-**Contract:** held. Every front-running race tried (anchor, recovery, ownership proof,
+**Contract:** held. Every front-running race tried (anchor, recovery, control proof,
 transfer, obligation, parentage) fails for the attacker; `proveLicense` discloses only
 the root, the waiting flag, the tag and two pass/fail bits and looks up no secret key;
 forged paths and wrong-length witnesses are refused; the six hash domains cannot
-collide. Fixed in the client and docs: an ownership challenge is public, so CLI option
-26 now issues separate licence and ownership challenges and rule 8 forbids sharing
+collide. Fixed in the client and docs: a control-proof challenge is public, so CLI option
+26 now issues separate licence and control-proof challenges and rule 8 forbids sharing
 one. Documented: relaying, and the all-zero secret. Tests:
 `contract/src/test/attack-round4.test.ts`.
 
@@ -405,10 +406,10 @@ licence counts, and a holder-chosen date, as facts; documents fetched from GitHu
 rendered unsanitised; no rate limits. See veilcore-api commit 69ff5b0 and its
 `test/registry-security-1oct.test.mjs`.
 
-# Round 11: four independent attackers, and a re-attack (1 Oct 2026)
+# Round 11: four fresh-session AI attackers, and a re-attack (1 Oct 2026)
 
-Four attackers worked independently, one area each: the contract and verifier; the
-deploy tooling and CLI; the registry and website; and an audit of every stated rule
+Four attackers worked separately, one area each: the contract and verifier; the
+deploy tooling and CLI; the registry and website; and a check of every stated rule
 against the code, which added 40 rule tests (`contract/src/test/rules-coverage-round11.test.ts`).
 
 **The contract held.** No HIGH or MEDIUM finding on chain; the contract and the build did
@@ -433,7 +434,7 @@ Tests: `contract/src/test/attack-round11-contract.test.ts`,
 `rules-coverage-round11.test.ts`, and `bboard-cli/src/attack-round11-deploy.test.ts`
 (`cd bboard-cli && npx vitest run`).
 
-**Re-attack of the fixes.** An independent reviewer attacked the round 11 fixes and
+**Re-attack of the fixes.** A fresh-session AI reviewer attacked the round 11 fixes and
 found six smaller issues, plus one that predated round 11. All fixed (vc 6b7d725,
 registry cee857f):
 
@@ -472,7 +473,7 @@ counts. A seal is now allowed when only activations changed the licence tree
 `contract/src/test/state-bounds.test.ts`. The full bound table is in `docs/design.md`,
 State bounds. The fingerprints changed and must be regenerated.
 
-**The attack on it.** An independent attacker went after the bounds
+**The attack on it.** A fresh-session AI attacker went after the bounds
 (`contract/src/test/attack-bounds.test.ts`) and found seven issues.
 
 | | Finding | Outcome |
@@ -505,7 +506,7 @@ carry; `activeLicensesBy` stays in step through rotation, recovery, transfer and
 revoke; the rotation reset cannot push `originOf` past 288 entries per identity; every
 circuit is under 700 ZKIR instructions (largest: approveTransfer 686).
 
-# Final audit (1 Oct, night)
+# Final review (1 Oct, night)
 
 Three fresh reviewers, one per area, at `56b119a`.
 
@@ -544,7 +545,7 @@ code (`bboard-cli/src/preprod-1002.test.ts`):
 
 The contract is unchanged; its fingerprints still match.
 
-## Independent review, 2 October 2026 afternoon
+## Fresh-session AI review, 2 October 2026 afternoon
 
 Two fresh reviewers, one on the contract, one on the mainnet operator path.
 

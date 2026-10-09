@@ -15,7 +15,13 @@ to skip.
 ## 2. Build and test
 
 - [ ] Contract compiled with the pinned compiler. The version is named in the commit.
-- [ ] Every circuit under the 700 ZKIR instruction budget.
+- [ ] Every circuit of the main contract under the 700 ZKIR instruction budget.
+- [ ] `cd contract && bash scripts/circuit-sizes.sh` passes: every claims circuit at most
+      k=17, so a holder can prove on their own computer. The two largest (proveDistinct,
+      proveUnchanged) are proved back to back on an ordinary 16 GB laptop, with peak
+      memory and times recorded in the deployment record.
+- [ ] Mutation testing on any changed contract (remove each assert, flip each comparison):
+      every surviving mutant is either a comment or explained in `docs/`.
 - [ ] `cd contract && npm test` passes, with the expected-fail attack tests still failing.
 - [ ] `SLOW_TESTS=1` and the long fuzz run (`FUZZ_RUNS`) pass for any contract change.
 - [ ] `cd bboard-cli && npx vitest run` and `cd api && npm run ci` pass.
@@ -23,7 +29,7 @@ to skip.
 
 ## 3. Adversarial review
 
-- [ ] At least two independent reviews that did not write the change: one on the
+- [ ] At least two reviews by reviewers who did not write the change (a fresh-session AI review is not an audit): one on the
       contract, one on the operator path. Findings and fixes recorded in `docs/`.
 - [ ] A re-check of the fixes themselves.
 - [ ] Stop rule: from here until release, only a HIGH or blocker reopens code.
@@ -34,7 +40,22 @@ to skip.
 - [ ] Local chain smoke test (`npm run standalone`, option 3): 26 of 26 (or the
       current count).
 - [ ] Preprod smoke test (`npm run preprod-remote`, option 3) on the same build.
-- [ ] Fingerprints regenerated, committed, and matched by an independent build.
+- [ ] Fingerprints regenerated, committed, and matched by an independent build: both
+      tables of `docs/fingerprints.md`, the main contract's (`npm run fingerprints`) and
+      the claims contract's (`npm run fingerprints:claims`); `npm run fingerprints:check`
+      says both match.
+- [ ] **The offline maintenance key still works with the SDK being released with.** Load
+      the paper copy into the current midnight-js and sign a no-op on preprod. (midnight-js
+      #1409: 4.x to 5.x stopped accepting stored signing keys, with no migration. A key
+      that the current SDK cannot load is a contract nobody can maintain.)
+- [ ] **Old state still reads.** After any Midnight network upgrade, query a pre-upgrade
+      anchor, a pre-upgrade claim and the licence tree through the indexer and decode
+      them with the release's client. (midnight-indexer #1605: after the 28 September
+      2026 hard fork, pre-fork contract state came back in an encoding new clients could
+      not decode.) Batch roots and record commitments are SHA-256 and do not depend on
+      this; claims, presentations and the licence tree do.
+- [ ] OpenTimestamps: the registry's last sealed batch has a `.ots` file, and an older
+      one upgrades and verifies with the official client (`ots upgrade`, `ots verify`).
 
 ## 5. Announce
 

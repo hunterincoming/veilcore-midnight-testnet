@@ -9,11 +9,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import React, { useEffect, useState } from 'react';
-import { Box, Stack, Typography } from '@mui/material';
+import { Box, Paper, Stack, Typography } from '@mui/material';
 import { attestationsFor, strengthLabel } from '../veilcore/attesters';
 import { proofFor } from '../veilcore/proofs';
 import type { StrainRecord } from '../veilcore/records';
 import { TEAL } from '../config/theme';
+import { utcStamp } from '../veilcore/time';
 
 type Event = { at: number; title: string; detail: string; strong?: boolean };
 
@@ -30,7 +31,7 @@ export const RecordHistory: React.FC<{ record: StrainRecord }> = ({ record }) =>
         title: 'Sealed',
         detail: record.supersedes
           ? `Issued as a correction to ${record.supersedes.recordId}. Reason given: ${record.supersedes.reason}.`
-          : 'The holder committed to a description of this material. Nothing has altered it since.',
+          : 'The holder committed to a description of this material, dated by the sealing device’s clock.',
       });
 
       if (record.receivedAt && record.receivedFrom) {
@@ -49,18 +50,20 @@ export const RecordHistory: React.FC<{ record: StrainRecord }> = ({ record }) =>
           out.push({
             at: new Date(a.retraction.retractedAt).getTime(),
             title: 'Attestation retracted',
-            detail: `The attester withdrew it. Reason: ${a.retraction.reason}. The attestation remains on record — retraction is not deletion.`,
+            detail: `The attester withdrew it with a retraction signed by their key. Reason: ${a.retraction.reason}. The attestation remains on record — retraction is not deletion.`,
           });
         }
       }
 
       const proof = await proofFor(record.recordFingerprint);
-      if (proof.status === 'anchored' && proof.proof.anchor?.anchoredAt) {
+      // Only a proof checked here (bound to this record, path folding to its root) is
+      // listed, and the anchor in it is the registry's report: this page has not looked
+      // the transaction up, so it is not presented as fixing the date.
+      if (proof.status === 'anchor-reported' && proof.proof.anchor?.anchoredAt) {
         out.push({
           at: new Date(proof.proof.anchor.anchoredAt).getTime(),
-          title: 'Anchored',
-          detail: `Included in batch ${proof.proof.batchId}, whose root was published on ${proof.proof.anchor.chain}. From this point the sealing date does not rest on anyone’s word.`,
-          strong: true,
+          title: 'Anchor reported by the registry',
+          detail: `Included in batch ${proof.proof.batchId} (inclusion checked in this browser). The registry reports the batch root was recorded on ${proof.proof.anchor.chain} ${proof.proof.anchor.network}; this page has not checked the chain, so look the transaction up before relying on the date.`,
         });
       }
 
@@ -82,43 +85,45 @@ export const RecordHistory: React.FC<{ record: StrainRecord }> = ({ record }) =>
   if (!events || events.length <= 1) return null;
 
   return (
-    <Stack spacing={0}>
-      <Typography variant="overline" sx={{ display: 'block', mb: 1.5 }}>
-        History
-      </Typography>
-      {events.map((e, i) => (
-        <Box
-          key={i}
-          sx={{
-            position: 'relative',
-            pl: 2.5,
-            ml: 0.5,
-            pb: i === events.length - 1 ? 0 : 2.5,
-            borderLeft: i === events.length - 1 ? 'none' : '1px solid rgba(255,255,255,0.12)',
-          }}
-        >
+    <Paper sx={{ p: { xs: 2.5, md: 3 } }}>
+      <Stack spacing={0}>
+        <Typography variant="overline" sx={{ display: 'block', mb: 1.5 }}>
+          History
+        </Typography>
+        {events.map((e, i) => (
           <Box
+            key={i}
             sx={{
-              position: 'absolute',
-              left: -4.5,
-              top: 4,
-              width: 8,
-              height: 8,
-              borderRadius: '50%',
-              background: e.strong ? TEAL : 'rgba(255,255,255,0.3)',
+              position: 'relative',
+              pl: 2.5,
+              ml: 0.5,
+              pb: i === events.length - 1 ? 0 : 2.5,
+              borderLeft: i === events.length - 1 ? 'none' : '1px solid rgba(255,255,255,0.12)',
             }}
-          />
-          <Typography variant="body2" sx={{ fontWeight: 500 }}>
-            {e.title}
-          </Typography>
-          <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-            {new Date(e.at).toLocaleString()}
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-            {e.detail}
-          </Typography>
-        </Box>
-      ))}
-    </Stack>
+          >
+            <Box
+              sx={{
+                position: 'absolute',
+                left: -4.5,
+                top: 4,
+                width: 8,
+                height: 8,
+                borderRadius: '50%',
+                background: e.strong ? TEAL : 'rgba(255,255,255,0.3)',
+              }}
+            />
+            <Typography variant="body2" sx={{ fontWeight: 500 }}>
+              {e.title}
+            </Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+              {utcStamp(e.at)}
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+              {e.detail}
+            </Typography>
+          </Box>
+        ))}
+      </Stack>
+    </Paper>
   );
 };

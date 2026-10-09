@@ -3,11 +3,7 @@
 import type { Strings } from './en';
 export const de: Strings = {
   // Header and footer
-  'nav.newCultivar': 'Neue Sorte',
-  'nav.licenses': 'Lizenzen',
   'nav.language': 'Sprache',
-  'footer.about':
-    'Ein offenes Datensatzformat für Pflanzengenetik. Um einen Datensatz zu prüfen, den Sie besitzen, brauchen Sie nur SHA-256 und die offene Spezifikation: Das ist kostenlos und erfordert kein Konto. Wenn Sie einen Datensatz auf dieser Website über seine Kennung abrufen, nutzen Sie unseren Server.',
   'footer.documents': 'Dokumente',
   'footer.spec': 'Spezifikation',
   'footer.evidence': 'Datensätze als Beweismittel',
@@ -34,78 +30,20 @@ export const de: Strings = {
   'm.hero.label': 'Nachweis dessen, was Sie besitzen',
   'm.hero.title1': 'Beweisen Sie, dass Sie es zuerst hatten.',
   'm.hero.title2': 'Ohne jemandem zu zeigen, was es ist.',
-  'm.hero.lede':
-    'Für Pflanzenzüchter, Saatgutunternehmen und Labore: ein offenes Datensatzformat für Pflanzengenetik. Ihre genetischen Daten bleiben bei Ihnen. Nur ein Fingerabdruck wird auf einer öffentlichen Blockchain (Midnight) festgehalten, und sobald er verankert ist, kann jeder dessen Datum prüfen.',
-  'm.hero.chooseDemo': 'Demo wählen',
   'm.hero.how': 'So funktioniert es',
   'm.hero.cultivar': 'Sorte',
   'm.hero.bredBy': 'Gezüchtet von',
   'm.hero.bredByDefault': 'Ihr Name',
   'm.hero.demoLabel': 'Live-Demo des Fingerabdrucks',
-  'm.hero.note':
-    'Ändern Sie oben, was Sie möchten; es bleibt auf dieser Seite. Die mintgrüne Zeile ist der Fingerabdruck: zweiunddreißig Bytes, die sich nicht umkehren lassen, weil ein Zufallswert eingemischt wird. Nur diesen Teil würde diese Demo veröffentlichen.',
-  'm.choose.label': 'Hier starten',
-  'm.choose.title': 'Wohin möchten Sie?',
-  'm.choose.about.title': 'Über',
-  'm.choose.about.text': 'Was das Format ist, wie es funktioniert und was es nicht leistet.',
-  'm.choose.about.go': 'Lesen →',
-  'm.choose.demo.title': 'Demo',
-  'm.choose.demo.text': 'Einen Datensatz erstellen oder prüfen.',
-  'm.choose.demo.go': 'Demo wählen →',
-  'm.choose.team.title': 'Team',
-  'm.choose.team.text': 'Zwei Gründer, in Tokio und New Jersey.',
-  'm.choose.team.go': 'Kennenlernen →',
-  'm.choose.updates.title': 'Neuigkeiten',
-  'm.choose.updates.text': 'Was sich geändert hat, was veröffentlicht wurde und was wir gelernt haben.',
-  'm.choose.updates.go': 'Aktuelles →',
-  'm.about.label': 'Über',
-  'm.about.title1': 'Ein Datensatzformat für Beweiszwecke',
-  'm.about.title2': 'in der Pflanzengenetik.',
-  'm.about.lede':
-    'Wenn Genetik irgendwo auftaucht, wo sie nicht hingehört, läuft jeder Streit auf eine Frage hinaus: Was hatten Sie, und wann? Notizbücher und Laborberichte werden von demjenigen datiert, der sie besitzt. Die übliche Lösung, ein gemeinsames Register, verlangt von allen, genau das herauszugeben, was sie schützen wollen. VeilCore tut keines von beidem.',
+  'm.foot.demo': 'Demo',
   'm.step1.n': '01 · Datensatz',
-  'm.step1.title': 'Die Charge beschreiben',
-  'm.step1.text':
-    'Ein Züchter oder ein Labor erstellt einen Datensatz zum Material: was es ist, woher es stammt, Testergebnisse.',
   'm.step2.n': '02 · Fingerabdruck',
-  'm.step2.title': 'Lokal hashen',
-  'm.step2.text':
-    'Ein 32-Byte-Fingerabdruck wird auf Ihrem eigenen Computer berechnet. Genetische Daten und Labordateien verlassen ihn nie.',
   'm.step3.n': '03 · Verankern',
-  'm.step3.title': 'Das Datum veröffentlichen',
-  'm.step3.text':
-    'Nur der Fingerabdruck erhält einen Zeitstempel in einem öffentlichen Netzwerk (Midnight). Das Datum legt das Netzwerk fest, nicht wir, und es bleibt in dessen öffentlicher Historie. In der Demo verankert unser Betreiber Datensätze gesammelt in Stapeln, nicht sofort.',
   'm.step4.n': '04 · Prüfen',
   'm.step4.title': 'Später vorlegen',
-  'm.step4.text':
-    'Legen Sie den Datensatz einem Käufer, einer Prüfstelle oder einem Gericht vor. Jeder kann kostenlos und ohne Konto prüfen, ob er übereinstimmt.',
-  'm.is.title': 'Was es ist',
-  'm.is.1a': 'Nachweis früheren Besitzes:',
-  'm.is.1b': 'was Sie hatten, und wann.',
-  'm.is.2a': 'Keine Verwahrung von Genetik:',
-  'm.is.2b': 'Genetische Daten und Labordateien erreichen uns nie.',
-  'm.is.3a': 'Ein offenes Format:',
-  'm.is.3b': 'kostenlos zu implementieren, kostenlos zu prüfen, mit veröffentlichter Spezifikation.',
-  'm.is.4a': 'Lizenzen:',
-  'm.is.4b':
-    'gewähren Rechte an einem Datensatz. Ein Lizenznehmer kann nachweisen, dass eine Lizenz gültig ist, ohne offenzulegen, welche Lizenz es ist oder wer sie hält.',
-  'm.is.5a': 'Vereinbarte Abstammung:',
-  'm.is.5b':
-    'Eine Elternverbindung zählt nur, wenn beide Inhaber sie bestätigen. Verpflichtungen wie Lizenzgebühren gehen nur auf Nachkommen über, die auf diese Weise angegeben wurden, bis der Begünstigte sie freigibt. VeilCore hält fest, was geschuldet ist; es zieht es nicht ein.',
-  'm.isnt.title': 'Was es nicht ist',
-  'm.isnt.1a': 'Kein Eigentum.',
-  'm.isnt.1b': 'Es schafft kein Recht, das Sie nicht ohnehin schon haben.',
-  'm.isnt.2a': 'Keine Wahrheitsmaschine.',
-  'm.isnt.2b': 'Es beweist, wann Sie etwas geschrieben haben, nicht, dass es stimmt.',
-  'm.isnt.3a': 'Kein DNA-Test.',
-  'm.isnt.3b': 'Es ergänzt einen, damit ein Ergebnis auch Jahre später noch etwas bedeutet.',
-  'm.isnt.4a': 'Kein Abstammungstest.',
-  'm.isnt.4b': 'Eine Elternverbindung bedeutet, dass beide Inhaber zugestimmt haben, nicht dass die DNA es beweist.',
   'm.demo.label': 'Demo',
   'm.demo.title1': 'Wählen Sie, wie Sie',
   'm.demo.title2': 'es sehen möchten.',
-  'm.demo.lede':
-    'Kein Konto, keine Wallet. Genetische Daten und Labordateien bleiben in Ihrem Browser. Die Demo speichert den Rest eines Datensatzes (Namen, Datumsangaben, Fingerabdruck) auf unserem Testserver, damit Sie später darauf zurückkommen können. Bitte verwenden Sie daher erfundene Angaben. Lizenzierung ist in der Demo simuliert: Es wird nichts an das Netzwerk gesendet.',
   'm.demo.create.title': 'Datensatz erstellen',
   'm.demo.create.text':
     'Füllen Sie einen Beispieldatensatz aus, erzeugen Sie seinen Fingerabdruck und laden Sie das Zertifikat herunter.',
@@ -138,42 +76,26 @@ export const de: Strings = {
   'm.post1.tag': 'Format',
   'm.post1.title': 'Drei Implementierungen, eine Antwort',
   'm.post1.text':
-    'Ein Differenztest ergab, dass unsere Implementierungen in TypeScript, Python und Rust bei einigen Zahlen voneinander abwichen. Behoben: Sie stimmen jetzt bei jeder einzelnen von 81.000 Eingaben überein, und 55 Konformitätsvektoren legen das fest.',
+    'Ein Differenztest ergab, dass unsere Implementierungen in TypeScript, Python und Rust bei einigen Zahlen voneinander abwichen. Behoben: Sie stimmen jetzt bei jeder einzelnen von 81.000 Eingaben überein, und die gemeinsamen Testvektoren prüfen das.',
   'm.post2.date': '2. Okt. 2026',
   'm.post2.tag': 'Contract',
   'm.post2.title': 'Ein vollständiger Durchlauf im Testnetz von Midnight',
   'm.post2.text':
     'Der Contract wurde im Testnetz von Midnight bereitgestellt und hat alle 26 End-to-End-Prüfungen bestanden, wobei 16 seiner 24 Operationen mit echten Beweisen genutzt wurden.',
-  'm.post3.date': '25. Aug. 2026',
-  'm.post3.tag': 'Contract',
-  'm.post3.title': 'Warum eine Lizenzübertragung eine Abtretung ist',
-  'm.post3.text':
-    'Wir haben die Übertragung neu gestaltet, nachdem wir festgestellt hatten, dass die alte Version der abgebenden Partei ihre Befugnisse beließ.',
   'm.status.label': 'Wo wir stehen',
   'm.status.title1': 'Ehrlich darüber,',
   'm.status.title2': 'wo wir stehen.',
-  'm.status.lede': 'Wir sagen das lieber jetzt, als dass es später herauskommt.',
-  'm.stat1.b': '55 / 55',
-  'm.stat1.s': 'Konformitätsvektoren, bestanden von Implementierungen in drei Sprachen (vom selben Team geschrieben)',
-  'm.stat2.b': 'Testnetz',
-  'm.stat2.s': 'Im Testnetz von Midnight getestet. Noch nicht im Live-Netzwerk.',
+  'm.status.lede': 'Was fertig ist und was noch nicht.',
   'm.stat3.b': 'Kein Audit',
-  'm.stat3.s': 'Noch kein unabhängiges Sicherheitsaudit. Unsere eigenen Prüfungen sind im Repository veröffentlicht.',
-  'm.stat4.b': 'Noch keine Nutzer',
-  'm.stat4.s': 'Noch niemand nutzt es für echte Datensätze. Wir suchen den ersten.',
   'm.status.keyTitle': 'Wer den Contract ändern kann.',
   'm.status.keyText':
-    'Die Gründer halten einen Wartungsschlüssel für den VeilCore-Contract auf Midnight. Damit lässt sich ändern, wie der Contract ab diesem Zeitpunkt funktioniert. Bereits in der Historie des Netzwerks verankerte Datensätze kann er nicht umschreiben. Eine Richtlinie für seine Verwendung ist vorgeschlagen, nicht beschlossen.',
-  'm.status.keyLink': 'Vorgeschlagene Richtlinie lesen →',
+    'Ein Wartungsschlüssel kann ändern, wie der VeilCore-Contract auf Midnight funktioniert. Wer ihn hält, kann Operationen des Contracts hinzufügen oder ersetzen und damit die Identität jedes Datensatzes übernehmen, Lizenzen für jeden Aussteller anlegen, Verpflichtungen und Elternverknüpfungen hinzufügen oder entfernen oder Operationen abschalten. Die Blockzeiten des Netzwerks kann er nicht zurückdatieren, und jede Änderung ist on-chain sichtbar. Heute liegt der Schlüssel auf Papier vor, je eine Kopie bei jedem Gründer, und jede Kopie allein genügt, um ihn zu verwenden. Ihn auf eine Gruppe von Schlüsseln zu verlagern, die zustimmen müssen, ist geplant, aber noch nicht umgesetzt. Jede Verwendung wird öffentlich angekündigt, nach einer schriftlichen Wartungsrichtlinie.',
+  'm.status.keyLink': 'Wartungsrichtlinie lesen →',
   'm.contact.label': 'Kontakt aufnehmen',
   'm.contact.title1': 'Sagen Sie uns,',
   'm.contact.title2': 'wo es versagt.',
-  'm.contact.lede':
-    'Wenn Sie ein Zuchtprogramm, ein Labor, eine Saatgutanerkennungsstelle oder ein Sortenschutzgremium leiten, würden wir gern mit Ihnen sprechen. Prüfen und Implementieren sind kostenlos. Preise gibt es noch keine.',
   'm.contact.email': 'E-Mail an die Gründer',
   'm.contact.spec': 'Spezifikation lesen',
-  'm.foot.about':
-    'Ein Datensatzformat für Beweiszwecke in der Pflanzengenetik. Für die Verankerung auf Midnight ausgelegt; derzeit im Test auf dem Testnetzwerk von Midnight.',
   'm.foot.explore': 'Entdecken',
   'm.foot.build': 'Entwicklung',
   'm.foot.contact': 'Kontakt',
@@ -183,12 +105,10 @@ export const de: Strings = {
   'm.verify.label': 'Prüfen',
   'm.verify.title': 'Einen Datensatz prüfen',
   'm.verify.lede':
-    'Geben Sie die Datensatzkennung ein, die auf einem Zertifikat aufgedruckt ist oder Ihnen mitgeteilt wurde. Sie sehen, was der Inhaber offenlegen wollte, und ob der Datensatz unverändert ist.',
+    'Geben Sie die Datensatzkennung ein, die auf einem Zertifikat aufgedruckt ist oder Ihnen mitgeteilt wurde. Sie sehen, was der Inhaber teilen wollte, und was diese Seite selbst prüfen konnte: ob der Datensatz in einem versiegelten Stapel ist und ob Laborsignaturen gültig sind.',
   'm.verify.field': 'Datensatzkennung',
   'm.verify.go': 'Prüfen',
   'm.founders.label': 'Gründer',
-  'm.founders.lede':
-    'VeilCore ist ein Datensatzformat für Beweiszwecke in der Pflanzengenetik. Es liefert einen Nachweis früheren Besitzes, ohne dass jemand seine genetischen Daten herausgeben muss.',
   'm.founders.leads': 'Leitet',
   'm.founders.also': 'Außerdem',
   'm.founders.languages': 'Sprachen',
@@ -233,5 +153,18 @@ export const de: Strings = {
   'm.privacy.delete.title': 'Löschung',
   'm.privacy.delete.text':
     'Wenn Sie Ihre Demodaten von unserem Server löschen lassen möchten, schreiben Sie an hunter@veilcore.org und nennen Sie die Kennungen Ihrer Datensätze.',
+  'm.privacy.browser.title': 'In Ihrem Browser gespeichert',
+  'm.privacy.browser.text':
+    'Ihr Browser speichert auf diesem Gerät: Ihren Inhaberschlüssel (eine Kopie geht auch an unseren Server, siehe oben), den Signaturschlüssel eines Labors, falls Sie einen eingerichtet haben (sein privater Teil verlässt dieses Gerät nie), die gewählte Rolle und Ihre Sprache. Um sie zu entfernen, löschen Sie die Daten dieser Website in den Einstellungen Ihres Browsers. Sichern Sie vorher Ihren Inhaberschlüssel: Ohne ihn findet dieser Browser Ihre Datensätze nicht mehr.',
+  'm.privacy.hosts.title': 'Hosting',
+  'm.privacy.hosts.text':
+    'Diese Website wird bei Vercel gehostet, das IP-Adressen und Anfragen protokolliert. Unser Registerserver läuft bei Railway, das Anfragen protokolliert.',
+  'm.privacy.who.title': 'Wer es aufbewahrt, und wie lange',
+  'm.privacy.who.text':
+    'VeilCore ist noch nicht als Unternehmen gegründet; die Gründer von VeilCore betreiben diese Website und das Register. Es gibt keine feste Aufbewahrungsfrist: Was das Register speichert, bleibt dort, bis Sie uns bitten, es zu löschen. Kontakt: hunter@veilcore.org.',
+  'm.notfound.title': 'Seite nicht gefunden.',
+  'm.notfound.text':
+    'Unter dieser Adresse gibt es keine Seite. Wenn Ihnen jemand einen Link zu einem Datensatz gegeben hat, prüfen Sie, ob er vollständig ist.',
+  'm.notfound.home': 'Startseite von VeilCore →',
   'm.privacy.contact': 'Fragen: hunter@veilcore.org',
 };

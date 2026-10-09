@@ -6,7 +6,6 @@
 
 import { createHash } from 'node:crypto';
 import { type Interface } from 'node:readline/promises';
-import { oneAtATime } from './one-at-a-time.js';
 import { Buffer } from 'node:buffer';
 import { WebSocket } from 'ws';
 import {
@@ -17,13 +16,21 @@ import {
   type VeilcorePrivateStateId,
   type VeilcoreCircuitKeys,
   type SealResult,
+  FIRST_FRAGMENT,
   LandedButUnconfirmedError,
+  RecoveryReplacedButUnconfirmedError,
+  StartingStateUnreachableError,
   assertDeploymentRecordCurrent,
   decide,
   resolveNetwork,
   REQUIRED_RECORD_REVISION,
   REVISION_VAR,
+  type ClaimsProviders,
+  type ClaimsPrivateStateId,
+  type ClaimsCircuitKeys,
 } from '../../api/src/index';
+import { type ClaimsPrivateState } from '../../contract/src/claims.js';
+import { CLAIMS_MENU, type ClaimsMenuContext, handleClaimsChoice } from './claims-menu';
 import { type WalletFacade } from '@midnight-ntwrk/wallet-sdk-facade';
 import { pureCircuits } from '../../contract/src/managed/veilcore/contract/index.js';
 import { NodeZkConfigProvider } from '@midnight-ntwrk/midnight-js-node-zk-config-provider';
@@ -31,17 +38,17 @@ import { indexerPublicDataProvider } from '@midnight-ntwrk/midnight-js-indexer-p
 import { httpClientProofProvider } from '@midnight-ntwrk/midnight-js-http-client-proof-provider';
 import { type Logger } from 'pino';
 import { type Config, StandaloneConfig } from './config.js';
-import { levelPrivateStateProvider } from '@midnight-ntwrk/midnight-js-level-private-state-provider';
 import { toHex } from '@midnight-ntwrk/midnight-js-utils';
 import { sampleSigningKey } from '@midnight-ntwrk/midnight-js-protocol/compact-runtime';
 import { TestEnvironment } from '@midnight-ntwrk/testkit-js';
 import { MidnightWalletProvider, SavedProgressNotOpenedError } from './midnight-wallet-provider';
 import { randomBytes } from '../../api/src/utils';
+import { assertFinishAllowed } from '../../api/src/deploy-guard';
 import { showSecret } from './secret-out';
 import { unshieldedToken } from '@midnight-ntwrk/midnight-js-protocol/ledger';
 import { syncWallet, waitForUnshieldedFunds } from './wallet-utils';
 import { generateDust } from './generate-dust';
-import { runSmoke } from './smoke';
+import { CLAIMS_CHECKS, runSmoke } from './smoke';
 import { assertKeysMatchRecord } from './keys-check';
 import path from 'node:path';
 import { getNetworkId } from '@midnight-ntwrk/midnight-js-network-id';
@@ -56,9 +63,24 @@ import {
   sameKey,
   type Prompt,
 } from './prompt';
-import { settlePassword } from './password';
+import { privateStatePassword, settlePassword } from './password';
+import { chooseStore, openStores, storeDirFor } from './private-store';
+import { StoreInUseError, lockStoreDir } from './store-lock';
+import { guardProcess, watchState } from './state-watch';
 import { ChallengeFile } from './challenge-file';
-import { redactThisSession } from './logger-utils';
+import { redactThisSession, writeUnscrubbed } from './logger-utils';
+import { existsSync, readFileSync } from 'node:fs';
+import { type PairingEvidence, pairingEvidence } from '../../contract/src/pairing.js';
+import { type ActionSource, indexerHistory } from '../../api/src/pairing-history';
+import {
+  afterPairingMessage,
+  checkEvidence,
+  defaultEvidencePath,
+  evidenceFromNotes,
+  readEvidenceFile,
+  reportFromAnswer,
+  writeEvidence,
+} from './pairing-evidence';
 
 // @ts-expect-error: It's needed to enable WebSocket usage through apollo
 globalThis.WebSocket = WebSocket;
@@ -120,11 +142,45 @@ const askContractAddress = async (rli: Interface, logger: Logger): Promise<strin
   }
 };
 
+/**
+ * VeilcoreAPI.join, and when the indexer cannot lead back to the contract's deploy (its
+ * latest action is a key change; api/src/starting-state.ts), ask once for the deploy
+ * transaction id and check from that transaction. Blank stops, with nothing written.
+ */
+export const joinChecked = async (
+  rli: Interface,
+  providers: VeilcoreProviders,
+  address: string,
+  logger: Logger,
+  options: { readonly deploying?: boolean } = {},
+): Promise<VeilcoreAPI> => {
+  try {
+    return await VeilcoreAPI.join(providers, address, logger, options);
+  } catch (e) {
+    if (!(e instanceof StartingStateUnreachableError)) throw e;
+    logger.warn(e.message);
+    const id = (await rli.question('Deploy transaction id (hex; Enter to stop): ')).trim();
+    if (id === '') throw e;
+    return VeilcoreAPI.join(providers, address, logger, { ...options, deployTxId: id });
+  }
+};
+
 /** On mainnet: the build is the committed one (docs/fingerprints.md), or this throws. */
 const checkBuild = (zkConfigPath: string, logger: Logger): void => {
   const n = assertKeysMatchRecord(zkConfigPath, path.resolve(zkConfigPath, '..', '..', '..', '..'));
   logger.info(`All ${n} build artefacts match the committed fingerprints (docs/fingerprints.md).`);
 };
+
+/**
+ * The claims contract's build (managed/veilcore-claims, next to managed/veilcore) against
+ * the claims table of docs/fingerprints.md as committed. Returns how many matched, or throws.
+ */
+const claimsBuildCheck = (zkConfigPath: string) => (): number =>
+  assertKeysMatchRecord(
+    path.resolve(zkConfigPath, '..', 'veilcore-claims'),
+    path.resolve(zkConfigPath, '..', '..', '..', '..'),
+    'claims',
+  );
 
 /** Ask for a 32-byte SECRET, hidden as it is typed; refuses anything but 64 hex characters. */
 const askSecret32 = async (prompt: string): Promise<Uint8Array> => {
@@ -201,7 +257,10 @@ export const askMaintenanceAuthority = async (
   if (answer === 'n' || answer === 'no') {
     const sure = (await rli.question('Retiring is permanent. Type RETIRE to confirm: ')).trim();
     if (sure === 'RETIRE') {
-      logger.info('Deploying, then retiring the authority with a key that is never stored.');
+      logger.info(
+        'Deploying, then retiring the authority provably (an empty committee anyone can check). A key is still ' +
+          'needed to add the circuit keys; you will be shown one to write down.',
+      );
       return null;
     }
     logger.info('Not retired. Keeping the authority.');
@@ -210,46 +269,53 @@ export const askMaintenanceAuthority = async (
     const typed = await hidden(
       'Signing key (64 hex characters; nothing shows as you type or paste; blank to generate one): ',
     );
-    if (typed === '') {
-      const key = sampleSigningKey();
-      redactThisSession(key);
-      const show = (): void =>
-        showSecret(
-          'MAINTENANCE AUTHORITY SIGNING KEY — write it down now and keep it offline (the spaces are only to make copying easier):',
-          groupKey(key),
-        );
-      show();
-      // Nothing is sent until the operator says the key is written down...
-      for (;;) {
-        const ok = (await rli.question('Type WRITTEN once the key is on paper and checked (nothing is sent before): '))
-          .trim()
-          .toUpperCase();
-        if (ok === 'WRITTEN') break;
-      }
-      // ...and has typed it back from the paper: a copying mistake found now costs a minute;
-      // found later, it costs the only key that can repair the contract.
-      for (;;) {
-        const back = await hidden(
-          'Now type the key back FROM YOUR PAPER (spaces or dashes are fine; nothing shows; SHOW to see it again): ',
-        );
-        if (sameKey(back, key)) {
-          logger.info('Your paper copy matches the key.');
-          break;
-        }
-        if (back.trim().toUpperCase() === 'SHOW') {
-          show();
-          continue;
-        }
-        logger.error('That does not match the key shown. Check your paper copy, correct it, and type it again.');
-      }
-      return key;
-    }
+    if (typed === '') return makePaperKey(rli, logger, hidden);
     const r = parseSigningKey(typed);
     if ('value' in r) {
       logger.info('Signing key accepted (not shown: you already hold it).');
       return r.value;
     }
     logger.error(`${r.problem} Try again, or leave it blank to generate one.`);
+  }
+};
+
+/**
+ * A fresh maintenance key, shown once and checked against the operator's paper before
+ * anything is sent. This program never stores it (round D, D-2): the paper copy is the
+ * only one, and "Finish a deploy" asks for it from there.
+ */
+export const makePaperKey = async (
+  rli: Interface,
+  logger: Logger,
+  hidden: (question: string) => Promise<string>,
+  title = 'MAINTENANCE AUTHORITY SIGNING KEY — write it down now and keep it offline (the spaces are only to make copying easier):',
+): Promise<string> => {
+  const key = sampleSigningKey();
+  redactThisSession(key);
+  const show = (): void => showSecret(title, groupKey(key));
+  show();
+  // Nothing is sent until the operator says the key is written down...
+  for (;;) {
+    const ok = (await rli.question('Type WRITTEN once the key is on paper and checked (nothing is sent before): '))
+      .trim()
+      .toUpperCase();
+    if (ok === 'WRITTEN') break;
+  }
+  // ...and has typed it back from the paper: a copying mistake found now costs a minute;
+  // found later, it costs the only key that can repair the contract.
+  for (;;) {
+    const back = await hidden(
+      'Now type the key back FROM YOUR PAPER (spaces or dashes are fine; nothing shows; SHOW to see it again): ',
+    );
+    if (sameKey(back, key)) {
+      logger.info('Your paper copy matches the key. It is not stored on this computer.');
+      return key;
+    }
+    if (back.trim().toUpperCase() === 'SHOW') {
+      show();
+      continue;
+    }
+    logger.error('That does not match the key shown. Check your paper copy, correct it, and type it again.');
   }
 };
 
@@ -260,6 +326,7 @@ export const deployOrJoin = async (
   zkConfigPath: string,
   indexerUri: string,
   hidden: (question: string) => Promise<string> = (q) => askHidden(q),
+  claimsProviders?: ClaimsProviders,
 ): Promise<VeilcoreAPI | null> => {
   while (true) {
     const choice = (await rli.question(DEPLOY_OR_JOIN_QUESTION)).trim();
@@ -270,16 +337,33 @@ export const deployOrJoin = async (
         // maintenance key is made and written down for nothing.
         assertDeploymentRecordCurrent('veilcore', logger);
         const authority = await askMaintenanceAuthority(rli, logger, hidden);
-        const api = await during(() => VeilcoreAPI.deploy(providers, authority, logger));
+        // Retiring still needs a key for the deploy's own key transactions. It goes on
+        // paper too: if the deploy stops partway, it is the only way to finish it.
+        const key =
+          authority ??
+          (await makePaperKey(
+            rli,
+            logger,
+            hidden,
+            'TEMPORARY MAINTENANCE KEY — write it down now. It is needed only if this deploy stops partway; once the deploy retires the authority it controls nothing:',
+          ));
+        const api = await during(() =>
+          VeilcoreAPI.deploy(providers, key, logger, FIRST_FRAGMENT, { retire: authority === null }),
+        );
         logger.info('Deployed. Every circuit key is on chain.');
         logger.info(`Contract address: ${api.deployedContractAddress}`);
+        if (getNetworkId() === 'mainnet')
+          logger.warn(
+            'Joining this contract on mainnet is refused until its address is pinned: MAINNET_VEILCORE_ADDRESS in ' +
+              'api/src/deploy-guard.ts, the same address as the deployment record. Send Claude the address above.',
+          );
         return api;
       }
       case '2': {
         // On mainnet, check this build against the committed fingerprints before joining,
         // as deploy does: join compares the chain's keys with THIS build's keys.
         if (getNetworkId() === 'mainnet') checkBuild(zkConfigPath, logger);
-        const api = await VeilcoreAPI.join(providers, await askContractAddress(rli, logger), logger);
+        const api = await joinChecked(rli, providers, await askContractAddress(rli, logger), logger);
         logger.info(`Joined contract at address: ${api.deployedContractAddress}`);
         return api;
       }
@@ -288,43 +372,50 @@ export const deployOrJoin = async (
           logger.error('The smoke test does not run on mainnet.');
           continue;
         }
-        const passed = await runSmoke(providers, logger, indexerUri);
+        // The claims phase deploys a second, test-only contract after the main phase passes.
+        const withClaims =
+          claimsProviders !== undefined &&
+          (await rli.question(`Also run the claims contract phase (${CLAIMS_CHECKS} more checks)? (y/N): `))
+            .trim()
+            .toLowerCase()
+            .startsWith('y');
+        const passed = await runSmoke(providers, logger, indexerUri, withClaims ? claimsProviders : undefined);
         logger.info(passed ? 'Smoke test passed.' : 'Smoke test FAILED — see above.');
         return null;
       }
       case '4': {
         // A deploy is one transaction plus one per remaining circuit key. If it stopped
-        // partway, the authority's key is normally still in the local store; this adds the
-        // rest. If it is not (a deploy that stopped before the key was saved), it is asked for.
+        // partway, this adds the rest. The maintenance key is never kept on this computer
+        // (round D, D-2), so it is always typed from the paper copy, used for this run's
+        // transactions only, and dropped again however it ends.
         if (getNetworkId() === 'mainnet') checkBuild(zkConfigPath, logger);
         const address = await askContractAddress(rli, logger);
-        let typedIn = false;
-        if (!(await providers.privateStateProvider.getSigningKey(address))) {
-          logger.info('This computer does not hold the maintenance key for that contract. It is on your paper copy.');
-          for (;;) {
-            const typed = await hidden(
-              'Maintenance authority signing key, from your paper (64 hex; spaces fine; nothing shows; blank to stop): ',
-            );
-            if (typed === '') {
-              logger.info('Stopped: finishing the deploy needs the signing key. Nothing was sent.');
-              return null;
-            }
-            const r = parseSigningKey(typed.replace(/[\s-]/g, ''));
-            if ('value' in r) {
-              await providers.privateStateProvider.setSigningKey(address, r.value);
-              typedIn = true;
-              break;
-            }
-            logger.error(`${r.problem} Try again.`);
+        // Once the mainnet address is pinned, only that contract may be finished (B5 review).
+        assertFinishAllowed(address);
+        logger.info('The maintenance key is not kept on this computer. Type it from your paper copy.');
+        for (;;) {
+          const typed = await hidden(
+            'Maintenance authority signing key, from your paper (64 hex; spaces fine; nothing shows; blank to stop): ',
+          );
+          if (typed === '') {
+            logger.info('Stopped: finishing the deploy needs the signing key. Nothing was sent.');
+            return null;
           }
+          const r = parseSigningKey(typed.replace(/[\s-]/g, ''));
+          if ('value' in r) {
+            await providers.privateStateProvider.setSigningKey(address, r.value);
+            break;
+          }
+          logger.error(`${r.problem} Try again.`);
         }
         let api: VeilcoreAPI;
         try {
           await during(() => VeilcoreAPI.addMissingCircuitKeys(providers, address, logger));
-          api = await VeilcoreAPI.join(providers, address, logger);
+          // The address is the operator's own deploy, so not the mainnet pin; the state check applies.
+          api = await joinChecked(rli, providers, address, logger, { deploying: true });
         } catch (e) {
-          // A key typed in for this does not stay on this machine; the paper copy is unchanged.
-          if (typedIn) await providers.privateStateProvider.removeSigningKey(address);
+          // The key typed in for this does not stay here; the paper copy is unchanged.
+          await providers.privateStateProvider.removeSigningKey(address);
           throw e;
         }
         const retire = (
@@ -373,8 +464,8 @@ const useUp = async (
 const MAIN_LOOP_QUESTION = `
  Records                                  Lineage
   1. Anchor your record                   16. Propose a parent (as child)
-  2. Prove ownership                      17. Confirm a child (as parent)
-  3. Pair a DNA report fingerprint        18. Withdraw your parent proposal
+  2. Prove control                        17. Confirm a child (as parent)
+  3. Pair a DNA report (bound to you)     18. Withdraw your parent proposal
   4. Rotate to a new secret               19. Place an obligation on your record
   5. Recover with the recovery secret     20. Propose an obligation (as beneficiary)
   6. Replace the recovery secret          21. Accept an obligation (as holder)
@@ -386,16 +477,41 @@ const MAIN_LOOP_QUESTION = `
  10. Prove you hold a licence             Verifier
  11. Propose a transfer (as holder)       26. Make a challenge (for a licensee or a holder)
  12. Approve a transfer (as issuer)       27. Check a licence presentation
- 13. Withdraw a transfer proposal         28. Check an ownership proof
- 14. Revoke a licence
- 15. Seal waiting revocations             Other
+ 13. Withdraw a transfer proposal         28. Check a control proof
+ 14. Revoke a licence                     44. Check a DNA pairing (evidence file)
+ 15. Seal waiting revocations
+                                          Other
                                           29. Anchor a batch root
                                           30. Show the contract state
                                           31. Show your record and identity
                                           32. Show your record secret
                                           33. Retire the maintenance authority (PERMANENT)
-                                           0. Exit
+                                          41. Use a record secret you hold
+                                          42. Check which recovery secret is current
+                                          43. Pair a raw value (copyable; use 3)
+                                          45. Show your DNA pairings (evidence)
+${CLAIMS_MENU}
+
+  0. Exit
 Which would you like to do? `;
+
+/**
+ * Write an evidence file (when `file` is given) and show it on the terminal only: it holds
+ * the salt, which with the report lets anyone recognise the pairing, so it is kept out of
+ * the log file.
+ */
+const saveAndShowEvidence = (ev: PairingEvidence, file: string | undefined, logger: Logger): void => {
+  if (file !== undefined) {
+    try {
+      logger.info(`Evidence file written: ${writeEvidence(file, ev)}`);
+    } catch (e) {
+      logger.error(
+        `The evidence file was not written (${e instanceof Error ? e.message : String(e)}). Copy it from below.`,
+      );
+    }
+  }
+  writeUnscrubbed(`\n${JSON.stringify(ev, null, 2)}\n  (shown on screen only, not written to the log)\n\n`);
+};
 
 const mainLoop = async (
   providers: VeilcoreProviders,
@@ -403,18 +519,38 @@ const mainLoop = async (
   logger: Logger,
   zkConfigPath: string,
   indexerUri: string,
+  claimsProviders?: ClaimsProviders,
+  indexerWsUri?: string,
 ): Promise<void> => {
-  const api = await deployOrJoin(providers, rli, logger, zkConfigPath, indexerUri);
+  // The contract's history, for rule 9's raw-pairing check and finding a lost pairing.
+  const history: ActionSource =
+    indexerWsUri === undefined
+      ? () => {
+          throw new Error("No indexer subscription URL, so the contract's history cannot be read.");
+        }
+      : indexerHistory(indexerUri, indexerWsUri);
+  const api = await deployOrJoin(providers, rli, logger, zkConfigPath, indexerUri, undefined, claimsProviders);
   if (api === null) return;
+  const claims: ClaimsMenuContext = {
+    rli,
+    logger,
+    providers: claimsProviders,
+    indexerUri,
+    hidden: (q) => askHidden(q),
+    during,
+    checkBuild: claimsBuildCheck(zkConfigPath),
+    api: undefined,
+  };
 
   // Rules 5 and 8: every challenge this verifier issues is recorded, and used once.
-  const challengeFile = new ChallengeFile(getNetworkId(), process.env.VEILCORE_PRIVATE_STATE_PASSWORD ?? '');
+  const challengeFile = new ChallengeFile(getNetworkId(), privateStatePassword() ?? '');
   const loaded = await challengeFile.load();
   const book: ChallengeBook = loaded.book;
   if (loaded.warning !== undefined) logger.warn(loaded.warning);
 
   let derived: VeilcoreDerivedState | undefined;
-  const subscription = api.state$.subscribe({ next: (s) => (derived = s) });
+  // Errors on the stream are handled there (state-watch.ts): never a crash mid-call.
+  const subscription = watchState(api.state$, logger, (s) => (derived = s));
   const tx = (r: { txHash: string; blockHeight: number }): void =>
     logger.info(`Transaction ${r.txHash} at block ${r.blockHeight}.`);
   try {
@@ -448,13 +584,41 @@ const mainLoop = async (
           case '2': {
             const challenge = await ask32(rli, "The verifier's challenge (hex): ");
             const p = await api.proveOwnership(challenge);
-            logger.info(`Ownership proved for record ${toHex(p.commitment)}.`);
+            logger.info(`Control proved for record ${toHex(p.commitment)}.`);
             tx(p);
             break;
           }
           case '3': {
-            const dna = await ask32(rli, 'DNA report fingerprint (hex): ');
-            tx(await api.pairDna(dna));
+            // A bound pairing (design.md, rule 9): what goes on chain hides the report and
+            // verifies only for this record's identity, so nobody can copy it to their own.
+            const report = reportFromAnswer(await rli.question('The report file (a path), or its SHA-256 (64 hex): '));
+            let p: Awaited<ReturnType<typeof api.pairReport>>;
+            try {
+              p = await api.pairReport(report.reportHash);
+            } catch (e) {
+              logger.error(
+                'The pairing was not confirmed. If it was sent, its salt is saved here: option 45 shows it and can ' +
+                  'look for its transaction on chain. Check that before pairing the same report again.',
+              );
+              throw e;
+            }
+            tx(p);
+            const ev = pairingEvidence({
+              network: getNetworkId(),
+              contractAddress: api.deployedContractAddress,
+              txId: p.txId,
+              identity: p.identity,
+              reportHash: report.reportHash,
+              salt: p.salt,
+              reportFile: report.reportFile,
+            });
+            saveAndShowEvidence(
+              ev,
+              (await rli.question(`Save the evidence file as (blank = ${defaultEvidencePath(p.binding)}): `)).trim() ||
+                defaultEvidencePath(p.binding),
+              logger,
+            );
+            logger.info(afterPairingMessage(report.reportFile !== undefined));
             break;
           }
           case '4': {
@@ -468,13 +632,16 @@ const mainLoop = async (
             } catch (e) {
               if (!(e instanceof LandedButUnconfirmedError)) {
                 logger.error(
-                  'The rotation was not seen on chain, so this client keeps your OLD secret, which still works. ' +
-                    'If option 31 later says "Current: no", it landed late: keep the new secret shown above and get help before going on.',
+                  'The rotation was not seen on chain, so this client keeps your OLD secret. Keep BOTH secrets, the old ' +
+                    'and the new shown above. If option 31 later says "Current: no", it landed late: choose 41 and type ' +
+                    'the new secret. Get help before going on if unsure.',
                 );
                 throw e;
               }
               // The API has already switched this client to the new secret.
-              logger.warn(`${e.message} The new secret shown above is the real one; the old one can do nothing now.`);
+              logger.warn(
+                `${e.message} If option 31 says "Current: no", the indexer was wrong: choose 41 and type your OLD secret.`,
+              );
             }
             logger.info('Licences, parentage and obligations stay with your identity.');
             break;
@@ -497,13 +664,17 @@ const mainLoop = async (
               // show new secrets that control nothing. The API checks the chain before failing.
               if (!(e instanceof LandedButUnconfirmedError)) {
                 logger.error(
-                  'The recovery was not seen on chain. Your old recovery secret still works; the secrets above do not. ' +
-                    'If option 31 later says "Current: no", it landed late: keep both new secrets and get help before going on.',
+                  'The recovery was not seen on chain. Keep ALL the secrets: your old recovery secret and the two new ' +
+                    'ones shown above, until you know which are current. Option 42 checks a recovery secret; if option 31 ' +
+                    'later says "Current: no", it landed late: choose 41 and type the new record secret. Get help before going on.',
                 );
                 throw e;
               }
               // The API has already switched this client to the new record secret.
-              logger.warn(`${e.message} The two secrets shown above are the real ones.`);
+              logger.warn(
+                `${e.message} The two secrets shown above are the real ones; keep the old ones too until option 42 ` +
+                  'confirms the new recovery secret.',
+              );
             }
             logger.info('Recovered. Whoever held an earlier secret, including a thief, can no longer act from now on.');
             logger.info('The recovery secret you typed in is used up; only the new one works.');
@@ -518,18 +689,40 @@ const mainLoop = async (
             const next = randomBytes(32);
             showSecret('NEW RECOVERY SECRET — store it now, before it is sent:', toHex(next));
             await rli.question('Press Enter once it is stored. ');
-            tx(await api.replaceRecoveryCommitment(origin, C.recoveryCommit(next), current));
+            try {
+              tx(await api.replaceRecoveryCommitment(origin, C.recoveryCommit(next), current));
+            } catch (e) {
+              // It may have landed with only the confirmation failing: the old recovery
+              // secret is then dead, and throwing the new one away would lose recovery for good.
+              if (e instanceof RecoveryReplacedButUnconfirmedError) {
+                logger.warn(`${e.message} Keep the NEW one shown above. Option 42 checks it any time.`);
+                break;
+              }
+              logger.error(
+                'The replacement was not seen on chain. Keep BOTH recovery secrets, the old and the new shown above, ' +
+                  'until option 42 shows which one is current.',
+              );
+              throw e;
+            }
             logger.info('Replaced. The old recovery secret no longer works.');
             break;
           }
           case '7': {
-            const issuer = await ask32(rli, "Issuer's record (hex): ");
+            const given = await ask32(rli, "Issuer's record (hex): ");
             const secret = randomBytes(32);
+            // Built against the issuer's CURRENT head: issueLicense keys the licence on it, so
+            // one built against an earlier commitment (an origin) could never be countersigned.
+            const { licenseCommitment, issuerRecord } = await api.licenseRequest(secret, given);
             showSecret(
               'YOUR LICENCE SECRET — keep it; you need it to countersign, present and transfer:',
               toHex(secret),
             );
-            logger.info(`Send the issuer this licence commitment: ${toHex(C.licenseCommit(secret, issuer))}`);
+            if (toHex(issuerRecord) !== toHex(given))
+              logger.info(
+                `That record has moved on: the issuer acts as ${toHex(issuerRecord)} now. The licence is built ` +
+                  'against that one: give it, not the one you typed, when you countersign, present or transfer.',
+              );
+            logger.info(`Send the issuer this licence commitment: ${toHex(licenseCommitment)}`);
             break;
           }
           case '8': {
@@ -631,16 +824,21 @@ const mainLoop = async (
             break;
           }
           case '26': {
-            // Two kinds, never shared: an ownership proof publishes its challenge, and a
+            // Two kinds, never shared: a control proof publishes its challenge, and a
             // licence presentation is private only while its challenge stays unpublished.
-            const kind = (await rli.question('For a (L)icence presentation or an (O)wnership proof? '))
+            const kind = (await rli.question('For a (L)icence presentation or a (C)ontrol proof? '))
               .trim()
               .toLowerCase();
-            const ch = book.issue(kind.startsWith('o') ? 'ownership' : 'licence').challenge;
+            // 'o' (the old "ownership" letter) still means a control proof.
+            const control = kind.startsWith('c') || kind.startsWith('o');
+            const ch = book.issue(control ? 'ownership' : 'licence').challenge;
             await challengeFile.save(book);
-            if (kind.startsWith('o')) {
-              showSecret('OWNERSHIP CHALLENGE — send it to the holder; it will be public once they answer:', toHex(ch));
-              logger.info('Recorded here: option 28 accepts it once, for an ownership proof, within 7 days.');
+            if (control) {
+              showSecret(
+                'CONTROL-PROOF CHALLENGE — send it to the holder; it will be public once they answer:',
+                toHex(ch),
+              );
+              logger.info('Recorded here: option 28 accepts it once, for a control proof, within 7 days.');
             } else {
               showSecret(
                 'LICENCE CHALLENGE — send it to the licensee privately, use it once, never publish it:',
@@ -660,14 +858,16 @@ const mainLoop = async (
               logger.info(`NOT ACCEPTED: ${usable.reason}.`);
               break;
             }
-            const verdict = await api.checkPresentation(indexerUri, txId, issuer, ch);
+            // When the challenge was issued, and the presentation's own block time: a
+            // presentation shows the licence was live then, so an old one is refused.
+            const verdict = await api.checkPresentation(indexerUri, txId, issuer, ch, book.issuedAt(ch));
             const used = verdict.accepted ? await useUp(book, challengeFile, ch, 'licence', logger) : undefined;
             if (used !== undefined && !used.ok) logger.info(`NOT ACCEPTED: ${used.reason}.`);
             else logger.info(`${verdict.accepted ? 'ACCEPTED' : 'NOT ACCEPTED'}: ${verdict.reason}.`);
             break;
           }
           case '28': {
-            const txId = (await rli.question("The ownership proof's transaction id (from the holder): ")).trim();
+            const txId = (await rli.question("The control proof's transaction id (from the holder): ")).trim();
             const record = await ask32(rli, 'Record you asked about (any record of that identity, hex): ');
             const ch = await ask32(rli, 'The challenge you sent (hex): ');
             await challengeFile.refresh(book);
@@ -732,14 +932,14 @@ const mainLoop = async (
           case '30': {
             const l = await api.currentLedger();
             logger.info(
-              `Protocol version ${l.protocolVersion}. Anchors ${l.anchorSeq}, ownership proofs ${l.proofSeq}, presentations ${l.presentationSeq}.`,
+              `Protocol version ${l.protocolVersion}. Anchors ${l.anchorSeq}, control proofs ${l.proofSeq}, presentations ${l.presentationSeq}.`,
             );
             logger.info(`Parentage edges ${l.descentSeq}, obligation changes ${l.obligationSeq}, seals ${l.sealSeq}.`);
             logger.info(`Revocations waiting for a seal: ${l.unsealedChanges ? 'yes' : 'no'}.`);
             break;
           }
           case '31':
-            if (derived === undefined) logger.info('No state yet.');
+            if (derived === undefined) logger.info('No state yet (or updates from the indexer are being retried).');
             else {
               logger.info(`Your record:   ${derived.myCommitment}`);
               logger.info(`Your identity: ${derived.myIdentity}`);
@@ -769,11 +969,14 @@ const mainLoop = async (
               else {
                 try {
                   await during(() => api.retireMaintenanceAuthority(r.value));
-                  logger.info('Retired. The key you typed was used once and removed from this machine again.');
+                  logger.info(
+                    'Retired provably: the chain shows an empty committee, which no key can satisfy. The key you typed ' +
+                      'was held in memory for this only, and is gone again.',
+                  );
                 } catch (e) {
                   logger.error(
-                    'Retiring did not complete (it may or may not have landed). The key you typed has been removed ' +
-                      'from this machine again; your offline copy is unchanged.',
+                    'Retiring did not complete (it may or may not have landed). The key you typed was held in memory ' +
+                      'only and is gone again; your paper copy is unchanged.',
                   );
                   throw e;
                 }
@@ -781,10 +984,101 @@ const mainLoop = async (
             } else logger.info('Not retired.');
             break;
           }
+          case '43': {
+            logger.warn(
+              'A raw value is published as given: anyone who sees it, even before it lands, can pair the same value to ' +
+                'their own record first. Pairing a raw report hash does not show who had the report first. Option 3 ' +
+                'pairs a report so it cannot be copied.',
+            );
+            const value = await ask32(rli, 'Value to pair (64 hex): ');
+            if ((await rli.question('Pair it anyway? Type RAW to confirm: ')).trim() !== 'RAW') {
+              logger.info('Not paired. Nothing was sent.');
+              break;
+            }
+            tx(await api.pairDna(value));
+            break;
+          }
+          case '44': {
+            const evidence = readEvidenceFile(await rli.question('The evidence file (path): '));
+            const reportPath = (await rli.question('The report file the holder gave you (path): ')).trim();
+            if (reportPath !== '' && !existsSync(reportPath))
+              throw new InputError('No such report file. Nothing was checked.');
+            const verdict = await checkEvidence(
+              api,
+              indexerUri,
+              getNetworkId(),
+              evidence,
+              reportPath === '' ? undefined : new Uint8Array(readFileSync(reportPath)),
+              history,
+            );
+            logger.info(`${verdict.accepted ? 'ACCEPTED' : 'NOT ACCEPTED'}: ${verdict.reason}.`);
+            break;
+          }
+          case '45': {
+            const where = { network: getNetworkId(), contractAddress: api.deployedContractAddress };
+            let { ready, unconfirmed } = evidenceFromNotes(await api.pairings(), where);
+            if (
+              unconfirmed.length > 0 &&
+              (
+                await rli.question(
+                  `${unconfirmed.length} saved pairing(s) never got a transaction id here. Look for them on chain now? (y/N) `,
+                )
+              )
+                .trim()
+                .toLowerCase()
+                .startsWith('y')
+            ) {
+              ({ ready, unconfirmed } = evidenceFromNotes(await api.findPairingTransactions(history), where));
+              logger.info(
+                unconfirmed.length === 0
+                  ? 'Found every one.'
+                  : `${unconfirmed.length} not on chain: never sent, or the indexer does not show it yet.`,
+              );
+            }
+            if (ready.length === 0 && unconfirmed.length === 0) logger.info('No bound pairings were made from here.');
+            const folder =
+              ready.length === 0
+                ? ''
+                : (await rli.question('Write the evidence files to a folder (path; blank = only show them): ')).trim();
+            for (const ev of ready)
+              saveAndShowEvidence(
+                ev,
+                folder === '' ? undefined : path.join(folder, path.basename(defaultEvidencePath(ev.binding))),
+                logger,
+              );
+            for (const n of unconfirmed) {
+              writeUnscrubbed(
+                `\n  Sent or about to be sent, never confirmed here, and not found on chain. It paired ${n.binding}.\n` +
+                  `  record ${n.identity}\n  report SHA-256 ${n.reportSha256}\n  salt ${n.salt}\n\n`,
+              );
+            }
+            break;
+          }
+          case '41': {
+            // The way back to a secret this client stopped using on the indexer's word, and
+            // the way to restore a client from paper. Checked on chain before it is used.
+            const s = await askSecret32('Record secret to act as (64 hex; nothing shows as you type or paste): ');
+            const r = await api.useRecordSecret(s);
+            logger.info(
+              `This client now acts as record ${toHex(C.commit(s))}${r.anchored ? '' : ' (not anchored yet)'}. ` +
+                'Option 31 shows it.',
+            );
+            break;
+          }
+          case '42': {
+            const record = await ask32(rli, 'Any record of the identity (hex; the ORIGINAL anchored record is fine): ');
+            const rs = await askSecret32('Recovery secret to check (64 hex; nothing shows as you type or paste): ');
+            logger.info(
+              (await api.recoverySecretIsCurrent(record, rs))
+                ? 'That IS the current recovery secret for this identity. Nothing was sent.'
+                : 'That is NOT the current recovery secret for this identity. Nothing was sent.',
+            );
+            break;
+          }
           case '0':
             return;
           default:
-            logger.error(NOT_AN_OPTION);
+            if (!(await handleClaimsChoice(choice, claims))) logger.error(NOT_AN_OPTION);
         }
       } catch (e) {
         logError(logger, e);
@@ -968,11 +1262,43 @@ export const run = async (config: Config, testEnv: TestEnvironment, logger: Logg
   };
   rli.on('SIGINT', onInterrupt);
   process.on('SIGINT', onInterrupt);
+  // An error nothing else caught is logged, not a crash in the middle of a call (D-8).
+  const unguard = guardProcess(
+    (e) => logError(logger, e),
+    logger,
+    () => txInProgress,
+  );
+  // Everything this program writes (the private-state store above all) is for this
+  // user only; logs and ~/.veilcore already were.
+  let savedUmask: number | undefined;
+  try {
+    savedUmask = process.umask(0o077);
+  } catch {
+    // Not settable here (a worker thread); private-store.ts sets each file 0600 anyway.
+  }
 
   try {
+    // One CLI per private-state store, held until this process ends: two at once overwrite
+    // each other's private state (store-lock.ts). Checked before anything is asked.
+    try {
+      lockStoreDir(storeDirFor(getNetworkId()));
+    } catch (e) {
+      if (!(e instanceof StoreInUseError)) throw e;
+      logger.error(e.message);
+      return;
+    }
     // Asked for up front, before the chain starts and the wallet syncs, so a password
     // midnight-js would refuse is found in the first second rather than after the sync.
     if (!(await settlePassword(askHidden, logger))) return;
+    // Where the private state lives: ~/.veilcore/<network>/private-state. An older
+    // version's folder is found, and offered to be copied, now rather than after the sync.
+    const store = await chooseStore({
+      networkId: getNetworkId(),
+      storeName: config.privateStateStoreName,
+      password: privateStatePassword() ?? '',
+      ask: (q) => rli.question(q),
+      logger,
+    });
 
     if (config.mainnet) {
       // Also checked before the long sync: a build that does not match the record, or a
@@ -983,6 +1309,17 @@ export const run = async (config: Config, testEnv: TestEnvironment, logger: Logg
         logError(logger, e);
         logger.error('Nothing was started.');
         return;
+      }
+      // The claims contract is checked too, but only warned about: until its fingerprints
+      // are committed, the main contract can still be deployed and used.
+      try {
+        const n = claimsBuildCheck(config.zkConfigPath)();
+        logger.info(`Claims contract: all ${n} build artefacts match the committed fingerprints.`);
+      } catch (e) {
+        logger.warn(
+          `Claims contract: ${e instanceof Error ? e.message : String(e)} Deploying, joining or finishing it ` +
+            '(options 34, 35, 36) will be refused; the main contract is not affected.',
+        );
       }
       const gate = decide(resolveNetwork(), process.env[REVISION_VAR]);
       if (gate.allow) logger.info(`Deployment record: ${gate.because}. Deploying is allowed.`);
@@ -1065,39 +1402,66 @@ export const run = async (config: Config, testEnv: TestEnvironment, logger: Logg
       }
     }
 
+    // This store holds every record secret this client acts as. The literal password that
+    // used to sit here came from the example this was forked from and was published in a
+    // public repository, which is no password at all on a network where the contract
+    // matters. The maintenance key and one-call secrets are never written to it
+    // (openStores: memory only, round D).
+    const privateStoragePasswordProvider = (): string => {
+      const password = privateStatePassword();
+      if (!password) {
+        throw new Error(
+          'No private-state password was settled. It encrypts private state. Sixteen characters or more, with ' +
+            'at least three of uppercase, lowercase, digits and symbols.',
+        );
+      }
+      return password;
+    };
+    const stores = await openStores<
+      VeilcorePrivateStateId,
+      VeilcorePrivateState,
+      ClaimsPrivateStateId,
+      ClaimsPrivateState
+    >({
+      dir: store.dir,
+      storeName: config.privateStateStoreName,
+      password: privateStoragePasswordProvider,
+      accountId: seed,
+    });
+    logger.info(`Private state: ${store.dir}`);
     const zkConfigProvider = new NodeZkConfigProvider<VeilcoreCircuitKeys>(config.zkConfigPath);
+    const publicDataProvider = indexerPublicDataProvider(envConfiguration.indexer, envConfiguration.indexerWS);
     const providers: VeilcoreProviders = {
-      privateStateProvider: oneAtATime(
-        levelPrivateStateProvider<VeilcorePrivateStateId, VeilcorePrivateState>({
-          privateStateStoreName: config.privateStateStoreName,
-          signingKeyStoreName: `${config.privateStateStoreName}-signing-keys`,
-          privateStoragePasswordProvider: () => {
-            // This store holds the contract's maintenance authority key, which can
-            // insert or remove verifier keys and so decide what the contract accepts.
-            // The literal that used to sit here came from the example this was forked
-            // from and was published in a public repository, which is no password at
-            // all on a network where the contract matters.
-            const password = process.env.VEILCORE_PRIVATE_STATE_PASSWORD;
-            if (!password) {
-              throw new Error(
-                'VEILCORE_PRIVATE_STATE_PASSWORD is not set. It encrypts private state and the ' +
-                  'maintenance authority signing key. Sixteen characters or more, with at least ' +
-                  'three of uppercase, lowercase, digits and symbols.',
-              );
-            }
-            return password;
-          },
-          accountId: seed,
-        }),
-      ),
-      publicDataProvider: indexerPublicDataProvider(envConfiguration.indexer, envConfiguration.indexerWS),
+      privateStateProvider: stores.main,
+      publicDataProvider,
       zkConfigProvider: zkConfigProvider,
       proofProvider: httpClientProofProvider(envConfiguration.proofServer, zkConfigProvider),
       walletProvider: walletProvider,
       midnightProvider: walletProvider,
     };
+    // The claims contract: its own compiled keys, and its own private-state store, since a
+    // provider holds one contract address at a time and the main client sets it too.
+    const claimsZkConfigProvider = new NodeZkConfigProvider<ClaimsCircuitKeys>(
+      path.resolve(config.zkConfigPath, '..', 'veilcore-claims'),
+    );
+    const claimsProviders: ClaimsProviders = {
+      privateStateProvider: stores.claims,
+      publicDataProvider,
+      zkConfigProvider: claimsZkConfigProvider,
+      proofProvider: httpClientProofProvider(envConfiguration.proofServer, claimsZkConfigProvider),
+      walletProvider: walletProvider,
+      midnightProvider: walletProvider,
+    };
 
-    await mainLoop(providers, rli, logger, config.zkConfigPath, envConfiguration.indexer);
+    await mainLoop(
+      providers,
+      rli,
+      logger,
+      config.zkConfigPath,
+      envConfiguration.indexer,
+      claimsProviders,
+      envConfiguration.indexerWS,
+    );
   } catch (e) {
     if (e instanceof SavedProgressNotOpenedError) logger.info(e.message);
     // Stopped at a prompt (Ctrl+C, or the input closed): nothing went wrong.
@@ -1107,6 +1471,14 @@ export const run = async (config: Config, testEnv: TestEnvironment, logger: Logg
     process.off('SIGINT', onInterrupt);
     await stopAll();
     rli.removeAllListeners();
+    unguard();
+    if (savedUmask !== undefined) {
+      try {
+        process.umask(savedUmask);
+      } catch {
+        // as above
+      }
+    }
   }
 };
 

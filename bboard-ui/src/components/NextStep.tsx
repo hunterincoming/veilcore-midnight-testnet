@@ -45,7 +45,7 @@ export const NextStep: React.FC<{
   if (isReceived && !record.attestation) {
     step = {
       title: 'Confirm what you received',
-      why: 'You hold this material now. Attaching your report is what turns the sender’s record into evidence — signed by you, not recorded on your behalf.',
+      why: 'You hold this material now. Attaching your signed report to the sender’s record is what turns their record into evidence: signed by you, not recorded on your behalf.',
       action: 'Attach a report',
       icon: <ScienceIcon />,
       onClick: () => {},
@@ -60,19 +60,31 @@ export const NextStep: React.FC<{
       icon: <SendIcon />,
       onClick: onAgreement,
     };
-  } else if (!record.dnaFingerprint && !record.attestation) {
+  } else if (!record.attestation) {
+    // No second party yet, whether or not a report is paired: a report the holder paired
+    // is still the holder's own statement.
     step = {
       title: 'Send a sample to a lab',
-      why: 'Right now this record is your own account of the cultivar. A lab confirming receipt and returning a report is what makes it evidence someone else can rely on — and they produce the report, so this is the step that starts it.',
+      why: record.dnaFingerprint
+        ? 'You’ve paired a lab report, which is your own statement. A lab confirming receipt with its own key adds a second party to the record, which is stronger evidence than your statement alone.'
+        : 'Right now this record is your own account of the cultivar. A lab confirming receipt with its own key, and returning a report, makes it stronger evidence than your own account.',
       action: 'Send to a lab',
       icon: <VerifiedIcon />,
       onClick: () => {},
       custom: <SendToLab record={record} />,
     };
+  } else if (!record.dnaFingerprint) {
+    step = {
+      title: 'Pair the lab’s report',
+      why: 'A second party has taken delivery. When the report comes back, pair it with this record so a later test can be compared with it.',
+      action: 'Pair DNA report',
+      icon: <ScienceIcon />,
+      onClick: onPairDna,
+    };
   } else {
     step = {
       title: 'This record is ready to use',
-      why: 'A second party has taken delivery and confirmed it with their own key \u2014 what that establishes is that somebody received this material, not who they are. You can send material onward or license it, with terms that apply to descendants declared from this record.',
+      why: 'A second party has taken delivery, and a report is paired. What the delivery shows is that somebody received this material, not who they are. You can send material onward or license it, with terms that apply to offspring declared from this record.',
       action: 'Start an agreement',
       icon: <SendIcon />,
       onClick: onAgreement,

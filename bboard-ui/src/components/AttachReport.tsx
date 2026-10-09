@@ -44,11 +44,11 @@ export const AttachReport: React.FC<{ record: StrainRecord }> = ({ record }) => 
     if (!file) return;
     const source = record.receivedFromCommitment;
     if (!source) {
-      setError('This record did not arrive through a transfer, so there is no sender to attest to.');
+      setError('This record did not arrive through a transfer, so there is no sender’s record to attach a report to.');
       return;
     }
     if (!attester) {
-      setError('Set up an attester identity first — a report signed by nobody is not evidence.');
+      setError('Set up your signing key first: a report nobody signed carries no weight.');
       return;
     }
 
@@ -101,21 +101,21 @@ export const AttachReport: React.FC<{ record: StrainRecord }> = ({ record }) => 
                 <Typography sx={{ fontFamily: 'monospace', fontSize: 13 }}>{shortFingerprint(done.hash)}</Typography>
               </Box>
               <Typography variant="caption" color="text.secondary">
-                Keep the report file. The hash proves a document is the one you signed — without it there is nothing to
-                compare against.
+                Keep the report file. Its fingerprint shows a document is the one you signed; without the file there is
+                nothing to compare it with.
               </Typography>
             </Stack>
           ) : (
             <Stack spacing={2} sx={{ pt: 1 }}>
               <Typography variant="body2" color="text.secondary">
-                Your report is hashed on this device and never uploaded. The hash is signed with your key and attached
-                to the sender&apos;s record — it is their evidence, and your statement about it.
+                Your report is fingerprinted on this device and never uploaded. The fingerprint is signed with your key
+                and attached to the sender&apos;s record: it is their evidence, and your statement about it.
               </Typography>
 
               {!attester && (
                 <Alert severity="warning" variant="outlined">
-                  You need an attester identity first. A report the registry records on your behalf is not the same as
-                  one you signed.
+                  Set up your signing key first (in the header). A report you signed carries more weight than one we
+                  record on your behalf.
                 </Alert>
               )}
 
@@ -135,8 +135,24 @@ export const AttachReport: React.FC<{ record: StrainRecord }> = ({ record }) => 
                 file={file}
                 onFile={setFile}
                 title="Drop your report"
-                hint="Hashed on this device. The file itself is never uploaded."
+                hint="Fingerprinted on this device. The file itself is never uploaded."
               />
+              {/* What the signature is over, in full, before it is made (attack round D). */}
+              {record.receivedFromCommitment && (
+                <Box sx={{ p: 1.5, borderRadius: 1, background: 'rgba(255,255,255,0.04)' }}>
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                    Your key signs that this report is about record {record.receivedFrom ?? 'the sender’s record'}, with
+                    fingerprint
+                  </Typography>
+                  <Typography sx={{ fontFamily: 'monospace', fontSize: 12, wordBreak: 'break-all' }}>
+                    {record.receivedFromCommitment}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                    That fingerprint came from the registry when you claimed the transfer. Compare it with the one the
+                    sender gave you if you have it.
+                  </Typography>
+                </Box>
+              )}
               {error && (
                 <Alert severity="warning" variant="outlined">
                   {error}

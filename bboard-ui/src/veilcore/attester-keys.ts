@@ -49,12 +49,24 @@ export const loadAttester = (): AttesterProfile | null => {
 
 const save = (p: AttesterProfile): void => localStorage.setItem(KEY, JSON.stringify(p));
 
-/** Create an attester identity. The keypair is generated here and stays here. */
+/**
+ * Create an attester identity. The keypair is generated here and stays here.
+ *
+ * Refuses when this browser already holds one (attack round D). The key is saved before
+ * it is published, so a failed publish followed by "Create identity" again used to
+ * generate a second key over the first with no warning; a published key lost that way
+ * cannot sign again. An unpublished one is published again with publishAttester.
+ */
 export const createAttester = async (
   displayName: string,
   role: AttesterProfile['role'],
   accreditation?: AttesterProfile['accreditation'],
 ): Promise<AttesterProfile> => {
+  if (loadAttester()) {
+    throw new Error(
+      'An attester key already exists in this browser. Publish it again or download its backup; a new one was not made.',
+    );
+  }
   const keypair = await generateKeypair();
   const profile: AttesterProfile = { keypair, displayName, role, accreditation };
   save(profile);

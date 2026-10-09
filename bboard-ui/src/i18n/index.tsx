@@ -17,6 +17,16 @@ import { es } from './es';
 import { ja } from './ja';
 import { de } from './de';
 import { fr } from './fr';
+import { mainnetStrings } from './en-mainnet';
+import { IS_MAINNET, CLAIMS_ON_MAINNET, MAINTENANCE_POLICY_APPROVED } from '../config/network';
+
+/**
+ * In a mainnet build, the strings that describe the network (en-mainnet.ts) replace the
+ * test-network ones in every language. Empty in every other build.
+ */
+const NETWORK_OVERLAY: Strings = IS_MAINNET
+  ? mainnetStrings({ claimsOnMainnet: CLAIMS_ON_MAINNET, policyApproved: MAINTENANCE_POLICY_APPROVED })
+  : {};
 
 export const LANGUAGES = {
   en: { label: 'English', short: 'EN', strings: en as Strings },
@@ -120,7 +130,7 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return {
       lang,
       setLang,
-      t: (key, vars) => format(strings[key] ?? en[key], vars),
+      t: (key, vars) => format(NETWORK_OVERLAY[key] ?? strings[key] ?? en[key], vars),
       choices: showDrafts() ? (Object.keys(LANGUAGES) as Lang[]) : published,
       isDraft: !published.includes(lang),
     };

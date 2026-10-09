@@ -11,7 +11,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { createUnprovenCallTx, submitTxAsync } from '@midnight-ntwrk/midnight-js-contracts';
+import { setNetworkId } from '@midnight-ntwrk/midnight-js-network-id';
 import { SucceedEntirely } from '@midnight-ntwrk/midnight-js-types';
+import { NETWORK } from '../../config/network';
 import { CompiledVeilcore, PROVABLE_CIRCUITS } from '../../../../contract/src/veilcore';
 import { createVeilcorePrivateState } from '../../../../contract/src/witnesses';
 import { recoveryCommitmentOf } from './identity';
@@ -81,6 +83,8 @@ const call = async (
 ): Promise<ChainReceipt> => {
   const why = chainNotReady();
   if (why && !opts.deps) throw new Error(why);
+  // The Midnight libraries serialise for one network; set it here, only when a call is made.
+  setNetworkId(NETWORK);
   const contractAddress = CHAIN_CONTRACT ?? '';
   const progress = opts.progress ?? (() => undefined);
   let sentAs: string | undefined;

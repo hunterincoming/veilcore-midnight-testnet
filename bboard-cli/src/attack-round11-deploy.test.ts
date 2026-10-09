@@ -18,7 +18,7 @@ import { type Logger } from 'pino';
 import { LandedButUnconfirmedError, RevokedLicenceError, VeilcoreAPI } from '../../api/src/veilcore-api';
 import { C, VeilcoreSimulator, as, secret } from '../../contract/src/test/veilcore-simulator';
 import { ChallengeBook } from '../../contract/src/verify';
-import { passwordProblem, settlePassword } from './password';
+import { forgetPassword, passwordProblem, privateStatePassword, settlePassword } from './password';
 import { parseSecret32, parseSigningKey } from './prompt';
 import { redactThisSession, scrub } from './logger-utils';
 import { isContractRefusal } from './smoke';
@@ -26,10 +26,20 @@ import { ChallengeFile } from './challenge-file';
 
 // checkOwnership's indexer lookup, replaced so the test decides what "the state after the
 // proof" is (the real one fetches it by transaction id).
-const lookup: { state: unknown } = vi.hoisted(() => ({ state: undefined }));
+const lookup: { state: unknown; data: unknown; check?: unknown } = vi.hoisted(() => ({
+  state: undefined,
+  data: undefined,
+}));
 vi.mock('../../api/src/presentation-lookup', () => ({
   callState: async () => lookup.state,
   presentationState: async () => lookup.state,
+  singleCallState: async (...a: unknown[]) => ({
+    ...((lookup.check = a[6]), {}),
+    entryPoint: 'proveOwnership',
+    state: { data: lookup.data },
+    authority: { committee: 1, threshold: 1, counter: 16n, retired: false },
+    keys: 'unchecked',
+  }),
 }));
 
 const ADDR = 'ab'.repeat(32);
@@ -48,6 +58,10 @@ const ledgerHeadedBy = (origin: Uint8Array, head: Uint8Array) => ({
 const fakeApi = (
   calls: Record<string, (...a: unknown[]) => Promise<unknown>>,
   maintenance?: () => Promise<unknown>,
+  // Round D: retirement is provable (an empty committee); it reads the authority first.
+  queryContractState: () => Promise<unknown> = async () => ({
+    maintenanceAuthority: { committee: [], threshold: 1, counter: 1n },
+  }),
 ) => {
   let ps: Record<string, unknown> = { geneticSecret: old };
   const signingKeys = new Map<string, string>();
@@ -62,7 +76,7 @@ const fakeApi = (
       getSigningKey: async (a: string) => signingKeys.get(a),
       removeSigningKey: async (a: string) => void signingKeys.delete(a),
     },
-    publicDataProvider: { contractStateObservable: () => NEVER },
+    publicDataProvider: { contractStateObservable: () => NEVER, queryContractState },
   };
   const deployed = {
     deployTxData: { public: { contractAddress: ADDR } },
@@ -71,7 +85,8 @@ const fakeApi = (
   };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const api = new (VeilcoreAPI as any)(deployed, providers) as VeilcoreAPI;
-  api.landedCheck = { tries: 2, intervalMs: 1 };
+  // Round D: a landed change is believed on two agreeing reads, confirmGapMs apart.
+  api.landedCheck = { tries: 2, intervalMs: 1, confirmGapMs: 1 };
   /** What the chain shows when the API looks. */
   const chain = (l: unknown): void => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -144,9 +159,16 @@ describe('round 11: operator tooling', () => {
 
   it('R11-3 FIXED: a failed retire (menu 33) does not leave the typed authority key in the local store', async () => {
     const realKey = 'cd'.repeat(32);
-    const { api, signingKeys } = fakeApi({}, async () => {
-      throw new Error('ReplaceMaintenanceAuthorityTxFailedError / network down');
-    });
+    const { api, signingKeys } = fakeApi(
+      {},
+      async () => {
+        throw new Error('ReplaceMaintenanceAuthorityTxFailedError / network down');
+      },
+      // Round D: the provable retirement fails reading the authority, before sending.
+      async () => {
+        throw new Error('network down');
+      },
+    );
     await expect(api.retireMaintenanceAuthority(realKey)).rejects.toThrow();
     expect(signingKeys.has(ADDR)).toBe(false); // design.md: it "should not also sit on this machine"
   });
@@ -196,7 +218,10 @@ describe('R11-4 FIXED: the private-state password is checked with midnight-js ru
   it('typed: the same good password twice is taken', async () => {
     const answers = ['Tq7#mZ9!pL2@vX5$', 'Tq7#mZ9!pL2@vX5$'];
     expect(await settlePassword(async () => answers.shift() ?? '', silent)).toBe(true);
-    expect(process.env.VEILCORE_PRIVATE_STATE_PASSWORD).toBe('Tq7#mZ9!pL2@vX5$');
+    // Round D (D-6): held in memory, never put in the environment for child processes.
+    expect(privateStatePassword()).toBe('Tq7#mZ9!pL2@vX5$');
+    expect(process.env.VEILCORE_PRIVATE_STATE_PASSWORD).toBeUndefined();
+    forgetPassword();
   });
 });
 
@@ -292,10 +317,19 @@ describe("R11-K FIXED: checkOwnership refuses a thief's proof once the owner rec
     sim.call(as(OWNER), 'anchor', C.recoveryCommit(rcv));
     const ch = secret('k-ch');
     sim.call(as(OWNER), 'proveOwnership', ch); // the thief, holding the stolen secret
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const raw = (): unknown => (sim as any).ctx.currentQueryContext.state;
     lookup.state = sim.state;
-    const { api, chain } = fakeApi({});
-    chain(sim.state);
-    expect((await api.checkOwnership('http://indexer', 'aa', REC, ch)).accepted).toBe(true);
+    lookup.data = raw();
+    const { api } = fakeApi({});
+    // The state now, as the API reads it (once, for the ledger and the key check).
+    let now = raw();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (api as any).currentState = async () => ({ data: now });
+    const first = await api.checkOwnership('http://indexer', 'aa', REC, ch);
+    expect(first.accepted).toBe(true);
+    // Verification review: the authority reported is the one at the proof's state.
+    expect(first.authority?.counter).toBe(16n);
 
     const NEW = secret('k-new');
     sim.call(
@@ -305,10 +339,46 @@ describe("R11-K FIXED: checkOwnership refuses a thief's proof once the owner rec
       C.commit(NEW),
       C.recoveryCommit(secret('k-rcv2')),
     );
-    chain(sim.state);
+    now = raw();
     const v = await api.checkOwnership('http://indexer', 'aa', REC, ch);
     expect(v.accepted).toBe(false);
     expect(v.reason).toMatch(/ask for a fresh proof/);
+  });
+});
+
+describe('verification review: on mainnet a caller cannot replace the pinned keys', () => {
+  it("the lookup runs with the deployment record's keys, whatever table the caller passes", async () => {
+    const { setNetworkId, getNetworkId } = await import('@midnight-ntwrk/midnight-js-network-id');
+    const { pinnedVerifierKeys } = await import('../../api/src/state-check');
+    const was = (() => {
+      try {
+        return getNetworkId();
+      } catch {
+        return 'undeployed';
+      }
+    })();
+    setNetworkId('mainnet');
+    try {
+      const sim = new VeilcoreSimulator();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      lookup.data = (sim as any).ctx.currentQueryContext.state;
+      const { api } = fakeApi({});
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (api as any).currentState = async () => ({
+        data: lookup.data,
+        operations: () => [],
+        operation: () => undefined,
+        maintenanceAuthority: { committee: [], threshold: 1, counter: 0n },
+      });
+      const own = { anchor: 'ab'.repeat(32) };
+      await api.checkOwnership('http://indexer', 'aa', secret('m-rec'), secret('m-ch'), {
+        verifierKeys: own,
+        authorityCounter: 16n,
+      });
+      expect(lookup.check).toEqual({ verifierKeys: pinnedVerifierKeys('veilcore'), authorityCounter: 16n });
+    } finally {
+      setNetworkId(was);
+    }
   });
 });
 

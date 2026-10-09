@@ -20,9 +20,22 @@ const fingerprintOf = (secret: Uint8Array): string => toHex(pureCircuits.commit(
 export const fingerprintText = async (text: string): Promise<string> =>
   fingerprintOf(await sha256(new TextEncoder().encode(text)));
 
+/**
+ * The largest file fingerprinted in the browser. The whole file is read into memory on
+ * the page's thread, so a multi-gigabyte drop froze or crashed the tab (attack round D).
+ * Lab reports and photos are far smaller than this.
+ */
+export const MAX_FINGERPRINT_BYTES = 200 * 1024 * 1024;
+
 /** Fingerprint a file's bytes locally (used for the DNA lab report). */
-export const fingerprintFile = async (file: File): Promise<string> =>
-  fingerprintOf(await sha256(new Uint8Array(await file.arrayBuffer())));
+export const fingerprintFile = async (file: File): Promise<string> => {
+  if (file.size > MAX_FINGERPRINT_BYTES) {
+    throw new Error(
+      `${file.name || 'That file'} is larger than 200 MB, so it was not read. Nothing was fingerprinted.`,
+    );
+  }
+  return fingerprintOf(await sha256(new Uint8Array(await file.arrayBuffer())));
+};
 
 /**
  * Canonicalisation and the commitment algorithm come from @veilcore/records.
@@ -43,7 +56,7 @@ export { canonicalise, newNonce, COMMITMENT_ALGORITHM } from 'veilcore-records';
  * The nonce matters — cultivar name, breeder and date are guessable, so without one an
  * observer could compute candidate commitments and confirm a guess against the chain.
  */
-export const fingerprintRecord = async (r: {
+export type CommittedRecordInput = {
   strainName: string;
   bredBy: string;
   dateCreated: string;
@@ -56,25 +69,32 @@ export const fingerprintRecord = async (r: {
   profile?: string;
   taxon?: string;
   nonce: string;
-}): Promise<string> => {
+};
+
+/**
+ * Exactly the fields the record commitment covers, in the form that is hashed. Exported
+ * so an export can carry them and anyone can recompute the registered fingerprint.
+ */
+export const committedRecordFields = (r: CommittedRecordInput): Record<string, unknown> => ({
+  breedingMethod: r.breedingMethod ?? '',
+  bredBy: r.bredBy,
+  dateCreated: r.dateCreated,
+  loggedAt: r.loggedAt,
+  nonce: r.nonce,
+  notes: r.notes,
+  parents: r.parents ?? [],
+  photoFingerprints: r.photoFingerprints ?? [],
+  refId: r.refId ?? '',
+  strainName: r.strainName,
+  // Committed only when present, so records sealed before these fields existed
+  // recompute to the fingerprint they were sealed with.
+  ...(r.profile ? { profile: r.profile } : {}),
+  ...(r.taxon ? { taxon: r.taxon } : {}),
+});
+
+export const fingerprintRecord = async (r: CommittedRecordInput): Promise<string> => {
   const { canonicalise: canon } = await import('veilcore-records');
-  const committed = {
-    breedingMethod: r.breedingMethod ?? '',
-    bredBy: r.bredBy,
-    dateCreated: r.dateCreated,
-    loggedAt: r.loggedAt,
-    nonce: r.nonce,
-    notes: r.notes,
-    parents: r.parents ?? [],
-    photoFingerprints: r.photoFingerprints ?? [],
-    refId: r.refId ?? '',
-    strainName: r.strainName,
-    // Committed only when present, so records sealed before these fields existed
-    // recompute to the fingerprint they were sealed with.
-    ...(r.profile ? { profile: r.profile } : {}),
-    ...(r.taxon ? { taxon: r.taxon } : {}),
-  };
-  return toHex(await sha256(new TextEncoder().encode(canon(committed))));
+  return toHex(await sha256(new TextEncoder().encode(canon(committedRecordFields(r)))));
 };
 
 /** Short display form of a fingerprint. */

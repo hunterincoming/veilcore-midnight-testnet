@@ -1,0 +1,424 @@
+{
+  "source": "veilcore-sdk src/commit.ts computeCommitment (checkLedgerIdentity), run on these records; regenerate from the SDK, never by hand",
+  "records": [
+    {
+      "name": "no ledgerIdentity",
+      "record": {
+        "formatVersion": "0.1",
+        "recordId": "vc_rec_li",
+        "subjectType": "plant-genetic-material",
+        "profile": "veilcore/profile/cannabis/v0.1",
+        "commitmentAlgorithm": "sha256/fields/v1",
+        "sealedAt": "2026-10-04T00:00:00Z",
+        "holder": {
+          "id": "vc_hld_test"
+        },
+        "profileData": {
+          "cultivarName": "Harbour Mist"
+        },
+        "fieldSchema": "875d8a6c21137ec1aae6d2c8ad6b929c4ef53b09a247a834f39b126dc910f5f9",
+        "fieldSetRoot": "3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c"
+      },
+      "commitment": "8431cf57e7925f8344ea21c4b1ee9850b6b4c384229031221686c82307bfc56e"
+    },
+    {
+      "name": "chain and identity",
+      "record": {
+        "formatVersion": "0.1",
+        "recordId": "vc_rec_li",
+        "subjectType": "plant-genetic-material",
+        "profile": "veilcore/profile/cannabis/v0.1",
+        "commitmentAlgorithm": "sha256/fields/v1",
+        "sealedAt": "2026-10-04T00:00:00Z",
+        "holder": {
+          "id": "vc_hld_test"
+        },
+        "profileData": {
+          "cultivarName": "Harbour Mist"
+        },
+        "fieldSchema": "875d8a6c21137ec1aae6d2c8ad6b929c4ef53b09a247a834f39b126dc910f5f9",
+        "fieldSetRoot": "3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c",
+        "ledgerIdentity": {
+          "chain": "midnight:preprod",
+          "identity": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"
+        }
+      },
+      "commitment": "eea62e59eec3c6a9f601df28e38e604567a03132e0dbb7729680842f276445db"
+    },
+    {
+      "name": "chain, identity and contractAddress",
+      "record": {
+        "formatVersion": "0.1",
+        "recordId": "vc_rec_li",
+        "subjectType": "plant-genetic-material",
+        "profile": "veilcore/profile/cannabis/v0.1",
+        "commitmentAlgorithm": "sha256/fields/v1",
+        "sealedAt": "2026-10-04T00:00:00Z",
+        "holder": {
+          "id": "vc_hld_test"
+        },
+        "profileData": {
+          "cultivarName": "Harbour Mist"
+        },
+        "fieldSchema": "875d8a6c21137ec1aae6d2c8ad6b929c4ef53b09a247a834f39b126dc910f5f9",
+        "fieldSetRoot": "3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c",
+        "ledgerIdentity": {
+          "chain": "midnight:mainnet",
+          "identity": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+          "contractAddress": "abababababababababababababababababababababababababababababababab"
+        }
+      },
+      "commitment": "39643676b0be22355e20b75f947a714fec3fb7a03bd36cd432a965be5fb4183d"
+    },
+    {
+      "name": "another identity",
+      "record": {
+        "formatVersion": "0.1",
+        "recordId": "vc_rec_li",
+        "subjectType": "plant-genetic-material",
+        "profile": "veilcore/profile/cannabis/v0.1",
+        "commitmentAlgorithm": "sha256/fields/v1",
+        "sealedAt": "2026-10-04T00:00:00Z",
+        "holder": {
+          "id": "vc_hld_test"
+        },
+        "profileData": {
+          "cultivarName": "Harbour Mist"
+        },
+        "fieldSchema": "875d8a6c21137ec1aae6d2c8ad6b929c4ef53b09a247a834f39b126dc910f5f9",
+        "fieldSetRoot": "3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c",
+        "ledgerIdentity": {
+          "chain": "midnight:preprod",
+          "identity": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+        }
+      },
+      "commitment": "c6df83c02f62b1aba7c5bcc39704eea1771ecafcdaf5c5139d113c08c30a2367"
+    },
+    {
+      "name": "null",
+      "record": {
+        "formatVersion": "0.1",
+        "recordId": "vc_rec_li",
+        "subjectType": "plant-genetic-material",
+        "profile": "veilcore/profile/cannabis/v0.1",
+        "commitmentAlgorithm": "sha256/fields/v1",
+        "sealedAt": "2026-10-04T00:00:00Z",
+        "holder": {
+          "id": "vc_hld_test"
+        },
+        "profileData": {
+          "cultivarName": "Harbour Mist"
+        },
+        "fieldSchema": "875d8a6c21137ec1aae6d2c8ad6b929c4ef53b09a247a834f39b126dc910f5f9",
+        "fieldSetRoot": "3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c",
+        "ledgerIdentity": null
+      },
+      "refused": "ledgerIdentity is an object"
+    },
+    {
+      "name": "an array",
+      "record": {
+        "formatVersion": "0.1",
+        "recordId": "vc_rec_li",
+        "subjectType": "plant-genetic-material",
+        "profile": "veilcore/profile/cannabis/v0.1",
+        "commitmentAlgorithm": "sha256/fields/v1",
+        "sealedAt": "2026-10-04T00:00:00Z",
+        "holder": {
+          "id": "vc_hld_test"
+        },
+        "profileData": {
+          "cultivarName": "Harbour Mist"
+        },
+        "fieldSchema": "875d8a6c21137ec1aae6d2c8ad6b929c4ef53b09a247a834f39b126dc910f5f9",
+        "fieldSetRoot": "3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c",
+        "ledgerIdentity": []
+      },
+      "refused": "ledgerIdentity is an object"
+    },
+    {
+      "name": "a string",
+      "record": {
+        "formatVersion": "0.1",
+        "recordId": "vc_rec_li",
+        "subjectType": "plant-genetic-material",
+        "profile": "veilcore/profile/cannabis/v0.1",
+        "commitmentAlgorithm": "sha256/fields/v1",
+        "sealedAt": "2026-10-04T00:00:00Z",
+        "holder": {
+          "id": "vc_hld_test"
+        },
+        "profileData": {
+          "cultivarName": "Harbour Mist"
+        },
+        "fieldSchema": "875d8a6c21137ec1aae6d2c8ad6b929c4ef53b09a247a834f39b126dc910f5f9",
+        "fieldSetRoot": "3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c",
+        "ledgerIdentity": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"
+      },
+      "refused": "ledgerIdentity is an object"
+    },
+    {
+      "name": "an unknown field",
+      "record": {
+        "formatVersion": "0.1",
+        "recordId": "vc_rec_li",
+        "subjectType": "plant-genetic-material",
+        "profile": "veilcore/profile/cannabis/v0.1",
+        "commitmentAlgorithm": "sha256/fields/v1",
+        "sealedAt": "2026-10-04T00:00:00Z",
+        "holder": {
+          "id": "vc_hld_test"
+        },
+        "profileData": {
+          "cultivarName": "Harbour Mist"
+        },
+        "fieldSchema": "875d8a6c21137ec1aae6d2c8ad6b929c4ef53b09a247a834f39b126dc910f5f9",
+        "fieldSetRoot": "3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c",
+        "ledgerIdentity": {
+          "chain": "midnight:preprod",
+          "identity": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+          "note": "x"
+        }
+      },
+      "refused": "ledgerIdentity has an unknown field: note"
+    },
+    {
+      "name": "an empty chain",
+      "record": {
+        "formatVersion": "0.1",
+        "recordId": "vc_rec_li",
+        "subjectType": "plant-genetic-material",
+        "profile": "veilcore/profile/cannabis/v0.1",
+        "commitmentAlgorithm": "sha256/fields/v1",
+        "sealedAt": "2026-10-04T00:00:00Z",
+        "holder": {
+          "id": "vc_hld_test"
+        },
+        "profileData": {
+          "cultivarName": "Harbour Mist"
+        },
+        "fieldSchema": "875d8a6c21137ec1aae6d2c8ad6b929c4ef53b09a247a834f39b126dc910f5f9",
+        "fieldSetRoot": "3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c",
+        "ledgerIdentity": {
+          "chain": "",
+          "identity": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"
+        }
+      },
+      "refused": "ledgerIdentity.chain is a non-empty string"
+    },
+    {
+      "name": "no chain",
+      "record": {
+        "formatVersion": "0.1",
+        "recordId": "vc_rec_li",
+        "subjectType": "plant-genetic-material",
+        "profile": "veilcore/profile/cannabis/v0.1",
+        "commitmentAlgorithm": "sha256/fields/v1",
+        "sealedAt": "2026-10-04T00:00:00Z",
+        "holder": {
+          "id": "vc_hld_test"
+        },
+        "profileData": {
+          "cultivarName": "Harbour Mist"
+        },
+        "fieldSchema": "875d8a6c21137ec1aae6d2c8ad6b929c4ef53b09a247a834f39b126dc910f5f9",
+        "fieldSetRoot": "3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c",
+        "ledgerIdentity": {
+          "identity": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"
+        }
+      },
+      "refused": "ledgerIdentity.chain is a non-empty string"
+    },
+    {
+      "name": "a numeric chain",
+      "record": {
+        "formatVersion": "0.1",
+        "recordId": "vc_rec_li",
+        "subjectType": "plant-genetic-material",
+        "profile": "veilcore/profile/cannabis/v0.1",
+        "commitmentAlgorithm": "sha256/fields/v1",
+        "sealedAt": "2026-10-04T00:00:00Z",
+        "holder": {
+          "id": "vc_hld_test"
+        },
+        "profileData": {
+          "cultivarName": "Harbour Mist"
+        },
+        "fieldSchema": "875d8a6c21137ec1aae6d2c8ad6b929c4ef53b09a247a834f39b126dc910f5f9",
+        "fieldSetRoot": "3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c",
+        "ledgerIdentity": {
+          "chain": 1,
+          "identity": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"
+        }
+      },
+      "refused": "ledgerIdentity.chain is a non-empty string"
+    },
+    {
+      "name": "no identity",
+      "record": {
+        "formatVersion": "0.1",
+        "recordId": "vc_rec_li",
+        "subjectType": "plant-genetic-material",
+        "profile": "veilcore/profile/cannabis/v0.1",
+        "commitmentAlgorithm": "sha256/fields/v1",
+        "sealedAt": "2026-10-04T00:00:00Z",
+        "holder": {
+          "id": "vc_hld_test"
+        },
+        "profileData": {
+          "cultivarName": "Harbour Mist"
+        },
+        "fieldSchema": "875d8a6c21137ec1aae6d2c8ad6b929c4ef53b09a247a834f39b126dc910f5f9",
+        "fieldSetRoot": "3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c",
+        "ledgerIdentity": {
+          "chain": "midnight:preprod"
+        }
+      },
+      "refused": "ledgerIdentity.identity is 64 lowercase hex characters"
+    },
+    {
+      "name": "an uppercase identity",
+      "record": {
+        "formatVersion": "0.1",
+        "recordId": "vc_rec_li",
+        "subjectType": "plant-genetic-material",
+        "profile": "veilcore/profile/cannabis/v0.1",
+        "commitmentAlgorithm": "sha256/fields/v1",
+        "sealedAt": "2026-10-04T00:00:00Z",
+        "holder": {
+          "id": "vc_hld_test"
+        },
+        "profileData": {
+          "cultivarName": "Harbour Mist"
+        },
+        "fieldSchema": "875d8a6c21137ec1aae6d2c8ad6b929c4ef53b09a247a834f39b126dc910f5f9",
+        "fieldSetRoot": "3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c",
+        "ledgerIdentity": {
+          "chain": "midnight:preprod",
+          "identity": "CDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCD"
+        }
+      },
+      "refused": "ledgerIdentity.identity is 64 lowercase hex characters"
+    },
+    {
+      "name": "a short identity",
+      "record": {
+        "formatVersion": "0.1",
+        "recordId": "vc_rec_li",
+        "subjectType": "plant-genetic-material",
+        "profile": "veilcore/profile/cannabis/v0.1",
+        "commitmentAlgorithm": "sha256/fields/v1",
+        "sealedAt": "2026-10-04T00:00:00Z",
+        "holder": {
+          "id": "vc_hld_test"
+        },
+        "profileData": {
+          "cultivarName": "Harbour Mist"
+        },
+        "fieldSchema": "875d8a6c21137ec1aae6d2c8ad6b929c4ef53b09a247a834f39b126dc910f5f9",
+        "fieldSetRoot": "3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c",
+        "ledgerIdentity": {
+          "chain": "midnight:preprod",
+          "identity": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"
+        }
+      },
+      "refused": "ledgerIdentity.identity is 64 lowercase hex characters"
+    },
+    {
+      "name": "a bad contractAddress",
+      "record": {
+        "formatVersion": "0.1",
+        "recordId": "vc_rec_li",
+        "subjectType": "plant-genetic-material",
+        "profile": "veilcore/profile/cannabis/v0.1",
+        "commitmentAlgorithm": "sha256/fields/v1",
+        "sealedAt": "2026-10-04T00:00:00Z",
+        "holder": {
+          "id": "vc_hld_test"
+        },
+        "profileData": {
+          "cultivarName": "Harbour Mist"
+        },
+        "fieldSchema": "875d8a6c21137ec1aae6d2c8ad6b929c4ef53b09a247a834f39b126dc910f5f9",
+        "fieldSetRoot": "3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c",
+        "ledgerIdentity": {
+          "chain": "midnight:preprod",
+          "identity": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+          "contractAddress": "0xababababababababababababababababababababababababababababababab"
+        }
+      },
+      "refused": "ledgerIdentity.contractAddress is 64 lowercase hex characters"
+    },
+    {
+      "name": "a numeric contractAddress",
+      "record": {
+        "formatVersion": "0.1",
+        "recordId": "vc_rec_li",
+        "subjectType": "plant-genetic-material",
+        "profile": "veilcore/profile/cannabis/v0.1",
+        "commitmentAlgorithm": "sha256/fields/v1",
+        "sealedAt": "2026-10-04T00:00:00Z",
+        "holder": {
+          "id": "vc_hld_test"
+        },
+        "profileData": {
+          "cultivarName": "Harbour Mist"
+        },
+        "fieldSchema": "875d8a6c21137ec1aae6d2c8ad6b929c4ef53b09a247a834f39b126dc910f5f9",
+        "fieldSetRoot": "3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c",
+        "ledgerIdentity": {
+          "chain": "midnight:preprod",
+          "identity": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+          "contractAddress": 5
+        }
+      },
+      "refused": "ledgerIdentity.contractAddress is 64 lowercase hex characters"
+    },
+    {
+      "name": "a null contractAddress",
+      "record": {
+        "formatVersion": "0.1",
+        "recordId": "vc_rec_li",
+        "subjectType": "plant-genetic-material",
+        "profile": "veilcore/profile/cannabis/v0.1",
+        "commitmentAlgorithm": "sha256/fields/v1",
+        "sealedAt": "2026-10-04T00:00:00Z",
+        "holder": {
+          "id": "vc_hld_test"
+        },
+        "profileData": {
+          "cultivarName": "Harbour Mist"
+        },
+        "fieldSchema": "875d8a6c21137ec1aae6d2c8ad6b929c4ef53b09a247a834f39b126dc910f5f9",
+        "fieldSetRoot": "3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c",
+        "ledgerIdentity": {
+          "chain": "midnight:preprod",
+          "identity": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+          "contractAddress": null
+        }
+      },
+      "refused": "ledgerIdentity.contractAddress is 64 lowercase hex characters"
+    },
+    {
+      "name": "an empty object",
+      "record": {
+        "formatVersion": "0.1",
+        "recordId": "vc_rec_li",
+        "subjectType": "plant-genetic-material",
+        "profile": "veilcore/profile/cannabis/v0.1",
+        "commitmentAlgorithm": "sha256/fields/v1",
+        "sealedAt": "2026-10-04T00:00:00Z",
+        "holder": {
+          "id": "vc_hld_test"
+        },
+        "profileData": {
+          "cultivarName": "Harbour Mist"
+        },
+        "fieldSchema": "875d8a6c21137ec1aae6d2c8ad6b929c4ef53b09a247a834f39b126dc910f5f9",
+        "fieldSetRoot": "3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c",
+        "ledgerIdentity": {}
+      },
+      "refused": "ledgerIdentity.chain is a non-empty string"
+    }
+  ]
+}

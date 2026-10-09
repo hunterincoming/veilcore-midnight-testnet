@@ -521,7 +521,7 @@ describe("attacks on issuing", () => {
 });
 
 describe("replacing a credit issuer", () => {
-  it("only the admin replaces it; the old key works until the next due seal, then never again", () => {
+  it("only the admin replaces it; the old key works until a seal is sent, then never again", () => {
     const sim = new RoyaltiesSimulator();
     const offer = post(sim);
     issueLicence(sim, offer);
@@ -562,6 +562,32 @@ describe("replacing a credit issuer", () => {
     ).toThrow(/path is stale/);
     expect(() => issue(sim, offer, 12n, b(53))).toThrow(/credit issuer/);
     issue(sim, offer, 13n, b(54), { issuer: ISSUER2 });
+  });
+
+  it("the old key keeps working, however long, until someone sends a seal: nothing else retires it", () => {
+    // Said plainly in the design doc: the contract cannot act by itself. Other activity
+    // (new offers, issuances) does not retire the old roots; the client sends the seal.
+    const sim = new RoyaltiesSimulator();
+    const offer = post(sim);
+    issueLicence(sim, offer);
+    firstSeal(sim);
+    const oldPath = pathOf(sim, offer, ISSUER);
+    sim.call(
+      { admin: ADMIN },
+      "changeCreditIssuer",
+      offer,
+      R.adminCommit(ISSUER2),
+    );
+    post(sim);
+    sim.advance(10n * 24n * HOUR);
+    for (let i = 0; i < 3; i++)
+      issue(sim, offer, 5n, b(60 + i), { issuerPath: oldPath });
+    expect(sim.state.issuerChanges).toBe(true);
+    sim.call({}, "sealRevocations", sim.now + 100n);
+    expect(sim.state.issuerChanges).toBe(false);
+    expect(() => issue(sim, offer, 5n, b(70), { issuerPath: oldPath })).toThrow(
+      /path is stale/,
+    );
   });
 
   it("a second replacement within the hour waits for its seal, as a revocation does", () => {

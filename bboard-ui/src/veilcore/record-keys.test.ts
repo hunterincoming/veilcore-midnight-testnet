@@ -31,6 +31,7 @@ describe('record secrets stay in the browser', () => {
     const { sealEnvelope } = await import('./envelope');
     const { fingerprintRecord, newNonce } = await import('./commitment');
     const { identityOf } = await import('./chain/actions');
+    const { dnaPairBinding } = await import('./chain/pairing');
 
     const nonce = newNonce();
     const fields = {
@@ -54,8 +55,15 @@ describe('record secrets stay in the browser', () => {
       blockHeight: 1,
     });
     records.pairDna(rec.id, 'd7'.repeat(32), 'report.pdf');
+    const salt = 'a1b2'.repeat(16);
+    const binding = dnaPairBinding('d7'.repeat(32), identity, salt);
+    setDnaOnChain(rec.id, { fingerprint: 'd7'.repeat(32), salt, identity, binding, status: 'sending' });
     setDnaOnChain(rec.id, {
       fingerprint: 'd7'.repeat(32),
+      salt,
+      identity,
+      binding,
+      status: 'paired',
       txId: 'cc'.repeat(32),
       txHash: 'dd'.repeat(32),
       blockHeight: 2,
@@ -71,7 +79,7 @@ describe('record secrets stay in the browser', () => {
     // Neither secret, and not even the public on-chain identity: the registry knows which
     // holder holds which record, so with the identity it could join a holder to their
     // on-chain activity.
-    for (const value of [keys.recordSecret, keys.recoverySecret, identity]) {
+    for (const value of [keys.recordSecret, keys.recoverySecret, identity, salt, binding]) {
       for (const f of forms(value)) {
         for (const s of sent) expect(s.includes(f)).toBe(false);
         expect(env.includes(f)).toBe(false);
@@ -107,6 +115,37 @@ describe('record keys', () => {
     await expect(restoreBackup(other)).rejects.toThrow(/different keys/);
     const junk = { text: () => Promise.resolve('{"format":"x"}') } as unknown as File;
     await expect(restoreBackup(junk)).rejects.toThrow(/not a VeilCore/);
+  });
+
+  it('a pairing salt goes in the backup, comes back on restore, and a new one asks for a fresh backup', async () => {
+    const { ensureKeys, backupFile, restoreBackup, forgetKeys, keysFor, setDnaOnChain, downloadBackup } =
+      await import('./record-keys');
+    vi.stubGlobal('URL', { ...URL, createObjectURL: () => 'blob:x', revokeObjectURL: () => undefined });
+    vi.stubGlobal('document', { createElement: () => ({ click: () => undefined }) });
+    const k = ensureKeys('VEIL-D');
+    downloadBackup(k, {});
+    expect(keysFor('VEIL-D')?.backedUpAt).toBeDefined();
+    const d = {
+      fingerprint: 'd7'.repeat(32),
+      salt: '5a'.repeat(31) + '01',
+      identity: 'e0'.repeat(32),
+      binding: 'b0'.repeat(32),
+      status: 'sending' as const,
+    };
+    setDnaOnChain('VEIL-D', d);
+    expect(keysFor('VEIL-D')?.backedUpAt).toBeUndefined(); // the old backup lacks this salt
+    setDnaOnChain('VEIL-D', { ...d, status: 'paired', txId: 'cc'.repeat(32) });
+    const withSalt = keysFor('VEIL-D')!;
+    const file = { text: () => Promise.resolve(backupFile(withSalt, {})) } as unknown as File;
+    forgetKeys('VEIL-D');
+    expect((await restoreBackup(file)).dnaOnChain).toMatchObject({ salt: d.salt, status: 'paired' });
+
+    // An older backup, made before the pairing, does not wipe this browser's salt.
+    const old = {
+      text: () => Promise.resolve(backupFile({ ...withSalt, dnaOnChain: undefined }, {})),
+    } as unknown as File;
+    expect((await restoreBackup(old)).dnaOnChain?.salt).toBe(d.salt);
+    vi.unstubAllGlobals();
   });
 
   it('when the browser will not store anything, keys last for the session and the app can tell', async () => {

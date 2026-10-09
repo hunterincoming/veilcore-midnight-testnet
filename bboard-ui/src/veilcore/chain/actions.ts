@@ -3,7 +3,8 @@
 //                   recovery commitment fixed now
 //   proveOwnership  show, to the verifier who chose the challenge, that this browser holds
 //                   the record secret of an anchored identity
-//   pairDna         publish the DNA report's fingerprint against that identity
+//   pairDna         date a bound pairing of a DNA report against that identity (the binding
+//                   from chain/pairing.ts, never the report's fingerprint)
 //
 // Each call: run the circuit here against the contract's current state (it refuses here,
 // before anything is sent, if the contract would), prove it in the worker, seal it, hand
@@ -37,6 +38,8 @@ const hexToBytes = (hex: string): Uint8Array => {
   return Uint8Array.from(h.match(/../g) ?? [], (b) => parseInt(b, 16));
 };
 export { identityOf, recoveryCommitmentOf, toHex } from './identity';
+
+const sameBytes = (a: Uint8Array, b: Uint8Array): boolean => a.length === b.length && a.every((x, i) => x === b[i]);
 
 const operationName = (o: string | Uint8Array): string => (typeof o === 'string' ? o : new TextDecoder().decode(o));
 
@@ -110,6 +113,15 @@ const call = async (
       throw new Error('The contract on the network is not the one this site was built for. Nothing was sent.');
     }
 
+    // The proving files this site serves must be the contract's own: otherwise the proof is
+    // made (a minute on a phone) and then refused. Compared before anything is proven.
+    progress('Checking this site’s proving files against the contract…');
+    const served = await providers.zkConfigProvider.getVerifierKey(circuit);
+    const onChainKey = state.operation(circuit)?.verifierKey;
+    if (!onChainKey || !sameBytes(served, onChainKey)) {
+      throw new Error('This site’s proving files are not the ones the contract on the network uses. Nothing was sent.');
+    }
+
     await providers.privateStateProvider.set(PRIVATE_STATE_ID, createVeilcorePrivateState(recordSecret));
 
     progress('Preparing the transaction on your device…');
@@ -157,6 +169,10 @@ export const anchorOnChain = (recordSecret: Uint8Array, recoverySecret: Uint8Arr
 export const proveOwnershipOnChain = (recordSecret: Uint8Array, challengeHex: string, opts: CallOptions = {}) =>
   call('proveOwnership', [hexToBytes(challengeHex)], recordSecret, opts);
 
-/** Publish a DNA report fingerprint (64 hex characters) against the anchored record. */
-export const pairDnaOnChain = (recordSecret: Uint8Array, dnaFingerprintHex: string, opts: CallOptions = {}) =>
-  call('pairDna', [hexToBytes(dnaFingerprintHex)], recordSecret, opts);
+/**
+ * Date a bound pairing (chain/pairing.ts) against the anchored record. `bindingHex` is
+ * dnaPairBinding(reportSha256, identity, salt): never pass a report's own fingerprint,
+ * which anyone watching could copy and pair to their own record first.
+ */
+export const pairDnaOnChain = (recordSecret: Uint8Array, bindingHex: string, opts: CallOptions = {}) =>
+  call('pairDna', [hexToBytes(bindingHex)], recordSecret, opts);

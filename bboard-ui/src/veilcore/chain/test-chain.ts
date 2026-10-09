@@ -27,6 +27,14 @@ const ZKIR = resolve(import.meta.dirname, '..', '..', '..', '..', 'contract', 's
 const COIN = '0'.repeat(64);
 export const ADDRESS = 'c0'.repeat(32);
 
+/**
+ * A fixed placeholder verifier key per circuit. A deployed contract carries each circuit's
+ * real key; unit tests do not build keys, so the stand-in network reports these and the
+ * stand-in site serves the same bytes as its /keys (or different ones, to test a mismatch).
+ */
+export const standInVerifierKey = (circuit: string): Uint8Array =>
+  new Uint8Array(Buffer.from(`stand-in verifier key ${circuit}`.padEnd(64, '.')));
+
 /** The contract's state after `steps` run locally (e.g. an anchor). */
 export const contractStateAfter = (
   steps: { secret: Uint8Array; circuit: 'anchor' | 'proveOwnership' | 'pairDna'; args: Uint8Array[] }[] = [],
@@ -57,7 +65,8 @@ export const contractStateAfter = (
 
 export type Recorded = { url: string; body?: string; headers?: Record<string, string> };
 
-export const standIns = (state: ContractState) => {
+/** `servedKeys: 'wrong'` serves verifier keys that are not the contract's. */
+export const standIns = (state: ContractState, opts: { servedKeys?: 'contract' | 'wrong' } = {}) => {
   const requests: Recorded[] = [];
   const sealed: Uint8Array[] = [];
   const checkedCircuits: string[] = [];
@@ -108,6 +117,14 @@ export const standIns = (state: ContractState) => {
       sealed.push(bytes);
       return Promise.resolve(new Response(JSON.stringify({ ok: true, txId: verdict.identifiers[0] })));
     }
+    // This site's /keys: by default exactly the stand-in contract's verifier keys.
+    const key = /\/keys\/([A-Za-z]+)\.verifier$/.exec(url);
+    if (key) {
+      if (!state.operation(key[1])) return Promise.resolve(new Response('not found', { status: 404 }));
+      const vk = standInVerifierKey(key[1]);
+      const body = opts.servedKeys === 'wrong' ? new Uint8Array([...vk].map((b) => b ^ 1)) : vk;
+      return Promise.resolve(new Response(new Uint8Array(body)));
+    }
     return Promise.resolve(new Response('not found', { status: 404 }));
   }) as typeof fetch;
 
@@ -123,7 +140,19 @@ export const standIns = (state: ContractState) => {
     origin: 'https://veilcore.test',
     fetch: fakeFetch,
     publicData: {
-      queryContractState: () => Promise.resolve(state),
+      // The state the call reads first, with each operation's verifier key as a deployed
+      // contract would have it; everything else is the real stand-in state.
+      queryContractState: () =>
+        Promise.resolve(
+          new Proxy(state, {
+            get: (t, prop): unknown => {
+              if (prop === 'operation')
+                return (name: string) => (t.operation(name) ? { verifierKey: standInVerifierKey(name) } : undefined);
+              const v: unknown = Reflect.get(t, prop, t);
+              return typeof v === 'function' ? (v as (...a: unknown[]) => unknown).bind(t) : v;
+            },
+          }),
+        ),
       queryZSwapAndContractState: async () => {
         const { ZswapChainState, LedgerParameters } = await import('@midnight-ntwrk/ledger-v8');
         return [new ZswapChainState(), state, LedgerParameters.initialParameters()];

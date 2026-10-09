@@ -26,6 +26,16 @@ const leaks = (r: ReturnType<typeof standIns>) => {
 };
 
 describe('real calls from the browser (stand-in network)', () => {
+  it('stops before proving when this site serves proving files that are not the contract’s', async () => {
+    const r = standIns(contractStateAfter(), { servedKeys: 'wrong' });
+    await expect(anchorOnChain(RECORD, RECOVERY, { deps: r.deps })).rejects.toThrow(
+      /proving files are not the ones the contract.*Nothing was sent/,
+    );
+    expect(r.checkedCircuits).toEqual([]);
+    expect(r.sealed).toHaveLength(0);
+    expect(r.requests.some((q) => q.url.includes('/sponsor'))).toBe(false);
+  });
+
   it('anchor: proved, sealed, accepted by the sponsor policy, and carries no secret', async () => {
     const r = standIns(contractStateAfter());
     const progress: string[] = [];
@@ -63,7 +73,8 @@ describe('real calls from the browser (stand-in network)', () => {
   it('refuses here, before anything is sent, when the contract would refuse', async () => {
     const r = standIns(contractStateAfter()); // not anchored
     await expect(proveOwnershipOnChain(RECORD, 'c4'.repeat(32), { deps: r.deps })).rejects.toThrow();
-    expect(r.requests).toHaveLength(0);
+    // Only this site's own proving key was read; nothing went to the sponsor.
+    expect(r.requests.filter((q) => !q.url.startsWith('https://veilcore.test/keys/'))).toHaveLength(0);
   });
 
   it('refuses a contract carrying a circuit this build does not know', async () => {
@@ -79,7 +90,14 @@ describe('real calls from the browser (stand-in network)', () => {
 
   it('a sponsor refusal surfaces as an error and nothing is reported as sent', async () => {
     const r = standIns(contractStateAfter());
-    const deps = { ...r.deps, fetch: (() => Promise.resolve(new Response('{}', { status: 503 }))) as typeof fetch };
+    // The site's own files load; the sponsor answers 503.
+    const deps = {
+      ...r.deps,
+      fetch: ((input: string, init?: RequestInit) =>
+        input.includes('/keys/')
+          ? r.deps.fetch(input, init)
+          : Promise.resolve(new Response('{}', { status: 503 }))) as typeof fetch,
+    };
     await expect(anchorOnChain(RECORD, RECOVERY, { deps })).rejects.toThrow(/not answering/);
   });
 });

@@ -185,5 +185,7 @@ way on 5 October).
 - Counter-signing by the other party of a licence needs a registry endpoint.
 - Per-recipient disclosure (different links showing different fields) not built.
 - Attester private key unencrypted in the browser.
-- Proof-server image pinned by tag, not digest (needs a lookup from a machine with Docker Hub).
+- Docker images pinned by tag, not digest: `proof-server:8.0.3`, `midnight-node:0.22.3`,
+  `indexer-standalone:4.0.1` (still pending on 8 October; needs a lookup from a machine with
+  Docker Hub).
 - Branch protection on the GitHub repositories (a settings change).

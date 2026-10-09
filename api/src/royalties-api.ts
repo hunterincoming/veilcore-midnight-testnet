@@ -5,7 +5,8 @@
 // (the rate and its salt, which the chain only commits to). A grower buys a licence and
 // hands the breeder a LICENCE CARD (viewing and spending keys for that offer). Royalty
 // credit is topped up in public, by the grower or by anyone holding the grower's TOP-UP
-// REQUEST; each period is settled in private against that credit. The breeder reads every
+// REQUEST (a PAYER CARD, with the offer's public fields but not the rate, and a code); each
+// period is settled in private against that credit. The breeder reads every
 // settlement of their own licensees with the licence cards. A buyer or regulator checks a
 // licence, and a settled period, with a PRESENTATION REQUEST. A licensee can hand a
 // PRESENTATION CARD to someone who answers verifiers for them: it proves, never spends.
@@ -16,12 +17,20 @@
 //      between contracts). Checked at purchase, at every top-up and in a verifier's check.
 //   2. Never prove while the latest sale, credit note or receipt on chain is one of yours:
 //      the root a proof publishes would then name your own transaction.
-//   3. Open the rate from the offer card before paying: credit against a rate that does
-//      not match, or is zero, could never be settled (the contract refuses it too).
+//   3. Open the rate from the offer card before buying or settling: a card whose rate does
+//      not match the chain's commitment, or is zero, is refused. A payer never sees the
+//      rate: the contract proved at posting that the commitment opens to a rate above zero,
+//      so a top-up checks only the payer card's public fields against the chain.
 //
 // Every card read from a file is checked and normalised (lower-case hex, 32 bytes) before
-// it is used or kept. Purchases and settlements that may already have landed (a timeout)
-// are not repeated without being asked.
+// it is used or kept. Offers, purchases and settlements that may already have landed (a
+// timeout) are not repeated without being asked. A settle, merge or presentation whose
+// proof went stale on the way (a seal retired its root) is proved and sent once more.
+//
+// Two runs on one computer share this store. Every write of it (this client's own, and
+// midnight-js's write-back after a transaction) is merged with what is on disk, and each
+// run also remembers everything it kept, so one run's write never drops another's
+// licences, codes, notes or receipts (mergeHeld).
 //
 // Secrets kept between runs (admin secrets, licence secrets, credit notes) live in this
 // client's encrypted store; each call's input is kept in memory only (transientInput).
@@ -56,6 +65,7 @@ import {
   emptyRoyaltiesPrivateState,
   licenceKeyOf,
   noteOf,
+  placeDenominator,
   royaltiesLedger,
   royaltiesPureCircuits as R,
 } from '../../contract/src/royalties.js';
@@ -89,6 +99,13 @@ const SEAL_AHEAD_SECONDS = 200;
 const SEAL_SKEW_SECONDS = 30;
 /** SETTLE_GRACE in the contract: 30 days after an offer ends before its licences can be cleared. */
 export const SETTLE_GRACE = 30n * DAY;
+/**
+ * REVOCATION_SEAL_INTERVAL in the contract: a revocation retires the licence tree's old roots
+ * (and is sealed) at most once an hour, since each such seal voids proofs in flight.
+ */
+export const REVOCATION_SEAL_INTERVAL = 3600n;
+/** SLOW_SEAL_INTERVAL in the contract: every tree's old roots are retired at most daily. */
+const DAILY_SEAL_INTERVAL = DAY;
 /** PAYEE_CHANGE_INTERVAL in the contract: a link's payee key changes it at most once in 30 days. */
 export const PAYEE_CHANGE_INTERVAL = 30n * DAY;
 /** How many of this party's own leaves are remembered for rule 2. */
@@ -117,7 +134,7 @@ export const codeFingerprint = (code: string): string =>
 
 // ─────────────────────────────────────────────────────────────── cards and requests
 
-/** What a breeder gives licensees and payers with the terms. Private to them: it holds the rate. */
+/** What a breeder gives licensees with the terms. Private to them: it holds the rate (payers get a PayerCard). */
 export type OfferCard = {
   readonly kind: 'veilcore-offer-card';
   readonly contract: string;
@@ -166,12 +183,40 @@ export type LicenceCard = {
   readonly expires?: string;
 };
 
-/** What a licensee gives whoever tops up their credit: the offer card and a code naming nobody. */
+/**
+ * What a payer needs of an offer: its public fields, as the chain holds them, and never
+ * the rate. The contract proved at posting that the rate commitment opens to a rate above
+ * zero, so credit paid against it can always be settled.
+ */
+export type PayerCard = {
+  readonly kind: 'veilcore-payer-card';
+  readonly contract: string;
+  readonly offer: string;
+  readonly payTo: string;
+  readonly color: string;
+  readonly rateCommit: string;
+  readonly expires: string;
+  readonly split?: boolean;
+};
+
+/** What a licensee gives whoever tops up their credit: a payer card (no rate) and a code naming nobody. */
 export type TopUpRequest = {
   readonly kind: 'veilcore-topup-request';
-  readonly card: OfferCard;
+  readonly card: PayerCard;
   readonly code: string;
 };
+
+/** The payer card of an offer card: the same offer, without the rate and its salt. */
+export const payerCardOf = (c: OfferCard): PayerCard => ({
+  kind: 'veilcore-payer-card',
+  contract: c.contract,
+  offer: c.offer,
+  payTo: c.payTo,
+  color: c.color,
+  rateCommit: c.rateCommit,
+  expires: c.expires,
+  split: c.split === true,
+});
 
 /**
  * What a licensee hands someone who answers verifiers for them (a grower under a seed
@@ -246,12 +291,36 @@ export const normaliseLicenceCard = (v: unknown): LicenceCard => {
   };
 };
 
+/**
+ * A payer card from a file, checked and normalised, or refused. An older top-up request
+ * carried the whole offer card: it is read as a payer card, and its rate is not kept.
+ */
+export const normalisePayerCard = (v: unknown): PayerCard => {
+  const c = v as Partial<PayerCard> | null;
+  if (
+    c === null ||
+    typeof c !== 'object' ||
+    (c.kind !== 'veilcore-payer-card' && c.kind !== ('veilcore-offer-card' as string))
+  )
+    throw new Error('That is not a payer card.');
+  return {
+    kind: 'veilcore-payer-card',
+    contract: hex32(c.contract, "The payer card's contract"),
+    offer: hex32(c.offer, "The payer card's offer id"),
+    payTo: hex32(c.payTo, "The payer card's wallet"),
+    color: hex32(c.color, "The payer card's token"),
+    rateCommit: hex32(c.rateCommit, "The payer card's rate commitment"),
+    expires: whole(c.expires, "The payer card's end date"),
+    split: c.split === true,
+  };
+};
+
 /** A top-up request from a file, checked and normalised, or refused. */
 export const normaliseTopUpRequest = (v: unknown): TopUpRequest => {
   const r = v as Partial<TopUpRequest> | null;
   if (r === null || typeof r !== 'object' || r.kind !== 'veilcore-topup-request')
     throw new Error('That is not a top-up request.');
-  return { kind: 'veilcore-topup-request', card: normaliseOfferCard(r.card), code: hex32(r.code, 'The top-up code') };
+  return { kind: 'veilcore-topup-request', card: normalisePayerCard(r.card), code: hex32(r.code, 'The top-up code') };
 };
 
 /** A link terms card from a file, checked and normalised, or refused. */
@@ -321,7 +390,10 @@ export type SettlementReading = {
   readonly number?: number;
 };
 
-export const openingOf = (c: OfferCard): OfferOpening => ({
+/** The fields of an offer a top-up or settlement opens privately (from an offer card or a payer card). */
+type OfferFields = Pick<OfferCard, 'offer' | 'payTo' | 'color' | 'rateCommit' | 'expires' | 'split'>;
+
+export const openingOf = (c: OfferFields): OfferOpening => ({
   offer: unhex(c.offer),
   payTo: unhex(c.payTo),
   color: unhex(c.color),
@@ -330,6 +402,14 @@ export const openingOf = (c: OfferCard): OfferOpening => ({
   split: c.split === true,
 });
 
+/** Whether a card's public fields are the offer's on chain. */
+const sameAsChain = (card: OfferFields, onChain: RoyaltyOffer): boolean =>
+  hex(onChain.payTo.bytes) === card.payTo.toLowerCase() &&
+  hex(onChain.color) === card.color.toLowerCase() &&
+  hex(onChain.rateCommit) === card.rateCommit.toLowerCase() &&
+  onChain.expires === BigInt(card.expires) &&
+  onChain.split === (card.split === true);
+
 /** Refuse an offer card that does not match the chain, or whose rate does not open its commitment. */
 export const checkOfferCard = (card: OfferCard, onChain?: RoyaltyOffer): void => {
   if (card.kind !== 'veilcore-offer-card') throw new Error('That is not an offer card.');
@@ -337,15 +417,21 @@ export const checkOfferCard = (card: OfferCard, onChain?: RoyaltyOffer): void =>
   if (rate <= 0n) throw new Error('That offer card has no royalty rate: nothing could settle against credit for it.');
   if (hex(R.rateCommit(rate, unhex(card.rateSalt))) !== card.rateCommit.toLowerCase())
     throw new Error("That offer card's rate does not match its rate commitment. Do not pay against it.");
-  if (onChain !== undefined) {
-    const same =
-      hex(onChain.payTo.bytes) === card.payTo.toLowerCase() &&
-      hex(onChain.color) === card.color.toLowerCase() &&
-      hex(onChain.rateCommit) === card.rateCommit.toLowerCase() &&
-      onChain.expires === BigInt(card.expires) &&
-      onChain.split === (card.split === true);
-    if (!same) throw new Error('That offer card does not match the offer on chain. Do not pay against it.');
-  }
+  if (onChain !== undefined && !sameAsChain(card, onChain))
+    throw new Error('That offer card does not match the offer on chain. Do not pay against it.');
+};
+
+/**
+ * Refuse a payer card that does not match the offer on chain, or whose offer takes no
+ * royalties through the contract. Only public fields: the payer never sees the rate (the
+ * contract proved at posting that the commitment opens to a rate above zero).
+ */
+export const checkPayerCard = (card: PayerCard, onChain: RoyaltyOffer): void => {
+  if (card.kind !== 'veilcore-payer-card') throw new Error('That is not a payer card.');
+  if (isZero(unhex(card.rateCommit)))
+    throw new Error('That offer takes no royalties through the contract: there is nothing to top up.');
+  if (!sameAsChain(card, onChain))
+    throw new Error('That top-up request does not match the offer on chain. Do not pay against it.');
 };
 
 /** A period label as 32 bytes: the text, UTF-8, zero-padded (1 to 32 bytes). */
@@ -405,10 +491,29 @@ export const normalised = (r: PresentationRequest): PresentationRequest & { read
  * until 30 days after the offer ends (its last season can be paid for). Undefined when
  * those 30 days end before then: top-ups close two days early, since any other value would
  * point at the offer's end date. Credit already held still settles.
+ *
+ * "Today" is the payer's clock: neither the ledger nor the indexer's contract state gives a
+ * recent block time without another network call. A payer whose clock is a day or more off
+ * publishes a time nobody else uses that day, which marks the top-up as theirs (and a clock
+ * far enough behind is refused by the contract as already past).
  */
 export const roundedValidUntil = (expires: bigint, now = nowSeconds()): bigint | undefined => {
   const dayAfterTomorrow = (now / DAY + 2n) * DAY;
   return expires + SETTLE_GRACE >= dayAfterTomorrow ? dayAfterTomorrow : undefined;
+};
+
+/**
+ * The earliest block time at which a seal would seal the revocations waiting in `l` (as
+ * sealRevocations decides): an hour after the last revocation seal, or at the daily seal if
+ * that comes first. Undefined when none is waiting.
+ */
+export const revocationSealableAt = (l: RoyaltiesLedger): bigint | undefined => {
+  if (!l.unsealedChanges) return undefined;
+  const hourly = l.lastRevocationReset + REVOCATION_SEAL_INTERVAL;
+  const lastSeal = l.lastSealTime + BigInt(SEAL_INTERVAL_SECONDS);
+  const daily = l.lastSlowSealTime + DAILY_SEAL_INTERVAL;
+  const viaDaily = daily > lastSeal ? daily : lastSeal;
+  return hourly < viaDaily ? hourly : viaDaily;
 };
 
 /**
@@ -702,6 +807,111 @@ const proverLeaf = (p: Prover, offer: Uint8Array): Uint8Array =>
 const sameNote = (x: { nonce: string; amount: string }, n: NoteOpening): boolean =>
   x.nonce === hex(n.nonce) && x.amount === String(n.amount);
 
+// ─────────────────────────────────────────────────────────────── one store, two runs
+
+/** `a`'s items, then `b`'s not already in `a` (by `key`); an item in both is `join`ed. */
+const unionBy = <T>(
+  a: readonly T[] | undefined,
+  b: readonly T[] | undefined,
+  key: (x: T) => string,
+  join: (x: T, y: T) => T = (x) => x,
+): T[] => {
+  const out = new Map<string, T>();
+  for (const x of a ?? []) out.set(key(x), x);
+  for (const y of b ?? []) {
+    const k = key(y);
+    const x = out.get(k);
+    out.set(k, x === undefined ? y : join(x, y));
+  }
+  return [...out.values()];
+};
+
+/**
+ * Two stores' `held` as one: every licence, code, note, receipt, offer card, admin secret,
+ * link terms and own leaf in either (by identity), so a write from one run never drops what
+ * another kept. Nothing is ever removed from `held`; a note spent in either is spent. Where
+ * both hold a value under one key (an admin secret, a card), `b`'s is kept; the verifier
+ * seed is the first one written.
+ */
+export const mergeHeld = (a: RoyaltiesHeld, b: RoyaltiesHeld): RoyaltiesHeld => {
+  const holders: Record<string, readonly { readonly holder: string; readonly at: string }[]> = {};
+  for (const offer of new Set([...Object.keys(a.seenHolders ?? {}), ...Object.keys(b.seenHolders ?? {})]))
+    holders[offer] = unionBy(a.seenHolders?.[offer], b.seenHolders?.[offer], (x) => `${x.holder}:${x.at}`).slice(-256);
+  const out: RoyaltiesHeld = {
+    ...a,
+    ...b,
+    admins: { ...a.admins, ...b.admins },
+    licences: unionBy(a.licences, b.licences, (x) => `${x.offer}:${x.secret}`),
+    receipts: unionBy(a.receipts, b.receipts, (x) => x.leaf),
+    offerCards: { ...a.offerCards, ...b.offerCards },
+    codes: unionBy(a.codes, b.codes, (x) => `${x.offer}:${x.nonce}`),
+    notes: unionBy(
+      a.notes,
+      b.notes,
+      (x) => `${x.offer}:${x.licence ?? ''}:${x.nonce}:${x.amount}`,
+      (x, y) => ({ ...x, spent: x.spent || y.spent }),
+    ),
+    linkTerms: { ...a.linkTerms, ...b.linkTerms },
+    seenHolders: holders,
+    mine: unionBy(a.mine, b.mine, (x) => x).slice(-MINE_CAP),
+  };
+  const seed = a.verifierSeed ?? b.verifierSeed;
+  return seed === undefined ? out : { ...out, verifierSeed: seed };
+};
+
+/** How much a `held` holds (to tell whether a merge added anything). */
+const heldSize = (h: RoyaltiesHeld): number =>
+  Object.keys(h.admins).length +
+  h.licences.length +
+  h.receipts.length +
+  Object.keys(h.offerCards ?? {}).length +
+  (h.codes ?? []).length +
+  (h.notes ?? []).length +
+  (h.notes ?? []).filter((n) => n.spent).length +
+  Object.keys(h.linkTerms ?? {}).length +
+  Object.values(h.seenHolders ?? {}).reduce((a, l) => a + l.length, 0) +
+  (h.mine ?? []).length +
+  (h.verifierSeed === undefined ? 0 : 1);
+
+type StateStore = RoyaltiesProviders['privateStateProvider'];
+
+/**
+ * The royalties store, with every write of the royalties state merged with what is on disk
+ * first (mergeHeld), so that midnight-js writing back the state it read when a transaction
+ * started (minutes earlier) never drops what another run on this computer kept meanwhile.
+ */
+export const mergingPrivateStateProvider = (store: StateStore): StateStore =>
+  new Proxy(store, {
+    get(target, name, receiver) {
+      if (name === 'set')
+        return async (id: string, state: RoyaltiesPrivateState): Promise<void> => {
+          if (id !== royaltiesPrivateStateKey || state === null || typeof state !== 'object' || !('held' in state))
+            return target.set(id as never, state);
+          const disk = await target.get(id);
+          const held =
+            disk?.held === undefined ? state.held : mergeHeld({ ...emptyRoyaltiesHeld(), ...disk.held }, state.held);
+          return target.set(id, { ...state, held });
+        };
+      return Reflect.get(target, name, receiver) as unknown;
+    },
+  });
+
+/** The circuits proved against roots a seal can retire, sent once more if the root went stale. */
+const REPROVE_ON_STALE = new Set(['settle', 'proveLicense', 'mergeNotes']);
+
+/**
+ * Whether a call failed because a root it proved against was retired before it landed (a
+ * seal in between): the contract's root checks ("... or the path is stale"), or a
+ * transaction midnight-js reports failed on chain (CallTxFailedError, which does not say
+ * why). Never a timeout: a call that timed out may have landed.
+ */
+export const isStaleRootError = (e: unknown): boolean => {
+  const name = e instanceof Error ? e.name : '';
+  const message = e instanceof Error ? e.message : String(e);
+  if (/timed out|timeout/i.test(message)) return false;
+  return name === 'CallTxFailedError' || /path is stale|stale root|checkRoot/i.test(message);
+};
+
 // ─────────────────────────────────────────────────────────────── the client
 
 export class RoyaltiesAPI {
@@ -848,10 +1058,22 @@ export class RoyaltiesAPI {
     return chartOf(await this.currentLedger(), record);
   }
 
+  /**
+   * What this client holds: the store, merged with everything this run has kept (another
+   * run's write can have dropped some of it from disk; it is written back at once).
+   */
   async held(): Promise<RoyaltiesHeld> {
     const ps = await this.providers.privateStateProvider.get(royaltiesPrivateStateKey);
-    return { ...emptyRoyaltiesHeld(), ...(ps?.held ?? {}) };
+    const disk = { ...emptyRoyaltiesHeld(), ...(ps?.held ?? {}) };
+    const merged = mergeHeld(disk, this.kept);
+    this.kept = merged;
+    if (heldSize(merged) > heldSize(disk))
+      await this.providers.privateStateProvider.set(royaltiesPrivateStateKey, { input: ps?.input ?? {}, held: merged });
+    return merged;
   }
+
+  /** Everything this run has read or kept, so another run's write cannot make it forget. */
+  private kept: RoyaltiesHeld = emptyRoyaltiesHeld();
 
   /** This licensee's unspent credit on an offer, as far as this client knows it. */
   async credit(offer: Uint8Array): Promise<bigint> {
@@ -872,11 +1094,15 @@ export class RoyaltiesAPI {
    * Post an offer from the record `recordSecret` stands for. Makes the admin secret and the
    * rate salt; returns the offer card to hand licensees with the terms. The admin secret
    * must also be written on paper: without it the offer can never be closed or revoked.
+   * Refused (AlreadyDoneError) unless `again` when this client already posted an offer on
+   * chain from the same record with the same terms fingerprint, price and number for sale,
+   * ending within a day of the same time: a post that timed out may have landed.
    */
   async postOffer(
     recordSecret: Uint8Array,
     t: OfferTerms,
     mainAddress?: ContractAddress,
+    opts: { readonly again?: boolean } = {},
   ): Promise<TxRef & { readonly offer: Uint8Array; readonly adminSecret: Uint8Array; readonly card: OfferCard }> {
     if (t.terms.length !== 32 || isZero(t.terms)) throw new Error('The terms fingerprint is 32 bytes, not all zero.');
     if (t.payTo.length !== 32) throw new Error('The payout wallet is a 32-byte unshielded address.');
@@ -900,6 +1126,26 @@ export class RoyaltiesAPI {
     const rateCommit = t.rate === 0n ? ZERO32() : R.rateCommit(t.rate, rateSalt);
     const before = await this.currentLedger();
     const record = R.recordCommit(recordSecret);
+    if (opts.again !== true) {
+      const same = Object.keys((await this.held()).admins).find((id) => {
+        if (!before.offers.member(unhex(id))) return false;
+        const o = before.offers.lookup(unhex(id));
+        const apart = o.expires > t.expires ? o.expires - t.expires : t.expires - o.expires;
+        return (
+          hex(o.record) === hex(record) &&
+          hex(o.terms) === hex(t.terms) &&
+          o.price === t.price &&
+          o.count === t.count &&
+          apart < DAY
+        );
+      });
+      if (same !== undefined)
+        throw new AlreadyDoneError(
+          `This computer already posted an offer from this record with the same terms fingerprint, price, number ` +
+            `for sale and end date: offer ${same} (perhaps a post that timed out did land; 77 writes its card ` +
+            'again). Nothing was sent.',
+        );
+    }
     if (
       !before.stacks.member(record) &&
       ((before.linksConfirmed.member(record) && before.linksConfirmed.lookup(record) > 0n) ||
@@ -1158,7 +1404,10 @@ export class RoyaltiesAPI {
     );
   }
 
-  /** A top-up request for someone else to pay: the offer card, a fresh code, and the code's fingerprint. */
+  /**
+   * A top-up request for someone else to pay: a payer card (the offer's public fields, not
+   * the rate), a fresh code, and the code's fingerprint.
+   */
   async topUpRequest(
     offer: Uint8Array,
   ): Promise<TopUpRequest & { readonly nonce: string; readonly fingerprint: string }> {
@@ -1171,7 +1420,13 @@ export class RoyaltiesAPI {
       codes: [...(h.codes ?? []), { offer: card.offer, licence, nonce: hex(nonce) }],
     }));
     const code = hex(R.topUpCode(R.spendKey(unhex(lic.secret), offer), nonce));
-    return { kind: 'veilcore-topup-request', card, code, nonce: hex(nonce), fingerprint: codeFingerprint(code) };
+    return {
+      kind: 'veilcore-topup-request',
+      card: payerCardOf(card),
+      code,
+      nonce: hex(nonce),
+      fingerprint: codeFingerprint(code),
+    };
   }
 
   /**
@@ -1189,9 +1444,8 @@ export class RoyaltiesAPI {
     if (req.card.contract !== this.deployedContractAddress.toLowerCase())
       throw new Error('That request is for another royalties contract. Nothing was sent.');
     const o = await this.offer(unhex(req.card.offer));
-    checkOfferCard(req.card, o);
+    checkPayerCard(req.card, o);
     const op = openingOf(req.card);
-    const rate = { rate: BigInt(req.card.rate), salt: unhex(req.card.rateSalt) };
     if (mainAddress !== undefined)
       for (const w of await this.offerChecks(o.record, mainAddress, 'topup')) this.logger?.warn(w);
     const l = await this.currentLedger();
@@ -1204,7 +1458,6 @@ export class RoyaltiesAPI {
         'topUpSplit',
         {
           code: unhex(req.code),
-          rate,
           split: { record: o.record, color: o.color, total: amount, now: nowSeconds() },
         },
         (c) => c.callTx.topUpSplit(op.offer, amount),
@@ -1218,7 +1471,7 @@ export class RoyaltiesAPI {
       );
     const lone = loneOfferWarning(l, o, until);
     if (lone !== undefined) this.logger?.warn(lone);
-    return this.call('topUp', { opening: op, code: unhex(req.code), rate }, (c) =>
+    return this.call('topUp', { opening: op, code: unhex(req.code) }, (c) =>
       c.callTx.topUp({ bytes: op.payTo }, op.color, amount, until),
     );
   }
@@ -1787,12 +2040,46 @@ export class RoyaltiesAPI {
   }
 
   /**
+   * What lowering `link`'s share to `share` (running until `until`) would break: every open
+   * offer of a descendant whose price would no longer pay that place at least one unit. The
+   * contract refuses such a payment, so the offer could not be sold until its breeder posts
+   * a new one at a higher price (and top-ups of it below the same floor are refused).
+   */
+  async relaxWarnings(link: Uint8Array, share: bigint, until?: bigint): Promise<string[]> {
+    const l = await this.currentLedger();
+    if (!l.links.member(link) || share === 0n) return [];
+    const k = l.links.lookup(link);
+    const now = nowSeconds();
+    if ((until ?? k.until) <= now) return [];
+    const gen = ['parent', 'parent', 'grandparent', 'grandparent', 'grandparent', 'grandparent'];
+    const out: string[] = [];
+    for (const [id, o] of l.offers) {
+      if (!o.open || o.expires <= now || hex(o.color) !== hex(k.color) || !l.stacks.member(o.record)) continue;
+      l.stacks.lookup(o.record).forEach((lid, i) => {
+        if (hex(lid) !== hex(link)) return;
+        const d = placeDenominator(i);
+        if (o.price * share >= d) return;
+        out.push(
+          `offer ${hex(id).slice(0, 10)} (record ${hex(o.record).slice(0, 10)}, price ${o.price}) could no longer be ` +
+            `sold: your ${gen[i] ?? 'great-grandparent'} share of its price would come to less than one unit, which ` +
+            `the contract refuses (its breeder would have to post it again at a price of at least ` +
+            `${(d + share - 1n) / share}; top-ups below that are refused too)`,
+        );
+      });
+    }
+    return out;
+  }
+
+  /**
    * As a PARENT: lower a link's terms (a smaller share or fee, an earlier end), with the
-   * payee key kept here. Never raises them; once in 30 days. Lowering is final.
+   * payee key kept here. Never raises them; once in 30 days. Lowering is final. Refused while
+   * relaxWarnings has something to say (a descendant's offer could no longer be sold),
+   * unless `despite`.
    */
   async relaxLink(
     link: Uint8Array,
     to: { readonly share?: bigint; readonly fee?: bigint; readonly until?: bigint },
+    opts: { readonly despite?: boolean } = {},
   ): Promise<TxRef> {
     const l = await this.currentLedger();
     if (!l.links.member(link)) throw new Error('No such link. Nothing was sent.');
@@ -1805,6 +2092,9 @@ export class RoyaltiesAPI {
     if (share < 0n || fee < 0n) throw new Error('Terms cannot be negative. Nothing was sent.');
     if (share === k.share && fee === k.fee && until === k.until)
       throw new Error('Nothing would change. Nothing was sent.');
+    const warnings = share === k.share ? [] : await this.relaxWarnings(link, share, until);
+    if (warnings.length > 0 && opts.despite !== true)
+      throw new Error(`Not lowered: ${warnings.join('; ')}. Nothing was sent.`);
     const { secret, now } = await this.payeeFor(link);
     return this.call('relaxLink', { adminSecret: secret }, (c) => c.callTx.relaxLink(link, share, fee, until, now));
   }
@@ -2027,11 +2317,17 @@ export class RoyaltiesAPI {
             : `ok     A licence from that offer (it may have ended since), and ${settled} under it.`
         : 'FAILED This transaction does not answer your request (another offer, period, time, scope or challenge).',
     );
-    if (unsealed)
+    if (unsealed) {
+      const at = revocationSealableAt(now);
       lines.push(
-        'WAIT   A licence from this offer was revoked and not yet sealed when this was proved. Anyone can seal ' +
-          `(menu 68) once ${SEAL_INTERVAL_SECONDS / 60} minutes have passed since the last seal; ask again after that.`,
+        'WAIT   A licence from this offer was revoked and not yet sealed when this was proved, so this answer ' +
+          'cannot be trusted. ' +
+          (at === undefined
+            ? 'It has been sealed since: ask for a new answer.'
+            : `It can be sealed (anyone can, menu 68) from ${new Date(Number(at) * 1000).toISOString()} ` +
+              '(a revocation is sealed at most once an hour, so it can take up to an hour); ask for a new answer after that.'),
       );
+    }
     if (revokedSince)
       lines.push('WAIT   A licence from this offer has been revoked since this was proved. Ask for a new answer.');
     const holder = hex(cells.lastPresentationHolder);
@@ -2078,19 +2374,38 @@ export class RoyaltiesAPI {
 
   // ─────────────────────────────────────────── upkeep
 
+  /**
+   * Seal when it does something. A waiting revocation is sealed at most once an hour (each
+   * such seal voids proofs in flight): before then, no seal is sent, and `sealableAt` says
+   * when it can be (the contract would accept a seal sooner, but it would leave the
+   * revocation waiting). `sealed` means the trees were sealed and no revocation is waiting.
+   */
   async seal(): Promise<SealResult> {
     const l = await this.currentLedger();
     if (!l.unsealedChanges && !l.rootsSinceSeal) return { sealed: false, waiting: false };
     const now = nowSeconds();
-    const earliest = l.lastSealTime + BigInt(SEAL_INTERVAL_SECONDS + SEAL_SKEW_SECONDS);
+    const skew = BigInt(SEAL_SKEW_SECONDS);
+    let earliest: bigint;
+    if (l.unsealedChanges) {
+      // Only a seal that seals the revocation is worth sending.
+      earliest = (revocationSealableAt(l) ?? 0n) + skew;
+    } else earliest = l.lastSealTime + BigInt(SEAL_INTERVAL_SECONDS) + skew;
     if (now < earliest) return { sealed: false, waiting: true, sealableAt: Number(earliest) };
     try {
       await this.call('sealRevocations', {}, (c) => c.callTx.sealRevocations(now + BigInt(SEAL_AHEAD_SECONDS)));
-      return { sealed: true, waiting: false };
+      const after = await this.currentLedger();
+      if (!after.unsealedChanges) return { sealed: true, waiting: false };
+      const at = revocationSealableAt(after);
+      return { sealed: false, waiting: true, ...(at !== undefined ? { sealableAt: Number(at + skew) } : {}) };
     } catch (e) {
       this.logger?.info(`seal not made now: ${e instanceof Error ? e.message : String(e)}`);
       const after = await this.currentLedger();
-      return { sealed: false, waiting: after.unsealedChanges || after.rootsSinceSeal };
+      const at = revocationSealableAt(after);
+      return {
+        sealed: false,
+        waiting: after.unsealedChanges || after.rootsSinceSeal,
+        ...(at !== undefined ? { sealableAt: Number(at + skew) } : {}),
+      };
     }
   }
 
@@ -2309,22 +2624,48 @@ export class RoyaltiesAPI {
   }
 
   private async updateHeld(f: (h: RoyaltiesHeld) => RoyaltiesHeld): Promise<void> {
-    await this.providers.privateStateProvider.set(royaltiesPrivateStateKey, { input: {}, held: f(await this.held()) });
+    const next = f(await this.held());
+    this.kept = mergeHeld(this.kept, next);
+    // Merged with the disk as it is now, not as it was read: another run may have written since.
+    const ps = await this.providers.privateStateProvider.get(royaltiesPrivateStateKey);
+    const disk = { ...emptyRoyaltiesHeld(), ...(ps?.held ?? {}) };
+    await this.providers.privateStateProvider.set(royaltiesPrivateStateKey, {
+      input: ps?.input ?? {},
+      held: mergeHeld(disk, this.kept),
+    });
   }
 
   /** How many transactions this client has started building (a refusal before one starts sends nothing). */
   private callsStarted = 0;
 
+  /**
+   * Send one call. midnight-js reads the private state when the call starts and writes it
+   * back when the transaction is final, minutes later: whatever another run kept meanwhile
+   * is merged back in afterwards (held() merges the disk with what this run kept, which
+   * includes the state before the call). A settle, merge or presentation whose root went
+   * stale on the way (a seal retired it: at most once an hour for a revocation, and daily)
+   * is proved again against the current trees and sent once more.
+   */
   private async call(
     circuit: string,
     input: RoyaltyInput,
     call: (c: DeployedRoyaltiesContract) => Promise<{ public: TxRef & { nextContractState: StateValue } }>,
   ): Promise<TxRef> {
     this.callsStarted++;
-    await this.providers.privateStateProvider.set(royaltiesPrivateStateKey, { input, held: await this.held() });
     let txData;
     try {
-      txData = await call(this.deployedContract);
+      for (let attempt = 0; ; attempt++) {
+        await this.providers.privateStateProvider.set(royaltiesPrivateStateKey, { input, held: await this.held() });
+        try {
+          txData = await call(this.deployedContract);
+          break;
+        } catch (e) {
+          if (attempt > 0 || !REPROVE_ON_STALE.has(circuit) || !isStaleRootError(e)) throw e;
+          this.logger?.info(
+            `${circuit}: the root it proved against was retired before it landed (a seal); proving it again once.`,
+          );
+        }
+      }
     } finally {
       await this.providers.privateStateProvider.set(royaltiesPrivateStateKey, { input: {}, held: await this.held() });
     }
@@ -2441,6 +2782,8 @@ export class RoyaltiesAPI {
     options: { readonly deploying?: boolean } = {},
   ): Promise<RoyaltiesAPI> {
     if (options.deploying !== true) assertRoyaltiesJoinAllowed(contractAddress, logger);
+    // Every write of the private state, midnight-js's own included, merges with the disk.
+    providers = { ...providers, privateStateProvider: mergingPrivateStateProvider(providers.privateStateProvider) };
     providers.privateStateProvider.setContractAddress(contractAddress);
     const existing = await providers.privateStateProvider.get(royaltiesPrivateStateKey);
     const deployed = await findDeployedContract<RoyaltiesContract>(providers, {

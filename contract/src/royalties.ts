@@ -43,6 +43,7 @@ export type RoyaltyInput = {
   /** The note(s) a settlement or merge spends. */
   readonly note?: Royalties.NoteOpening;
   readonly note2?: Royalties.NoteOpening;
+  /** The rate and salt, for postOffer and settle (a top-up never needs them). */
   readonly rate?: Royalties.RateOpening;
   /**
    * A presentation can be made with the presentation key and the public spending key

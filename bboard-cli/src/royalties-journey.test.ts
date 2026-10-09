@@ -176,7 +176,7 @@ describe('the royalties client, end to end on the simulator', () => {
       unsealed: false,
       revokedSince: false,
     });
-    // The first revocation seals at once (no seal yet); a second within 10 minutes cannot.
+    // The first revocation seals at once (no seal yet); a second within the hour waits for its seal.
     expect((await breeder.api.revokeLicense(b2.license)).sealed).toBe(true);
     expect(revocationVerdict(offer, atProof, chain.ledger).revokedSince).toBe(true);
     expect((await breeder.api.revokeLicense(b1.license)).sealed).toBe(false);

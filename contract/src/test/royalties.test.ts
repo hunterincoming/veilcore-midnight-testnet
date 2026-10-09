@@ -47,7 +47,6 @@ const HOUR = 3600n;
 const DAY = 24n * HOUR;
 const YEAR = 365n * DAY;
 const EXPIRES = T0 + YEAR;
-const RO = { rate: RATE, salt: SALT };
 const GRACE = 30n * DAY;
 /** The BLS12-381 scalar field the masked units live in. */
 const FIELD =

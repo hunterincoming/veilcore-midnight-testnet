@@ -254,10 +254,31 @@ describe("seals", () => {
     const eveLeaf = (n: number) => licenceKeyOf(b(60 + n), eves, EXPIRES);
     sim.call({}, "sealRevocations", sim.now + 100n); // the first seal is the daily one
     const op = opening(sim, offer);
-    let note: { nonce: Uint8Array; amount: bigint } = { nonce: b(51), amount: 400n };
+    let note: { nonce: Uint8Array; amount: bigint } = {
+      nonce: b(51),
+      amount: 400n,
+    };
     const inFlight = (n: number) => ({
-      s: sim.prove({ license: LIC, opening: op, note, rate: RO, period: b(70 + n), units: 1n }, "settle"),
-      p: sim.prove(who(offer), "proveLicense", NIGHT, 0n, sim.now + HOUR, SCOPE, true),
+      s: sim.prove(
+        {
+          license: LIC,
+          opening: op,
+          note,
+          rate: RO,
+          period: b(70 + n),
+          units: 1n,
+        },
+        "settle",
+      ),
+      p: sim.prove(
+        who(offer),
+        "proveLicense",
+        NIGHT,
+        0n,
+        sim.now + HOUR,
+        SCOPE,
+        true,
+      ),
     });
     // Cycle 0: the first revocation does retire the licence roots: in-flight proofs fail.
     sim.advance(700n);
@@ -280,10 +301,15 @@ describe("seals", () => {
       sim.call({}, "sealRevocations", sim.now + 100n);
       expect(sim.state.unsealedChanges).toBe(true);
       expect(sim.state.sealedRevocations).toBe(sealedBefore);
-      expect(sim.state.offerRevokedAt.lookup(eves) > sim.state.sealedRevocations).toBe(true);
+      expect(
+        sim.state.offerRevokedAt.lookup(eves) > sim.state.sealedRevocations,
+      ).toBe(true);
       sim.land(f.s);
       sim.land(f.p);
-      note = { nonce: changeNonceOf(LIC, note.nonce, op, note.amount), amount: note.amount - RATE };
+      note = {
+        nonce: changeNonceOf(LIC, note.nonce, op, note.amount),
+        amount: note.amount - RATE,
+      };
       expect(sim.state.settleSeq).toBe(BigInt(n));
       expect(sim.state.lastRevocationReset).toBe(resetAt);
     }
@@ -321,12 +347,20 @@ describe("seals", () => {
     buy(sim, offer, b(12));
     sim.call({}, "sealRevocations", sim.now + 100n); // daily, due again at T0 + 100 + DAY
     sim.advance(DAY - 600n);
-    sim.call({ admin: ADMIN }, "revokeLicense", licenceKeyOf(LIC2, offer, EXPIRES));
+    sim.call(
+      { admin: ADMIN },
+      "revokeLicense",
+      licenceKeyOf(LIC2, offer, EXPIRES),
+    );
     sim.call({}, "sealRevocations", sim.now + 100n); // the hourly revocation seal
     const resetAt = sim.state.lastRevocationReset;
     expect(resetAt).toBe(sim.now + 100n);
     sim.advance(700n); // within the hour, but the daily seal is due
-    sim.call({ admin: ADMIN }, "revokeLicense", licenceKeyOf(b(12), offer, EXPIRES));
+    sim.call(
+      { admin: ADMIN },
+      "revokeLicense",
+      licenceKeyOf(b(12), offer, EXPIRES),
+    );
     sim.call({}, "sealRevocations", sim.now + 100n);
     expect(sim.state.unsealedChanges).toBe(false);
     expect(sim.state.sealedRevocations).toBe(sim.state.revocationSeq);

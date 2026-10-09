@@ -4,13 +4,14 @@
  * Test networks only until it is approved for mainnet (api/src/deploy-guard.ts).
  *
  * Five roles, five kinds of file handed between them:
- *   breeder  posts an offer       -> OFFER CARD (rate and salt) to licensees and payers
+ *   breeder  posts an offer       -> OFFER CARD (rate and salt) to licensees
  *   grower   buys a licence       -> LICENCE CARD (viewing keys) back to the breeder
- *   grower   asks someone to pay  -> TOP-UP REQUEST to a buyer, lab or processor
+ *   grower   asks someone to pay  -> TOP-UP REQUEST (no rate) to a buyer, lab or processor
  *   grower   lets someone answer  -> PRESENTATION CARD (proves, never spends) to a delegate
  *   verifier asks for proof       -> LICENCE REQUEST to the grower, who answers on chain
- * The offer card and top-up request hold the private rate, and a presentation card lets
- * its holder answer as the licence: hand them only to the parties.
+ * The offer card holds the private rate, and a presentation card lets its holder answer
+ * as the licence: hand them only to the parties. A top-up request carries the offer's
+ * public fields and a code, never the rate.
  *
  * Every file is read without ever repeating its contents, every card is checked and
  * normalised before use, every output path is asked for and checked BEFORE anything is
@@ -518,7 +519,8 @@ export const handleRoyaltiesChoice = async (choice: string, c: RoyaltiesMenuCont
         c.logger.info(
           r.sealed
             ? 'Revoked and sealed: it stops proving and settling now.'
-            : `Revoked. It keeps working until the next seal (68)${r.sealableAt ? `, possible from ${new Date(r.sealableAt * 1000).toISOString()}` : ''}.`,
+            : `Revoked. It keeps working until it is sealed (68)${r.sealableAt ? `, possible from ${new Date(r.sealableAt * 1000).toISOString()}` : ''}. ` +
+                'A revocation is sealed at most once an hour, so it can take up to an hour.',
         );
         return true;
       }
@@ -576,7 +578,8 @@ export const handleRoyaltiesChoice = async (choice: string, c: RoyaltiesMenuCont
         void _nonce;
         if (!writeCard(c, out, file, '60 again (a new request)')) return true;
         c.logger.info(
-          `Written. Give it to whoever pays for you, and tell them separately (by phone or in person) its code ` +
+          `Written. It names the offer and its wallet, not your royalty rate. Give it to whoever pays for you, and ` +
+            `tell them separately (by phone or in person) its code ` +
             `fingerprint: ${fingerprint}. Their client shows it before they pay; a different one means the file was ` +
             'changed on the way. When they tell you the amount they paid, record it (61).',
         );
@@ -719,7 +722,8 @@ export const handleRoyaltiesChoice = async (choice: string, c: RoyaltiesMenuCont
           s.sealed
             ? 'Sealed.'
             : s.waiting
-              ? `Nothing sealed yet; possible from ${s.sealableAt ? new Date(s.sealableAt * 1000).toISOString() : 'soon'}.`
+              ? `Nothing sealed yet; possible from ${s.sealableAt ? new Date(s.sealableAt * 1000).toISOString() : 'soon'} ` +
+                '(a revocation is sealed at most once an hour).'
               : 'Nothing waiting for a seal.',
         );
         const n = await api.clearable();
@@ -948,9 +952,19 @@ export const handleRoyaltiesChoice = async (choice: string, c: RoyaltiesMenuCont
         if (daysTyped !== '' && !/^\d{1,6}$/.test(daysTyped))
           throw new RoyaltiesInputError('That is not a number of days.');
         const until = daysTyped === '' ? undefined : nowSeconds() + BigInt(daysTyped) * 86400n;
-        if (!(await askYes(c, 'Lower this link to those terms, for good?')))
+        const warnings =
+          share === undefined || share === k.share ? [] : await api.relaxWarnings(link, share, until ?? k.until);
+        for (const w of warnings) c.logger.warn(`  WARNING: ${w}.`);
+        if (
+          !(await askYes(
+            c,
+            warnings.length > 0
+              ? 'Lower this link to those terms for good, despite these warnings?'
+              : 'Lower this link to those terms, for good?',
+          ))
+        )
           return (c.logger.info('Nothing was sent.'), true);
-        await api.relaxLink(link, { share, fee, until });
+        await api.relaxLink(link, { share, fee, until }, { despite: warnings.length > 0 });
         c.logger.info('Lowered.');
         return true;
       }
@@ -1019,11 +1033,12 @@ const postOffer = async (c: RoyaltiesMenuContext): Promise<void> => {
   );
   const out = await askOutPath(c, 'Where to write the offer card for your licensees (path): ');
   if (!(await askYes(c, 'Post it?'))) return c.logger.info('Nothing was sent.');
-  const r = await api.postOffer(
-    recordSecret,
-    { terms, color, price, rate, payTo, count, expires, revocable },
-    c.mainAddress,
+  const r = await unlessDone(c, 'Post another offer with the same terms?', (again) =>
+    api.postOffer(recordSecret, { terms, color, price, rate, payTo, count, expires, revocable }, c.mainAddress, {
+      again,
+    }),
   );
+  if (r === undefined) return;
   c.logger.info(`Posted. Offer id: ${hex(r.offer)}.`);
   showSecret(
     'OFFER ADMIN SECRET: write it on paper now. It is the only way to close this offer or revoke its licences ' +

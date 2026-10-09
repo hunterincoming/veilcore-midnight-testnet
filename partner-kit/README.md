@@ -69,7 +69,10 @@ const verdict = await checkPresentation({ network: 'preprod', txId, issuer, chal
 ```
 
 - Node 24, ES modules. A proof server on your own machine (`docker run -d -p 127.0.0.1:6300:6300 midnightntwrk/proof-server:8.0.3 midnight-proof-server -v`; bound to
-  127.0.0.1 so nothing else on your network can reach it).
+  127.0.0.1 so nothing else on your network can reach it). Every proof sends it record and
+  licence secrets. From 0.3.0 (not yet published), `connect` and `seedWallet` refuse a
+  proof server that is not on this machine unless you pass `allowRemoteProofServer: true`,
+  and then only over https; 0.2.0 only warns.
 - Proving keys and circuits are not in this package. `veilcore-keys fetch --to <dir>` downloads
   them from VeilCore's `zk-r4` release and checks every file against the fingerprints in
   VeilCore's deployment record; any file that differs is refused. `veilcore-keys check --dir

@@ -220,3 +220,68 @@ describe("what the history must be", () => {
     expect(scoped(M_REC, ch).accepted).toBe(false);
   });
 });
+
+// Verification review, 8 October 2026 (pocs/verify1/poc-scoped.test.ts): one history step
+// covering a revoke and a new licence at the same slot looked like a replacement, and the
+// replacement branch only asked whether it was the issuer's transfer.
+describe("merged steps and gaps", () => {
+  const slotOf = (lc: Uint8Array, rec: Uint8Array): bigint =>
+    sim.state.licenseSlotOf.lookup(C.licenseKey(lc, rec));
+
+  for (const reissuer of ["the same issuer", "another issuer"] as const) {
+    it(`REFUSED: a revoke and ${reissuer}'s licence at the same slot, in one step`, () => {
+      const ch = secret("merge-ch");
+      const p = prove(L, A_REC, ch);
+      const s = slotOf(lcA, A_REC);
+      const who = reissuer === "the same issuer" ? A : M;
+      const rec = C.commit(who);
+      const x = secret("merge-x");
+      call(as(who), "issueLicense", C.licenseCommit(x, rec));
+      sim.call(as(A), "revokeLicense", lcA, A_REC); // no state of its own in the history
+      sim.withLicence({ secret: x, record: rec }, () =>
+        call(anyone, "countersignLicense", rec, s),
+      );
+      land(p);
+      expect(sim.state.licenseStatusOf.member(C.licenseKey(lcA, A_REC))).toBe(
+        false,
+      );
+      const v = scoped(A_REC, ch);
+      expect(v.accepted).toBe(false);
+      expect(
+        acceptPresentationAt(sim.state, A_REC, ch, {
+          landedAt: Date.now(),
+          now: Date.now(),
+          history,
+        }).accepted,
+      ).toBe(false);
+    });
+  }
+
+  it("REFUSED: two counted calls in one step (an obvious gap)", () => {
+    const ch = round(0);
+    expect(scoped(A_REC, ch).accepted).toBe(true);
+    // Merge the spam licence's issue/countersign step with a counted call: a pairing.
+    const ch2 = secret("gap-ch");
+    const p = prove(L, A_REC, ch2);
+    const sp = secret("gap-spam");
+    issue(M, sp);
+    countersign(sp, M_REC);
+    sim.call(as(M), "pairDna", secret("gap-dna")); // not in the history
+    call(as(M), "anchorBatch", secret("gap-root"));
+    land(p);
+    expect(scoped(A_REC, ch2).reason).toMatch(/not one state per call/);
+  });
+
+  it("REFUSED: the issuer's active count falls, whatever else the step shows", () => {
+    const ch = secret("fall-ch");
+    const p = prove(L, A_REC, ch);
+    // A licence activated AFTER the root the presentation uses, then revoked by the issuer:
+    // no leaf of that root is touched, but the issuer's count falls. Refused all the same.
+    const other = secret("fall-licensee");
+    const lo = issue(A, other);
+    countersign(other, A_REC);
+    call(as(A), "revokeLicense", lo, A_REC);
+    land(p);
+    expect(scoped(A_REC, ch).reason).toMatch(/this issuer has revoked/);
+  });
+});

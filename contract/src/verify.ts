@@ -204,6 +204,20 @@ export const acceptPresentation = (
   };
 };
 
+/** The sequence counters: each counted call raises exactly one of them by one. */
+const SEQ_COUNTERS = [
+  "anchorSeq",
+  "proofSeq",
+  "batchSeq",
+  "pairSeq",
+  "rotationSeq",
+  "transferSeq",
+  "presentationSeq",
+  "sealSeq",
+  "descentSeq",
+  "obligationSeq",
+] as const satisfies readonly (keyof Ledger)[];
+
 /**
  * Rule 5, issuer-scoped (8 October 2026 review). acceptPresentation refuses a
  * presentation proved against an older root while any revocation was waiting, whoever
@@ -219,18 +233,28 @@ export const acceptPresentation = (
  * or transferred by the issuer between that root and the presentation. Revocations and
  * transfers by anyone else cannot touch the issuer's leaves and are ignored.
  *
- * `history` is the contract state after EVERY call on the contract, in order, ending with
- * the presentation's own (`afterTx`). It must reach back at least to the last seal before
- * the presentation (a root proved against is never older than that), and it must have no
- * gaps: a missing call could be the revocation. It comes from the indexer, which is
- * trusted for it as for everything else (ask a second one). From each pair of
- * consecutive states:
- *  - a leaf the tree held at the root is REMOVED from its slot and the issuer's active
- *    count (`activeLicensesBy` of its identity) went down: the issuer revoked it;
- *  - a leaf the tree held at the root is REPLACED in its slot by
- *    licenseKey(lastTransferredLicense, r) for one of the issuer's records r: the
- *    issuer approved its transfer.
- * Either refuses. Anything the history cannot settle (the root is not in it) refuses.
+ * `history` MUST be the contract state after EVERY call on the contract, one state per
+ * call, in order, ending with the presentation's own (`afterTx`). It must reach back at
+ * least to the last seal before the presentation (a root proved against is never older
+ * than that). A per-transaction or per-block history, or one with a call missing, is not
+ * enough: a missing call could be the revocation, and two calls merged into one step can
+ * hide it (a revoke and a new licence placed at the same slot look like a replacement).
+ * A gap cannot be detected in general: calls such as issueLicense, countersignLicense
+ * and revokeLicense move no counter. The obvious ones are refused: a step where the
+ * sequence counters together rise by more than one, or where they and the licence tree
+ * show more than one call's worth of change, or where a counter goes down. The history
+ * comes from the indexer, which is trusted for it as for everything else; it gets no
+ * verifier-key or second-indexer check here, so read it from an indexer you trust.
+ *
+ * From each pair of consecutive states after that root, the presentation is refused when:
+ *  - the asked-about issuer's active count (`activeLicensesBy` of its identity) fell, for
+ *    whatever reason: only the issuer's own revocations lower it;
+ *  - a leaf the tree held at the root was REPLACED in its slot other than by a real
+ *    transfer (transferSeq up by one and lastTransferredLicense changed in that step);
+ *  - such a transfer was the issuer's: the new leaf is
+ *    licenseKey(lastTransferredLicense, r) for one of the issuer's records r.
+ * A leaf at the root that is REMOVED while the issuer's count holds was another issuer's.
+ * Anything the history cannot settle (the root is not in it) refuses.
  */
 export const acceptPresentationScoped = (
   history: readonly Ledger[],
@@ -274,38 +298,52 @@ export const acceptPresentationScoped = (
     for (const [slot, k] of l.licenseAtSlot) m.set(String(slot), hex(k));
     return m;
   };
+  const notPerCall = {
+    accepted: false,
+    reason:
+      "proved against an older root, and the history given is not one state per call; ask again",
+  } as const;
   for (let i = j + 1; i < history.length; i++) {
-    const prev = slots(history[i - 1]);
-    const next = slots(history[i]);
+    const before = history[i - 1];
+    const after = history[i];
+    // Every counted call raises exactly one sequence counter by one.
+    const deltas = SEQ_COUNTERS.map((c) => after[c] - before[c]);
+    if (deltas.some((d) => d < 0n)) return notPerCall;
+    const counted = deltas.reduce((a, d) => a + d, 0n);
+    if (counted > 1n) return notPerCall;
+    const transferStep =
+      after.transferSeq - before.transferSeq === 1n &&
+      !same(after.lastTransferredLicense, before.lastTransferredLicense);
+    if (activeCount(after) < activeCount(before))
+      return {
+        accepted: false,
+        reason:
+          "proved against an older root, and this issuer has revoked a licence since; ask again",
+      };
+    const prev = slots(before);
+    const next = slots(after);
     let changes = 0;
+    let replaced = 0;
     const touched: { slot: string; now: string | undefined }[] = [];
     for (const [slot, key] of prev) {
       const now = next.get(slot);
       if (now === key) continue;
       changes++;
+      if (now !== undefined) replaced++;
       if (atRoot.get(slot) === key) touched.push({ slot, now });
     }
     for (const slot of next.keys()) if (!prev.has(slot)) changes++;
+    // One call changes at most one leaf, and approveTransfer is the one call that both
+    // replaces a leaf and raises a counter.
+    const calls =
+      Number(counted) + changes - (transferStep && replaced === 1 ? 1 : 0);
+    if (changes > 1 || calls > 1) return notPerCall;
     if (touched.length === 0) continue;
-    // One call changes at most one leaf. Several changes between two states means the
-    // history is not one state per call, and who removed what cannot be told apart.
-    if (changes > 1)
-      return {
-        accepted: false,
-        reason:
-          "proved against an older root, and the history given is not one state per call; ask again",
-      };
     const { now } = touched[0];
-    if (now === undefined) {
-      if (activeCount(history[i]) < activeCount(history[i - 1]))
-        return {
-          accepted: false,
-          reason:
-            "proved against an older root, and this issuer has revoked a licence since; ask again",
-        };
-      continue; // another issuer's revocation
-    }
-    const transferred = history[i].lastTransferredLicense;
+    if (now === undefined) continue; // another issuer's revocation: the issuer's count held
+    // A leaf at the root replaced in place: only approveTransfer does that in one call.
+    if (!transferStep) return notPerCall;
+    const transferred = after.lastTransferredLicense;
     if (mine.some((r) => hex(pureCircuits.licenseKey(transferred, r)) === now))
       return {
         accepted: false,

@@ -14,6 +14,7 @@ import { attestationsFor, strengthLabel } from '../veilcore/attesters';
 import { proofFor } from '../veilcore/proofs';
 import type { StrainRecord } from '../veilcore/records';
 import { TEAL } from '../config/theme';
+import { utcStamp } from '../veilcore/time';
 
 type Event = { at: number; title: string; detail: string; strong?: boolean };
 
@@ -115,7 +116,7 @@ export const RecordHistory: React.FC<{ record: StrainRecord }> = ({ record }) =>
               {e.title}
             </Typography>
             <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-              {new Date(e.at).toLocaleString()}
+              {utcStamp(e.at)}
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
               {e.detail}

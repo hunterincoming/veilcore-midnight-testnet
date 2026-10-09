@@ -30,10 +30,10 @@ import { PLANT_VARIETY_PROFILE } from '../../veilcore/envelope';
 import { FingerprintReveal } from './FingerprintReveal';
 import { TEAL } from '../../config/theme';
 import { OUR_SERVER } from '../../config/copy';
+import { utcStamp as fmtStamp } from '../../veilcore/time';
 
 const MBox = motion(Box);
 const today = () => new Date().toISOString().slice(0, 10);
-const fmtStamp = (ms: number) => new Date(ms).toLocaleString();
 
 const BREEDING_METHODS = [
   'Seed — F1',

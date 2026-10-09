@@ -7,6 +7,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { unitOf } from "../royalties.js";
 import type {
   NoteOpening,
   OfferOpening,
@@ -32,8 +34,8 @@ const b = (n: number): Uint8Array<ArrayBuffer> => {
   o[31] = n;
   return o;
 };
-const STABLE = b(200);
 const ZERO = new Uint8Array(32);
+const UNIT = unitOf("USD cents");
 const HOUR = 3600n;
 const DAY = 24n * HOUR;
 const YEAR = 365n * DAY;
@@ -54,8 +56,6 @@ const LIC = b(10);
 const LIC2 = b(11);
 const P1 = b(30);
 const P2 = b(31);
-const WALLET = { bytes: b(40) };
-const WALLET_B = { bytes: b(41) };
 const PAYEE = b(70);
 
 const rec = (secret: Uint8Array): Uint8Array<ArrayBuffer> =>
@@ -65,13 +65,11 @@ type PostOpts = {
   record?: Uint8Array;
   admin?: Uint8Array;
   issuer?: Uint8Array;
-  onChain?: boolean;
   rate?: bigint;
   price?: bigint;
   count?: bigint;
   expires?: bigint;
-  color?: Uint8Array;
-  payTo?: { bytes: Uint8Array };
+  unit?: Uint8Array;
   slot?: bigint;
 };
 
@@ -86,16 +84,14 @@ const post = (sim: RoyaltiesSimulator, o: PostOpts = {}): Uint8Array =>
     b(150 + (++nonce % 50)),
     R.adminCommit(o.admin ?? ADMIN),
     TERMS,
-    o.color ?? STABLE,
+    o.unit ?? UNIT,
     o.price ?? 1000n,
     o.rate === 0n ? ZERO : R.rateCommit(o.rate ?? RATE, SALT),
-    o.payTo ?? WALLET,
     o.count ?? 3n,
     o.expires ?? EXPIRES,
     true,
     R.adminCommit(o.issuer ?? ISSUER),
     o.slot ?? sim.freeIssuerSlot(),
-    o.onChain ?? false,
   ).result as Uint8Array;
 
 const openingOf = (
@@ -105,12 +101,10 @@ const openingOf = (
   const o = sim.state.offers.lookup(offer);
   return {
     offer,
-    payTo: o.payTo.bytes,
-    color: o.color,
+    unit: o.unit,
     rateCommit: o.rateCommit,
     expires: o.expires,
     split: o.split,
-    onChainPayment: o.onChainPayment,
   };
 };
 
@@ -229,7 +223,6 @@ describe("the breeder issues; no money passes through the contract", () => {
     const sim = new RoyaltiesSimulator();
     const offer = post(sim);
     const o = sim.state.offers.lookup(offer);
-    expect(o.onChainPayment).toBe(false);
     expect(hex(o.issuer)).toBe(hex(R.adminCommit(ISSUER)));
 
     noMoney(issueLicence(sim, offer).moved);
@@ -241,7 +234,6 @@ describe("the breeder issues; no money passes through the contract", () => {
     // The licensee was paid for off chain; the breeder acknowledges 200 of credit.
     noMoney(issue(sim, offer, 200n, b(51)).moved);
     expect(sim.state.issueSeq).toBe(1n);
-    expect(sim.state.topUpSeq).toBe(0n);
     const op = openingOf(sim, offer);
     expect(sim.state.noteSeen.member(noteOf(LIC, b(51), op, 200n))).toBe(true);
 
@@ -281,7 +273,7 @@ describe("the breeder issues; no money passes through the contract", () => {
     expect(sim.state.presentationSeq).toBe(1n);
   });
 
-  it("an issuance names neither the offer, the licensee, the code, the issuer nor the amount", () => {
+  it("an issuance publishes neither the offer, the licensee, the code, the issuer key nor the amount", () => {
     const sim = new RoyaltiesSimulator();
     const offer = post(sim);
     issueLicence(sim, offer);
@@ -297,8 +289,7 @@ describe("the breeder issues; no money passes through the contract", () => {
       code,
       R.adminCommit(ISSUER),
       offerLeafOf(op),
-      WALLET.bytes,
-      STABLE,
+      UNIT,
       op.rateCommit,
       licenceKeyOf(LIC, offer, EXPIRES),
     ])
@@ -310,45 +301,21 @@ describe("the breeder issues; no money passes through the contract", () => {
     expect(t).not.toContain(AMOUNT.toString(16));
   });
 
-  it("an offer that takes no payment here refuses purchases and top-ups; one that opted in takes both, and issuing too", () => {
-    const sim = new RoyaltiesSimulator();
-    const off = post(sim);
-    expect(() =>
-      sim.call({ license: LIC }, "buyLicense", off, sim.freeSlot()),
-    ).toThrow(/takes no payment through the contract/);
-    const op = openingOf(sim, off);
-    expect(() =>
-      sim.call(
-        { opening: op, code: codeOf(LIC, off, b(51)) },
-        "topUp",
-        WALLET,
-        STABLE,
-        100n,
-        sim.now + DAY,
-      ),
-    ).toThrow(/takes no payment through the contract/);
-
-    const on = post(sim, { onChain: true, record: OTHER });
-    const bought = sim.call(
-      { license: LIC2 },
-      "buyLicense",
-      on,
-      sim.freeSlot(),
-    ).moved;
-    expect(bought.inputs.get(hex(STABLE))).toBe(1000n);
-    issueLicence(sim, on, LIC);
-    const opOn = openingOf(sim, on);
-    sim.call(
-      { opening: opOn, code: codeOf(LIC2, on, b(52)) },
-      "topUp",
-      WALLET,
-      STABLE,
-      100n,
-      sim.now + DAY,
-    );
-    issue(sim, on, 50n, b(53), {}, LIC);
-    expect(sim.state.topUpSeq).toBe(1n);
-    expect(sim.state.issueSeq).toBe(1n);
+  it("no circuit can move tokens: the contract has no unshielded or shielded send or receive", () => {
+    const src = readFileSync(
+      new URL("../veilcore-royalties.compact", import.meta.url),
+      "utf8",
+    ).replace(/\/\/.*$/gm, "");
+    for (const op of [
+      "receiveUnshielded",
+      "sendUnshielded",
+      "receiveShielded",
+      "sendShielded",
+      "sendImmediateShielded",
+      "mintUnshieldedToken",
+      "mintShieldedToken",
+    ])
+      expect(src).not.toContain(op);
   });
 });
 
@@ -416,7 +383,6 @@ describe("attacks on issuing", () => {
       record: OTHER,
       admin: ADMIN_B,
       issuer: ISSUER_B,
-      payTo: WALLET_B,
     });
     issueLicence(sim, a);
     expect(() => issue(sim, a, 100n, b(51), { issuer: ISSUER_B })).toThrow(
@@ -522,7 +488,7 @@ describe("attacks on issuing", () => {
     );
   });
 
-  it("posting refuses an empty issuer, a taken place, a place outside the issuer tree, and an on-chain offer with no wallet", () => {
+  it("posting refuses an empty issuer, a taken place, a place outside the issuer tree, and no unit", () => {
     const sim = new RoyaltiesSimulator();
     post(sim, { slot: 7n });
     expect(() => post(sim, { slot: 7n, record: OTHER })).toThrow(
@@ -538,24 +504,19 @@ describe("attacks on issuing", () => {
         b(99),
         R.adminCommit(ADMIN),
         TERMS,
-        STABLE,
+        UNIT,
         1000n,
         R.rateCommit(RATE, SALT),
-        WALLET,
         3n,
         EXPIRES,
         true,
         ZERO,
         sim.freeIssuerSlot(),
-        false,
       ),
     ).toThrow(/issuer commitment cannot be empty/);
-    // Money sent to an all-zero address would be lost: an offer paid on chain needs a wallet.
-    expect(() =>
-      post(sim, { record: OTHER, onChain: true, payTo: { bytes: ZERO } }),
-    ).toThrow(/needs a wallet/);
-    // Paid off chain, it needs none.
-    post(sim, { record: OTHER, payTo: { bytes: ZERO } });
+    expect(() => post(sim, { record: OTHER, unit: ZERO })).toThrow(
+      /name the unit/,
+    );
   });
 });
 
@@ -692,19 +653,17 @@ const propose = (
     share?: bigint;
     fee?: bigint;
     generations?: bigint;
-    payTo: { bytes: Uint8Array };
   },
 ) =>
   sim.call(
     { record: child },
     "proposeLink",
     rec(parent),
-    STABLE,
+    UNIT,
     t.fee ?? 0n,
     t.share ?? 1000n,
     t.generations ?? 2n,
     T0 + YEAR,
-    t.payTo,
     R.payeeCommit(PAYEE),
   ).result as Uint8Array;
 
@@ -716,7 +675,6 @@ const link = (
     share?: bigint;
     fee?: bigint;
     generations?: bigint;
-    payTo: { bytes: Uint8Array };
   },
 ): Uint8Array => {
   const id = propose(sim, child, parent, t);
@@ -725,15 +683,7 @@ const link = (
     { record: parent },
     "confirmLink",
     rec(child),
-    R.linkTermsHash(
-      l.color,
-      l.fee,
-      l.share,
-      l.generations,
-      l.until,
-      l.payTo.bytes,
-      l.payee,
-    ),
+    R.linkTermsHash(l.unit, l.fee, l.share, l.generations, l.until, l.payee),
   );
   return id;
 };
@@ -747,32 +697,30 @@ const finalise = (
 const GP = b(21);
 const PARENT = b(22);
 const CHILD = b(23);
-const W_GP = { bytes: b(121) };
-const W_P = { bytes: b(122) };
-const W_C = { bytes: b(123) };
-
-/** Grandparent -> parent (20% for 2 generations, fee 30) -> child (10%, fee 50). */
-const family = (onChain = false) => {
+/** Grandparent -> parent (20% for 2 generations) -> child (10%, fee 50). */
+const family = () => {
   const sim = new RoyaltiesSimulator();
   finalise(sim, GP);
   finalise(
     sim,
     PARENT,
-    link(sim, PARENT, GP, { share: 2000n, generations: 2n, payTo: W_GP }),
+    link(sim, PARENT, GP, { share: 2000n, generations: 2n }),
   );
   const toParent = link(sim, CHILD, PARENT, {
     share: 1000n,
     fee: 50n,
-    payTo: W_P,
   });
   finalise(sim, CHILD, toParent);
-  const offer = post(sim, { record: CHILD, payTo: W_C, onChain });
+  const offer = post(sim, { record: CHILD });
   return { sim, offer, toParent };
 };
 
-/** Every `owed` entry's amount to chart place `i` of each record. */
+/** What every `owed` entry owes chart place `i`, added up exactly, then divided once. */
 const owedAt = (sim: RoyaltiesSimulator, i: number): bigint =>
-  [...sim.state.owed].reduce((a, [, e]) => a + e.shares[i], 0n);
+  [...sim.state.owed].reduce((a, [, e]) => a + e.total * e.weights[i], 0n) /
+  40000n;
+const dueIn = (e: { total: bigint; weights: bigint[] }, i: number) =>
+  (e.total * e.weights[i]) / 40000n;
 
 describe("ancestors of a variety paid off chain: what is owed is recorded, and cannot be skipped", () => {
   it("an issued licence records each share of the list price and each parent's fee", () => {
@@ -783,8 +731,9 @@ describe("ancestors of a variety paid off chain: what is owed is recorded, and c
     const e = sim.state.owed.lookup(k);
     expect(hex(e.record)).toBe(hex(rec(CHILD)));
     expect(hex(e.offer)).toBe(hex(offer));
-    expect(e.shares[0]).toBe(100n); // the parent: 10% of 1000
-    expect(e.shares[2]).toBe(100n); // the grandparent: half of 20%
+    expect(e.total).toBe(1000n);
+    expect(dueIn(e, 0)).toBe(100n); // the parent: 10% of 1000
+    expect(dueIn(e, 2)).toBe(100n); // the grandparent: half of 20%
     expect(e.fees).toEqual([50n, 0n]);
     expect(sim.state.owedSeq).toBe(1n);
   });
@@ -801,8 +750,9 @@ describe("ancestors of a variety paid off chain: what is owed is recorded, and c
     const op = openingOf(sim, offer);
     const note = noteOf(LIC, b(51), op, 500n);
     const e = sim.state.owed.lookup(note);
-    expect(e.shares[0]).toBe(50n);
-    expect(e.shares[2]).toBe(50n);
+    expect(e.total).toBe(500n);
+    expect(dueIn(e, 0)).toBe(50n);
+    expect(dueIn(e, 2)).toBe(50n);
     expect(e.fees).toEqual([0n, 0n]);
     // The credit settles as any other.
     settle(sim, offer, { nonce: b(51), amount: 500n }, P1, 10n);
@@ -810,69 +760,30 @@ describe("ancestors of a variety paid off chain: what is owed is recorded, and c
     expect(owedAt(sim, 2)).toBe(100n + 50n);
   });
 
-  it("ancestors' shares cannot be skipped: wrong or missing amounts, a tiny amount, or a stranger's key are refused", () => {
+  it("ancestors' shares cannot be skipped: no private path, no stranger's key, and no amount to get wrong", () => {
     const { sim, offer } = family();
-    const none = Array.from({ length: 14 }, () => 0n);
-    expect(() =>
-      sim.call(
-        { admin: ADMIN, split: none },
-        "issueLicense",
-        offer,
-        commitmentOf(LIC, offer),
-        sim.freeSlot(),
-      ),
-    ).toThrow(/ancestor's share/);
     issueLicence(sim, offer);
     const code = codeOf(LIC, offer, b(51));
-    expect(() =>
-      sim.call(
-        { issuer: ISSUER, code, split: none },
-        "issueCreditSplit",
-        offer,
-        500n,
-      ),
-    ).toThrow(/ancestor's share/);
-    const short = Array.from({ length: 14 }, (_, i) => (i === 0 ? 50n : 0n));
-    expect(() =>
-      sim.call(
-        { issuer: ISSUER, code, split: short },
-        "issueCreditSplit",
-        offer,
-        500n,
-      ),
-    ).toThrow(/ancestor's share/);
-    // 10% of 9 is under one unit: refused, never recorded as nothing.
-    expect(() =>
-      sim.call({ issuer: ISSUER, code }, "issueCreditSplit", offer, 9n),
-    ).toThrow(/Too small/);
+    // The issuer supplies only the amount; the contract works out every share from the terms.
+    expect(() => issue(sim, offer, 500n, b(51))).toThrow(/issueCreditSplit/);
     expect(() =>
       sim.call({ issuer: ISSUER_B, code }, "issueCreditSplit", offer, 500n),
     ).toThrow(/Only the offer's credit issuer/);
+    // A tiny amount is recorded exactly (10% of 9 = 0.9), never refused, never rounded to zero.
+    sim.call({ issuer: ISSUER, code }, "issueCreditSplit", offer, 9n);
+    const e = sim.state.owed.lookup(sim.state.lastNote);
+    expect([e.total, e.weights[0]]).toEqual([9n, 4000n]);
     // The named path is only for such offers.
     const plain = post(sim, { record: OTHER });
     expect(() =>
-      sim.call({ issuer: ISSUER, code }, "issueCreditSplit", plain, 500n),
+      sim.call(
+        { issuer: ISSUER, code: b(77) },
+        "issueCreditSplit",
+        plain,
+        500n,
+      ),
     ).toThrow(/use issueCredit/);
-    expect(sim.state.owedSeq).toBe(1n);
-  });
-
-  it("a variety with ancestors that takes payment on chain pays them in the call; issuing on it still records", () => {
-    const { sim, offer } = family(true);
-    const moved = sim.call(
-      { license: LIC2 },
-      "buyLicense",
-      offer,
-      sim.freeSlot(),
-    ).moved;
-    const paid = (w: { bytes: Uint8Array }) =>
-      moved.spends
-        .filter(([t, to]) => t === hex(STABLE) && to.includes(hex(w.bytes)))
-        .reduce((a, [, , v]) => a + v, 0n);
-    expect(paid(W_P)).toBe(100n + 50n);
-    expect(paid(W_GP)).toBe(100n);
-    expect(sim.state.owedSeq).toBe(0n);
-    issueLicence(sim, offer);
-    expect(sim.state.owedSeq).toBe(1n);
+    expect(sim.state.owedSeq).toBe(2n);
   });
 
   it("the record follows a replaced issuer: the named path takes the new key at once", () => {
@@ -895,11 +806,7 @@ describe("ancestors of a variety paid off chain: what is owed is recorded, and c
   it("once the ancestors' links end, issuing records nothing, and owes nothing", () => {
     const sim = new RoyaltiesSimulator();
     finalise(sim, PARENT);
-    const id = propose(sim, CHILD, PARENT, {
-      share: 1000n,
-      fee: 50n,
-      payTo: W_P,
-    });
+    const id = propose(sim, CHILD, PARENT, { share: 1000n, fee: 50n });
     // A short link: proposeLink took T0 + YEAR; lower it to 10 days with the payee key.
     sim.call(
       { admin: PAYEE },
@@ -915,18 +822,10 @@ describe("ancestors of a variety paid off chain: what is owed is recorded, and c
       { record: PARENT },
       "confirmLink",
       rec(CHILD),
-      R.linkTermsHash(
-        l.color,
-        l.fee,
-        l.share,
-        l.generations,
-        l.until,
-        l.payTo.bytes,
-        l.payee,
-      ),
+      R.linkTermsHash(l.unit, l.fee, l.share, l.generations, l.until, l.payee),
     );
     finalise(sim, CHILD, id);
-    const offer = post(sim, { record: CHILD, payTo: W_C });
+    const offer = post(sim, { record: CHILD });
     sim.advance(11n * DAY);
     issueLicence(sim, offer);
     sim.call(

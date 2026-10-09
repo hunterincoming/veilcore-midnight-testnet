@@ -25,6 +25,7 @@ import {
   royaltiesLedger,
   royaltiesPureCircuits as R,
   royaltiesWitnesses,
+  unitOf,
 } from "../royalties.js";
 import { Contract } from "../managed/veilcore-royalties/contract/index.js";
 
@@ -36,7 +37,7 @@ const b = (n: number): Uint8Array => {
   o[31] = n;
   return o;
 };
-const NIGHT = new Uint8Array(32);
+const UNIT = unitOf("USD cents");
 const T0 = 1_800_000_000n;
 const DAY = 86400n;
 const EXPIRES = T0 + 365n * DAY;
@@ -89,7 +90,7 @@ class Client {
 }
 
 describe("the client's witnesses, through a whole licensee journey", () => {
-  it("buy, top up, settle twice, merge, and present a settled period", () => {
+  it("issue a licence and credit, settle twice, merge, and present a settled period", () => {
     const k = new Client();
     const offer = k.run(
       { recordSecret: b(1), rate: { rate: RATE, salt: SALT } },
@@ -99,57 +100,47 @@ describe("the client's witnesses, through a whole licensee journey", () => {
           b(50),
           R.adminCommit(b(5)),
           b(20),
-          NIGHT,
+          UNIT,
           1000n,
           R.rateCommit(RATE, SALT),
-          { bytes: b(40) },
           3n,
           EXPIRES,
           true,
           R.adminCommit(b(6)),
           7n,
-          true,
         ),
     ) as Uint8Array;
     const lic = b(10);
-    k.run(
-      {
-        licenseSecret: lic,
-        split: {
-          record: R.recordCommit(b(1)),
-          color: NIGHT,
-          total: 1000n,
-          now: T0,
-        },
-      },
-      (c, ctx) => c.impureCircuits.buyLicense(ctx, offer, 5n),
+    k.run({ adminSecret: b(5) }, (c, ctx) =>
+      c.impureCircuits.issueLicense(
+        ctx,
+        offer,
+        R.licenseCommit(R.viewKey(lic, offer), R.spendKey(lic, offer), offer),
+        5n,
+      ),
     );
     expect(hex(k.ledger.lastSale)).toBe(hex(licenceKeyOf(lic, offer, EXPIRES)));
 
     const op: OfferOpening = {
       offer,
-      payTo: b(40),
-      color: NIGHT,
+      unit: UNIT,
       rateCommit: R.rateCommit(RATE, SALT),
       expires: EXPIRES,
       split: false,
-      onChainPayment: true,
     };
     const rate = { rate: RATE, salt: SALT };
-    const topUp = (nonce: Uint8Array, amount: bigint) =>
+    const issue = (nonce: Uint8Array, amount: bigint) =>
       k.run(
-        { opening: op, code: R.topUpCode(R.spendKey(lic, offer), nonce), rate },
-        (c, ctx) =>
-          c.impureCircuits.topUp(
-            ctx,
-            { bytes: op.payTo },
-            NIGHT,
-            amount,
-            T0 + DAY,
-          ),
+        {
+          issuerSecret: b(6),
+          opening: op,
+          code: R.topUpCode(R.spendKey(lic, offer), nonce),
+          amount,
+        },
+        (c, ctx) => c.impureCircuits.issueCredit(ctx),
       );
-    topUp(b(51), 100n);
-    topUp(b(52), 100n);
+    issue(b(51), 100n);
+    issue(b(52), 100n);
     expect(k.ledger.noteSeen.member(noteOf(lic, b(51), op, 100n))).toBe(true);
 
     const settle = (
@@ -231,47 +222,33 @@ describe("the client's witnesses, through a whole licensee journey", () => {
           b(50),
           R.adminCommit(b(5)),
           b(20),
-          NIGHT,
+          UNIT,
           1000n,
           R.rateCommit(RATE, SALT),
-          { bytes: b(40) },
           3n,
           EXPIRES,
           true,
           R.adminCommit(issuer),
           9n,
-          false,
         ),
     ) as Uint8Array;
     const lic = b(10);
     const key = licenceKeyOf(lic, offer, EXPIRES);
-    k.run(
-      {
-        adminSecret: b(5),
-        split: {
-          record: R.recordCommit(b(1)),
-          color: NIGHT,
-          total: 1000n,
-          now: T0,
-        },
-      },
-      (c, ctx) =>
-        c.impureCircuits.issueLicense(
-          ctx,
-          offer,
-          R.licenseCommit(R.viewKey(lic, offer), R.spendKey(lic, offer), offer),
-          5n,
-        ),
+    k.run({ adminSecret: b(5) }, (c, ctx) =>
+      c.impureCircuits.issueLicense(
+        ctx,
+        offer,
+        R.licenseCommit(R.viewKey(lic, offer), R.spendKey(lic, offer), offer),
+        5n,
+      ),
     );
     expect(hex(k.ledger.lastSale)).toBe(hex(key));
     const op: OfferOpening = {
       offer,
-      payTo: b(40),
-      color: NIGHT,
+      unit: UNIT,
       rateCommit: R.rateCommit(RATE, SALT),
       expires: EXPIRES,
       split: false,
-      onChainPayment: false,
     };
     // The issuer path is found by the client's own witness, from the issuer tree.
     k.run(
@@ -311,7 +288,7 @@ describe("the client's witnesses, through a whole licensee journey", () => {
   it("a witness asked for something the client did not give throws before anything is proved", () => {
     const k = new Client();
     expect(() =>
-      k.run({}, (c, ctx) => c.impureCircuits.buyLicense(ctx, b(1), 0n)),
+      k.run({}, (c, ctx) => c.impureCircuits.issueCredit(ctx)),
     ).toThrow();
   });
 });
@@ -319,7 +296,10 @@ describe("the client's witnesses, through a whole licensee journey", () => {
 describe("deploying in fragments", () => {
   it("lists every circuit, and a deploy carrying a subset keeps the same state", () => {
     expect(ROYALTIES_PROVABLE_CIRCUITS).toContain("settle");
-    expect(ROYALTIES_PROVABLE_CIRCUITS).toContain("topUp");
+    expect(ROYALTIES_PROVABLE_CIRCUITS).toContain("issueCredit");
+    // No circuit can move tokens: the payment circuits are gone.
+    for (const gone of ["buyLicense", "topUp", "topUpSplit", "movePayee"])
+      expect(ROYALTIES_PROVABLE_CIRCUITS).not.toContain(gone);
     const keep = ROYALTIES_PROVABLE_CIRCUITS.slice(0, 4);
     const D = royaltiesDeployingContract(keep);
     const d = new D<RoyaltiesPrivateState>(royaltiesWitnesses);

@@ -48,7 +48,7 @@ export type RoyaltyInput = {
   /** The note(s) a settlement or merge spends. */
   readonly note?: Royalties.NoteOpening;
   readonly note2?: Royalties.NoteOpening;
-  /** The rate and salt, for postOffer and settle (a top-up never needs them). */
+  /** The rate and salt, for postOffer and settle (an issuance never needs them). */
   readonly rate?: Royalties.RateOpening;
   /**
    * A presentation can be made with the presentation key and the public spending key
@@ -60,21 +60,9 @@ export type RoyaltyInput = {
   readonly change?: Uint8Array;
   /** Which settlement of this licence a settle is (0, 1, 2 ...). */
   readonly index?: bigint;
-  /**
-   * A split payment (licence purchase or topUpSplit) or a record of what is owed (a licence
-   * or split credit issued off chain): the record whose ancestors are owed, the token, the
-   * amount, and the time to judge links' end dates by. The witness works out each
-   * ancestor's amount from the ledger (splitAmountsFor).
-   */
-  readonly split?: {
-    readonly record: Uint8Array;
-    readonly color: Uint8Array;
-    readonly total: bigint;
-    readonly now: bigint;
-  };
 };
 
-/** A licence this party bought: its secret (one per licence) and end date. */
+/** A licence this party holds: its secret (one per licence) and end date. */
 export type HeldLicence = {
   readonly offer: string;
   readonly secret: string;
@@ -106,15 +94,13 @@ export type HeldOfferCard = {
   readonly kind: "veilcore-offer-card";
   readonly contract: string;
   readonly offer: string;
-  readonly payTo: string;
-  readonly color: string;
+  /** The unit the offer counts amounts in (unitOf, as hex). */
+  readonly unit: string;
   readonly rateCommit: string;
   readonly expires: string;
   readonly rate: string;
   readonly rateSalt: string;
   readonly split?: boolean;
-  /** Whether the offer takes payment through the contract. Missing means no. */
-  readonly onChainPayment?: boolean;
 };
 
 /** The terms of a descent link, as hex and decimal strings (api/src/royalties-api.ts LinkTermsCard). */
@@ -122,12 +108,12 @@ export type HeldLinkTerms = {
   readonly kind: "veilcore-link-terms";
   readonly contract: string;
   readonly parent: string;
-  readonly color: string;
+  /** The unit the fee and share are counted in (unitOf, as hex). */
+  readonly unit: string;
   readonly fee: string;
   readonly share: string;
   readonly generations: string;
   readonly until: string;
-  readonly payTo: string;
   readonly payee: string;
   /** The child record these terms are for, if the parent named one: any other child is refused. */
   readonly child?: string;
@@ -227,15 +213,7 @@ const absentPath = (leaf: Uint8Array, depth: number) => ({
 });
 
 export const offerLeafOf = (o: Royalties.OfferOpening): Uint8Array =>
-  C.offerLeaf(
-    o.offer,
-    o.payTo,
-    o.color,
-    o.rateCommit,
-    o.expires,
-    o.split,
-    o.onChainPayment,
-  );
+  C.offerLeaf(o.offer, o.unit, o.rateCommit, o.expires, o.split);
 
 /** An offer's issuer leaf for the credit issuer secret `issuer`. */
 export const issuerLeafOf = (
@@ -243,35 +221,34 @@ export const issuerLeafOf = (
   issuer: Uint8Array,
 ): Uint8Array => C.issuerLeaf(offerLeafOf(o), C.adminCommit(issuer));
 
-/** Places in a pedigree chart, and the share denominator at each (basis points, halved per generation). */
+/** Places in a pedigree chart. */
 export const CHART_PLACES = 14;
-export const placeDenominator = (i: number): bigint =>
-  i < 2 ? 10000n : i < 6 ? 20000n : 40000n;
-const isEmpty = (b: Uint8Array): boolean => b.every((x) => x === 0);
+/** A place's weight per basis point of its link's share, in 40,000ths (Owed.weights): parents 4, grandparents 2, the rest 1. */
+export const placeQuarters = (i: number): bigint =>
+  i < 2 ? 4n : i < 6 ? 2n : 1n;
+/** Owed.weights are in 40,000ths of the base amount. */
+export const WEIGHT_DENOMINATOR = 40000n;
 
-/**
- * What each place in `record`'s chart is owed from a payment of `total` in `color` at
- * time `now`: the share rounded down, or 0 (an empty place, no share, another token, or
- * a link past its end). Exactly what the contract checks in paySplit.
- */
-export const splitAmountsFor = (
-  ledger: Royalties.Ledger,
-  record: Uint8Array,
-  color: Uint8Array,
-  total: bigint,
-  now: bigint,
-): bigint[] => {
-  const chart = ledger.stacks.member(record)
-    ? ledger.stacks.lookup(record)
-    : Array.from({ length: CHART_PLACES }, () => new Uint8Array(32));
-  const hex = (b: Uint8Array): string => Buffer.from(b).toString("hex");
-  return chart.map((id, i) => {
-    if (isEmpty(id) || !ledger.links.member(id)) return 0n;
-    const l = ledger.links.lookup(id);
-    if (l.share === 0n || hex(l.color) !== hex(color) || l.until <= now)
-      return 0n;
-    return (total * l.share) / placeDenominator(i);
-  });
+/** A unit label ("USD cents", "JPY", "NIGHT") as the 32 bytes an offer and a link name: UTF-8, zero-padded. */
+export const unitOf = (label: string): Uint8Array => {
+  const t = label.trim();
+  const b = new TextEncoder().encode(t);
+  if (b.length === 0 || b.length > 32)
+    throw new Error("A unit is 1 to 32 bytes of text, e.g. USD cents.");
+  if (!/^[\x20-\x7e]+$/.test(t))
+    throw new Error("A unit is plain printable text, e.g. USD cents.");
+  const out = new Uint8Array(32);
+  out.set(b);
+  return out;
+};
+
+/** The label 32 unit bytes stand for, if they are plain printable text; otherwise undefined. */
+export const unitLabel = (u: Uint8Array): string | undefined => {
+  let end = u.length;
+  while (end > 0 && u[end - 1] === 0) end--;
+  if (end === 0 || u.slice(0, end).some((x) => x === 0)) return undefined;
+  const t = new TextDecoder().decode(u.slice(0, end));
+  return /^[\x20-\x7e]+$/.test(t) ? t : undefined;
 };
 
 /** The note a licence secret, nonce, offer and amount make. */
@@ -492,13 +469,6 @@ export const royaltiesWitnesses: W = {
     privateState,
     need(privateState.input.index, "the settlement number"),
   ],
-  splitAmounts: ({ privateState, ledger }: Ctx) => {
-    const s = need(privateState.input.split, "the split payment");
-    return [
-      privateState,
-      splitAmountsFor(ledger, s.record, s.color, s.total, s.now),
-    ];
-  },
 };
 
 export const CompiledVeilcoreRoyalties = CompiledContract.make<

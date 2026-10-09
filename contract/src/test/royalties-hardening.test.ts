@@ -12,7 +12,7 @@ import {
   type Caller,
 } from "./royalties-simulator.js";
 import { pureCircuits as V } from "../managed/veilcore/contract/index.js";
-import { changeNonceOf, licenceKeyOf, noteOf } from "../royalties.js";
+import { changeNonceOf, licenceKeyOf, noteOf, unitOf } from "../royalties.js";
 
 const hex = (b: Uint8Array): string => Buffer.from(b).toString("hex");
 const b = (n: number): Uint8Array<ArrayBuffer> => {
@@ -22,6 +22,7 @@ const b = (n: number): Uint8Array<ArrayBuffer> => {
   return o;
 };
 const NIGHT = new Uint8Array(32);
+const UNIT = unitOf("USD cents");
 const ZERO = new Uint8Array(32);
 const DAY = 86400n;
 const HOUR = 3600n;
@@ -32,7 +33,6 @@ const SALT = b(90);
 const RO = { rate: RATE, salt: SALT };
 const BREEDER = b(1);
 const ADMIN = b(5);
-const WALLET = { bytes: b(40) };
 const LIC = b(10);
 const LIC2 = b(11);
 const P1 = b(30);
@@ -59,33 +59,45 @@ const post = (
     b(150 + ++nonce),
     R.adminCommit(ADMIN),
     b(20),
-    NIGHT,
+    UNIT,
     o.price ?? 1000n,
     o.rate ?? R.rateCommit(RATE, SALT),
-    WALLET,
     5n,
     o.expires ?? EXPIRES,
     true,
     R.adminCommit(ISSUER),
     sim.freeIssuerSlot(),
-    true,
   ).result as Uint8Array<ArrayBuffer>;
 
 const opening = (sim: RoyaltiesSimulator, offer: Uint8Array) => {
   const o = sim.state.offers.lookup(offer);
   return {
     offer,
-    payTo: o.payTo.bytes,
-    color: o.color,
+    unit: o.unit,
     rateCommit: o.rateCommit,
     expires: o.expires,
     split: o.split,
-    onChainPayment: o.onChainPayment,
   };
 };
-const buy = (sim: RoyaltiesSimulator, offer: Uint8Array, license = LIC) =>
-  sim.call({ license }, "buyLicense", offer, sim.freeSlot());
-const topUp = (
+/** The licence commitment on a licensee's licence card. */
+const commitmentOf = (license: Uint8Array, offer: Uint8Array) =>
+  R.licenseCommit(R.viewKey(license, offer), R.spendKey(license, offer), offer);
+/** The admin issues `license`'s licence (paid off chain). */
+const issue = (
+  sim: RoyaltiesSimulator,
+  offer: Uint8Array,
+  license = LIC,
+  admin = ADMIN,
+) =>
+  sim.call(
+    { admin },
+    "issueLicense",
+    offer,
+    commitmentOf(license, offer),
+    sim.freeSlot(),
+  );
+/** The offer's credit issuer issues credit to `license`'s code. */
+const credit = (
   sim: RoyaltiesSimulator,
   offer: Uint8Array,
   amount: bigint,
@@ -94,14 +106,12 @@ const topUp = (
 ) =>
   sim.call(
     {
+      issuer: ISSUER,
       opening: opening(sim, offer),
       code: R.topUpCode(R.spendKey(license, offer), n),
+      amount,
     },
-    "topUp",
-    { bytes: opening(sim, offer).payTo },
-    NIGHT,
-    amount,
-    sim.now + DAY,
+    "issueCredit",
   );
 const settle = (
   sim: RoyaltiesSimulator,
@@ -139,13 +149,25 @@ const who = (offer: Uint8Array, extra: Caller = {}): Caller => ({
   ...extra,
 });
 
-describe("offers and sales", () => {
-  it("two buyers of one offer, proved at the same time, both land (counts are counters, not a rewritten offer)", () => {
+describe("offers and licences", () => {
+  it("two licences of one offer, proved at the same time, both land (counts are counters, not a rewritten offer)", () => {
     const sim = new RoyaltiesSimulator();
     const offer = post(sim);
-    const a = sim.prove({ license: LIC }, "buyLicense", offer, sim.freeSlot());
+    const a = sim.prove(
+      { admin: ADMIN },
+      "issueLicense",
+      offer,
+      commitmentOf(LIC, offer),
+      sim.freeSlot(),
+    );
     const s2 = sim.freeSlot() + 1n;
-    const c = sim.prove({ license: LIC2 }, "buyLicense", offer, s2);
+    const c = sim.prove(
+      { admin: ADMIN },
+      "issueLicense",
+      offer,
+      commitmentOf(LIC2, offer),
+      s2,
+    );
     sim.land(a);
     sim.land(c);
     expect(sim.state.soldOf.lookup(offer).read()).toBe(2n);
@@ -166,15 +188,7 @@ describe("offers and sales", () => {
     const sim = new RoyaltiesSimulator();
     const offer = post(sim);
     const path = sim.state.offerLeaves.findPathForLeaf(
-      R.offerLeaf(
-        offer,
-        WALLET.bytes,
-        NIGHT,
-        R.rateCommit(RATE, SALT),
-        EXPIRES,
-        false,
-        true,
-      ),
+      R.offerLeaf(offer, UNIT, R.rateCommit(RATE, SALT), EXPIRES, false),
     );
     expect(path?.path.length).toBe(32);
   });
@@ -182,7 +196,7 @@ describe("offers and sales", () => {
   it("an offer's admin cannot revoke after the end, cutting short the 30 days to settle", () => {
     const sim = new RoyaltiesSimulator();
     const offer = post(sim, { expires: T0 + DAY });
-    buy(sim, offer);
+    issue(sim, offer);
     sim.advance(2n * DAY);
     expect(() =>
       sim.call(
@@ -195,10 +209,10 @@ describe("offers and sales", () => {
 });
 
 describe("seals", () => {
-  it("a seal after mere sales voids nobody's proof in flight; only a waiting revocation retires licence roots", () => {
+  it("a seal after mere licences voids nobody's proof in flight; only a waiting revocation retires licence roots", () => {
     const sim = new RoyaltiesSimulator();
     const offer = post(sim);
-    buy(sim, offer);
+    issue(sim, offer);
     // The first seal is also the daily one (it bounds every tree's history); start after it.
     sim.call({}, "sealRevocations", sim.now + 100n);
     sim.advance(700n);
@@ -211,7 +225,7 @@ describe("seals", () => {
       SCOPE,
       true,
     );
-    buy(sim, offer, LIC2); // an attacker's purchase changes the licence root...
+    issue(sim, offer, LIC2); // another licence changes the licence root...
     sim.call({}, "sealRevocations", sim.now + 100n); // ...and anyone seals
     sim.land(p); // the proof still lands
     expect(sim.state.presentationSeq).toBe(1n);
@@ -240,8 +254,8 @@ describe("seals", () => {
     // used to void every settle and presentation in flight, every 600 s.
     const sim = new RoyaltiesSimulator();
     const offer = post(sim);
-    buy(sim, offer);
-    topUp(sim, offer, 400n, b(51));
+    issue(sim, offer);
+    credit(sim, offer, 400n, b(51));
     const EVE = b(41);
     const eves = sim.call(
       { record: b(40), rate: RO },
@@ -249,16 +263,14 @@ describe("seals", () => {
       b(140),
       R.adminCommit(EVE),
       b(20),
-      NIGHT,
+      UNIT,
       1n,
       R.rateCommit(RATE, SALT),
-      { bytes: b(42) },
       100n,
       EXPIRES,
       true,
       R.adminCommit(ISSUER),
       sim.freeIssuerSlot(),
-      true,
     ).result as Uint8Array;
     const eveLeaf = (n: number) => licenceKeyOf(b(60 + n), eves, EXPIRES);
     sim.call({}, "sealRevocations", sim.now + 100n); // the first seal is the daily one
@@ -291,7 +303,7 @@ describe("seals", () => {
     });
     // Cycle 0: the first revocation does retire the licence roots: in-flight proofs fail.
     sim.advance(700n);
-    sim.call({ license: b(60) }, "buyLicense", eves, sim.freeSlot());
+    issue(sim, eves, b(60), EVE);
     let f = inFlight(0);
     sim.call({ admin: EVE }, "revokeLicense", eveLeaf(0));
     sim.call({}, "sealRevocations", sim.now + 100n);
@@ -303,7 +315,7 @@ describe("seals", () => {
     // nothing, the revocation stays waiting (verifiers keep waiting), and every proof lands.
     for (let n = 1; n <= 3; n++) {
       sim.advance(700n);
-      sim.call({ license: b(60 + n) }, "buyLicense", eves, sim.freeSlot());
+      issue(sim, eves, b(60 + n), EVE);
       f = inFlight(n);
       sim.call({ admin: EVE }, "revokeLicense", eveLeaf(n));
       const sealedBefore = sim.state.sealedRevocations;
@@ -354,9 +366,9 @@ describe("seals", () => {
     // less SEAL_SLACK, never later than the block.
     const sim = new RoyaltiesSimulator();
     const offer = post(sim);
-    buy(sim, offer);
-    buy(sim, offer, LIC2);
-    buy(sim, offer, b(12));
+    issue(sim, offer);
+    issue(sim, offer, LIC2);
+    issue(sim, offer, b(12));
     sim.call({}, "sealRevocations", sim.now + 100n); // daily
     sim.advance(700n);
     sim.call(
@@ -393,9 +405,9 @@ describe("seals", () => {
   it("the daily seal also seals a waiting revocation, without counting as the hourly one", () => {
     const sim = new RoyaltiesSimulator();
     const offer = post(sim);
-    buy(sim, offer);
-    buy(sim, offer, LIC2);
-    buy(sim, offer, b(12));
+    issue(sim, offer);
+    issue(sim, offer, LIC2);
+    issue(sim, offer, b(12));
     sim.call({}, "sealRevocations", sim.now + 100n); // daily, due again at T0 + 100 + DAY
     sim.advance(DAY - 600n);
     sim.call(
@@ -423,8 +435,8 @@ describe("settlements", () => {
   const funded = () => {
     const sim = new RoyaltiesSimulator();
     const offer = post(sim);
-    buy(sim, offer);
-    topUp(sim, offer, 400n, b(51));
+    issue(sim, offer);
+    credit(sim, offer, 400n, b(51));
     return { sim, offer };
   };
 
@@ -457,8 +469,8 @@ describe("presentations", () => {
   it("a delegate with the presentation key (and the public spending key) can prove, and cannot settle", () => {
     const sim = new RoyaltiesSimulator();
     const offer = post(sim);
-    buy(sim, offer);
-    topUp(sim, offer, 400n, b(51));
+    issue(sim, offer);
+    credit(sim, offer, 400n, b(51));
     settle(sim, offer, { nonce: b(51), amount: 400n }, P1, 10n);
     sim.advance(10n);
     const present = R.presentKey(LIC, offer);
@@ -502,12 +514,11 @@ describe("descent links", () => {
       { record: child },
       "proposeLink",
       rec(parent),
-      NIGHT,
+      UNIT,
       0n,
       1000n,
       2n,
       T0 + YEAR,
-      { bytes: b(41) },
       R.payeeCommit(PAYEE),
     );
     const id = R.linkId(rec(child), rec(parent));
@@ -516,15 +527,7 @@ describe("descent links", () => {
       { record: parent },
       "confirmLink",
       rec(child),
-      R.linkTermsHash(
-        l.color,
-        l.fee,
-        l.share,
-        l.generations,
-        l.until,
-        l.payTo.bytes,
-        l.payee,
-      ),
+      R.linkTermsHash(l.unit, l.fee, l.share, l.generations, l.until, l.payee),
     );
     return { sim, parent, child, id };
   };
@@ -544,9 +547,9 @@ describe("descent links", () => {
 
   it("the payee key can change a link at most once in 30 days, and only ever lower its terms", () => {
     const { sim, id } = ready();
-    sim.call({ admin: PAYEE }, "movePayee", id, { bytes: b(42) }, sim.now);
+    sim.call({ admin: PAYEE }, "relaxLink", id, 900n, 0n, T0 + YEAR, sim.now);
     expect(() =>
-      sim.call({ admin: PAYEE }, "movePayee", id, { bytes: b(43) }, sim.now),
+      sim.call({ admin: PAYEE }, "relaxLink", id, 800n, 0n, T0 + YEAR, sim.now),
     ).toThrow(/30 days/);
     sim.advance(31n * DAY);
     expect(() =>
@@ -575,15 +578,17 @@ describe("descent links", () => {
     expect(() =>
       sim.call(
         { admin: PAYEE },
-        "movePayee",
+        "relaxLink",
         id,
-        { bytes: b(44) },
+        400n,
+        0n,
+        T0 + 100n * DAY,
         sim.now - DAY,
       ),
     ).toThrow(/not the current time/);
   });
 
-  it("a split payment too small to give every ancestor at least one unit is refused", () => {
+  it("a licence too small for a whole unit of an ancestor's share is still issued, and its share recorded exactly", () => {
     const { sim, child, id } = ready();
     sim.call({ record: child }, "finaliseStack", id, ZERO);
     const offer = post(sim, {
@@ -591,6 +596,9 @@ describe("descent links", () => {
       price: 9n,
       caller: { record: child, rate: RO },
     });
-    expect(() => buy(sim, offer)).toThrow(/Too small a payment/);
+    issue(sim, offer);
+    const e = sim.state.owed.lookup(sim.state.lastSale);
+    // 10% of 9 is 0.9: recorded as the base 9 and the weight 4,000 / 40,000, not rounded to 0.
+    expect([e.total, e.weights[0]]).toEqual([9n, 4000n]);
   });
 });

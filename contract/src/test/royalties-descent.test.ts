@@ -1,6 +1,7 @@
-// Royalties on offspring (protocol 3, docs/royalties-offspring-design.md): descent links
-// with terms both holders agreed, a pedigree chart flattened once, and every licence sale
-// and split top-up paying each ancestor its share in the same call.
+// Royalties on offspring (docs/royalties-offspring-design.md): descent links with terms
+// both holders agreed, a pedigree chart flattened once, and every licence and credit
+// issued on a descendant recording, in the same call, exactly what each ancestor is owed.
+// No money passes through the contract.
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, it } from "vitest";
@@ -9,9 +10,14 @@ import {
   R,
   ISSUER,
   T0,
-  type Caller,
+  offerLeafOf,
 } from "./royalties-simulator.js";
 import { pureCircuits as V } from "../managed/veilcore/contract/index.js";
+import type {
+  OfferOpening,
+  Owed,
+} from "../managed/veilcore-royalties/contract/index.js";
+import { unitOf } from "../royalties.js";
 
 const hex = (b: Uint8Array): string => Buffer.from(b).toString("hex");
 const b = (n: number): Uint8Array => {
@@ -20,30 +26,21 @@ const b = (n: number): Uint8Array => {
   o[31] = n;
   return o;
 };
-const NIGHT = new Uint8Array(32);
-const STABLE = b(200);
+const USD = unitOf("USD cents");
+const EUR = unitOf("EUR cents");
 const ZERO = new Uint8Array(32);
 const DAY = 86400n;
 const YEAR = 365n * DAY;
 const SALT = b(90);
 const RATE = 4n;
 
-// Records (secrets) and their wallets.
+// Records (secrets).
 const A = b(1); // great-grandparent / grandparent
 const B = b(2); // parent
 const C = b(3); // child
 const D = b(4); // grandchild
 const S = b(5); // a "sock" record
 const E = b(6); // a second parent
-const wallet = (n: number) => ({ bytes: b(100 + n) });
-const W = {
-  A: wallet(1),
-  B: wallet(2),
-  C: wallet(3),
-  D: wallet(4),
-  S: wallet(5),
-  E: wallet(6),
-};
 const PAYEE = b(70);
 const ADMIN = b(80);
 
@@ -51,12 +48,11 @@ const rec = (secret: Uint8Array): Uint8Array<ArrayBuffer> =>
   Uint8Array.from(V.commit(secret));
 
 type Terms = {
-  color?: Uint8Array;
+  unit?: Uint8Array;
   fee?: bigint;
   share?: bigint;
   generations?: bigint;
   until?: bigint;
-  payTo?: { bytes: Uint8Array };
 };
 
 const propose = (
@@ -69,12 +65,11 @@ const propose = (
     { record: child },
     "proposeLink",
     rec(parent),
-    t.color ?? NIGHT,
+    t.unit ?? USD,
     t.fee ?? 0n,
     t.share ?? 1000n,
     t.generations ?? 2n,
     t.until ?? T0 + YEAR,
-    t.payTo ?? { bytes: b(110) },
     R.payeeCommit(PAYEE),
   ).result as Uint8Array<ArrayBuffer>;
 
@@ -89,15 +84,7 @@ const confirm = (
     { record: parent },
     "confirmLink",
     rec(child),
-    R.linkTermsHash(
-      l.color,
-      l.fee,
-      l.share,
-      l.generations,
-      l.until,
-      l.payTo.bytes,
-      l.payee,
-    ),
+    R.linkTermsHash(l.unit, l.fee, l.share, l.generations, l.until, l.payee),
   );
 };
 
@@ -114,15 +101,14 @@ const finalise = (
     Uint8Array.from(l2),
   );
 
-/** child links to parent with terms paid to the parent's wallet; parent confirms. */
+/** child links to parent on these terms; parent confirms. */
 const link = (
   sim: RoyaltiesSimulator,
   child: Uint8Array,
   parent: Uint8Array,
-  payTo: { bytes: Uint8Array },
   t: Terms = {},
 ) => {
-  const id = propose(sim, child, parent, { ...t, payTo });
+  const id = propose(sim, child, parent, t);
   confirm(sim, parent, child);
   return id;
 };
@@ -131,8 +117,7 @@ let nonce = 0;
 const post = (
   sim: RoyaltiesSimulator,
   record: Uint8Array,
-  payTo: { bytes: Uint8Array },
-  o: { color?: Uint8Array; price?: bigint } = {},
+  o: { unit?: Uint8Array; price?: bigint } = {},
 ) =>
   sim.call(
     { record, rate: { rate: RATE, salt: SALT } },
@@ -140,82 +125,82 @@ const post = (
     b(150 + ++nonce),
     R.adminCommit(ADMIN),
     b(20),
-    o.color ?? NIGHT,
+    o.unit ?? USD,
     o.price ?? 1000n,
     R.rateCommit(RATE, SALT),
-    payTo,
     5n,
     T0 + YEAR,
     true,
     R.adminCommit(ISSUER),
     sim.freeIssuerSlot(),
-    true,
   ).result as Uint8Array<ArrayBuffer>;
 
 let lic = 0;
-const buy = (
-  sim: RoyaltiesSimulator,
-  offer: Uint8Array,
-  extra: Partial<Caller> = {},
-) =>
-  sim.call(
-    { license: b(200 - ++lic), ...extra },
-    "buyLicense",
+/** The breeder issues a licence (paid off chain). Returns its key. */
+const issue = (sim: RoyaltiesSimulator, offer: Uint8Array): Uint8Array => {
+  const L = b(200 - ++lic);
+  const moved = sim.call(
+    { admin: ADMIN },
+    "issueLicense",
     offer,
+    R.licenseCommit(R.viewKey(L, offer), R.spendKey(L, offer), offer),
     sim.freeSlot(),
   ).moved;
+  expect(moved.inputs.size + moved.outputs.size + moved.spends.length).toBe(0);
+  return sim.state.lastSale;
+};
 
-/** What a wallet received of a token in one call. */
-const paid = (
-  moved: { spends: Array<[string, string, bigint]> },
-  color: Uint8Array,
-  w: { bytes: Uint8Array },
-): bigint =>
-  moved.spends
-    .filter(([t, to]) => t === hex(color) && to.includes(hex(w.bytes)))
-    .reduce((a, [, , v]) => a + v, 0n);
+/** What `key` records as owed, or undefined. */
+const owedBy = (sim: RoyaltiesSimulator, key: Uint8Array): Owed | undefined =>
+  sim.state.owed.member(key) ? sim.state.owed.lookup(key) : undefined;
+
+/** Place i's due from one record: total x weight / 40,000 (exact here when it divides). */
+const due = (e: Owed | undefined, i: number): bigint =>
+  e === undefined ? 0n : (e.total * e.weights[i]) / 40000n;
 
 describe("descent links: terms both holders agreed", () => {
-  it("a record with no links posts as before: no split, the whole price to its wallet", () => {
+  it("a record with no links posts as before: no split, and its licences owe nothing", () => {
     const sim = new RoyaltiesSimulator();
-    const offer = post(sim, A, W.A);
+    const offer = post(sim, A);
     expect(sim.state.offers.lookup(offer).split).toBe(false);
     expect(sim.state.stacks.member(rec(A))).toBe(true);
-    const moved = buy(sim, offer);
-    expect(paid(moved, NIGHT, W.A)).toBe(1000n);
+    issue(sim, offer);
+    expect(sim.state.owedSeq).toBe(0n);
   });
 
-  it("a child pays its parent's share of the price and the fee, in the same call", () => {
+  it("a licence records the parent's share of the list price and its fee, in the same call", () => {
     const sim = new RoyaltiesSimulator();
     finalise(sim, B);
-    const l = link(sim, C, B, W.B, { share: 1000n, fee: 50n });
+    const l = link(sim, C, B, { share: 1000n, fee: 50n });
     finalise(sim, C, l);
-    const offer = post(sim, C, W.C);
+    const offer = post(sim, C);
     expect(sim.state.offers.lookup(offer).split).toBe(true);
-    const moved = buy(sim, offer);
-    expect(paid(moved, NIGHT, W.B)).toBe(100n + 50n);
-    expect(paid(moved, NIGHT, W.C)).toBe(900n);
-    expect(moved.inputs.get(hex(NIGHT))).toBe(1050n);
+    const e = owedBy(sim, issue(sim, offer));
+    expect(e?.total).toBe(1000n);
+    expect(e?.weights[0]).toBe(4000n); // 10% of the base, in 40,000ths
+    expect(due(e, 0)).toBe(100n);
+    expect(e?.fees).toEqual([50n, 0n]);
+    expect(hex(e!.record)).toBe(hex(rec(C)));
+    expect(hex(e!.unit)).toBe(hex(USD));
   });
 
-  it("a grandparent gets half its share, a great-grandparent a quarter, only as far as each link runs", () => {
+  it("a grandparent is owed half its share, a great-grandparent a quarter, only as far as each link runs", () => {
     const sim = new RoyaltiesSimulator();
     finalise(sim, A);
-    finalise(sim, B, link(sim, B, A, W.A, { share: 2000n, generations: 3n }));
-    finalise(sim, C, link(sim, C, B, W.B, { share: 1000n, generations: 2n }));
-    finalise(sim, D, link(sim, D, C, W.C, { share: 1000n, generations: 1n }));
+    finalise(sim, B, link(sim, B, A, { share: 2000n, generations: 3n }));
+    finalise(sim, C, link(sim, C, B, { share: 1000n, generations: 2n }));
+    finalise(sim, D, link(sim, D, C, { share: 1000n, generations: 1n }));
     const chart = sim.state.stacks.lookup(rec(D));
     expect(hex(chart[0])).toBe(hex(R.linkId(rec(D), rec(C))));
     expect(hex(chart[2])).toBe(hex(R.linkId(rec(C), rec(B))));
     expect(hex(chart[6])).toBe(hex(R.linkId(rec(B), rec(A))));
-    const moved = buy(sim, post(sim, D, W.D));
-    expect(paid(moved, NIGHT, W.C)).toBe(100n); // 10%
-    expect(paid(moved, NIGHT, W.B)).toBe(50n); // half of 10%
-    expect(paid(moved, NIGHT, W.A)).toBe(50n); // a quarter of 20%
-    expect(paid(moved, NIGHT, W.D)).toBe(800n);
+    const e = owedBy(sim, issue(sim, post(sim, D)));
+    expect(due(e, 0)).toBe(100n); // C: 10%
+    expect(due(e, 2)).toBe(50n); // B: half of 10%
+    expect(due(e, 6)).toBe(50n); // A: a quarter of 20%
     // C's link runs one generation only: D's children owe C nothing.
     const F = b(7);
-    finalise(sim, F, link(sim, F, D, wallet(7), { share: 0n, fee: 0n }));
+    finalise(sim, F, link(sim, F, D, { share: 0n, fee: 0n }));
     const f = sim.state.stacks.lookup(rec(F));
     expect(
       f
@@ -230,24 +215,20 @@ describe("descent links: terms both holders agreed", () => {
   it("a middle generation with no terms of its own still carries the grandparent's", () => {
     const sim = new RoyaltiesSimulator();
     finalise(sim, A);
-    finalise(sim, B, link(sim, B, A, W.A, { share: 2000n, generations: 2n }));
-    finalise(
-      sim,
-      C,
-      link(sim, C, B, W.B, { share: 0n, fee: 0n, generations: 1n }),
-    );
-    const moved = buy(sim, post(sim, C, W.C));
-    expect(paid(moved, NIGHT, W.A)).toBe(100n);
-    expect(paid(moved, NIGHT, W.B)).toBe(0n);
+    finalise(sim, B, link(sim, B, A, { share: 2000n, generations: 2n }));
+    finalise(sim, C, link(sim, C, B, { share: 0n, fee: 0n, generations: 1n }));
+    const e = owedBy(sim, issue(sim, post(sim, C)));
+    expect(due(e, 2)).toBe(100n);
+    expect(due(e, 0)).toBe(0n);
   });
 
   it("two parents, each with their own line, fill the chart in fixed places", () => {
     const sim = new RoyaltiesSimulator();
     finalise(sim, A);
-    finalise(sim, B, link(sim, B, A, W.A, { share: 1000n, generations: 2n }));
+    finalise(sim, B, link(sim, B, A, { share: 1000n, generations: 2n }));
     finalise(sim, E);
-    const l1 = link(sim, C, B, W.B, { share: 1000n });
-    const l2 = link(sim, C, E, W.E, { share: 500n });
+    const l1 = link(sim, C, B, { share: 1000n });
+    const l2 = link(sim, C, E, { share: 500n });
     finalise(sim, C, l1, l2);
     const chart = sim.state.stacks.lookup(rec(C));
     expect([0, 1, 2].map((i) => hex(chart[i]))).toEqual([
@@ -255,92 +236,94 @@ describe("descent links: terms both holders agreed", () => {
       hex(l2),
       hex(R.linkId(rec(B), rec(A))),
     ]);
-    const moved = buy(sim, post(sim, C, W.C));
-    expect(paid(moved, NIGHT, W.B)).toBe(100n);
-    expect(paid(moved, NIGHT, W.E)).toBe(50n);
-    expect(paid(moved, NIGHT, W.A)).toBe(50n);
-    expect(paid(moved, NIGHT, W.C)).toBe(800n);
+    const e = owedBy(sim, issue(sim, post(sim, C)));
+    expect([due(e, 0), due(e, 1), due(e, 2)]).toEqual([100n, 50n, 50n]);
   });
 
-  it("shares round down, so the ancestors never take more than agreed", () => {
+  it("shares are recorded exactly, never rounded per issuance: small or chunked amounts lose nothing", () => {
     const sim = new RoyaltiesSimulator();
     finalise(sim, B);
-    finalise(sim, C, link(sim, C, B, W.B, { share: 15n }));
-    const moved = buy(sim, post(sim, C, W.C, { price: 999n }));
-    expect(paid(moved, NIGHT, W.B)).toBe(1n); // 0.15% of 999 is 1.4985
-    expect(paid(moved, NIGHT, W.C)).toBe(998n);
-    const up = Array.from({ length: 14 }, (_, i) => (i === 0 ? 2n : 0n));
-    expect(() =>
-      buy(sim, post(sim, C, W.C, { price: 999n }), { split: up }),
-    ).toThrow(/rounded down/);
+    finalise(sim, C, link(sim, C, B, { share: 15n }));
+    // 0.15% of 999 is 1.4985: the record keeps the base and the weight, not a rounded 1.
+    const e = owedBy(sim, issue(sim, post(sim, C, { price: 999n })));
+    expect(e?.total).toBe(999n);
+    expect(e?.weights[0]).toBe(60n);
+    // The review's chunking case: 100 credits of 19 at 10% are owed 190 in all, not 100.
+    const sim2 = new RoyaltiesSimulator();
+    finalise(sim2, B);
+    finalise(sim2, C, link(sim2, C, B, { share: 1000n }));
+    const offer = post(sim2, C);
+    for (let i = 0; i < 100; i++)
+      sim2.call(
+        {
+          issuer: ISSUER,
+          code: Uint8Array.from([0x99, i, ...new Uint8Array(30)]),
+        },
+        "issueCreditSplit",
+        offer,
+        19n,
+      );
+    const sum = [...sim2.state.owed].reduce(
+      (a, [, x]) => a + x.total * x.weights[0],
+      0n,
+    );
+    expect(sum / 40000n).toBe(190n);
   });
 });
 
 describe("what neither side can do", () => {
-  it("a buyer cannot short an ancestor, pay an empty place, or pay a link that has ended", () => {
+  it("the issuer supplies no amounts: the contract works each share out; an ended link is owed nothing", () => {
     const sim = new RoyaltiesSimulator();
     finalise(sim, B);
-    finalise(
-      sim,
-      C,
-      link(sim, C, B, W.B, { share: 1000n, until: T0 + 30n * DAY }),
-    );
-    const offer = post(sim, C, W.C);
-    const short = Array.from({ length: 14 }, (_, i) => (i === 0 ? 99n : 0n));
-    expect(() => buy(sim, offer, { split: short })).toThrow(/ancestor's share/);
-    const stray = Array.from({ length: 14 }, (_, i) =>
-      i === 0 ? 100n : i === 5 ? 1n : 0n,
-    );
-    expect(() => buy(sim, offer, { split: stray })).toThrow(/empty place/);
+    finalise(sim, C, link(sim, C, B, { share: 1000n, until: T0 + 30n * DAY }));
+    const offer = post(sim, C);
+    expect(due(owedBy(sim, issue(sim, offer)), 0)).toBe(100n);
     sim.advance(31n * DAY);
-    const stale = Array.from({ length: 14 }, (_, i) => (i === 0 ? 100n : 0n));
-    expect(() => buy(sim, offer, { split: stale })).toThrow(/Nothing is owed/);
-    const moved = buy(sim, offer);
-    expect(paid(moved, NIGHT, W.C)).toBe(1000n);
+    issue(sim, offer);
+    expect(sim.state.owedSeq).toBe(1n);
   });
 
-  it("a child cannot escape a share by posting in another token; a fee-only link may use any", () => {
+  it("a child cannot escape a share by posting in another unit; a fee-only link may use any", () => {
     const sim = new RoyaltiesSimulator();
     finalise(sim, B);
-    finalise(sim, C, link(sim, C, B, W.B, { color: STABLE, share: 1000n }));
-    expect(() => post(sim, C, W.C, { color: NIGHT })).toThrow(/another token/);
-    const inStable = post(sim, C, W.C, { color: STABLE });
-    expect(sim.state.offers.lookup(inStable).split).toBe(true);
+    finalise(sim, C, link(sim, C, B, { unit: EUR, share: 1000n }));
+    expect(() => post(sim, C, { unit: USD })).toThrow(/another unit/);
+    const inEur = post(sim, C, { unit: EUR });
+    expect(sim.state.offers.lookup(inEur).split).toBe(true);
 
     const sim2 = new RoyaltiesSimulator();
     finalise(sim2, B);
-    finalise(
-      sim2,
-      C,
-      link(sim2, C, B, W.B, { color: STABLE, share: 0n, fee: 25n }),
-    );
-    const offer = post(sim2, C, W.C, { color: NIGHT });
+    finalise(sim2, C, link(sim2, C, B, { unit: EUR, share: 0n, fee: 25n }));
+    const offer = post(sim2, C, { unit: USD });
     expect(sim2.state.offers.lookup(offer).split).toBe(false);
-    const moved = buy(sim2, offer);
-    expect(paid(moved, STABLE, W.B)).toBe(25n);
-    expect(paid(moved, NIGHT, W.C)).toBe(1000n);
+    // The fee is recorded; it is counted in its own link's unit (EUR cents).
+    const e = owedBy(sim2, issue(sim2, offer));
+    expect(e?.fees).toEqual([25n, 0n]);
+    expect(
+      hex(sim2.state.links.lookup(sim2.state.stacks.lookup(rec(C))[0]).unit),
+    ).toBe(hex(EUR));
   });
 
   it("ancestors take at most half: a link that would pass it is refused when the parent confirms", () => {
     const sim = new RoyaltiesSimulator();
     finalise(sim, A);
-    finalise(sim, B, link(sim, B, A, W.A, { share: 4000n, generations: 2n })); // C inherits 20%
-    propose(sim, C, B, { share: 3001n, payTo: W.B });
+    finalise(sim, B, link(sim, B, A, { share: 4000n, generations: 2n })); // C inherits 20%
+    propose(sim, C, B, { share: 3001n });
     expect(() => confirm(sim, B, C)).toThrow(/more than half/);
     // A "sock" parent cannot squeeze the real one either: whoever confirms second is refused.
     const sim2 = new RoyaltiesSimulator();
     finalise(sim2, S);
     finalise(sim2, B);
-    link(sim2, C, S, W.C, { share: 5000n });
-    propose(sim2, C, B, { share: 1000n, payTo: W.B });
+    link(sim2, C, S, { share: 5000n });
+    propose(sim2, C, B, { share: 1000n });
     expect(() => confirm(sim2, B, C)).toThrow(/more than half/);
   });
 
   it("the order is enforced: parent final before confirming, no links after the child is final", () => {
     const sim = new RoyaltiesSimulator();
-    propose(sim, C, B, { payTo: W.B });
+    propose(sim, C, B);
     expect(() => confirm(sim, B, C)).toThrow(/Finalise your own/);
-    expect(() => post(sim, C, W.C)).toThrow(/finalise its ancestors/);
+    expect(() => post(sim, C)).toThrow(/finalise its ancestors/);
     finalise(sim, B);
     confirm(sim, B, C);
     expect(() => confirm(sim, B, C)).toThrow(/already confirmed/);
@@ -352,7 +335,7 @@ describe("what neither side can do", () => {
   it("a record cannot finalise while one of its links is still waiting for the parent", () => {
     const sim = new RoyaltiesSimulator();
     finalise(sim, B);
-    propose(sim, C, B, { payTo: W.B });
+    propose(sim, C, B);
     expect(() => finalise(sim, C)).toThrow(/waiting/);
     sim.call({ record: C }, "withdrawLink", rec(B));
     finalise(sim, C);
@@ -363,14 +346,14 @@ describe("what neither side can do", () => {
     finalise(sim, B);
     finalise(sim, E);
     finalise(sim, A);
-    const lDB = link(sim, D, B, W.B);
+    const lDB = link(sim, D, B);
     expect(() => finalise(sim, C, lDB)).toThrow(
       /not a confirmed link|Name every confirmed link/,
     );
-    propose(sim, C, B, { payTo: W.B });
+    propose(sim, C, B);
     confirm(sim, B, C);
-    link(sim, C, E, W.E, { share: 100n });
-    propose(sim, C, A, { share: 100n, payTo: W.A });
+    link(sim, C, E, { share: 100n });
+    propose(sim, C, A, { share: 100n });
     expect(() => confirm(sim, A, C)).toThrow(/two confirmed parents/);
     sim.call({ record: C }, "withdrawLink", rec(A));
     expect(sim.state.links.member(R.linkId(rec(C), rec(A)))).toBe(false);
@@ -379,202 +362,188 @@ describe("what neither side can do", () => {
     );
   });
 
-  it("shares in two tokens are refused when the second link is confirmed, not discovered later", () => {
+  it("shares in two units are refused when the second link is confirmed, not discovered later", () => {
     const sim = new RoyaltiesSimulator();
     finalise(sim, A);
     finalise(
       sim,
       B,
-      link(sim, B, A, W.A, { color: STABLE, share: 100n, generations: 2n }),
+      link(sim, B, A, { unit: EUR, share: 100n, generations: 2n }),
     );
-    propose(sim, C, B, { color: NIGHT, share: 1000n, payTo: W.B });
-    expect(() => confirm(sim, B, C)).toThrow(/two tokens/);
-    // Two parents asking for shares in different tokens: the second confirmation is refused.
+    propose(sim, C, B, { unit: USD, share: 1000n });
+    expect(() => confirm(sim, B, C)).toThrow(/two units/);
+    // Two parents asking for shares in different units: the second confirmation is refused.
     const sim2 = new RoyaltiesSimulator();
     finalise(sim2, B);
     finalise(sim2, E);
-    link(sim2, C, B, W.B, { color: STABLE, share: 100n });
-    propose(sim2, C, E, { color: NIGHT, share: 100n, payTo: W.E });
-    expect(() => confirm(sim2, E, C)).toThrow(/two tokens/);
-    // A fee-only link in another token is fine.
-    propose(sim2, D, E, { color: NIGHT, share: 0n, fee: 5n, payTo: W.E });
+    link(sim2, C, B, { unit: EUR, share: 100n });
+    propose(sim2, C, E, { unit: USD, share: 100n });
+    expect(() => confirm(sim2, E, C)).toThrow(/two units/);
+    // A fee-only link in another unit is fine.
+    propose(sim2, D, E, { unit: USD, share: 0n, fee: 5n });
     expect(() => confirm(sim2, E, D)).not.toThrow();
   });
 
-  it("an ended ancestor link no longer counts toward the cap or the token when a child confirms", () => {
+  it("an ended ancestor link no longer counts toward the cap or the unit when a child confirms", () => {
     const sim = new RoyaltiesSimulator();
     finalise(sim, A);
     finalise(
       sim,
       B,
-      link(sim, B, A, W.A, {
-        color: STABLE,
+      link(sim, B, A, {
+        unit: EUR,
         share: 5000n,
         generations: 2n,
         until: T0 + 10n * DAY,
       }),
     );
     sim.advance(11n * DAY);
-    // A's link has ended: C may take its shares in NIGHT, and the full 50% is free again.
-    propose(sim, C, B, { color: NIGHT, share: 5000n, payTo: W.B });
+    // A's link has ended: C may take its shares in USD, and the full 50% is free again.
+    propose(sim, C, B, { unit: USD, share: 5000n });
     expect(() => confirm(sim, B, C)).not.toThrow();
   });
 
-  it("an offer whose ancestors take a royalty share must take royalties through the contract", () => {
+  it("an offer whose ancestors take a royalty share must take royalties, and name a unit", () => {
     const sim = new RoyaltiesSimulator();
     finalise(sim, B);
-    finalise(sim, C, link(sim, C, B, W.B, { share: 1000n }));
-    expect(() =>
+    finalise(sim, C, link(sim, C, B, { share: 1000n }));
+    const raw = (unit: Uint8Array, rate: Uint8Array) =>
       sim.call(
         { record: C },
         "postOffer",
         b(99),
         R.adminCommit(ADMIN),
         b(20),
-        NIGHT,
+        unit,
         1000n,
-        ZERO,
-        W.C,
+        rate,
         5n,
         T0 + YEAR,
         true,
         R.adminCommit(ISSUER),
         sim.freeIssuerSlot(),
-        true,
-      ),
-    ).toThrow(/must take royalties/);
+      );
+    expect(() => raw(USD, ZERO)).toThrow(/must take royalties/);
+    expect(() => raw(ZERO, ZERO)).toThrow(/name the unit/);
   });
 
-  it("once every ancestor's share has ended, new offers keep the private top-up", () => {
+  it("once every ancestor's share has ended, new offers keep the private issuance", () => {
     const sim = new RoyaltiesSimulator();
     finalise(sim, B);
-    finalise(
-      sim,
-      C,
-      link(sim, C, B, W.B, { share: 1000n, until: T0 + 10n * DAY }),
-    );
-    const first = post(sim, C, W.C);
+    finalise(sim, C, link(sim, C, B, { share: 1000n, until: T0 + 10n * DAY }));
+    const first = post(sim, C);
     expect(sim.state.offers.lookup(first).split).toBe(true);
     sim.advance(11n * DAY);
-    const later = post(sim, C, W.C);
+    const later = post(sim, C);
     expect(sim.state.offers.lookup(later).split).toBe(false);
   });
 
   it("a parent confirms only the exact terms it names; a record that proposed and withdrew can still post", () => {
     const sim = new RoyaltiesSimulator();
     finalise(sim, B);
-    propose(sim, C, B, { share: 1000n, payTo: W.B });
+    propose(sim, C, B, { share: 1000n });
     expect(() =>
       sim.call(
         { record: B },
         "confirmLink",
         rec(C),
-        R.linkTermsHash(
-          NIGHT,
-          0n,
-          2000n,
-          2n,
-          T0 + YEAR,
-          W.B.bytes,
-          R.payeeCommit(PAYEE),
-        ),
+        R.linkTermsHash(USD, 0n, 2000n, 2n, T0 + YEAR, R.payeeCommit(PAYEE)),
       ),
     ).toThrow(/not the ones you are confirming/);
     sim.call({ record: C }, "withdrawLink", rec(B));
-    const posted = post(sim, C, W.C);
+    const posted = post(sim, C);
     expect(sim.state.offers.member(posted)).toBe(true);
   });
 
-  it("only the payee key moves where a link is paid; the child never can", () => {
+  it("only the payee key lowers a link, never raises it; the child never can", () => {
     const sim = new RoyaltiesSimulator();
     finalise(sim, B);
-    const l = link(sim, C, B, W.B, { share: 1000n });
+    const l = link(sim, C, B, { share: 1000n, fee: 50n });
     finalise(sim, C, l);
-    const offer = post(sim, C, W.C);
-    expect(() => sim.call({ admin: C }, "movePayee", l, W.C, sim.now)).toThrow(
-      /payee key/,
-    );
-    sim.call({ admin: PAYEE }, "movePayee", l, W.E, sim.now);
-    const moved = buy(sim, offer);
-    expect(paid(moved, NIGHT, W.E)).toBe(100n);
-    expect(paid(moved, NIGHT, W.B)).toBe(0n);
+    const offer = post(sim, C);
+    expect(() =>
+      sim.call({ admin: C }, "relaxLink", l, 500n, 50n, T0 + YEAR, sim.now),
+    ).toThrow(/payee key/);
+    expect(() =>
+      sim.call(
+        { admin: PAYEE },
+        "relaxLink",
+        l,
+        2000n,
+        50n,
+        T0 + YEAR,
+        sim.now,
+      ),
+    ).toThrow(/only be lowered/);
+    sim.call({ admin: PAYEE }, "relaxLink", l, 500n, 50n, T0 + YEAR, sim.now);
+    expect(due(owedBy(sim, issue(sim, offer)), 0)).toBe(50n);
   });
 
   it("a record that replaced another adopts its chart unchanged, with no parent asked again", () => {
     const sim = new RoyaltiesSimulator();
     finalise(sim, B);
-    finalise(sim, C, link(sim, C, B, W.B, { share: 1000n }));
+    finalise(sim, C, link(sim, C, B, { share: 1000n }));
     const C2 = b(30);
     sim.call({ record: C2 }, "adoptStack", rec(C));
     expect(sim.state.stacks.lookup(rec(C2)).map(hex)).toEqual(
       sim.state.stacks.lookup(rec(C)).map(hex),
     );
-    const moved = buy(sim, post(sim, C2, W.C));
-    expect(paid(moved, NIGHT, W.B)).toBe(100n);
+    expect(due(owedBy(sim, issue(sim, post(sim, C2))), 0)).toBe(100n);
   });
 });
 
-describe("royalty top-ups with ancestors' shares", () => {
+describe("royalty credit with ancestors' shares", () => {
   const setup = () => {
     const sim = new RoyaltiesSimulator();
     finalise(sim, B);
-    finalise(sim, C, link(sim, C, B, W.B, { share: 1000n }));
-    const offer = post(sim, C, W.C);
+    finalise(sim, C, link(sim, C, B, { share: 1000n }));
+    const offer = post(sim, C);
     const o = sim.state.offers.lookup(offer);
-    const opening = {
+    const opening: OfferOpening = {
       offer,
-      payTo: o.payTo.bytes,
-      color: o.color,
+      unit: o.unit,
       rateCommit: o.rateCommit,
       expires: o.expires,
       split: o.split,
-      onChainPayment: o.onChainPayment,
     };
     return { sim, offer, opening };
   };
   const code = (licence: Uint8Array, offer: Uint8Array, n: Uint8Array) =>
     R.topUpCode(R.spendKey(licence, offer), n);
 
-  it("must go through topUpSplit, which pays each share; the private topUp refuses", () => {
+  it("must go through issueCreditSplit, which records each share; the private issuance refuses", () => {
     const { sim, offer, opening } = setup();
     const L = b(60);
-    buy(sim, offer, { license: L });
+    sim.call(
+      { admin: ADMIN },
+      "issueLicense",
+      offer,
+      R.licenseCommit(R.viewKey(L, offer), R.spendKey(L, offer), offer),
+      sim.freeSlot(),
+    );
     expect(() =>
       sim.call(
-        {
-          opening,
-          code: code(L, offer, b(61)),
-        },
-        "topUp",
-        W.C,
-        NIGHT,
-        500n,
-        T0 + DAY,
+        { issuer: ISSUER, opening, code: code(L, offer, b(61)), amount: 500n },
+        "issueCredit",
       ),
-    ).toThrow(/topUpSplit/);
+    ).toThrow(/issueCreditSplit/);
     const moved = sim.call(
-      { code: code(L, offer, b(61)) },
-      "topUpSplit",
+      { issuer: ISSUER, code: code(L, offer, b(61)) },
+      "issueCreditSplit",
       offer,
       500n,
     ).moved;
-    expect(paid(moved, NIGHT, W.B)).toBe(50n);
-    expect(paid(moved, NIGHT, W.C)).toBe(450n);
-    // The credit is a normal private note, and settles as one.
+    expect(moved.inputs.size + moved.outputs.size + moved.spends.length).toBe(
+      0,
+    );
     const note = R.noteCommit(
       code(L, offer, b(61)),
-      R.offerLeaf(
-        offer,
-        opening.payTo,
-        NIGHT,
-        opening.rateCommit,
-        opening.expires,
-        true,
-        true,
-      ),
+      offerLeafOf(opening),
       500n,
     );
     expect(sim.state.noteSeen.member(note)).toBe(true);
+    expect(due(owedBy(sim, note), 0)).toBe(50n);
+    // The credit is a normal private note, and settles as one.
     sim.call(
       {
         license: L,
@@ -590,17 +559,20 @@ describe("royalty top-ups with ancestors' shares", () => {
     expect(sim.state.settleSeq).toBe(1n);
   });
 
-  it("an offer without shares keeps the private topUp, and topUpSplit refuses it", () => {
+  it("an offer without shares keeps the private issuance, and issueCreditSplit refuses it", () => {
     const sim = new RoyaltiesSimulator();
-    const offer = post(sim, A, W.A);
-    expect(() => sim.call({ code: b(62) }, "topUpSplit", offer, 500n)).toThrow(
-      /use topUp/,
-    );
+    const offer = post(sim, A);
+    expect(() =>
+      sim.call(
+        { issuer: ISSUER, code: b(62) },
+        "issueCreditSplit",
+        offer,
+        500n,
+      ),
+    ).toThrow(/use issueCredit/);
   });
 
-  it("topUpSplit needs no rate (the payer never sees it): a split offer's rate commitment was opened at posting", () => {
-    // A record whose ancestors take a share must post with a rate, and postOffer refuses a
-    // commitment that does not open to a rate above zero: no credit is sold that cannot settle.
+  it("a split offer's rate commitment was opened at posting: no credit is issued that cannot settle", () => {
     const { sim, offer } = setup();
     expect(() =>
       sim.call(
@@ -609,19 +581,17 @@ describe("royalty top-ups with ancestors' shares", () => {
         b(90),
         R.adminCommit(b(91)),
         b(92),
-        NIGHT,
+        USD,
         1000n,
         R.rateCommit(0n, SALT),
-        W.C,
         5n,
         T0 + YEAR,
         false,
         R.adminCommit(ISSUER),
         sim.freeIssuerSlot(),
-        true,
       ),
     ).toThrow(/does not open to a rate above zero/);
-    sim.call({ code: b(63) }, "topUpSplit", offer, 500n);
-    expect(sim.state.topUpSeq).toBe(1n);
+    sim.call({ issuer: ISSUER, code: b(63) }, "issueCreditSplit", offer, 500n);
+    expect(sim.state.issueSeq).toBe(1n);
   });
 });

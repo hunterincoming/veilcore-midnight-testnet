@@ -114,6 +114,7 @@ export {
   acceptPresentation,
   acceptPresentationAt,
   acceptPresentationOnce,
+  acceptPresentationScoped,
   checkLineage,
   commitmentsOf,
   identityOf,

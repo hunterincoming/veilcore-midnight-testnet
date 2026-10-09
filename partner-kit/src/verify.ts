@@ -165,6 +165,15 @@ export const checkPresentation = async (
     readonly issuer: Uint8Array;
     readonly challenge: Uint8Array;
     readonly issuedAt?: number;
+    /**
+     * The contract's state after every call, from the last seal before the presentation up
+     * to and including it, from your indexer. With it the issuer-scoped rule decides, so a
+     * third party's revocations cannot make an honest presentation fail (verify.ts,
+     * acceptPresentationScoped). Its last state must be this presentation's.
+     */
+    readonly history?: readonly Veilcore.Ledger[];
+    /** 'strict': the original rule 5 even with a history. */
+    readonly rule?: 'strict' | 'issuer-scoped';
   },
 ): Promise<Verdict & WhenLanded & WithAuthority> => {
   const w = where(o, 'veilcore');
@@ -180,6 +189,8 @@ export const checkPresentation = async (
     landedAt: found.blockTime,
     blockHeight: found.blockHeight,
     issuedAt: o.issuedAt,
+    history: o.history,
+    rule: o.rule,
   });
   return { ...v, blockHeight: found.blockHeight, blockTime: found.blockTime, authority: found.authority };
 };

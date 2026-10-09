@@ -24,6 +24,7 @@ const refusedByContract = async (p: Promise<unknown>): Promise<boolean> =>
     (e: unknown) => isContractRefusal(e),
   );
 const { VEILCORE_ADDR, chainLog, fakeChain } = await import('./local-chain');
+const Veilcore = await import('../../contract/src/managed/veilcore/contract/index.js');
 
 const same = (a: Uint8Array, b: Uint8Array): boolean => toHex(a) === toHex(b);
 
@@ -131,6 +132,17 @@ describe('a breeder licenses a grower: issue, countersign, prove, verify, transf
     expect(v.accepted).toBe(true);
     expect(v.reason).toMatch(/^the licence was live when presented/);
     expect((await vc.checkPresentation(shown.txId, breeder, challenge, issuedAt)).accepted).toBe(true);
+    // With the contract's history (every call's state), the issuer-scoped rule decides;
+    // a history that does not end with this presentation is refused.
+    const history = chainLog.filter((c) => c.address === VEILCORE_ADDR).map((c) => Veilcore.ledger(c.state.data));
+    const withHistory = { ...read(), txId: shown.txId, issuer: breeder, challenge, issuedAt };
+    expect((await checkPresentation({ ...withHistory, history })).accepted).toBe(true);
+    expect((await checkPresentation({ ...withHistory, history: history.slice(0, -1) })).reason).toMatch(
+      /does not end with this presentation/,
+    );
+    expect((await checkPresentation({ ...withHistory, history: history.slice(0, -1), rule: 'strict' })).accepted).toBe(
+      true,
+    );
     expect(
       (await checkPresentation({ ...read(), txId: shown.txId, issuer: breeder, challenge: newChallenge() })).accepted,
     ).toBe(false);

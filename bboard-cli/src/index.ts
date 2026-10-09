@@ -68,7 +68,17 @@ import { chooseStore, openStores, storeDirFor } from './private-store';
 import { StoreInUseError, lockStoreDir } from './store-lock';
 import { guardProcess, watchState } from './state-watch';
 import { ChallengeFile } from './challenge-file';
-import { redactThisSession } from './logger-utils';
+import { redactThisSession, writeUnscrubbed } from './logger-utils';
+import { existsSync, readFileSync } from 'node:fs';
+import { type PairingEvidence, pairingEvidence } from '../../contract/src/pairing.js';
+import {
+  checkEvidence,
+  defaultEvidencePath,
+  evidenceFromNotes,
+  readEvidenceFile,
+  reportFromAnswer,
+  writeEvidence,
+} from './pairing-evidence';
 
 // @ts-expect-error: It's needed to enable WebSocket usage through apollo
 globalThis.WebSocket = WebSocket;
@@ -453,7 +463,7 @@ const MAIN_LOOP_QUESTION = `
  Records                                  Lineage
   1. Anchor your record                   16. Propose a parent (as child)
   2. Prove control                        17. Confirm a child (as parent)
-  3. Pair a DNA report fingerprint        18. Withdraw your parent proposal
+  3. Pair a DNA report (bound to you)     18. Withdraw your parent proposal
   4. Rotate to a new secret               19. Place an obligation on your record
   5. Recover with the recovery secret     20. Propose an obligation (as beneficiary)
   6. Replace the recovery secret          21. Accept an obligation (as holder)
@@ -466,8 +476,9 @@ const MAIN_LOOP_QUESTION = `
  11. Propose a transfer (as holder)       26. Make a challenge (for a licensee or a holder)
  12. Approve a transfer (as issuer)       27. Check a licence presentation
  13. Withdraw a transfer proposal         28. Check a control proof
- 14. Revoke a licence
- 15. Seal waiting revocations             Other
+ 14. Revoke a licence                     44. Check a DNA pairing (evidence file)
+ 15. Seal waiting revocations
+                                          Other
                                           29. Anchor a batch root
                                           30. Show the contract state
                                           31. Show your record and identity
@@ -475,10 +486,30 @@ const MAIN_LOOP_QUESTION = `
                                           33. Retire the maintenance authority (PERMANENT)
                                           41. Use a record secret you hold
                                           42. Check which recovery secret is current
+                                          43. Pair a raw value (copyable; use 3)
+                                          45. Show your DNA pairings (evidence)
 ${CLAIMS_MENU}
 
   0. Exit
 Which would you like to do? `;
+
+/**
+ * Write an evidence file (when `file` is given) and show it on the terminal only: it holds
+ * the salt, which with the report lets anyone recognise the pairing, so it is kept out of
+ * the log file.
+ */
+const saveAndShowEvidence = (ev: PairingEvidence, file: string | undefined, logger: Logger): void => {
+  if (file !== undefined) {
+    try {
+      logger.info(`Evidence file written: ${writeEvidence(file, ev)}`);
+    } catch (e) {
+      logger.error(
+        `The evidence file was not written (${e instanceof Error ? e.message : String(e)}). Copy it from below.`,
+      );
+    }
+  }
+  writeUnscrubbed(`\n${JSON.stringify(ev, null, 2)}\n  (shown on screen only, not written to the log)\n\n`);
+};
 
 const mainLoop = async (
   providers: VeilcoreProviders,
@@ -548,8 +579,40 @@ const mainLoop = async (
             break;
           }
           case '3': {
-            const dna = await ask32(rli, 'DNA report fingerprint (hex): ');
-            tx(await api.pairDna(dna));
+            // A bound pairing (design.md, rule 9): what goes on chain hides the report and
+            // verifies only for this record's identity, so nobody can copy it to their own.
+            const report = reportFromAnswer(await rli.question('The report file (a path), or its SHA-256 (64 hex): '));
+            let p: Awaited<ReturnType<typeof api.pairReport>>;
+            try {
+              p = await api.pairReport(report.reportHash);
+            } catch (e) {
+              logger.error(
+                'The pairing was not confirmed. If it was sent, its salt is saved here: option 45 shows it. ' +
+                  'Check the chain before pairing the same report again.',
+              );
+              throw e;
+            }
+            tx(p);
+            const ev = pairingEvidence({
+              network: getNetworkId(),
+              contractAddress: api.deployedContractAddress,
+              txId: p.txId,
+              identity: p.identity,
+              reportHash: report.reportHash,
+              salt: p.salt,
+              reportFile: report.reportFile,
+            });
+            saveAndShowEvidence(
+              ev,
+              (await rli.question(`Save the evidence file as (blank = ${defaultEvidencePath(p.binding)}): `)).trim() ||
+                defaultEvidencePath(p.binding),
+              logger,
+            );
+            logger.info(
+              'Paired. To show it, give a verifier the report file and the evidence file (their option 44). ' +
+                'Keep both: without the salt in it, this pairing can never be shown. The date shows you had the ' +
+                'report by then; it does not show who controls the record later.',
+            );
             break;
           }
           case '4': {
@@ -913,6 +976,66 @@ const mainLoop = async (
                 }
               }
             } else logger.info('Not retired.');
+            break;
+          }
+          case '43': {
+            logger.warn(
+              'A raw value is published as given: anyone who sees it, even before it lands, can pair the same value to ' +
+                'their own record first. Pairing a raw report hash does not show who had the report first. Option 3 ' +
+                'pairs a report so it cannot be copied.',
+            );
+            const value = await ask32(rli, 'Value to pair (64 hex): ');
+            if ((await rli.question('Pair it anyway? Type RAW to confirm: ')).trim() !== 'RAW') {
+              logger.info('Not paired. Nothing was sent.');
+              break;
+            }
+            tx(await api.pairDna(value));
+            break;
+          }
+          case '44': {
+            const evidence = readEvidenceFile(await rli.question('The evidence file (path): '));
+            const reportPath = (
+              await rli.question('The report file the holder gave you (path; blank = use the hash in the evidence): ')
+            ).trim();
+            if (reportPath !== '' && !existsSync(reportPath))
+              throw new InputError('No such report file. Nothing was checked.');
+            const verdict = await checkEvidence(
+              api,
+              indexerUri,
+              getNetworkId(),
+              evidence,
+              reportPath === '' ? undefined : new Uint8Array(readFileSync(reportPath)),
+            );
+            logger.info(`${verdict.accepted ? 'ACCEPTED' : 'NOT ACCEPTED'}: ${verdict.reason}.`);
+            if (verdict.accepted && !verdict.reportChecked)
+              logger.warn(
+                "No report file was given, so the report's SHA-256 is the holder's word. Hash the report you were " +
+                  'shown and compare before relying on this.',
+              );
+            break;
+          }
+          case '45': {
+            const { ready, unconfirmed } = evidenceFromNotes(await api.pairings(), {
+              network: getNetworkId(),
+              contractAddress: api.deployedContractAddress,
+            });
+            if (ready.length === 0 && unconfirmed.length === 0) logger.info('No bound pairings were made from here.');
+            const folder =
+              ready.length === 0
+                ? ''
+                : (await rli.question('Write the evidence files to a folder (path; blank = only show them): ')).trim();
+            for (const ev of ready)
+              saveAndShowEvidence(
+                ev,
+                folder === '' ? undefined : path.join(folder, path.basename(defaultEvidencePath(ev.binding))),
+                logger,
+              );
+            for (const n of unconfirmed) {
+              writeUnscrubbed(
+                `\n  Sent or about to be sent, never confirmed here. Look for a pairDna transaction that paired ${n.binding}.\n` +
+                  `  record ${n.identity}\n  report SHA-256 ${n.reportSha256}\n  salt ${n.salt}\n\n`,
+              );
+            }
             break;
           }
           case '41': {

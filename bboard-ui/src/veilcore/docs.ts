@@ -23,7 +23,7 @@ import integratingMd from '../docs/INTEGRATING.md?raw';
 export const DOCS_VERSION = '0.15.0';
 
 /** The exact SDK commit the documents were copied from, so "Source" opens the same text. */
-export const DOCS_COMMIT = '33fa929449417624eba9bb3aa68f0a7baf23c110';
+export const DOCS_COMMIT = '3e2773c2ecdf79c1c6cc18f1c6ecdfef6f170470';
 export const REPO_VIEW = `https://github.com/hunterincoming/veilcore-sdk/blob/${DOCS_COMMIT}`;
 
 export const DOCS: Record<string, { file: string; md: string; title: string; blurb: string }> = {

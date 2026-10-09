@@ -3,7 +3,7 @@
 // and the operator hold. Listing batches is public.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { AnchorRecord, Batch, RegistryClient } from './anchorer.js';
+import type { AnchorRecord, Batch, PublishedAnchor, RegistryClient } from './anchorer.js';
 
 type Fetch = typeof fetch;
 
@@ -59,6 +59,21 @@ export class HttpRegistry implements RegistryClient {
       throw e;
     }
     return body;
+  }
+
+  async publishedAnchors(): Promise<PublishedAnchor[]> {
+    const b = await this.call('/.well-known/veilcore-registry');
+    if (!isObj(b) || !Array.isArray(b.anchors)) throw new Error('registry: unexpected /.well-known/veilcore-registry answer');
+    return b.anchors.map((a) => {
+      const ok =
+        isObj(a) &&
+        typeof a.chain === 'string' &&
+        typeof a.network === 'string' &&
+        typeof a.contractAddress === 'string' &&
+        /^(0x)?[0-9a-fA-F]{64}$/.test(a.contractAddress);
+      if (!ok) throw new Error('registry: a published anchor is malformed');
+      return { chain: a.chain as string, network: a.network as string, contractAddress: a.contractAddress as string };
+    });
   }
 
   async pendingCount(): Promise<number> {

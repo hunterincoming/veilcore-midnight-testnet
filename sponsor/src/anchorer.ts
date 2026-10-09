@@ -19,6 +19,11 @@
 //     root) this process already recorded is never anchored again, even if a lagging
 //     registry still lists it as unanchored.
 //   - The public status shows a short outcome code, never raw error text.
+//   - The registry must publish exactly this network and contract as where its batches are
+//     anchored (/.well-known/veilcore-registry), checked at the start of every run, before
+//     anything is sealed, paid or recorded. A preprod sponsor pointed at the mainnet
+//     registry would otherwise seal real records into batches and date them on a test
+//     network.
 //
 // Everything outside is behind an interface, so the steps are tested with mocks.
 //
@@ -37,7 +42,12 @@ export type AnchorRecord = {
   readonly anchoredAt: string;
 };
 
+/** Where a registry says its batch roots are anchored. */
+export type PublishedAnchor = { readonly chain: string; readonly network: string; readonly contractAddress: string };
+
 export interface RegistryClient {
+  /** Where the registry publishes that its batches are anchored (/.well-known/veilcore-registry). */
+  publishedAnchors(): Promise<PublishedAnchor[]>;
   /** How many sealed records are waiting for a batch. */
   pendingCount(): Promise<number>;
   /** Seal everything pending into a new batch; undefined when nothing is pending. */
@@ -134,6 +144,7 @@ export type AnchorOutcomeCode =
   | 'budget'
   | 'busy'
   | 'bad-batch'
+  | 'wrong-registry'
   | 'error';
 
 /** What anyone may see: no error text, no transaction or batch in flight. */
@@ -226,6 +237,8 @@ export class Anchorer {
    */
   async runOnce(): Promise<string> {
     try {
+      const mismatch = await this.registryMismatch();
+      if (mismatch) return this.done('wrong-registry', mismatch, false);
       const saved = this.store.load();
       if (saved) return await this.resume(saved);
 
@@ -236,6 +249,20 @@ export class Anchorer {
     } catch (e) {
       return this.done('error', `error: ${e instanceof Error ? e.message : String(e)}`, false);
     }
+  }
+
+  /**
+   * Why this registry is not one this service may anchor for, or undefined when it is: it
+   * must publish exactly one anchor, on this service's chain, network and contract.
+   */
+  private async registryMismatch(): Promise<string | undefined> {
+    const published = await this.registry.publishedAnchors();
+    const want = `midnight ${this.config.network} ${norm(this.config.contractAddress)}`;
+    const got = published.map((a) => `${a.chain} ${a.network} ${norm(a.contractAddress)}`);
+    if (got.length === 1 && got[0] === want) return undefined;
+    return got.length === 0
+      ? 'the registry publishes no anchor network and contract (set VEILCORE_ANCHOR_NETWORK and VEILCORE_ANCHOR_CONTRACT on it); nothing sealed or sent'
+      : `the registry anchors on ${got.join(', ')}, not ${want}; nothing sealed or sent`;
   }
 
   /** The oldest sealed batch with no anchor, or a newly sealed one when it is time. */

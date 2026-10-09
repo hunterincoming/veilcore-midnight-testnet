@@ -11,6 +11,18 @@ const fakeFetch = (routes: Record<string, { status?: number; body: unknown }>, c
   }) as typeof fetch;
 
 describe('registry client', () => {
+  it("reads where the registry anchors, without the operator token, and refuses a malformed answer", async () => {
+    const calls: { url: string; init?: RequestInit }[] = [];
+    const good = { chain: 'midnight', network: 'preprod', contractAddress: 'ef'.repeat(32) };
+    const reg = (body: unknown) =>
+      new HttpRegistry('https://reg.example', 'op-token', fakeFetch({ 'GET /.well-known/veilcore-registry': { body } }, calls));
+    expect(await reg({ name: 'x', anchors: [good] }).publishedAnchors()).toEqual([good]);
+    expect((calls[0].init?.headers as Record<string, string>)['x-operator-token']).toBeUndefined();
+    expect(await reg({ anchors: [] }).publishedAnchors()).toEqual([]);
+    await expect(reg({ name: 'x' }).publishedAnchors()).rejects.toThrow(/unexpected/);
+    await expect(reg({ anchors: [{ ...good, contractAddress: 'zz' }] }).publishedAnchors()).rejects.toThrow(/malformed/);
+  });
+
   it('sends the operator token on operator routes only', async () => {
     const calls: { url: string; init?: RequestInit }[] = [];
     const reg = new HttpRegistry(

@@ -1,11 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { Anchorer, type AnchorChain, type Attempt, type Batch, type Landing, type RegistryClient, type AnchorRecord } from './anchorer.js';
+import { Anchorer, type AnchorChain, type Attempt, type Batch, type Landing, type RegistryClient, type AnchorRecord, type PublishedAnchor } from './anchorer.js';
 import { NotSentError } from './sponsor.js';
 import { DailyBudget } from './limits.js';
 
 const ROOT = 'ab'.repeat(32);
 
 class Registry implements RegistryClient {
+  anchors: PublishedAnchor[] = [{ chain: 'midnight', network: 'preprod', contractAddress: 'ef'.repeat(32) }];
+  publishedAnchors() {
+    return Promise.resolve(this.anchors);
+  }
   pending = 0;
   list: Batch[] = [];
   recorded: { batchId: string; anchor: AnchorRecord }[] = [];
@@ -113,6 +117,53 @@ const setup = (over: { budget?: bigint } = {}) => {
   );
   return { anchorer, registry, chain, store, logs, budget, advance: (ms: number) => (t += ms) };
 };
+
+describe('anchoring job: only for a registry that anchors where this service does', () => {
+  it('a registry publishing no anchor gets nothing sealed, paid or recorded', async () => {
+    const s = setup();
+    s.registry.anchors = [];
+    s.registry.pending = 50;
+    expect(await s.anchorer.runOnce()).toMatch(/publishes no anchor network and contract.*nothing sealed or sent/);
+    expect(s.registry.seals).toBe(0);
+    expect(s.chain.prepared).toBe(0);
+    expect(s.anchorer.publicStatus().lastOutcome).toBe('wrong-registry');
+  });
+
+  it('the mainnet registry is refused by a preprod service, and another contract too', async () => {
+    const s = setup();
+    s.registry.pending = 50;
+    s.registry.anchors = [{ chain: 'midnight', network: 'mainnet', contractAddress: 'a0'.repeat(32) }];
+    expect(await s.anchorer.runOnce()).toMatch(/anchors on midnight mainnet a0a0.*not midnight preprod efef/);
+    s.registry.anchors = [{ chain: 'midnight', network: 'preprod', contractAddress: 'a0'.repeat(32) }];
+    expect(await s.anchorer.runOnce()).toMatch(/not midnight preprod/);
+    s.registry.anchors = [
+      { chain: 'midnight', network: 'preprod', contractAddress: 'ef'.repeat(32) },
+      { chain: 'midnight', network: 'mainnet', contractAddress: 'a0'.repeat(32) },
+    ];
+    expect(await s.anchorer.runOnce()).toMatch(/nothing sealed or sent/);
+    expect(s.registry.seals).toBe(0);
+    expect(s.chain.prepared).toBe(0);
+    expect(s.anchorer.status().alert).toBe(true);
+  });
+
+  it('a transaction already sent is not recorded on a registry that changed its anchor since', async () => {
+    const s = setup();
+    s.registry.pending = 50;
+    s.chain.submitFails = 'maybe';
+    await s.anchorer.runOnce();
+    expect(s.store.peek()).toBeDefined();
+    s.registry.anchors = [{ chain: 'midnight', network: 'mainnet', contractAddress: 'a0'.repeat(32) }];
+    expect(await s.anchorer.runOnce()).toMatch(/nothing sealed or sent/);
+    expect(s.registry.recorded).toEqual([]);
+    expect(s.store.peek()).toBeDefined(); // kept for when the registry is right again
+  });
+
+  it('the same address written with 0x or capitals still matches', async () => {
+    const s = setup();
+    s.registry.anchors = [{ chain: 'midnight', network: 'preprod', contractAddress: '0x' + 'EF'.repeat(32) }];
+    expect(await s.anchorer.runOnce()).toBe('nothing to anchor');
+  });
+});
 
 describe('anchoring job (mocked registry and chain)', () => {
   it('does nothing when nothing is pending', async () => {

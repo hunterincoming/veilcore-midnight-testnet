@@ -11,7 +11,7 @@ import { ProofOfWork, solve } from './pow.js';
 import { DailyBudget, DEFAULT_LIMITS, Limits, SingleFlight } from './limits.js';
 import { PHASE1_PUBLIC_CIRCUITS, type SealedTx } from './policy.js';
 import { sealedCall, VC } from './test-tx.js';
-import { Anchorer, type AnchorChain, type Attempt, type Batch, type Landing, type RegistryClient } from './anchorer.js';
+import { Anchorer, type AnchorChain, type Attempt, type Batch, type Landing, type RegistryClient, type PublishedAnchor } from './anchorer.js';
 import { HttpRegistry } from './registry.js';
 
 const TICKET = 'c'.repeat(32);
@@ -340,6 +340,10 @@ describe('Medium (CWE-209): /sponsor/status shows coarse public information only
 const ROOT = 'ab'.repeat(32);
 
 class FakeRegistry implements RegistryClient {
+  anchors: PublishedAnchor[] = [{ chain: 'midnight', network: 'preprod', contractAddress: 'ef'.repeat(32) }];
+  publishedAnchors() {
+    return Promise.resolve(this.anchors);
+  }
   pending = 0;
   list: Batch[] = [];
   recorded: string[] = [];

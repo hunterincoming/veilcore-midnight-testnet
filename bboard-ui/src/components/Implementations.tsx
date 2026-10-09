@@ -4,7 +4,9 @@
 // languages; it does not show that someone else could implement the format from the
 // document alone, and this page says so. It is also the page a body evaluating the
 // format will look for: what exists, how it is checked, and how to add an implementation.
-// The vector count is SDK main's conformance/vectors.json (100 since SDK 830498d, 5 October 2026).
+// The vector counts are the SDK's conformance/vectors.json: 100 record-format vectors since SDK 830498d
+// (5 October 2026), and since 9 October one more for the report pairing (SPEC 3.7), which the
+// Rust implementation does not run yet. Say 101 for all three only once it does.
 //
 // SPDX-License-Identifier: Apache-2.0
 
@@ -72,14 +74,15 @@ export const Implementations: React.FC = () => (
         variant="h1"
         sx={{ fontSize: { xs: 34, md: 50 }, lineHeight: 1.05, mb: 3, maxWidth: 780, letterSpacing: '-0.02em' }}
       >
-        Three implementations, one author, 100 shared tests.
+        Three implementations, one author, one shared test suite.
       </Typography>
       <Typography variant="h6" sx={{ color: 'text.secondary', maxWidth: 620, fontWeight: 400, lineHeight: 1.6 }}>
-        TypeScript, Python and Rust, all written by the same author. All three agree on the 100 shared test vectors. The
-        edge cases we know of where they can still differ (characters added to Unicode since 2021, very deep nesting,
-        duplicate keys) are listed in our public notes and being fixed in the spec. That shows the rules hold across
-        three languages. It does not yet show that someone else could implement the format from the document alone: an
-        implementation by someone else is still the missing test.
+        TypeScript, Python and Rust, all written by the same author. All three agree on the 100 record-format test
+        vectors; a 101st, for the report pairing added on 9 October 2026, passes in TypeScript and Python and is not in
+        Rust yet. The edge cases we know of where they can still differ (characters added to Unicode since 2021, very
+        deep nesting, duplicate keys) are listed in our public notes and being fixed in the spec. That shows the rules
+        hold across three languages. It does not yet show that someone else could implement the format from the document
+        alone: an implementation by someone else is still the missing test.
       </Typography>
     </Box>
 
@@ -89,7 +92,7 @@ export const Implementations: React.FC = () => (
         lang="TypeScript"
         who="the same author as the other two"
         deps="none"
-        note="The reference implementation. Commitments, canonical serialization, batch inclusion proofs, attester signatures, corrections, challenges and registry resolution. Runs in a browser and in Node with separate entry points, so a frontend build pulls in nothing it cannot use. Version 0.15.0 on npm passes all 100 shared vectors."
+        note="The reference implementation. Commitments, canonical serialization, batch inclusion proofs, attester signatures, corrections, challenges and registry resolution. Runs in a browser and in Node with separate entry points, so a frontend build pulls in nothing it cannot use. Version 0.15.0 on npm passes the 100 record-format vectors; the report-pairing vector is in the repository, not yet on npm."
         href="https://github.com/hunterincoming/veilcore-sdk"
         hrefLabel="View the repository"
       />
@@ -121,7 +124,7 @@ export const Implementations: React.FC = () => (
         variant="h3"
         sx={{ fontSize: { xs: 26, md: 34 }, mb: 3, maxWidth: 720, lineHeight: 1.2, letterSpacing: '-0.02em' }}
       >
-        A hundred vectors, and one program written to fail them.
+        A hundred and one vectors, and one program written to fail them.
       </Typography>
 
       <Stack spacing={2.5} sx={{ maxWidth: 680 }}>

@@ -76,7 +76,7 @@ export const en = {
     "Notebooks and files are dated by whoever keeps them, so they're easy to doubt. Registering the material itself means handing over what you're protecting. VeilCore gives your record a date nobody can backdate, and the genetics stay with you.",
   'm.for.1t': 'A cutting walks out the door.',
   'm.for.1p':
-    "Seal a record and pair its DNA report. If the plant turns up under another name, a lab can compare a new test with your report. When you pair through VeilCore's contract on Midnight, the pairing is dated too: it shows the holder of your record had that report by then. What goes on chain is tied to your record and hides the report, so nobody can copy your pairing to their own record. In this web demo the pairing is saved with your record but not yet dated. VeilCore doesn't test DNA.",
+    "Seal a record and pair its DNA report. If the plant turns up under another name, a lab can compare a new test with your report. When you pair through VeilCore's contract on Midnight, the pairing is dated too: it shows that whoever controlled your record at that date had that report, or its SHA-256, by then. What goes on chain is tied to your record and hides the report, so nobody can copy your pairing to their own record. In this web demo the pairing is saved with your record but not yet dated. VeilCore doesn't test DNA.",
   'm.for.2t': 'Variety protection and certification.',
   'm.for.2link': 'How a claim works →',
   'm.for.3t': "Material in a lab's hands.",
@@ -159,7 +159,7 @@ export const en = {
   'm.open.title2': 'outlast us.',
   'm.open.1t': 'An open specification, three implementations.',
   'm.open.1p':
-    'Free to implement, permanently. TypeScript, Python and Rust agree on all 100 shared test vectors, and anyone can run them. We wrote all three; one written by someone else is the test we most want.',
+    'Free to implement, permanently. TypeScript, Python and Rust agree on all 100 record-format test vectors (Rust does not run the newer report-pairing one yet), and anyone can run them. We wrote all three; one written by someone else is the test we most want.',
   'm.open.1link': 'All three implementations →',
   'm.open.2t': "Your record doesn't need us.",
   'm.open.2p':
@@ -253,7 +253,7 @@ export const en = {
   'm.status.lede': "What is done, and what isn't yet.",
   'm.stat1.b': '100 / 100',
   'm.stat1.s':
-    'shared test vectors passed in TypeScript, Python and Rust on GitHub (one author wrote all three; TypeScript is on npm as 0.15.0)',
+    'record-format test vectors passed in TypeScript, Python and Rust on GitHub (one author wrote all three; TypeScript is on npm as 0.15.0). A 101st, for report pairing, is not in Rust yet',
   'm.stat3.b': 'No audit',
   'm.stat3.s': 'No independent security audit yet. Our own reviews are public.',
   'm.stat4.b': 'First users wanted',

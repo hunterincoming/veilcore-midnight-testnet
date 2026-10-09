@@ -7,6 +7,7 @@ import {
   type Ledger,
   pureCircuits,
 } from "./managed/veilcore/contract/index.js";
+import { dnaPairBinding } from "./pairing.js";
 
 const hex = (b: Uint8Array): string => Buffer.from(b).toString("hex");
 const same = (a: Uint8Array, b: Uint8Array): boolean => hex(a) === hex(b);
@@ -491,6 +492,92 @@ export const acceptOwnership = (
   return {
     accepted: true,
     reason: "the holder of this record answered your challenge",
+  };
+};
+
+/**
+ * Rule 9. Accept a bound DNA pairing (pairing.ts): that whoever controlled `record`'s
+ * identity had the report whose SHA-256 is `reportHash` by the time that transaction
+ * landed. `afterTx` is the contract state recorded for the pairing's own `pairDna` call,
+ * found by transaction id; `landedAt` (ms) is its block time, from the same indexer
+ * answer, and the date the verdict gives. `now`, the contract state now, resolves a
+ * `record` made after the pairing (a later rotation or recovery); without it, `record`
+ * must be a commitment the identity had when it paired.
+ *
+ * Accepted only when `lastPairedDna` is H("veilcore:v1:dnapair", reportHash, identity,
+ * salt) for the identity of `lastPairedRecord`, and that identity is `record`'s. A binding
+ * copied to another record fails here: it holds only for the identity inside it. A raw
+ * report hash paired directly is refused: anyone who saw it could have paired it first.
+ *
+ * What it shows: the report existed, and that identity's holder had its hash, by that
+ * date. Not who controls the record now (a record can change hands by rotation; rule 8
+ * answers that), not that nobody else had the report earlier (its lab did), and nothing
+ * about what the report says.
+ */
+export const acceptPairing = (
+  afterTx: Ledger,
+  claim: {
+    readonly record: Uint8Array;
+    readonly reportHash: Uint8Array;
+    readonly salt: Uint8Array;
+  },
+  when: {
+    readonly landedAt: number | undefined;
+    readonly blockHeight?: number;
+    readonly now?: Ledger;
+  },
+): {
+  readonly accepted: boolean;
+  readonly reason: string;
+  readonly pairedAt?: number;
+} => {
+  const { record, reportHash, salt } = claim;
+  if (record.length !== 32 || reportHash.length !== 32 || salt.length !== 32)
+    return {
+      accepted: false,
+      reason: "the record, report hash and salt are 32 bytes each",
+    };
+  if (afterTx.pairSeq === 0n)
+    return {
+      accepted: false,
+      reason: "no pairing has been made on this contract",
+    };
+  const pairedBy = afterTx.lastPairedRecord;
+  const identity = identityOf(afterTx, pairedBy);
+  if (!isAnchored(afterTx, pairedBy))
+    return {
+      accepted: false,
+      reason: "the pairing record was not anchored",
+    };
+  if (!same(identityOf(when.now ?? afterTx, record), identity))
+    return {
+      accepted: false,
+      reason: "that transaction paired a different record",
+    };
+  const paired = afterTx.lastPairedDna;
+  if (!same(dnaPairBinding(reportHash, identity, salt), paired)) {
+    if (same(paired, reportHash))
+      return {
+        accepted: false,
+        reason:
+          "that transaction paired the raw report hash, which anyone who saw it could pair; it does not show who had the report first. Ask for a bound pairing",
+      };
+    return {
+      accepted: false,
+      reason:
+        "that transaction did not pair this report, with this salt, for this record",
+    };
+  }
+  if (when.landedAt === undefined)
+    return {
+      accepted: false,
+      reason: "the indexer did not say when the pairing landed; ask again",
+    };
+  const at = `${when.blockHeight === undefined ? "" : `block ${when.blockHeight}, `}${new Date(when.landedAt).toISOString()}`;
+  return {
+    accepted: true,
+    reason: `whoever controlled this record had this report by ${at}. That dates the report; it does not show who controls the record now`,
+    pairedAt: when.landedAt,
   };
 };
 

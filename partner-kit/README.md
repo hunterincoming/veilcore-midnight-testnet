@@ -68,7 +68,7 @@ import { checkPresentation } from '@veilcore/contracts';
 const verdict = await checkPresentation({ network: 'preprod', txId, issuer, challenge, issuedAt });
 ```
 
-- Node 24, ES modules. A proof server on your own machine (`docker run -d -p 127.0.0.1:6300:6300 midnightntwrk/proof-server:8.0.3 midnight-proof-server -v`; bound to
+- Node 24, ES modules. A proof server on your own machine (`docker run -d -p 127.0.0.1:6300:6300 midnightntwrk/proof-server:8.0.3@sha256:8e6c36c3c175ef6e1b337952155b30470f252af79a20c3f65153a86a983e17ab midnight-proof-server -v`; bound to
   127.0.0.1 so nothing else on your network can reach it). Every proof sends it record and
   licence secrets. From 0.3.0 (not yet published), `connect` and `seedWallet` refuse a
   proof server that is not on this machine unless you pass `allowRemoteProofServer: true`,

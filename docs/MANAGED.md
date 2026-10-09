@@ -172,7 +172,7 @@ operating.
 - One operations computer, used for nothing else. Disk encryption on (FileVault). Automatic login off.
   Screen lock on. Not shared.
 - Node 24, Docker, this repository at a tagged commit. The proof server runs **on this machine**
-  (`docker run -d -p 127.0.0.1:6300:6300 midnightntwrk/proof-server:8.0.3 midnight-proof-server -v`);
+  (`docker run -d -p 127.0.0.1:6300:6300 midnightntwrk/proof-server:8.0.3@sha256:8e6c36c3c175ef6e1b337952155b30470f252af79a20c3f65153a86a983e17ab midnight-proof-server -v`);
   VeilCore-run refuses any other, because every proof sends it partners' secrets.
 - Keep `~/.veilcore/managed/` out of Time Machine and cloud sync; back it up only as in Backups.
 - The operator wallet (it pays fees) is VeilCore's: not the maintenance key, and not any partner's.

@@ -1,77 +1,180 @@
 # Royalties contract: design, sources and limits
 
-**Status: DRAFT, protocol 3, 8 October 2026. Not deployed anywhere.** Contract:
-`contract/src/veilcore-royalties.compact`. Client: `api/src/royalties-api.ts`. Menu: options
-50 to 81 in `bboard-cli`. Royalties on offspring (protocol 3) have their own design:
-`docs/royalties-offspring-design.md`. Tests: `contract/src/test/royalties*.test.ts` (the contract),
-`bboard-cli/src/royalties-journey.test.ts` (the real client, end to end, on the simulator) and
-`bboard-cli/src/royalties-attacks.test.ts` (each attack on the client, run against the fix).
-The two live mainnet contracts are not changed by any of this.
+**Status: DRAFT, protocol 4, 9 October 2026. Test networks only; not deployed anywhere.**
+Contract: `contract/src/veilcore-royalties.compact`. Client: `api/src/royalties-api.ts`. Menu:
+options 50 to 86 in `bboard-cli`. Royalties on offspring have their own design:
+`docs/royalties-offspring-design.md`. Tests: `contract/src/test/royalties*.test.ts` (the
+contract; `royalties-credit.test.ts` for issuing), `bboard-cli/src/royalties-credit.test.ts`
+(the preprod run as the menu walks it, and each attack on issuing), `royalties-journey.test.ts`
+and `royalties-attacks.test.ts` (the rest of the client). The two live mainnet contracts are
+not changed by any of this.
 
-Roadmap stage 2: breeders sell licences on chain, and royalties are paid on chain.
+## In one paragraph: we never touch the money, we prove the books
 
-## In one paragraph: public money, private books
+A breeder posts an **offer**: how many licences, when they end, whether they can be revoked,
+a list price, and a fingerprint of the terms. The royalty rate is not published; the chain
+holds only a commitment to it, and the rate is on an **offer card** the breeder hands
+licensees with the terms. A grower pays the breeder **however they already pay** (bank
+transfer, stablecoin, invoice) and hands over a **licence card**; the breeder **issues** the
+licence from it. For royalties, the grower hands over a **top-up request** with the payment,
+and the breeder **issues** that much **credit** to it. Issuing moves no money: the credit note
+on chain is the grower's receipt that the breeder acknowledged the payment. Each period the
+grower **settles** privately against that credit: nothing on chain says which variety, which
+grower, which period, how many units or at what rate. The breeder reads all of that for its
+own licensees with their licence cards. A buyer or regulator asks for a **presentation**: "a
+live licence from this offer, and this period settled for at least N units". If the variety
+was bred from a licensed one, every licence and credit the breeder issues **records on chain
+what it owes the ancestors**, at the terms they agreed.
 
-A breeder posts an **offer**: the licence price, the token, the wallet that gets paid, how
-many licences, when they end, whether they can be revoked, and a fingerprint of the terms.
-The royalty rate is not published; the chain holds only a commitment to it, and the rate is
-on an **offer card** the breeder hands licensees with the terms. A grower **buys** a licence:
-the price goes straight to the breeder's wallet in the same transaction, and the grower hands
-the breeder a **licence card** that lets the breeder read that licence's settlements and
-nothing more. Royalties are **prepaid** as credit: the grower, or a grain buyer or processor
-holding the grower's **top-up request** (the offer's public fields and a code, never the
-rate), pays an amount straight to the breeder's wallet. Each
-period the grower **settles** privately against that credit. Settling moves no money and
-publishes nothing that says which variety, which grower, which period, how many units or at
-what rate. The breeder reads all of that for their own licensees with the licence cards. A
-buyer or regulator asks for a **presentation**: "a live licence from this offer, and this
-period settled for at least N units". A licensee can hand a **presentation card** to someone
-who answers buyers for them (a seed company's growers, say): it can never spend, but it
-reads every settlement of that licence, now and later, and nothing takes it back short of
-ending the licence.
+## Why money is off chain by default
 
-Money only moves in public, in two places, payer to breeder, with the contract holding
-nothing. The books are private. That is the answer to "why are the payments public on a
-privacy chain": the payment of money is public because Midnight's private token path is
-clumsy in contracts today, and what a payment would give away (variety, volumes, growers)
-is kept out of the payment and moved into the private settlement.
+Version 3 moved the money through the contract (buying a licence paid the price; topping up
+paid the credit). Version 4 makes that an option an offer chooses when it is posted, off by
+default, for four reasons:
+
+1. **Money transmission.** A contract that receives and forwards payments between other
+   people raises the US money-transmitter question for whoever runs it. A contract that only
+   records what was paid does not move anyone's money. (A lawyer must still confirm this; see
+   "Before mainnet".)
+2. **Cannabis proceeds on chain.** Payments for cannabis licences and royalties would sit on
+   a public ledger forever, and the federal hemp redefinition takes effect on 12 November
+   2026. Paid off chain, the contract holds a record of the books, not the proceeds.
+3. **The token.** On chain, payment would have to be in NIGHT, which is volatile; there is no
+   stablecoin on Midnight yet. Off chain, parties pay in dollars, euros or yen as they do
+   today.
+4. **Less state, simpler checks.** Nothing to receive, forward or split in the paying call.
+
+What the contract actually adds is the private books: settling against credit in private,
+the breeder reading its licensees' books with viewing keys, presentations that prove "live
+licence, period settled for at least N units", and royalties on offspring. None of that
+needs the money to pass through the contract.
+
+**On-chain payment stays available.** An offer posted with "take payment through the
+contract" also lets a grower buy a licence (`buyLicense`) and anyone pay a top-up request
+(`topUp`, `topUpSplit`), as in version 3, in the token the offer names. When a stablecoin is
+on Midnight, an offer can use it without a rebuild.
+
+## What is public
+
+- **Posting an offer:** its record, list price, token, how many licences, end date, whether
+  revocable, the terms fingerprint, the rate commitment (not the rate), whether it takes
+  payment on chain, and its wallet only if it does.
+- **Issuing a licence:** the licence key and the offer it is from (as a purchase does). The
+  licensee's keys are not published.
+- **Issuing credit (ordinary offer):** only that some offer's credit issuer issued some
+  credit, and the tree root it proved against. Not the offer, not the breeder, not the
+  licensee, not the amount (it stays inside the note).
+- **Issuing credit on a variety whose ancestors take a royalty share:** the offer and the
+  amount, and each ancestor's share of it (that is what makes the share checkable).
+- **Settling:** nothing about the offer, licensee, period, units or rate. The breeder reads
+  them with the licence card.
+- **Presenting:** a tag only the verifier can check, a holder tag that repeats within one
+  verifier's scope, the time asked about, and whether a period was asked.
+- **On-chain payment (only for an offer that opted in):** the paying wallet, the breeder's
+  wallet, the token and the amount; a top-up hides which of that wallet's offers it pays.
+- Always: which circuit each transaction calls, and the tree roots proofs use (see "What can
+  still link").
+
+## What the contract enforces, and what it cannot
+
+**Enforced on chain:**
+
+- Only the offer's admin key issues its licences (or revokes, closes, hands over the offer,
+  or names a new credit issuer). A licence is issued once, only while the offer is open,
+  before its end, and while licences are left.
+- Only the offer's credit issuer key issues its credit, and only for that offer: a note is
+  bound to the offer's leaf (every term, the rate included), so credit issued on one offer
+  can never settle another. The same code, offer and amount can be issued once (a retry
+  cannot issue twice). A licensee cannot make credit: it holds no issuer key, and merging and
+  settling never create value.
+- Settling spends credit worth at least units x rate, against the committed rate; a note
+  spends once; receipts cannot claim more units than were settled.
+- On a variety whose ancestors take a share, no licence and no credit can be issued without
+  each ancestor's share (and each parent's fee, for a licence) being recorded in `owed`, worked
+  out and checked by the contract, rounded down, with every share at least one unit. Credit on
+  such a variety cannot use the private path.
+- An offer that does not take payment on chain refuses purchases and paid top-ups. One that
+  does passes the money on in the same call and holds nothing.
+
+**Not enforceable here (said plainly):**
+
+- **That anyone was paid.** The contract never sees money that moves off chain. The issued
+  credit note is the breeder's acknowledgement, nothing more. Whether a descendant pays the
+  ancestors what `owed` records is between them, like any invoice: the contract makes sure
+  the record exists, cannot be skipped and cannot be changed, so both sides work from the
+  same numbers.
+- **That the breeder issued the right amount.** A breeder could issue less credit than it was
+  paid; the grower would then be unable to settle all its units, which is the grower's
+  protection (it checks its credit before settling, and the terms say what was paid for). A
+  breeder and grower who collude to under-declare units, or to price a licence low and charge
+  more on the side, lower what the ancestors are owed; the parent's fee per licence is the
+  floor an ancestor can rely on.
+- **A stolen issuer key.** Whoever holds it can issue credit on that offer (it cannot move
+  money, revoke or issue licences). The admin names a new issuer; the old key stops at the
+  next due seal, within an hour. Credit it issued before that stays valid. The breeder's own
+  books show it: the menu sets the royalties its licensees settled against the credit that
+  computer issued, and warns when more was settled.
+- **Units.** Declared by the licensee. Checking them against harvests happens off chain, by
+  the breeder, who can read them. Terms should include an audit right.
+- **The record behind an offer** is checked by clients against the main contract, not by
+  this one (no calls between contracts on ledger 8).
 
 ## Circuits
 
 | Circuit | Who | What it does | Rows |
 |---|---|---|---|
-| `postOffer` | record holder | Posts an offer, run from then on by its own admin key. A rate commitment must open to a rate above zero. | 35,039 |
-| `closeOffer`, `changeOfferAdmin` | offer admin | Stop new sales; hand the offer to a new key. | |
-| `buyLicense` | anyone | Pays the price (and any ancestors' shares and fees) and issues the licence, in one call. Sales are counted in counters, so two buyers at once do not conflict. | 38,905 |
-| `topUp` | anyone | Pays an amount to the breeder; creates a credit note only the licensee can spend. Proves the offer without naming it. Until 30 days after the offer ends. The payer never sees the rate: `postOffer` already proved the commitment opens to a rate above zero. | 22,118 |
-| `topUpSplit` | anyone | The same for an offer whose ancestors take a royalty share: names the offer, and pays each share in the same call. | 28,516 |
-| `settle` | licensee | Spends a note, proves units × rate ≤ its value, keeps the change, records a unique receipt, a numbered lookup tag and the units masked for the breeder. | 102,942 |
-| `mergeNotes` | licensee | Joins two credit notes into one. | 69,023 |
-| `proveLicense` | licensee or delegate | A licence live at the verifier's time, and optionally a settled period ≥ N units; or that period settled under a licence since ended. Needs only the presentation key. | 51,485 |
-| `revokeLicense` | offer admin | Only if the offer said revocable, and only before it ends. Tracked per offer. | |
+| `postOffer` | record holder | Posts an offer, run from then on by its own admin key, with its credit issuer key in the issuer tree. A rate commitment must open to a rate above zero. | 41,251 |
+| `issueLicense` | offer admin | Issues a licence from the licensee's licence key; no money. Records what it owes ancestors. | 16,066 |
+| `issueCredit` | credit issuer | Issues credit to a top-up code, proving the offer through the issuer tree without naming it; the amount stays in the note. Ordinary offers only. | 29,487 |
+| `issueCreditSplit` | credit issuer | The same for a variety whose ancestors take a royalty share: names the offer and the amount, records each share. | 30,202 |
+| `changeCreditIssuer` | offer admin | Names a new credit issuer key; the old one stops at the next due seal. | 19,199 |
+| `closeOffer`, `changeOfferAdmin` | offer admin | Stop new licences; hand the offer to a new key. | |
+| `buyLicense` | anyone | Offers that take payment on chain: pays the price (and ancestors' shares and fees) and adds the licence, in one call. | 42,093 |
+| `topUp` | anyone | Offers that take payment on chain: pays an amount to the breeder and makes a credit note; proves the offer without naming it. | 22,125 |
+| `topUpSplit` | anyone | The same for a variety whose ancestors take a royalty share: names the offer, pays each share. | 31,350 |
+| `settle` | licensee | Spends a note, proves units x rate <= its value, keeps the change, records a unique receipt, a numbered lookup tag and the units masked for the breeder. | 102,948 |
+| `mergeNotes` | licensee | Joins two credit notes into one. | 69,029 |
+| `proveLicense` | licensee or delegate | A licence live at the verifier's time, and optionally a settled period >= N units; or that period settled under a licence since ended. | 51,485 |
+| `revokeLicense` | offer admin | Only if the offer said revocable, and only before it ends. | |
 | `clearEnded`, `removeEnded` | anyone | Tidy up ended licences (30 days after the end, at the earliest) and ended offers. | |
-| `sealRevocations` | anyone | Retires old licence roots so revoked licences stop proving, at most once an hour for a revocation (a revocation waits at most an hour); every tree's at most daily. Every 600 s at most (a revocation seal that is due skips that wait). | |
+| `sealRevocations` | anyone | Retires old licence roots after a revocation and old issuer roots after an issuer change, at most once an hour; every tree's at most daily. | |
 
-Measured with `zkir mock-compile` from compiler 0.31.1 on 8 October 2026. The limit for
-anything a holder proves is 2^17 = 131,072 rows. `settle` uses 79% of it (it was 96%
-until each key was hashed once instead of up to three times; the hashes and what they
-prove are unchanged). Nearly all of its cost is about 20 SHA-256 hashes (`persistentHash`,
-about 4,400 rows each); Merkle paths are cheap (about 3,000 rows for depth 32). The
-cheaper hash (`transientHash`, about 600 rows) is not used for anything stored, because
-Midnight's docs say it may change between upgrades and this contract cannot be changed.
-That leaves room for about six more hashes in `settle`. Proving time on a laptop is still
+Measured with `zkir mock-compile` from compiler 0.31.1 on 9 October 2026. The limit for
+anything a holder proves is 2^17 = 131,072 rows. `settle` is unchanged and uses 79% of it.
+Private issuance is 22% (about 4 SHA-256 hashes and one Merkle path), so proving "I issue for
+one of the offers here" costs about a quarter of the limit. Proving time on a laptop is still
 to be measured.
+
+## How issuing credit stays private
+
+The question: an issuance signed by an offer's key would name the offer, which tells everyone
+which variety was just paid for. So each offer's credit issuer is a leaf of a separate tree,
+`issuerLeaves`: the hash of the offer's leaf and the issuer's key commitment, at a place of
+its own. Issuing proves "my key is the issuer of one of these leaves, and the note is bound to
+that same offer", the same way a settlement proves its offer. The public sees the tree root,
+not the leaf. The amount is a private input that only goes into the note commitment.
+
+Replacing the issuer overwrites the offer's place in the tree. The old leaf is still inside
+old roots, so the old key keeps working until a seal retires those roots: the same rule as a
+revoked licence, at most an hour. A seal retires the issuer tree's roots only when an issuer
+was replaced (or at the daily seal), so revocations do not disturb issuances in flight.
+
+Variety with ancestors: the private path is refused (the offer's leaf records whether its
+ancestors take a share, so it cannot be dodged). Its credit goes through `issueCreditSplit`,
+which names the offer so the contract can read the pedigree chart and record each share. That
+costs the same privacy as a split top-up in version 3: the variety and the amount are public.
 
 ## How the privacy works
 
 Each piece is a known construction, not an invention:
 
 - **Credit notes are Zcash-style.** A note commits to a top-up code (from the licensee's
-  spending key), the offer and the amount. Spending it publishes a nullifier made from the
+  spending key), the offer and the amount. Issued credit and paid credit make the same note,
+  so everything after (merging, settling, reading, presenting) is the same. Spending it publishes a nullifier made from the
   licensee's nullifier key and the note, so nobody can link a spend to its note, and nobody
   can spend twice. Change goes into a fresh note. (Zcash protocol spec, Sapling.)
-- **Offers are proved by Merkle path**, so a top-up or settlement proves "one of the offers
-  on this contract" without saying which. Same pattern as zk-creds
+- **Offers are proved by Merkle path**, so an issuance (through the issuer tree), a top-up or
+  a settlement proves "one of the offers on this contract" without saying which. Same pattern as zk-creds
   ([eprint 2022/878](https://eprint.iacr.org/2022/878)).
 - **Per-offer keys.** From one licence secret the licensee derives, for that offer only, a
   spending key, a presentation key, and from that a viewing key, so a breeder holding one
@@ -88,24 +191,22 @@ Each piece is a known construction, not an invention:
   change note, so a licensee cannot prove more units than they settled or borrow someone
   else's settlement, and no two settlements share a receipt.
 
-## What is public, and what can still link
+## What can still link
 
-Public: who pays at a licence purchase and a top-up, the breeder's wallet, the token, the
-amount, the offer at a purchase, and which circuit each transaction calls. Fees are paid in
-DUST, which Midnight's docs call shielded, but they do not say whether a fee payment can be
-tied to the wallet behind it; that is to be confirmed against the ledger spec before we claim
-either way. A top-up shows a rounded "open until" time (always the start of the day after
-tomorrow, UTC) so it names no offer. Top-ups run until 30 days after an offer ends (its last
-season can be paid for) and close one to two days before that, for the same reason. A
-breeder with one royalty offer per wallet and token gets no cover from that, and the
-client says so before paying. "Today" is the payer's own clock: neither the ledger nor the
-indexer's contract state gives a recent block time without another network call, so the
-client does not look one up. A payer whose clock is a day or more off publishes a time
-nobody else uses that day, which marks the top-up as theirs (and a clock far enough
-behind is refused by the contract as already past). Keep the clock set automatically.
+Fees are paid in DUST, which Midnight's docs call shielded, but they do not say whether a fee
+payment can be tied to the wallet behind it; that is to be confirmed against the ledger spec
+before we claim either way.
 
-Not public: at a settlement, the offer, the licensee, the period, the units and the rate. At
-a presentation, the licence and the offer (the verifier knows the offer it asked about).
+On-chain payment only (offers that opted in): a top-up shows a rounded "open until" time
+(always the start of the day after tomorrow, UTC) so it names no offer. Top-ups run until 30
+days after an offer ends (its last season can be paid for) and close one to two days before
+that, for the same reason. A breeder with one royalty offer per wallet and token gets no
+cover from that, and the client says so before paying. "Today" is the payer's own clock:
+neither the ledger nor the indexer's contract state gives a recent block time without
+another network call, so the client does not look one up. A payer whose clock is a day or
+more off publishes a time nobody else uses that day, which marks the top-up as theirs (and a
+clock far enough behind is refused by the contract as already past). Keep the clock set
+automatically.
 
 What can still link, said plainly:
 
@@ -117,22 +218,30 @@ What can still link, said plainly:
    for one other transaction hides you among two, not among everyone. **Privacy grows with
    use:** on a quiet contract with three growers, it is weak. That is true of every
    shielded system.
-2. **Wallets.** A grower who tops up from the wallet that bought the licence links the two.
-   Better: a buyer or processor pays (the top-up request), or a fresh wallet.
-3. **Amounts.** Top-up amounts are public. A grower who tops up exactly what each period
-   costs publishes units × rate every period, and amounts with a common divisor hint at the
-   rate: anyone who knows one of the two learns the other. Top up round amounts, ahead of
-   time, not per settlement. The menu says "a round amount hides more".
-4. **Presentations.** Whether a period was asked, the time the verifier asked for, and the
+2. **Issuances.** The issuer tree changes only when an offer is posted or an issuer replaced,
+   so its roots are few. A breeder that issues credit right after posting its own offer
+   proves against the root its own post made: the client waits for someone else's post
+   (rule 2) and asks before sending anyway. A licence issued and then settled under soon
+   after can be tied together by timing, as a purchase could.
+3. **Wallets (on-chain payment only).** A grower who tops up from the wallet that bought the
+   licence links the two. Better: a buyer or processor pays, or a fresh wallet. Paid off
+   chain, no wallet is involved and an offer names none.
+4. **Amounts (on-chain top-ups, and credit on a variety whose ancestors take a share).**
+   These amounts are public. A grower whose credit is exactly what each period costs
+   publishes units × rate every period, and amounts with a common divisor hint at the rate:
+   anyone who knows one of the two learns the other. Pay round amounts, ahead of time, not per
+   settlement. The menu says "a round amount hides more". Ordinary issued credit keeps its
+   amount inside the note.
+5. **Presentations.** Whether a period was asked, the time the verifier asked for, and the
    holder tag are public. The holder tag repeats when one licence answers the same verifier
    again (that is the point, see below), and anyone can see the repeat.
-5. **Merges** show that two notes had one owner, and a merge right before a settlement
+6. **Merges** show that two notes had one owner, and a merge right before a settlement
    shows the two were one grower's. A refused presentation tells the verifier something
    about the units, and repeated requests can narrow it.
-6. **Period labels can be guessed.** A label is checked, not read back, but whoever holds a
+7. **Period labels can be guessed.** A label is checked, not read back, but whoever holds a
    licence card can test likely labels ("2026-Q4") against its settlements. The card is for
    the breeder only.
-7. **Rule 2 is only as strong as the traffic.** Waiting for one other transaction of the same
+8. **Rule 2 is only as strong as the traffic.** Waiting for one other transaction of the same
    kind hides a proof among two. A delegate answering with a presentation card cannot see
    the licensee's own transactions, so its client cannot apply the rule for them.
 
@@ -157,8 +266,10 @@ on-chain licensing projects, the academic papers, and Midnight's own code.
 2. **Anyone can pay on the licensee's behalf.** Australia's End Point Royalties are collected
    best when the grain buyer deducts at delivery; compliance is below 75% where growers
    self-declare ([Stock Journal](https://www.stockjournal.com.au/story/8586430/grain-producers-sa-crop-breeders-raise-end-point-royalty-concerns/),
-   [AGT](https://agtbreeding.com.au/sourcing-seed/pbr-and-epr)). The payer gets a top-up
-   request naming nobody, and the payment does not name the grower.
+   [AGT](https://agtbreeding.com.au/sourcing-seed/pbr-and-epr)). A grain buyer that deducts
+   at delivery pays the breeder as it does today and passes on the grower's top-up request,
+   which names nobody; the breeder issues the credit. For an offer that takes payment on
+   chain, the payer can pay the request through the contract instead.
 3. **A flat royalty per unit, kept private.** Same model as EPR (per tonne) and UK Limousin
    semen royalties ([Limousin](https://limousin.co.uk/the-breed/semen-royalty-scheme/explanation/)).
    Rates are commercial terms, so the chain holds only a commitment. A percentage of sale
@@ -168,7 +279,10 @@ on-chain licensing projects, the academic papers, and Midnight's own code.
    model applied to royalties.
 5. **An end date.** Royalties collected after patents expired lost Bayer the Intacta case in
    Mato Grosso ([Cultivar](https://revistacultivar.com.br/noticias/tribunal-de-mato-grosso-confirma-sentenca-sobre-cobranca-de-royalties-da-soja-intacta)).
-   No sale or top-up after the end. Settling stays possible for at least 30 days after it,
+   No licence, sold or issued, after the end, and no paid top-up after 30 days past it.
+   Issuing credit has no end date: it moves no money, so a breeder can acknowledge a late
+   payment for the last season (an end date would also have to be published to be checked).
+   Settling stays possible for at least 30 days after the end,
    since it moves no money and closes the books. **A revocable licence can lose those 30
    days:** a licence cannot be revoked after its end, but its admin can revoke it up to the
    last second before, and a revoked licence settles nothing more, so its last season goes
@@ -190,20 +304,27 @@ on-chain licensing projects, the academic papers, and Midnight's own code.
    a real node returns for a stale proof is not yet observed (the preprod run does not cover
    it), and a retry after a failure recorded on chain pays a second fee. The cost of the
    limit is that a revocation waits up to an hour for its seal, and its offer's verifiers
-   wait with it.
+   wait with it. Replacing a credit issuer follows the same hourly rule; its seal retires
+   only the issuer tree's roots, so it voids issuances in flight, not settlements.
 7. **Licences are not tradable.** Tradable royalty rights pulled music-royalty and IP-token
    projects into securities trouble; Molecule keeps revenue rights off its tokens
    ([Molecule](https://molecule.xyz/blog/ipts-a-gain-of-function)).
-8. **The contract holds nothing.** Every payment is received and sent on in the same call,
+8. **No money through the contract by default; never any held.** Licences and credit are
+   issued for payments made off chain (see "Why money is off chain by default"). An offer
+   that opts into on-chain payment has every payment received and sent on in the same call,
    the lowest-risk pattern in Midnight's deployment rubric (OpenZeppelin's
    `ForwarderUnshielded` for Compact does the same).
 9. **Any token.** No stablecoin is on Midnight mainnet yet; USDCx is live on Cardano only
    ([Midnight blog](https://midnight.network/blog/consensus-hk-2026-recap)). Each offer names
-   its token, so NIGHT works today and a stablecoin needs no rebuild.
+   its token (the unit its list price, rate and credit are counted in), so a stablecoin
+   needs no rebuild when an offer wants to be paid on chain.
 10. **No fee.** We stay the layer, not the marketplace. Any future fee is a decision for both
     founders.
 11. **An offer is run by its own admin key**, not the record secret, so a leaked or rotated
-    record secret cannot close or revoke anything.
+    record secret cannot close or revoke anything. **Its credit is issued by a separate key**
+    the admin names (and can replace), so the admin key, which issues licences, revokes and
+    hands over the offer, can stay on paper while the issuer key is used day to day. A
+    stolen issuer key can only make credit; it is replaced within the hour.
 12. **A presentation proves someone holding the licence (or its presentation card)
     answered,** not that the person in front of the verifier holds it. A licensee could
     answer for another grower, and can hand the presentation card on. The defence: the
@@ -214,18 +335,26 @@ on-chain licensing projects, the academic papers, and Midnight's own code.
 13. **Receipts commit to units**, so stage 3 (genetics as collateral) can prove royalty
     totals later. BBA+ is the reference for private running totals
     ([KIT](https://publikationen.bibliothek.kit.edu/1000077889)).
+14. **Issuing credit names no offer.** Considered and rejected: an issuance signed by the
+    offer's admin key in public. Simpler, but it would tell everyone which variety was just
+    paid for, each time. Proving the issuer key through a tree costs about 29,500 rows
+    (22% of the limit) and an hourly seal for a replaced key, the same machinery revocations
+    already use.
 
 ## Other limits
 
 - **The record is checked off chain.** Ledger 8 has no calls between contracts. The client
   buys only from an offer whose record is the live head of an anchored identity in the main
-  contract, and refuses top-ups and a verifier's check for an offer whose record was since
-  recovered from theft (or is not anchored); a plain key change only warns, since sold
-  licences cannot move. The contract itself does not check, so anyone can post an offer;
-  per-offer revocations mean that never makes anyone else's verifiers wait (its revocations
-  can void proofs in flight at most once an hour: decision 6). Calls between contracts
-  (ledger 9, not on mainnet yet) would let the contract check this itself.
-- **Losing the offer admin key is permanent.** Keep it on paper, like the maintenance key.
+  contract (asking for a licence too), and refuses paid top-ups and a verifier's check for
+  an offer whose record was since recovered from theft (or is not anchored); a plain key
+  change only warns, since sold licences cannot move. The contract itself does not check, so
+  anyone can post an offer; per-offer revocations mean that never makes anyone else's
+  verifiers wait (its revocations can void proofs in flight at most once an hour: decision
+  6). Calls between contracts (ledger 9, not on mainnet yet) would let the contract check
+  this itself.
+- **Losing the offer admin key is permanent.** Without it no licence can be issued, closed or
+  revoked, and no issuer named. Keep it on paper, like the maintenance key. Losing the credit
+  issuer key is not: the admin names a new one (menu 86).
 - **Credit left when a licence ends or is revoked** stays with the breeder, who already holds
   the money. The terms say whether any is refunded.
 - **State grows with use.** Notes, nullifiers, receipts and settlements are never pruned; each
@@ -233,19 +362,21 @@ on-chain licensing projects, the academic papers, and Midnight's own code.
 - **The breeder's scan grows with use:** every settlement on the contract × every licence
   card. Fine at hundreds of growers; the numbered tags let a client look a licence's
   settlements up directly later.
-- **An offer, purchase or settlement that timed out may have landed.** The client refuses
-  to post again an offer it already has on chain from the same record with the same terms
-  fingerprint, price, number for sale and end date (to within a day), buy a second licence
-  from the same offer, or settle the same period again under the same licence, unless
-  asked; a top-up of your own that timed out is looked for and recorded. One licence per
+- **An offer, licence, issuance or settlement that timed out may have landed.** The client
+  refuses to post again an offer it already has on chain from the same record with the same
+  terms fingerprint, price, number for sale and end date (to within a day), ask for or buy a
+  second licence from the same offer, or settle the same period again under the same licence,
+  unless asked; a licence already on chain is not issued again, and the same request and
+  amount are never issued twice (the contract refuses it too); a top-up of your own that
+  timed out is looked for and recorded. One licence per
   offer per computer is the case the client is built for: with two, a top-up request always
   credits the newer one.
 - **Two runs of the client on one computer share one store.** midnight-js writes back the
   private state it read when a transaction started, minutes later. Every write of the
   royalties state is merged with what is on disk (nothing in it is ever removed), and each
   run remembers what it kept, so one run's write-back cannot drop the other's licences,
-  codes, notes or receipts. A lock on the store (so two runs never write at once) is a
-  separate change.
+  codes, notes, receipts or keys. Since 9 October a lock on the store (store-lock.ts) also
+  refuses a second run on the same store; the merge stays as the second line.
 - **A revoked licence still proves until its seal**, which can be up to an hour later (see
   decision 6). A verifier is told to wait, and when it can ask again.
 - **A cleared licence still proves until the next daily seal.** Clearing an ended licence
@@ -257,25 +388,42 @@ on-chain licensing projects, the academic papers, and Midnight's own code.
 - **The simulator is not the chain.** It does not check that a transaction's effects match
   what was proved, and a fee taken from a failed transaction is not modelled. The preprod run
   covers what it can.
-- **No refunds or transfers.** Royalties on offspring are built (protocol 3,
-  `docs/royalties-offspring-design.md`): a new variety's ancestors are paid their agreed
-  share of every licence and split top-up, in the same transaction.
+- **No refunds or transfers.** Royalties on offspring are built
+  (`docs/royalties-offspring-design.md`): a new variety's ancestors are paid their agreed share
+  in the same transaction when payment is on chain, and their share is recorded as owed when
+  licences and credit are issued for payments made off chain.
 - **No standard terms format yet.** Next: fixed fields in the style of Story's PIL.
 
 ## Before mainnet
 
 1. A paid outside audit. The review passes so far were AI agents (see "Reviews").
 2. Proving keys generated and fingerprinted, as for the live contracts.
-3. The preprod run (`docs/royalties-preprod-run.md`). It confirms with real wallets that a
-   purchase and a top-up move money from one wallet to another in one transaction. Still to
-   confirm on preprod, separately from that run: when a purchase or top-up fails on chain (a
-   race for the last licence, say), the payer's transfer fails with it.
-4. A lawyer on money transmission and royalty collection, before real money moves.
+3. The preprod run (`docs/royalties-preprod-run.md`): issuing a licence and credit, settling,
+   reading and presenting with real wallets, ancestors' dues recorded, and (part 3, optional)
+   that a purchase and a top-up move money in one transaction for an offer that opts in.
+   Still to confirm on preprod, separately: when a purchase or top-up fails on chain (a race
+   for the last licence, say), the payer's transfer fails with it.
+4. A lawyer, before real money or real growers: whether issuing credit for payments made off
+   chain keeps us out of money transmission (we believe it does, since nothing is received or
+   sent, but that is for them to say); what on-chain payment would add for an offer that opts
+   in; and what recording cannabis licences and royalty credit means after the federal hemp
+   redefinition takes effect on 12 November 2026.
 5. A new deployment record and filing for this contract. The filed record says no VeilCore
-   circuit moves tokens; that stays true of the live contracts, not of this one.
-6. Both founders sign off.
+   circuit moves tokens: true of this contract by default too, but not of an offer that opts
+   into on-chain payment.
+6. **Upgrades.** The deploy code retires the maintenance authority, so a deployed royalties
+   contract can never be changed; that is unchanged here. The founders want upgradability:
+   versioned upgrades are being designed on another branch, and must be settled before
+   mainnet.
+7. Both founders sign off.
 
 ## Reviews
+
+- **Protocol 4 (9 October 2026, issuing instead of paying):** built and tested in one
+  session (contract tests `royalties-credit.test.ts`, 20; client tests
+  `bboard-cli/src/royalties-credit.test.ts`, 14, including issuing without the key, on the
+  wrong offer, twice, by a licensee, skipping ancestors' shares, with a replaced key). **Not
+  yet reviewed by a separate agent;** the next review pass should start here.
 
 All review passes were run by separate AI agents that had not seen the work being reviewed.
 None is a human or outside audit.

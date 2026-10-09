@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { type Interface } from 'node:readline/promises';
 import { type Logger } from 'pino';
+import { ContractState } from '@midnight-ntwrk/compact-runtime';
 import { pureCircuits as C } from '../../contract/src/managed/veilcore/contract/index.js';
 import { royaltiesPureCircuits as R } from '../../contract/src/royalties.js';
 import {
@@ -90,6 +91,27 @@ const issued = async () => {
   return { chain, breeder, grower, B, wB, posted, offer: posted.offer, card: posted.card, licence: req };
 };
 
+/** A fake indexer that returns the royalties state right now as the presentation `txId`. */
+const indexerShowsNow = (chain: Chain): void => {
+  const cs = new ContractState();
+  cs.data = chain.ctx.currentQueryContext.state;
+  const stateHex = Buffer.from(cs.serialize()).toString('hex');
+  vi.stubGlobal('fetch', async () => ({
+    ok: true,
+    json: async () => ({
+      data: {
+        transactions: [
+          {
+            identifiers: ['abcd'],
+            transactionResult: { status: 'SUCCESS' },
+            contractActions: [{ address: ROYALTIES, state: stateHex, entryPoint: 'proveLicense' }],
+          },
+        ],
+      },
+    }),
+  }));
+};
+
 const raw = (api: RoyaltiesAPI, circuit: string, input: object, f: (c: any) => Promise<any>) =>
   (api as any).call(circuit, input, f);
 
@@ -132,6 +154,7 @@ describe('the preprod run, as the menu walks it (docs/royalties-preprod-run.md)'
     await handleRoyaltiesChoice('54', s54.ctx);
     expect(s54.said()).toMatch(/payment: off chain; the breeder issues licences and credit/);
     expect(s54.said()).toMatch(/list price 1\.000000 NIGHT/);
+    expect(s54.said()).toMatch(/no wallet \(paid off chain\)/);
     const licenceCard = fresh('licence-card.json');
     const s84 = menu(Bw.api, [offerCard, licenceCard, 'yes']);
     await handleRoyaltiesChoice('84', s84.ctx);
@@ -163,6 +186,7 @@ describe('the preprod run, as the menu walks it (docs/royalties-preprod-run.md)'
     expect(s83.said()).toMatch(/not the offer, the licensee or the amount/);
     expect(s83.said()).toMatch(/Send it anyway\?/);
     expect(s83.said()).toMatch(/Issued\. Transaction/);
+    expect(s83.said()).toMatch(/Issued on this offer from this computer so far: 1\.000000 NIGHT in 1 issuance\(s\)/);
     expect(chain.lastSpends).toEqual([]);
 
     // The breeder takes a licence and credit of its own, so the grower's settlement is not the newest.
@@ -194,6 +218,26 @@ describe('the preprod run, as the menu walks it (docs/royalties-preprod-run.md)'
     expect(s55.said()).toMatch(/period TEST-1 {2}units 5/);
     expect(s55.said()).toMatch(/settled 5 unit\(s\), worth 0\.500000 NIGHT; this computer issued 1\.300000 NIGHT/);
     expect(s55.said()).not.toMatch(/WARNING/);
+
+    // Steps 9 to 15: a licence request, answered (send anyway), checked, revoked, refused.
+    const request = fresh('request.json');
+    await handleRoyaltiesChoice('66', menu(A.api, [offer, 'TEST-1', '3', '', '', request]).ctx);
+    const s64 = menu(Bw.api, [request, 'yes', 'yes']);
+    await handleRoyaltiesChoice('64', s64.ctx);
+    expect(s64.left()).toBe(0);
+    expect(s64.said()).toMatch(/Send it anyway\?[\s\S]*Answered\./);
+    indexerShowsNow(chain);
+    const s67 = menu(A.api, [request, 'abcd']);
+    await handleRoyaltiesChoice('67', s67.ctx);
+    expect(s67.said()).toMatch(/The variety's pedigree matches the VeilCore contract[\s\S]*ACCEPTED\./);
+    const s57 = menu(A.api, [read<LicenceCard>(licenceCard).licence, 'yes']);
+    await handleRoyaltiesChoice('57', s57.ctx);
+    expect(s57.said()).toMatch(/Revoked and sealed/);
+    const request2 = fresh('request2.json');
+    await handleRoyaltiesChoice('66', menu(A.api, [offer, 'TEST-1', '3', '', '', request2]).ctx);
+    await expect(handleRoyaltiesChoice('64', menu(Bw.api, [request2, 'yes']).ctx)).rejects.toThrow(
+      /No licence from that offer is held here that is live/,
+    );
 
     // No NIGHT moved through the contract at any step.
     expect(chain.ledger.topUpSeq).toBe(0n);
@@ -256,6 +300,7 @@ describe('the preprod run, as the menu walks it (docs/royalties-preprod-run.md)'
     expect(s85.said()).toMatch(/0\.300000 NIGHT \(1 licence\(s\), 1 credit issuance\(s\)\)/);
     const s73 = menu(A.api, [hex(C.commit(K))]);
     await handleRoyaltiesChoice('73', s73.ctx);
+    expect(s73.said()).toMatch(/Pedigree: matches the VeilCore contract/);
     expect(s73.said()).toMatch(/Recorded as owed to its ancestors[\s\S]*parent .*0\.300000 NIGHT/);
   });
 
@@ -268,11 +313,16 @@ describe('the preprod run, as the menu walks it (docs/royalties-preprod-run.md)'
     const wallet = new Uint8Array(32).fill(1);
     const card3 = fresh('offer-card-3.json');
     vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    // Step 3's offer first (same terms file): part 3's posts 2 licences, so it is not taken for a repeat.
+    const t3 = file('t3.txt', 'terms 3');
     await handleRoyaltiesChoice(
       '53',
-      menu(A.api, [file('t3.txt', 'terms 3'), '', '1', '0.1', '3', '30', 'y', 'y', '', card3, 'yes'], { record: B })
-        .ctx,
+      menu(A.api, [t3, '', '1', '0.1', '3', '30', 'y', '', fresh('offer-card.json'), 'yes'], { record: B }).ctx,
     );
+    const s53 = menu(A.api, [t3, '', '1', '0.1', '2', '30', 'y', 'y', '', card3, 'yes'], { record: B });
+    await handleRoyaltiesChoice('53', s53.ctx);
+    expect(s53.left()).toBe(0);
+    expect(s53.said()).not.toMatch(/Post another offer/);
     expect(read<OfferCard>(card3).onChainPayment).toBe(true);
     const s58 = menu(Bw.api, [card3, fresh('lc3.json'), 'yes']);
     await handleRoyaltiesChoice('58', s58.ctx);

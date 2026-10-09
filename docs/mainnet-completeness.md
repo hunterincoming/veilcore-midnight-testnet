@@ -54,9 +54,9 @@ the evening of 5 October (kept outside the repo).
 
 ## After launch, or not blocking the contract deploy
 
-- **Site to SDK 0.15.0.** The registry moved on 6 October (`cfb2ee9`, which also fixed the two
-  attester Lows); the site still uses 0.13.0, which accepts small-order Ed25519 keys, and its
-  built-in `/docs/spec` is the 0.13.0 SPEC.
+- **Site to SDK 0.15.0.** Done on branch `fix/deepdive-8oct` (8 October): the site uses 0.15.0,
+  which refuses small-order Ed25519 keys, and its `/docs` pages are the SDK's `33fa929`. Live
+  once Hunter deploys the site (`npm run deploy:mainnet`).
 - **Round D "Still open"** (`docs/security-pass-4oct-roundD.md`), round C format gaps
   (below), SDK spec gaps (null attestation fields, challenge `state` unsigned), and the
   1024-active-licence test (`SLOW_TESTS=1`), never run to completion.

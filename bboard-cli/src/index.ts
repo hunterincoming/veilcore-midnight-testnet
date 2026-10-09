@@ -64,7 +64,8 @@ import {
   type Prompt,
 } from './prompt';
 import { privateStatePassword, settlePassword } from './password';
-import { chooseStore, openStores } from './private-store';
+import { chooseStore, openStores, storeDirFor } from './private-store';
+import { StoreInUseError, lockStoreDir } from './store-lock';
 import { guardProcess, watchState } from './state-watch';
 import { ChallengeFile } from './challenge-file';
 import { redactThisSession } from './logger-utils';
@@ -1133,6 +1134,15 @@ export const run = async (config: Config, testEnv: TestEnvironment, logger: Logg
   }
 
   try {
+    // One CLI per private-state store, held until this process ends: two at once overwrite
+    // each other's private state (store-lock.ts). Checked before anything is asked.
+    try {
+      lockStoreDir(storeDirFor(getNetworkId()));
+    } catch (e) {
+      if (!(e instanceof StoreInUseError)) throw e;
+      logger.error(e.message);
+      return;
+    }
     // Asked for up front, before the chain starts and the wallet syncs, so a password
     // midnight-js would refuse is found in the first second rather than after the sync.
     if (!(await settlePassword(askHidden, logger))) return;

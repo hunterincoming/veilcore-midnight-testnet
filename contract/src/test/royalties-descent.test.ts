@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import {
   RoyaltiesSimulator,
   R,
+  ISSUER,
   T0,
   type Caller,
 } from "./royalties-simulator.js";
@@ -145,6 +146,9 @@ const post = (
     payTo,
     5n,
     T0 + YEAR,
+    true,
+    R.adminCommit(ISSUER),
+    sim.freeIssuerSlot(),
     true,
   ).result as Uint8Array<ArrayBuffer>;
 
@@ -434,6 +438,9 @@ describe("what neither side can do", () => {
         5n,
         T0 + YEAR,
         true,
+        R.adminCommit(ISSUER),
+        sim.freeIssuerSlot(),
+        true,
       ),
     ).toThrow(/must take royalties/);
   });
@@ -521,6 +528,7 @@ describe("royalty top-ups with ancestors' shares", () => {
       rateCommit: o.rateCommit,
       expires: o.expires,
       split: o.split,
+      onChainPayment: o.onChainPayment,
     };
     return { sim, offer, opening };
   };
@@ -561,6 +569,7 @@ describe("royalty top-ups with ancestors' shares", () => {
         NIGHT,
         opening.rateCommit,
         opening.expires,
+        true,
         true,
       ),
       500n,
@@ -607,6 +616,9 @@ describe("royalty top-ups with ancestors' shares", () => {
         5n,
         T0 + YEAR,
         false,
+        R.adminCommit(ISSUER),
+        sim.freeIssuerSlot(),
+        true,
       ),
     ).toThrow(/does not open to a rate above zero/);
     sim.call({ code: b(63) }, "topUpSplit", offer, 500n);

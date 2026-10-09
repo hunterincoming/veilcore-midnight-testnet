@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import {
   RoyaltiesSimulator,
   R,
+  ISSUER,
   T0,
   type Caller,
 } from "./royalties-simulator.js";
@@ -65,6 +66,9 @@ const post = (
     5n,
     o.expires ?? EXPIRES,
     true,
+    R.adminCommit(ISSUER),
+    sim.freeIssuerSlot(),
+    true,
   ).result as Uint8Array<ArrayBuffer>;
 
 const opening = (sim: RoyaltiesSimulator, offer: Uint8Array) => {
@@ -76,6 +80,7 @@ const opening = (sim: RoyaltiesSimulator, offer: Uint8Array) => {
     rateCommit: o.rateCommit,
     expires: o.expires,
     split: o.split,
+    onChainPayment: o.onChainPayment,
   };
 };
 const buy = (sim: RoyaltiesSimulator, offer: Uint8Array, license = LIC) =>
@@ -168,6 +173,7 @@ describe("offers and sales", () => {
         R.rateCommit(RATE, SALT),
         EXPIRES,
         false,
+        true,
       ),
     );
     expect(path?.path.length).toBe(32);
@@ -249,6 +255,9 @@ describe("seals", () => {
       { bytes: b(42) },
       100n,
       EXPIRES,
+      true,
+      R.adminCommit(ISSUER),
+      sim.freeIssuerSlot(),
       true,
     ).result as Uint8Array;
     const eveLeaf = (n: number) => licenceKeyOf(b(60 + n), eves, EXPIRES);

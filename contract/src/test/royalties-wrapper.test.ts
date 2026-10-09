@@ -106,6 +106,9 @@ describe("the client's witnesses, through a whole licensee journey", () => {
           3n,
           EXPIRES,
           true,
+          R.adminCommit(b(6)),
+          7n,
+          true,
         ),
     ) as Uint8Array;
     const lic = b(10);
@@ -130,6 +133,7 @@ describe("the client's witnesses, through a whole licensee journey", () => {
       rateCommit: R.rateCommit(RATE, SALT),
       expires: EXPIRES,
       split: false,
+      onChainPayment: true,
     };
     const rate = { rate: RATE, salt: SALT };
     const topUp = (nonce: Uint8Array, amount: bigint) =>
@@ -213,6 +217,88 @@ describe("the client's witnesses, through a whole licensee journey", () => {
     expect(hex(k.ledger.lastPresentation)).toBe(
       hex(R.presentationTag(offer, q1, 25n, T0 + 3600n, b(80), b(60), true)),
     );
+    expect(k.ctx.currentPrivateState.input).toEqual({});
+  });
+
+  it("the breeder issues a licence and credit (no payment); the licensee settles against it", () => {
+    const k = new Client();
+    const issuer = b(6);
+    const offer = k.run(
+      { recordSecret: b(1), rate: { rate: RATE, salt: SALT } },
+      (c, ctx) =>
+        c.impureCircuits.postOffer(
+          ctx,
+          b(50),
+          R.adminCommit(b(5)),
+          b(20),
+          NIGHT,
+          1000n,
+          R.rateCommit(RATE, SALT),
+          { bytes: b(40) },
+          3n,
+          EXPIRES,
+          true,
+          R.adminCommit(issuer),
+          9n,
+          false,
+        ),
+    ) as Uint8Array;
+    const lic = b(10);
+    const key = licenceKeyOf(lic, offer, EXPIRES);
+    k.run(
+      {
+        adminSecret: b(5),
+        split: {
+          record: R.recordCommit(b(1)),
+          color: NIGHT,
+          total: 1000n,
+          now: T0,
+        },
+      },
+      (c, ctx) => c.impureCircuits.issueLicense(ctx, offer, key, 5n),
+    );
+    expect(hex(k.ledger.lastSale)).toBe(hex(key));
+    const op: OfferOpening = {
+      offer,
+      payTo: b(40),
+      color: NIGHT,
+      rateCommit: R.rateCommit(RATE, SALT),
+      expires: EXPIRES,
+      split: false,
+      onChainPayment: false,
+    };
+    // The issuer path is found by the client's own witness, from the issuer tree.
+    k.run(
+      {
+        issuerSecret: issuer,
+        opening: op,
+        code: R.topUpCode(R.spendKey(lic, offer), b(51)),
+        amount: 100n,
+      },
+      (c, ctx) => c.impureCircuits.issueCredit(ctx),
+    );
+    expect(k.ledger.noteSeen.member(noteOf(lic, b(51), op, 100n))).toBe(true);
+    k.run(
+      {
+        licenseSecret: lic,
+        opening: op,
+        expires: EXPIRES,
+        note: { nonce: b(51), amount: 100n },
+        rate: { rate: RATE, salt: SALT },
+        period: new Uint8Array(32).fill(1),
+        units: 20n,
+        index: 0n,
+      },
+      (c, ctx) => c.impureCircuits.settle(ctx),
+    );
+    expect(k.ledger.settleSeq).toBe(1n);
+    // The wrong issuer secret finds no path, and is refused.
+    expect(() =>
+      k.run(
+        { issuerSecret: b(5), opening: op, code: b(77), amount: 1n },
+        (c, ctx) => c.impureCircuits.issueCredit(ctx),
+      ),
+    ).toThrow(/credit issuer/);
     expect(k.ctx.currentPrivateState.input).toEqual({});
   });
 

@@ -19,6 +19,7 @@ export type {
   OfferOpening,
   NoteOpening,
   RateOpening,
+  Owed,
   Ledger as RoyaltiesLedger,
 } from "./managed/veilcore-royalties/contract/index.js";
 export const royaltiesLedger = Royalties.ledger;
@@ -28,6 +29,10 @@ export const royaltiesPureCircuits = Royalties.pureCircuits;
 export type RoyaltyInput = {
   readonly recordSecret?: Uint8Array;
   readonly adminSecret?: Uint8Array;
+  /** The offer's credit issuer secret, to issue credit. */
+  readonly issuerSecret?: Uint8Array;
+  /** The amount of credit a private issuance makes (it stays inside the note). */
+  readonly amount?: bigint;
   readonly licenseSecret?: Uint8Array;
   /** The offer a licence is from, and the licence's end date. */
   readonly offer?: Uint8Array;
@@ -36,9 +41,9 @@ export type RoyaltyInput = {
   /** A settlement's (or a paid-up presentation's) period and units. */
   readonly period?: Uint8Array;
   readonly units?: bigint;
-  /** A top-up's or settlement's offer, opened privately. */
+  /** An issuance's, top-up's or settlement's offer, opened privately. */
   readonly opening?: Royalties.OfferOpening;
-  /** A top-up's code. */
+  /** An issuance's or top-up's code. */
   readonly code?: Uint8Array;
   /** The note(s) a settlement or merge spends. */
   readonly note?: Royalties.NoteOpening;
@@ -56,9 +61,10 @@ export type RoyaltyInput = {
   /** Which settlement of this licence a settle is (0, 1, 2 ...). */
   readonly index?: bigint;
   /**
-   * A split payment (licence purchase or topUpSplit): the record whose ancestors are
-   * paid, the token, the amount, and the time to judge links' end dates by. The witness
-   * works out each ancestor's amount from the ledger (splitAmountsFor).
+   * A split payment (licence purchase or topUpSplit) or a record of what is owed (a licence
+   * or split credit issued off chain): the record whose ancestors are owed, the token, the
+   * amount, and the time to judge links' end dates by. The witness works out each
+   * ancestor's amount from the ledger (splitAmountsFor).
    */
   readonly split?: {
     readonly record: Uint8Array;
@@ -107,6 +113,8 @@ export type HeldOfferCard = {
   readonly rate: string;
   readonly rateSalt: string;
   readonly split?: boolean;
+  /** Whether the offer takes payment through the contract. Missing means no. */
+  readonly onChainPayment?: boolean;
 };
 
 /** The terms of a descent link, as hex and decimal strings (api/src/royalties-api.ts LinkTermsCard). */
@@ -129,6 +137,20 @@ export type HeldLinkTerms = {
 export type RoyaltiesHeld = {
   /** Offer id -> the admin secret this party runs it with. */
   readonly admins: Readonly<Record<string, string>>;
+  /** Offer id -> the credit issuer secret this party issues its credit with. */
+  readonly issuers?: Readonly<Record<string, string>>;
+  /**
+   * Credit this party issued, kept for its own books (what it acknowledged, to set against
+   * what its licensees settle): the offer, the note on chain, the amount, the code's
+   * fingerprint, and when (Unix seconds).
+   */
+  readonly issued?: readonly {
+    readonly offer: string;
+    readonly note: string;
+    readonly amount: string;
+    readonly fingerprint: string;
+    readonly at: string;
+  }[];
   readonly licences: readonly HeldLicence[];
   readonly receipts: readonly HeldReceipt[];
   /** Offer id -> the offer card (rate and salt) this party was given or made. */
@@ -199,7 +221,21 @@ const absentPath = (leaf: Uint8Array, depth: number) => ({
 });
 
 export const offerLeafOf = (o: Royalties.OfferOpening): Uint8Array =>
-  C.offerLeaf(o.offer, o.payTo, o.color, o.rateCommit, o.expires, o.split);
+  C.offerLeaf(
+    o.offer,
+    o.payTo,
+    o.color,
+    o.rateCommit,
+    o.expires,
+    o.split,
+    o.onChainPayment,
+  );
+
+/** An offer's issuer leaf for the credit issuer secret `issuer`. */
+export const issuerLeafOf = (
+  o: Royalties.OfferOpening,
+  issuer: Uint8Array,
+): Uint8Array => C.issuerLeaf(offerLeafOf(o), C.adminCommit(issuer));
 
 /** Places in a pedigree chart, and the share denominator at each (basis points, halved per generation). */
 export const CHART_PLACES = 14;
@@ -278,6 +314,25 @@ export const royaltiesWitnesses: W = {
   adminSecret: ({ privateState }: Ctx) => [
     privateState,
     need(privateState.input.adminSecret, "the offer's admin secret"),
+  ],
+  issuerSecret: ({ privateState }: Ctx) => [
+    privateState,
+    need(privateState.input.issuerSecret, "the offer's credit issuer secret"),
+  ],
+  issuerPath: ({ privateState, ledger }: Ctx) => {
+    const i = privateState.input;
+    const leaf = issuerLeafOf(
+      need(i.opening, "the offer opening"),
+      need(i.issuerSecret, "the offer's credit issuer secret"),
+    );
+    return [
+      privateState,
+      ledger.issuerLeaves.findPathForLeaf(leaf) ?? absentPath(leaf, 32),
+    ];
+  },
+  creditAmount: ({ privateState }: Ctx) => [
+    privateState,
+    need(privateState.input.amount, "the amount of credit"),
   ],
   licenseSecret: ({ privateState }: Ctx) => [
     privateState,

@@ -28,11 +28,22 @@ export const R = pureCircuits;
 const COIN = "0".repeat(64);
 const ZERO = new Uint8Array(32);
 export const T0 = 1_800_000_000n;
+/** The credit issuer secret tests post offers with unless they say otherwise. */
+export const ISSUER = (() => {
+  const out = new Uint8Array(32);
+  out[0] = 0x15;
+  out[31] = 0x50;
+  return out;
+})();
 
 /** What the caller holds for one call. Anything not given makes the witness throw. */
 export type Caller = {
   record?: Uint8Array;
   admin?: Uint8Array;
+  /** An offer's credit issuer secret, and for a private issuance the amount and optionally the path. */
+  issuer?: Uint8Array;
+  amount?: bigint;
+  issuerPath?: MerkleTreePath<Uint8Array>;
   license?: Uint8Array;
   /** For a presentation: the offer, the licence's end date, the verifier's challenge. */
   offer?: Uint8Array;
@@ -55,8 +66,9 @@ export type Caller = {
   notePath2?: MerkleTreePath<Uint8Array>;
   rate?: RateOpening;
   /**
-   * For a split payment (buyLicense, topUpSplit): each place's amount. Left out, the
-   * simulator works it out from the offer and amount the call names, as a client would.
+   * For a split payment (buyLicense, topUpSplit) or a record of what is owed (issueLicense,
+   * issueCreditSplit): each place's amount. Left out, the simulator works it out from the
+   * offer and amount the call names, as a client would.
    */
   split?: bigint[];
   /** For a presentation by a delegate: the presentation key and spending key instead of the licence secret. */
@@ -116,7 +128,15 @@ export const stubPath = (
 });
 
 export const offerLeafOf = (o: OfferOpening): Uint8Array =>
-  R.offerLeaf(o.offer, o.payTo, o.color, o.rateCommit, o.expires, o.split);
+  R.offerLeaf(
+    o.offer,
+    o.payTo,
+    o.color,
+    o.rateCommit,
+    o.expires,
+    o.split,
+    o.onChainPayment,
+  );
 
 /** The note a licensee's secret, nonce, offer and amount make. */
 export const noteOf = (
@@ -163,6 +183,7 @@ export class RoyaltiesSimulator {
     spends: [],
   };
   private nextSlot = 0n;
+  private nextIssuerSlot = 0n;
   /** Block time in seconds. Tests move it with `advance`. */
   now = T0;
 
@@ -190,6 +211,14 @@ export class RoyaltiesSimulator {
     let s = this.nextSlot;
     while (this.state.licenseAtSlot.member(s)) s++;
     this.nextSlot = s + 1n;
+    return s;
+  }
+
+  /** A place in the issuer tree no offer has taken. */
+  freeIssuerSlot(): bigint {
+    let s = this.nextIssuerSlot;
+    while (this.state.issuerSlotTaken.member(s)) s++;
+    this.nextIssuerSlot = s + 1n;
     return s;
   }
 
@@ -308,13 +337,11 @@ export class RoyaltiesSimulator {
     if (who.split !== undefined) return who;
     const l = this.state;
     const offer = args[0] as Uint8Array;
-    if (
-      (circuit !== "buyLicense" && circuit !== "topUpSplit") ||
-      !l.offers.member(offer)
-    )
-      return who;
+    const byPrice = circuit === "buyLicense" || circuit === "issueLicense";
+    const byAmount = circuit === "topUpSplit" || circuit === "issueCreditSplit";
+    if ((!byPrice && !byAmount) || !l.offers.member(offer)) return who;
     const o = l.offers.lookup(offer);
-    const total = circuit === "buyLicense" ? o.price : (args[1] as bigint);
+    const total = byPrice ? o.price : (args[1] as bigint);
     return {
       ...who,
       split: splitAmountsFor(l, o.record, o.color, total, this.now),
@@ -362,6 +389,26 @@ export class RoyaltiesSimulator {
       adminSecret: (c) => [
         c.privateState,
         need(who.admin, "an offer admin secret"),
+      ],
+      issuerSecret: (c) => [
+        c.privateState,
+        need(who.issuer, "a credit issuer secret"),
+      ],
+      issuerPath: (c) => {
+        const leaf = R.issuerLeaf(
+          offerLeafOf(offerOf()),
+          R.adminCommit(need(who.issuer, "a credit issuer secret")),
+        );
+        return [
+          c.privateState,
+          who.issuerPath ??
+            this.state.issuerLeaves.findPathForLeaf(leaf) ??
+            stubPath(leaf, 32),
+        ];
+      },
+      creditAmount: (c) => [
+        c.privateState,
+        need(who.amount, "an amount of credit"),
       ],
       licenseSecret: (c) => [c.privateState, lic()],
       presentationOffer: (c) => [

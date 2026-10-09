@@ -12,6 +12,7 @@ import {
   type Caller,
   R,
   RoyaltiesSimulator,
+  ISSUER,
   T0,
   changeNonceOf,
   hex,
@@ -63,6 +64,9 @@ type OfferOpts = {
   payTo?: { bytes: Uint8Array };
   revocable?: boolean;
   expires?: bigint;
+  /** The credit issuer secret, and whether licences are bought and credit topped up on chain (default yes here). */
+  issuer?: Uint8Array;
+  onChain?: boolean;
 };
 
 /** The masked units of the settlement that made the latest note. */
@@ -88,6 +92,9 @@ const post = (sim: RoyaltiesSimulator, o: OfferOpts = {}): Uint8Array =>
     o.count ?? 3n,
     o.expires ?? EXPIRES,
     o.revocable ?? true,
+    R.adminCommit(o.issuer ?? ISSUER),
+    sim.freeIssuerSlot(),
+    o.onChain ?? true,
   ).result as Uint8Array;
 
 const withOffer = (o: OfferOpts = {}) => {
@@ -114,6 +121,7 @@ const openingOf = (
     rateCommit: o.rateCommit,
     expires: o.expires,
     split: o.split,
+    onChainPayment: o.onChainPayment,
   };
 };
 
@@ -265,7 +273,15 @@ describe("one record, two contracts", () => {
     expect(hex(o.rateCommit)).toBe(hex(R.rateCommit(RATE, SALT)));
     expect(
       sim.state.offerLeaves.findPathForLeaf(
-        R.offerLeaf(offer, WALLET.bytes, NIGHT, o.rateCommit, EXPIRES, false),
+        R.offerLeaf(
+          offer,
+          WALLET.bytes,
+          NIGHT,
+          o.rateCommit,
+          EXPIRES,
+          false,
+          true,
+        ),
       ),
     ).toBeDefined();
   });
@@ -294,6 +310,9 @@ describe("offers", () => {
         WALLET,
         count,
         expires,
+        true,
+        R.adminCommit(ISSUER),
+        sim.freeIssuerSlot(),
         true,
       );
     expect(() => raw(NIGHT, TERMS, 1n, 1n, EXPIRES)).toThrow(/admin/);

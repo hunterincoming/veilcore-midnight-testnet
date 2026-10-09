@@ -376,6 +376,30 @@ on-chain licensing projects, the academic papers, and Midnight's own code.
     use. It hides the offer only among the offers that could have issued (see "How issuing
     credit stays private").
 
+## One licence, not two
+
+The main contract (live on mainnet) already has licences: issued by a record's identity,
+countersigned by the licensee, presentable without naming either, revocable and
+transferable. This contract issues its own licences under an offer. Two places that both say
+"licensed" is one too many: at scale a buyer, a regulator or a court asks which one is the
+licence, and a breeder has to revoke in both.
+
+**The rule: the main contract's licence is the licence.** It is the grant: who may grow the
+variety, from whom, revoked and transferred there. This contract is the books kept against
+it: credit issued, periods settled, what ancestors are owed. A royalties licence is the
+account those books are kept in, not a second grant.
+
+**How the two get tied together.** On ledger 9 a contract can call another. Then
+`issueLicense` here takes the main contract's licence key and refuses unless that licence is
+ACTIVE under the offer's record identity, and a revocation there ends the account here. Until
+then nothing on chain ties them, and no client-side tie is built now: it would be replaced at
+ledger 9 and would still not be a check anyone else can rely on. So this contract does not go
+on mainnet with licences of its own: see "Before mainnet", item 9. If ledger 9 is late and
+the founders want royalties live before it, the fallback is a client-side tie (the licensee
+proves a live main-contract licence from the offer's record, with a challenge bound to their
+licence card, before the breeder's client will issue; one revoke in the breeder's client
+revokes both) and that must be built and reviewed first.
+
 ## Other limits
 
 - **The record is checked off chain.** Ledger 8 has no calls between contracts. The client
@@ -443,9 +467,13 @@ on-chain licensing projects, the academic papers, and Midnight's own code.
    before any privacy claim about who sent a transaction.
 7. **Upgrades.** The deploy code retires the maintenance authority, so a deployed royalties
    contract can never be changed; that is unchanged here. The founders want upgradability:
-   versioned upgrades are being designed on another branch, and must be settled before
-   mainnet. A later version that takes payment on chain would be such a new version.
+   versioned upgrades ("versions, not edits") are designed in `docs/upgrades.md` on main,
+   and this contract must follow that design before mainnet. A later version that takes
+   payment on chain would be such a new version.
 8. Both founders sign off.
+9. **One licence.** The main contract's licence is checked on chain at issue (ledger 9), or
+   the client-side tie in "One licence, not two" is built and reviewed. Not with two
+   separate licence systems.
 
 ## Reviews
 

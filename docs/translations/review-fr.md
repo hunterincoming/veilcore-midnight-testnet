@@ -1,5 +1,7 @@
 # French translation of the public pages: for checking
 
+**Out of date:** the site's English text changed on 8 October 2026, so the pairs below no longer match the site. This worksheet needs regenerating before anyone checks it.
+
 Status: DRAFT. Not live. Please read each pair and correct the French so it says exactly what the English says, in natural French.
 Keep every limitation and "does not" exactly; the English is careful not to overclaim. Mark anything you change, or write a note under it.
 

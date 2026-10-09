@@ -1,10 +1,11 @@
 # Royalties on offspring ("descent links"): design, as built
 
-**Status: BUILT on the test-network royalties contract, protocol 3; recorded dues for
-payments made off chain added in protocol 4, 9 October 2026. Not deployed anywhere.**
+**Status: BUILT on the test-network royalties contract, protocol 3; in protocol 4 (9
+October 2026) dues are recorded, exactly, for payments made off chain, and no circuit pays
+anyone. Not deployed anywhere.**
 Contract: `contract/src/veilcore-royalties.compact`. Client: `api/src/royalties-api.ts`. Menu
 options 69 to 76, 81 and 85 (73 also shows what a variety owes). Tests:
-`contract/src/test/royalties-descent.test.ts` (22) and `royalties-credit.test.ts` (the
+`contract/src/test/royalties-descent.test.ts` (22, including the chunked-issuance case) and `royalties-credit.test.ts` (the
 recorded dues), `royalties-hardening.test.ts`, the client end to end in
 `bboard-cli/src/royalties-journey.test.ts` and `royalties-credit.test.ts`, and each attack
 on the client in `bboard-cli/src/royalties-attacks.test.ts`. The live mainnet contracts are
@@ -18,8 +19,8 @@ whenever the new variety's breeder issues a licence or royalty credit for a paym
 chain, the contract writes down, in the same transaction, exactly what each ancestor is owed
 from it. It cannot be skipped, changed or left out. The contract cannot make anyone pay that
 debt, because it never sees the money; it makes sure both sides work from the same record.
-Where an offer takes payment through the contract instead, each ancestor is paid its share
-in the same transaction, as before.
+No circuit pays an ancestor: version 3's split payments were cut with every other payment
+(see `docs/royalties-design.md`, "Why no circuit can move money").
 
 The design was attacked three times before any code, and the built code twice more, all
 by separate AI review agents (not a human or an outside audit). What each round found is
@@ -55,41 +56,35 @@ enforced. That is what this copies.
 a parent record, with exact terms; the parent's holder confirms those exact terms (the
 confirmation names a hash of every term, so a link changed in between is refused).
 Nothing binds until confirmed. Once confirmed, the child can change nothing and nothing is
-removed. The parent's separate payee key can move where it is paid, or LOWER the terms (a
-smaller share or fee, an earlier end: a protection that ended, a dispute settled), never
-raise them, and at most once in 30 days, so it cannot stall the child's sales at will.
-Lowering a share to a tiny one that is not zero can still stall a descendant's offer: every
-share must come to at least one unit of a payment, so at 0.05% an offer priced under 2,000
-units (4,000 for a grandparent's place, 8,000 for a great-grandparent's) can no longer be
-sold or issued from, and its breeder must post a new one at a higher price; credit (issued or
-topped up) under the same floor is refused, also for a closed or ended offer still in its 30
-days after the end. The parent's
-client lists every such offer and asks first (menu 81); zero is always safe.
+removed. The parent's separate payee key can LOWER the terms (a smaller share or fee, an
+earlier end: a protection that ended, a dispute settled), never raise them, and at most
+once in 30 days (menu 81). Since what is owed is recorded exactly, not paid, no share is
+too small to record: lowering never stalls a descendant's offers.
 
 | Term | Meaning |
 |---|---|
-| fee | A fixed amount per licence the new variety sells, paid to direct parents only. The livestock certificate. |
-| share | Basis points of the new variety's licence prices and royalty credit, at most 50%. |
+| fee | A fixed amount per licence the new variety issues, owed to direct parents only. The livestock certificate. |
+| share | Basis points of the new variety's licence list prices and royalty credit, at most 50%. |
 | generations | How far the share follows: 1 to 3. |
-| until | When the link ends. Ended links pay nothing, and no longer count toward the cap, the token rule or the split. An offer posted while a share still ran keeps naming itself on top-ups; a new offer posted after it ended does not. |
-| token | What the fee and share are paid in. |
-| payee | The wallet, and the key that may move it. |
+| until | When the link ends. Ended links are owed nothing, and no longer count toward the cap or the unit rule. An offer posted while a share still ran keeps issuing its credit in the open (naming itself); a new offer posted after it ended does not. |
+| unit | What the fee and share are counted in (text, as an offer's unit: "USD cents"). Owed only on the descendant's offers counted in the same unit. |
+| payee | The key that may lower the terms. |
 
 The parent writes the terms (menu 69 makes a terms card, optionally naming the child's
 record, so no other record can use it); the child proposes exactly those (70), after its
-client shows the parent's record, the token and what the parent's own chart passes down,
+client shows the parent's record, the unit and what the parent's own chart passes down,
 and refuses a card whose parent is not the one the child proposed in the main contract;
 the parent's client confirms only terms it made (71). The child's client also refuses a
 card whose parent record is no longer its identity's current record (after a key change or
-a recovery from theft, whoever holds the old secret could still confirm, and be paid).
+a recovery from theft, whoever holds the old secret could still confirm, and be owed).
 
 **2. A pedigree chart, flattened once.** When its links are confirmed, the child makes
 its ancestors final (72), once and forever. The contract builds the chart from data it
 holds: 14 fixed places, like a paper pedigree chart: 2 parents, 4 grandparents, 8
 great-grandparents. Each grandparent and great-grandparent place is copied from the
 parent's own chart, and only while its link still runs that many generations. A share is
-owed in full to a parent, half to a grandparent and a quarter to a great-grandparent,
-rounded down (the Iowa halving rule). Nothing is merged or dropped; the chart cannot
+owed in full to a parent, half to a grandparent and a quarter to a great-grandparent (the
+Iowa halving rule), kept exactly as a weight in 40,000ths (quarter basis points). Nothing is merged or dropped; the chart cannot
 overflow because each record has at most two parents.
 
 Rules the contract enforces:
@@ -103,46 +98,44 @@ Rules the contract enforces:
 - At most two confirmed parents.
 - **All shares together at most 50%**, checked when each link is confirmed, counting what
   the parent's chart passes down. Whoever confirms second sees the whole picture.
-- **All shares in one token**, also checked when each link is confirmed. Two ancestors
-  asking for shares in different tokens are refused up front, not discovered later.
+- **All shares in one unit**, also checked when each link is confirmed. Two ancestors
+  asking for shares in different units are refused up front, not discovered later.
 - A record that replaced an earlier one (a key change in the main contract) can take
   over its chart unchanged (75); clients accept this only for one identity.
 
-**3. Paid off chain (the default): what is owed is recorded in the same transaction.**
+**3. What is owed is recorded in the same transaction, exactly.**
 
-- **Licence issued:** the breeder's `issueLicense` writes into `owed`, under the licence key,
-  each ancestor's share of the offer's list price and each parent's fee. Worked out and
-  checked by the contract, rounded down, every running share at least one unit, exactly what
-  a purchase through the contract would have paid. Nothing is written for a variety whose
+- **Licence issued:** the breeder's `issueLicense` writes an entry into `owed`, under the
+  licence key: the offer's list price (`total`), each chart place's weight, and each parent's
+  fee. Nothing is rounded on chain: what a place is owed is total x weight / 40,000, and a
+  reader adds up the entries before dividing, once. Nothing is written for a variety whose
   ancestors take nothing.
 - **Royalty credit issued:** an offer whose ancestors take a royalty share must take
-  royalties, and its credit is issued through `issueCreditSplit`, which writes each share of
-  the amount into `owed`, under the credit note. **That issuance names the offer: anyone can
+  royalties, and its credit is issued through `issueCreditSplit`, which writes the amount and
+  the weights into `owed`, under the credit note. **That issuance names the offer: anyone can
   see which variety it is for and how much.** Offers whose ancestors take no royalty share
   keep the private issuance. The offer's leaf records which kind it is, so the private path
   cannot be used to skip the record.
-- **Reading it:** each entry names the descendant's record and offer and holds an amount per
-  chart place, so a parent (menu 85), the descendant (73) or anyone adds up what is owed to
-  each ancestor. The contract never removes an entry.
-
-**4. Paid on chain (an offer that opts in): money split in the same transaction.**
-
-- **Licence purchase:** the buyer pays each share of the price and each parent's fee; the
-  rest goes to the new variety's breeder. All in one call; the contract holds nothing.
-- **Royalty top-ups** go through `topUpSplit`, which pays each share, and names the offer as
-  above.
+- **Exact, so issuing in pieces changes nothing.** An earlier build recorded each share
+  rounded down, so 100 issuances of 19 at 10% recorded 100 instead of 190. Keeping the amount
+  and the weight, and dividing once when reading, records 1,900 x 10% = 190 however it is cut
+  up (descent test "chunked").
+- **Reading it:** each entry names the descendant's record and offer, so a parent (menu 85),
+  the descendant (73) or anyone adds up what is owed to each ancestor. 85 matches the
+  ancestor by identity through the main contract, so links made by an earlier record of the
+  same identity (before a key change) are counted. The contract never removes an entry.
 
 **Settlement and presentations: unchanged.** The books stay private.
 
 ## What clients check
 
 Ledger 8 has no calls between contracts, so the royalties contract cannot see the main
-contract's pedigree. Clients check it when a licence is asked for or bought, at a paid
-top-up, and show it in a verifier's check:
+contract's pedigree. Clients check it when a licence is asked for, show it to the breeder
+before issuing, and show it in a verifier's check:
 
 1. **A parent a chart names that the main contract does not confirm is shown as a
-   warning** (with what it takes). It is paid out of this variety's price, plus its fee on
-   top, which the buyer sees before paying. It is not refused: a confirmed link can never
+   warning** (with what it takes). It is owed a share of this variety's price, plus its
+   fee, which the breeder sees before issuing. It is not refused: a confirmed link can never
    be dropped, so refusing would strand the variety for good, and nobody else is harmed.
 2. **A confirmed parent left out of the chart is refused if the two agreed terms here**
    (the child chose to leave out a confirmed link). A parent that never set terms, or
@@ -151,12 +144,10 @@ top-up, and show it in a verifier's check:
 3. The same for every ancestor in the chart, three generations up.
 4. A warning when a parent record is no longer its identity's current record: stronger
    when it was recovered from theft (its link may have been made by the thief). An offer
-   whose OWN record was recovered from theft is refused at top-ups and in a verifier's check
-   (the offer may be the thief's).
-5. Before paying, the buyer or payer sees every place in the chart: who, what share,
-   what fee, until when.
-6. A payment within ten minutes of a link's end date is refused, since block time and
-   the client's clock could disagree.
+   whose OWN record was recovered from theft is refused when a licence is asked for and in a
+   verifier's check (the offer may be the thief's).
+5. Before issuing a licence or credit, the breeder sees every place in the chart: who,
+   what share, what fee, until when, and what it will record as owed.
 
 The child's own client shows the chart before making its ancestors final (72), and
 refuses while a parentage proposal is waiting in the main contract. It stops, and asks the
@@ -173,64 +164,60 @@ not joined the royalties contract to check.
 ## What it can and cannot do (say it plainly)
 
 - **On chain, for declared descent:** the terms both sides confirmed are recorded as owed on
-  every licence and every credit the descendant issues (or, where payment goes through the
-  contract, paid on every purchase and split top-up). Neither side can change them, and
-  nobody has to read anyone's books.
-- **Not on chain: paying what is owed.** When money moves off chain, the contract cannot
+  every licence and every credit the descendant issues, exactly. Neither side can change
+  them, and nobody has to read anyone's books.
+- **Not on chain: paying what is owed.** The money moves off chain, so the contract cannot
   make the descendant pay its ancestors; it makes the debt a fact both sides can read and
   neither can dispute or erase, entry by entry. Collecting it is the parties' business, under
-  their terms, as with any invoice. A parent that wants payment it does not have to chase
-  can make that a condition of its terms (that the descendant's offers take payment on
-  chain); the contract does not yet enforce that (see "Next").
+  their terms, as with any invoice. **The ancestors' guarantee is this public `owed` record,
+  plus the per-licence fee as their floor.**
 - **Credit the descendant under-issues:** if it issues a licensee less credit than it was
   paid, the shares recorded are smaller, but the licensee cannot settle as many units, so a
   presentation of its real units fails. A descendant and licensee who collude to declare
   fewer units lower what the ancestors are owed, as they would lower what the breeder is
   paid.
-- **The child sets the price and the royalty rate.** A low price or a low rate lowers
-  every share. The fee per licence is the floor an ancestor can rely on. Shares round down,
-  and an amount too small for every running share to come to at least one unit is refused:
-  at 10%, a licence listed, or credit issued or paid, under 10 units (under 20 with a
-  grandparent at 10%, under 40 with a great-grandparent). No ancestor's share is ever
-  silently zero, paid or recorded.
+- **The list price and the royalty rate are the descendant's own numbers.** A licence listed
+  at 10 records 1 owed at 10%, whatever was charged for it on the side; a low rate needs less
+  credit per unit settled, and less credit records less owed. **The fee per licence is the
+  only real floor** an ancestor can rely on; the shares are as honest as the descendant's
+  numbers, and an ancestor who doubts them needs an audit right in the agreement.
 - **Not on chain: declaring.** A breeder can anchor a new variety with no parents, or
   confirm "sock" parents from records they control (which also takes the two parent
   places, and the 50%). Clients show the pedigree; DNA evidence catches the rest, as it
   does today (the ISF maize guidelines shift the burden of proof at 91% similarity).
 - **A parent that confirms parentage without terms gets nothing.** Parents should confirm
   the main-contract parentage only after the link is confirmed.
-- **Fees are per licence sold, not per grower.** A breeder that sells one big licence to a
+- **Fees are per licence issued, not per grower.** A breeder that issues one big licence to a
   company that sublicenses off chain pays one fee.
-- **Privacy cost of royalty shares:** split credit and split top-ups name the variety and the
+- **Privacy cost of royalty shares:** credit on such a variety names the variety and the
   amount, and anyone can add up a descendant's royalty credit. Fees and price shares cost
   nothing extra (a licence key and its offer are public anyway).
 - **Contract terms, not law.** Paying intermediate breeders and charging on ordinary
   crosses are what the parties agreed, not an essentially-derived-variety ruling. A claim
   outlasting a US patent may be unenforceable (Brulotte; Kimble v. Marvel).
 - **Key theft.** A thief holding a parent's key during the theft window could confirm
-  links with their own payee; clients warn about links from records later recovered from
+  links with their own payee key, and be owed; clients warn about links from records later recovered from
   theft, but the contract cannot undo them, just as the main contract cannot undo
   parentage a thief confirmed.
 - **A link confirmed by mistake is permanent for that record.** If a child proposed on a
   card from the wrong party and it was confirmed, the way out is a key change in the main
   contract: the new record has no links and links afresh (its offers are new offers).
-- **Not yet run on a real network.** A purchase with a full chart makes up to 17 payments
-  in one transaction (one to each of the 14 places, the rest to the breeder, and the two
-  parents' fees); that has run only on the simulator.
+- **Not yet run on a real network.** Issuing with a full 14-place chart has run only on the
+  simulator.
 
 ## Next (not built)
 
-- **A parent that insists on payment through the contract.** A link term saying "every offer
-  of a descendant must take payment on chain" would turn the recorded debt into an automatic
-  payment for parents who want that, at the cost of the descendant paying in a token on
-  chain. It is one flag in the link and one check when an offer is posted; left for the
-  founders to decide, since it brings money back on chain.
+- **Payment through a contract.** Paying each ancestor its share in the same transaction,
+  as version 3 did, needs a circuit that moves tokens, and there is no stablecoin on
+  Midnight yet. It returns, if the founders want it, in a later contract version deployed as
+  a new version once a stablecoin exists, not by changing this one. Until then the record
+  above is what an ancestor has.
 
-## Circuit sizes (rows, measured with `zkir mock-compile` from compiler 0.31.1 on 9 Oct 2026; the limit is 2^17 = 131,072)
+## Circuit sizes (rows, measured with `zkir mock-compile` from compiler 0.31.1 on 9 Oct 2026, after the cut; the limit is 2^17 = 131,072)
 
-issueLicense 22,289 · issueCreditSplit 30,248 · buyLicense 42,093 · topUpSplit 31,350 ·
-topUp 22,125 · settle 102,948 (79%) · confirmLink 26,940 · postOffer 41,251 · finaliseStack
-9,311 · proposeLink 9,557 · movePayee 4,964 · relaxLink 4,956.
+issueLicense 17,293 · issueCreditSplit 25,269 · settle 102,651 (78%) · confirmLink 24,474 ·
+postOffer 40,119 · finaliseStack 8,972 · proposeLink 9,278 · withdrawLink 8,552 · adoptStack
+4,611 · relaxLink 4,954.
 
 ## Review rounds
 
@@ -264,6 +251,12 @@ topUp 22,125 · settle 102,948 (79%) · confirmLink 26,940 · postOffer 41,251 �
   ancestor nothing, but the contract refuses it (corrected); a full chart's purchase makes
   17 payments, not 16; lowering a share to a tiny one could stall a descendant's offers (the
   parent's client now warns and asks first); top-ups no longer need the rate.
+- **Protocol 4, hostile review (9 October 2026):** issuing credit for a descendant in many
+  small pieces lost the ancestors' share to rounding (100 x 19 at 10% recorded 100, not 190;
+  now exact, with the amount kept in each entry); the docs implied the list price and rate
+  protect the ancestors (now said plainly: the fee is the only floor); 85 missed what was owed
+  to an earlier record of the same identity (now matched through the main contract). On-chain
+  payment, split payments and `movePayee` were cut from the contract.
 - **Round 5, checking the fixes:** a thief holding a parent's OLD record (after the owner
   recovered it) could still write terms and confirm, and be paid forever (the child's
   client now refuses a parent record that is not its identity's current one); a parent

@@ -9,7 +9,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { WebSocketServer } from 'ws';
 import { SeedWallet } from '../src/wallet';
 import { blockfrostMainnet, endpointsFor } from '../src/network';
-import { scrubText, urlSecrets } from '../src/terminal';
+import { scrubTerminal, scrubText, urlSecrets } from '../src/terminal';
 
 const FAKE_ID = 'mainnetFAKEPROJECTID0000';
 
@@ -89,5 +89,32 @@ describe('credentials in endpoint URLs', () => {
     process.stderr.write(Buffer.from(`as bytes: ${FAKE_ID}\n`));
     console.error('as console.error:', `wss://rpc.midnight-mainnet.blockfrost.io/?project_id=${FAKE_ID}`);
     expect(seen.join('')).not.toContain(FAKE_ID);
+  });
+});
+
+// Verification review: a secret split across two writes reached the terminal whole.
+describe('a secret split across writes', () => {
+  it('is caught: the possible start of a secret waits for the next write', () => {
+    scrubTerminal([FAKE_ID]); // installed already by SeedWallet.create above; this adds nothing new
+    seen.length = 0;
+    process.stderr.write('disconnected from wss://rpc/?project_id=mainnetFAKE');
+    process.stderr.write(Buffer.from('PROJECTID0000: 1006\n'));
+    const out = seen.join('');
+    expect(out).not.toContain(FAKE_ID);
+    expect(out).not.toContain('mainnetFAKE');
+    expect(out).toBe('disconnected from wss://rpc/?project_id=[redacted]: 1006\n');
+  });
+
+  it('loses nothing: a held tail that never becomes a secret is written shortly after', async () => {
+    seen.length = 0;
+    process.stdout.write('a prompt ending like the id: mainnet');
+    expect(seen.join('')).toBe('a prompt ending like the id: ');
+    await new Promise((r) => setTimeout(r, 60));
+    expect(seen.join('')).toBe('a prompt ending like the id: mainnet');
+    let called = false;
+    process.stdout.write('mainnetF', () => (called = true));
+    await new Promise((r) => setTimeout(r, 60));
+    expect(called).toBe(true);
+    expect(seen.join('')).toBe('a prompt ending like the id: mainnetmainnetF');
   });
 });

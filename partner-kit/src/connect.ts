@@ -32,8 +32,10 @@ export type ConnectOptions = {
   readonly publicDataProvider?: PublicDataProvider;
   /**
    * By default, a credential carried in an endpoint URL (a Blockfrost project id) is
-   * redacted from everything this process writes to stdout and stderr, since libraries
-   * print those URLs past any logger (terminal.ts). `false` leaves the terminal alone.
+   * redacted from everything written through process.stdout and process.stderr, since
+   * libraries print those URLs past any logger (terminal.ts; a logger that writes to the
+   * file descriptors directly, such as pino's default destination, is not covered).
+   * `false` leaves the terminal alone.
    */
   readonly scrubTerminal?: boolean;
   /**

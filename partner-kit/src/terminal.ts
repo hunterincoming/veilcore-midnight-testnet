@@ -10,8 +10,16 @@
 //
 // scrubTerminal wraps process.stdout.write and process.stderr.write once, for the life of
 // the process, and replaces every secret given to it, now or later, with [redacted]. Hex
-// secrets are matched in any case. SeedWallet.create and connect() call it with the
-// secret parts of any endpoint URL; pass `scrubTerminal: false` to either to opt out.
+// secrets are matched in any case. A secret split across two writes is caught too: the
+// end of a write that could be the start of a secret is held back until the next write
+// (or at most HOLD_MS, or the process's exit) shows whether it is. SeedWallet.create and
+// connect() call it with the secret parts of any endpoint URL; pass
+// `scrubTerminal: false` to either to opt out.
+//
+// What it does NOT cover: anything written to file descriptors 1 and 2 without going
+// through process.stdout / process.stderr. pino's default destination (sonic-boom) does
+// exactly that, so a pino logger given these URLs prints them unredacted: give such a
+// logger its own redaction, or a destination that writes through process.stdout.
 
 const secrets = new Set<string>();
 let installed = false;
@@ -48,10 +56,35 @@ export const urlSecrets = (urls: readonly (string | undefined)[]): string[] => {
   return [...found];
 };
 
+/** How long the possible start of a secret is held back before it is written as it is. */
+const HOLD_MS = 25;
+
 /**
- * Replace `values` with [redacted] in everything this process writes to stdout and stderr
- * from now on, by any code. Values shorter than 8 characters are ignored (they would
- * redact ordinary text). Safe to call again: later values are added.
+ * How many characters at the end of `text` could be the start of a secret, and so must
+ * wait for the next write before they are known to be harmless.
+ */
+const heldTail = (text: string): number => {
+  let keep = 0;
+  for (const s of secrets) {
+    const hex = /^[0-9a-fA-F]+$/.test(s);
+    const want = hex ? s.toLowerCase() : s;
+    for (let k = Math.min(s.length - 1, text.length); k > keep; k--) {
+      const tail = text.slice(text.length - k);
+      if ((hex ? tail.toLowerCase() : tail) === want.slice(0, k)) {
+        keep = k;
+        break;
+      }
+    }
+  }
+  return keep;
+};
+
+/**
+ * Replace `values` with [redacted] in everything written through process.stdout and
+ * process.stderr from now on, by any code (console included; not a writer that goes to
+ * file descriptors 1 and 2 directly, such as pino's default destination). Values shorter
+ * than 8 characters are ignored (they would redact ordinary text). Safe to call again:
+ * later values are added.
  */
 export const scrubTerminal = (values: readonly (string | undefined)[]): void => {
   for (const v of values) {
@@ -65,15 +98,42 @@ export const scrubTerminal = (values: readonly (string | undefined)[]): void => 
   installed = true;
   for (const stream of [process.stdout, process.stderr]) {
     const write = stream.write.bind(stream) as (...a: unknown[]) => boolean;
+    let pending = '';
+    let timer: NodeJS.Timeout | undefined;
+    const flush = (): void => {
+      if (timer !== undefined) clearTimeout(timer);
+      timer = undefined;
+      if (pending === '') return;
+      const p = pending;
+      pending = '';
+      write(scrubText(p));
+    };
+    process.once('exit', flush);
     stream.write = (chunk: unknown, ...rest: unknown[]): boolean => {
-      if (typeof chunk === 'string') return write(scrubText(chunk), ...rest);
-      if (chunk instanceof Uint8Array) {
+      const cb = typeof rest[rest.length - 1] === 'function' ? (rest.pop() as () => void) : undefined;
+      const encoding = typeof rest[0] === 'string' ? rest[0].toLowerCase() : undefined;
+      let text: string | undefined;
+      if (typeof chunk === 'string' && (encoding === undefined || encoding === 'utf8' || encoding === 'utf-8'))
+        text = chunk;
+      else if (chunk instanceof Uint8Array) {
         const bytes = Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength);
-        const text = bytes.toString('utf8');
+        const decoded = bytes.toString('utf8');
         // Only a chunk that is whole UTF-8 is rewritten; one cut mid-character passes as is.
-        if (Buffer.from(text, 'utf8').equals(bytes)) return write(scrubText(text), ...rest);
+        if (Buffer.from(decoded, 'utf8').equals(bytes)) text = decoded;
       }
-      return write(chunk, ...rest);
+      if (text === undefined) {
+        flush();
+        return cb === undefined ? write(chunk, ...rest) : write(chunk, ...rest, cb);
+      }
+      const all = scrubText(pending + text);
+      const keep = heldTail(all);
+      pending = all.slice(all.length - keep);
+      const out = all.slice(0, all.length - keep);
+      if (timer !== undefined) clearTimeout(timer);
+      timer = pending === '' ? undefined : setTimeout(flush, HOLD_MS).unref();
+      if (out !== '') return cb === undefined ? write(out) : write(out, cb);
+      if (cb !== undefined) process.nextTick(cb);
+      return true;
     };
   }
 };

@@ -73,8 +73,9 @@ export type SeedWalletOptions = {
   /**
    * The wallet SDK prints its node URL to stderr on every reconnect, past any logger; with
    * Blockfrost endpoints that URL carries the project id. By default, when an endpoint URL
-   * carries a credential, it is redacted from everything this process writes to stdout and
-   * stderr (terminal.ts). `false` leaves the terminal alone.
+   * carries a credential, it is redacted from everything written through process.stdout
+   * and process.stderr (terminal.ts; not from a logger that writes to the file descriptors
+   * directly, such as pino's default destination). `false` leaves the terminal alone.
    */
   readonly scrubTerminal?: boolean;
   /**

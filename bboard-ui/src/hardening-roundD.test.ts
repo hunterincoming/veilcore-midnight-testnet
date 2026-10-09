@@ -665,12 +665,17 @@ const PW = ['/opt/node-tools/node_modules/playwright', '/home/claude/.npm-global
 const CHROME = '/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
 const haveBrowser = Boolean(PW) && fs.existsSync(path.join(DIST, 'index.html')) && fs.existsSync(CHROME);
 
-const prodHeaders = (): Record<string, string> => {
+// The headers of the site as deployed: without vitest.config.ts's real-chain test values,
+// which only the chain module's unit tests are meant to see.
+const siteEnv = (): NodeJS.ProcessEnv =>
+  Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^VITE_(REAL_CHAIN|SPONSOR_URL|INDEXER)/.test(k)));
+
+const prodHeaders = (extra: Record<string, string> = {}): Record<string, string> => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vcfg-'));
   fs.mkdirSync(path.join(dir, '.vercel/output'), { recursive: true });
   const r = spawnSync(process.execPath, [path.resolve(HERE, '../../scripts/vercel-config.mjs')], {
     cwd: dir,
-    env: { ...process.env, VITE_API_BASE: API },
+    env: { ...siteEnv(), VITE_API_BASE: API, ...extra },
   });
   if (r.status !== 0) throw new Error(String(r.stderr));
   const cfg = JSON.parse(fs.readFileSync(path.join(dir, '.vercel/output/config.json'), 'utf8')) as {
@@ -1408,4 +1413,35 @@ describe.skipIf(!haveBrowser)('browser: built site under the production headers'
     expect(external.filter((e) => e.url.endsWith('/api/records')).length).toBe(1);
     await ctx.close();
   }, 60_000);
+});
+
+describe('headers for a build that sends transactions (test networks only)', () => {
+  const connectSrc = (h: Record<string, string>): string =>
+    /connect-src ([^;]+);/.exec(h['Content-Security-Policy'] ?? '')?.[1] ?? '';
+
+  it('adds exactly the sponsor and the network indexer, nothing else', () => {
+    const h = prodHeaders({
+      VITE_REAL_CHAIN: '1',
+      VITE_NETWORK_ID: 'preprod',
+      VITE_SPONSOR_URL: 'https://sponsor.example.org/',
+    });
+    expect(connectSrc(h).split(' ')).toEqual([
+      "'self'",
+      API,
+      'https://sponsor.example.org',
+      'https://indexer.preprod.midnight.network',
+      'wss://indexer.preprod.midnight.network',
+    ]);
+  });
+
+  it('refuses mainnet, and refuses a build with no sponsor', () => {
+    expect(() =>
+      prodHeaders({ VITE_REAL_CHAIN: '1', VITE_NETWORK_ID: 'mainnet', VITE_SPONSOR_URL: 'https://s.example.org' }),
+    ).toThrow(/test network only/);
+    expect(() => prodHeaders({ VITE_REAL_CHAIN: '1', VITE_NETWORK_ID: 'preprod' })).toThrow(/needs VITE_SPONSOR_URL/);
+  });
+
+  it('a site build without the flag gets the plain policy', () => {
+    expect(connectSrc(prodHeaders()).split(' ')).toEqual(["'self'", API]);
+  });
 });

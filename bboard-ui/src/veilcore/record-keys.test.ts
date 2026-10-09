@@ -64,7 +64,9 @@ describe('record secrets stay in the browser', () => {
     await new Promise((r) => setTimeout(r, 50)); // let the saves go out
 
     const puts = sent.filter((s) => s.includes('/api/records'));
-    expect(puts.length).toBeGreaterThan(3);
+    // At least one save each for the record, its pairing and its correction (the registry
+    // client on main sends one write per change), so the check below sees real traffic.
+    expect(puts.length).toBeGreaterThanOrEqual(3);
     const env = JSON.stringify(await sealEnvelope(records.getRecord(rec.id)!, 'holder'));
     // Neither secret, and not even the public on-chain identity: the registry knows which
     // holder holds which record, so with the identity it could join a holder to their

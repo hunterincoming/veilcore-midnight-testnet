@@ -54,9 +54,10 @@ const guardFile = (name: string, main: string, claims: string) => {
 };
 
 // The build runs as it does on deploy day: none of vitest's own environment (NODE_ENV=test
-// makes Vite produce a development bundle that does not run in a browser).
+// makes Vite produce a development bundle that does not run in a browser), and none of
+// the VITE_ values vitest.config.ts sets for unit tests: a build reads its .env file.
 const cleanEnv = () =>
-  Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^(VITEST|NODE_ENV$|TEST$|MODE$)/.test(k)));
+  Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^(VITEST|VITE_|NODE_ENV$|TEST$|MODE$)/.test(k)));
 
 const build = (mode: string, outDir: string, env: Record<string, string>) =>
   spawnSync('npx', ['vite', 'build', '--mode', mode, '--outDir', outDir, '--emptyOutDir', '--logLevel', 'error'], {

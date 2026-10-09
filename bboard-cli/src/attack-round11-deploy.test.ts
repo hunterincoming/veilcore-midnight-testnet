@@ -26,10 +26,16 @@ import { ChallengeFile } from './challenge-file';
 
 // checkOwnership's indexer lookup, replaced so the test decides what "the state after the
 // proof" is (the real one fetches it by transaction id).
-const lookup: { state: unknown } = vi.hoisted(() => ({ state: undefined }));
+const lookup: { state: unknown; data: unknown } = vi.hoisted(() => ({ state: undefined, data: undefined }));
 vi.mock('../../api/src/presentation-lookup', () => ({
   callState: async () => lookup.state,
   presentationState: async () => lookup.state,
+  singleCallState: async () => ({
+    entryPoint: 'proveOwnership',
+    state: { data: lookup.data },
+    authority: { committee: 1, threshold: 1, counter: 16n, retired: false },
+    keys: 'unchecked',
+  }),
 }));
 
 const ADDR = 'ab'.repeat(32);
@@ -307,10 +313,19 @@ describe("R11-K FIXED: checkOwnership refuses a thief's proof once the owner rec
     sim.call(as(OWNER), 'anchor', C.recoveryCommit(rcv));
     const ch = secret('k-ch');
     sim.call(as(OWNER), 'proveOwnership', ch); // the thief, holding the stolen secret
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const raw = (): unknown => (sim as any).ctx.currentQueryContext.state;
     lookup.state = sim.state;
-    const { api, chain } = fakeApi({});
-    chain(sim.state);
-    expect((await api.checkOwnership('http://indexer', 'aa', REC, ch)).accepted).toBe(true);
+    lookup.data = raw();
+    const { api } = fakeApi({});
+    // The state now, as the API reads it (once, for the ledger and the key check).
+    let now = raw();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (api as any).currentState = async () => ({ data: now });
+    const first = await api.checkOwnership('http://indexer', 'aa', REC, ch);
+    expect(first.accepted).toBe(true);
+    // Verification review: the authority reported is the one at the proof's state.
+    expect(first.authority?.counter).toBe(16n);
 
     const NEW = secret('k-new');
     sim.call(
@@ -320,7 +335,7 @@ describe("R11-K FIXED: checkOwnership refuses a thief's proof once the owner rec
       C.commit(NEW),
       C.recoveryCommit(secret('k-rcv2')),
     );
-    chain(sim.state);
+    now = raw();
     const v = await api.checkOwnership('http://indexer', 'aa', REC, ch);
     expect(v.accepted).toBe(false);
     expect(v.reason).toMatch(/ask for a fresh proof/);

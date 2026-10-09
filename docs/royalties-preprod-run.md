@@ -1,15 +1,18 @@
-# Royalties contract: the preprod test run (Hunter, about 1.5 hours, plus 45 minutes for parts 2 and 3)
+# Royalties contract: the preprod test run (Hunter, about 1.5 hours, plus 30 minutes for part 2)
 
 The first live run of the royalties contract (protocol 4), on preprod, with two wallets:
-window A plays the breeder, window B the grower. Since protocol 4 **no money passes through
-the contract by default**: the grower pays the breeder off chain (here we only pretend), and
-the breeder **issues** the licence and the royalty credit on chain. This run tests what the
-tests here cannot: that issuing, a private settlement, the breeder reading the books and a
-presentation all go through on a real network. Part 2 checks that a variety bred from yours
-records what it owes you. Part 3 (optional) checks the on-chain payment path that an offer can
-still opt into. Nothing here touches mainnet or real money.
+window A plays the breeder, window B the grower. In protocol 4 **no money passes through the
+contract, and no circuit can move it**: the grower pays the breeder off chain, in their own
+currency (here we only pretend), and the breeder **issues** the licence and the royalty
+credit on chain. Every amount is counted in the unit the offer names; this run uses
+**USD cents**. This run tests what the tests here cannot: that issuing, a private
+settlement, the breeder reading the books and a presentation all go through on a real
+network. Part 2 checks that a variety bred from yours records what it owes you. Nothing here
+touches mainnet or real money. (The earlier part 3, paying through the contract, is gone:
+that path was cut from the contract.)
 
-Every prompt below was walked against the menu by a test (`bboard-cli/src/royalties-credit.test.ts`).
+Every prompt below was walked against the menu by a test (`bboard-cli/src/royalties-credit.test.ts`,
+"the preprod run" and "part 2").
 
 **You need:** Docker running; the Mac; your preprod private-state password; the preprod test
 wallet (seed 2) for the breeder; a second preprod wallet for the grower (step 4 makes one if
@@ -51,10 +54,11 @@ where to write a file BEFORE it sends anything, so a typo costs nothing.
    - **Write down the NIGHT balance it shows.**
    - `50`: deploy the royalties contract. Type `yes`. **Write down the address.** About 10 to
      20 minutes.
-   - `53`: post an offer. Terms file `~/Desktop/test-terms.txt`; token Enter (NIGHT); list
-     price `1`; royalty per unit `0.1`; how many `3`; days `30`; revoke `y`; "Also take
-     payment THROUGH the contract?" **Enter (no)**; offer card `~/Desktop/offer-card.json`;
-     `yes`. There is no wallet question: an offer paid off chain names no wallet.
+   - `53`: post an offer. Terms file `~/Desktop/test-terms.txt`; unit `USD cents`; list
+     price `100`; royalty per unit of produce `10`; how many `3`; days `30`; revoke `y`;
+     offer card `~/Desktop/offer-card.json`; `yes`. Before the last `yes` it says "Growers
+     pay you off chain, in USD cents; you issue their licences and credit". There is no
+     wallet question.
    - It shows the **admin secret** first, then writes the card, and says the credit issuer
      key is kept on this computer. **Write down the offer id and the admin secret** on the
      scrap paper.
@@ -75,18 +79,21 @@ where to write a file BEFORE it sends anything, so a typo costs nothing.
    - **Write down the NIGHT balance it shows.**
    - Join the same main contract (`72fe…`), then `51`: join the royalties contract (step 3's
      address).
-   - `54`: list offers. Expect yours: "list price 1.000000 NIGHT", "rate in the offer card
-     (private)", "payment: off chain; the breeder issues licences and credit", "no wallet
-     (paid off chain)", 3 left.
-   - `84`: ask for a licence. Offer card `~/Desktop/offer-card.json`. It shows the offer, the
-     rate 0.1 from the card, and the terms fingerprint (**check it matches step 2**). Licence
-     card `~/Desktop/licence-card.json`; `yes`. **No transaction is sent:** in real life you
-     now hand the breeder this card with your payment.
+   - `54`: list offers. Expect yours: "amounts in USD cents; list price 100 USD cents",
+     "rate in the offer card (private)", "paid off chain; the breeder issues licences and
+     credit", 3 left.
+   - `84`: ask for a licence. Offer card `~/Desktop/offer-card.json`. It shows the offer,
+     "Royalty rate in your offer card: 10 USD cents per unit of produce", and the terms
+     fingerprint (**check it matches step 2**). Licence card `~/Desktop/licence-card.json`;
+     `yes`. **No transaction is sent.** It ends with the card's fingerprint (8 characters):
+     **write it down.** In real life you now hand the breeder this card with your payment,
+     and read the fingerprint out to them by phone.
 
 ## Breeder, window A
 
-5. `82`: issue a licence. Licence card `~/Desktop/licence-card.json`. Admin secret: Enter.
-   `yes`. Expect `Issued.` and "No money moved through the contract".
+5. `82`: issue a licence. Licence card `~/Desktop/licence-card.json`. It shows "Licence card
+   fingerprint …": **check it is the one window B wrote down.** Admin secret: Enter. `yes`.
+   Expect `Issued.` and "No money moved through the contract".
 
 ## Grower, window B
 
@@ -100,33 +107,34 @@ where to write a file BEFORE it sends anything, so a typo costs nothing.
 7. The breeder issues the grower's credit, then takes a licence and credit of its own, so
    the grower's settlement is not the newest of its kind:
    - `83`: issue credit. File `~/Desktop/topup.json`. It shows the offer and the code
-     fingerprint: **check it is the one window B showed**. Amount `1`. It says that on chain
-     this shows only that some offer's issuer issued some credit. `yes`. It then says your
-     own offer is still the newest on chain and asks whether to send anyway: `yes` (expected:
-     yours is the only offer on this contract). Expect `Issued.` and "Issued on this offer
-     from this computer so far: 1.000000 NIGHT in 1 issuance(s)".
+     fingerprint: **check it is the one window B showed**. Amount `100` (whole USD cents).
+     It says what is published names neither the offer, the licensee nor the amount, but can
+     only be from an offer that has issued licences and takes royalties, "and there are 1 of
+     those", then a WARNING that yours is the only one, so anyone can tell this credit is for
+     it (expected on this contract). Then "Issue 100 USD cents of credit to this request?":
+     `yes`. Expect `Issued.` and "Issued on this offer from this computer so far: 100 USD
+     cents in 1 issuance(s)".
    - `84`: offer card `~/Desktop/offer-card.json`, licence card
      `~/Desktop/breeder-licence.json`, `yes`.
    - `82`: licence card `~/Desktop/breeder-licence.json`, admin secret Enter, `yes`.
    - `60`: offer id, file `~/Desktop/breeder-topup.json`.
-   - `83`: file `~/Desktop/breeder-topup.json`, amount `0.3`, `yes`, and `yes` again to send
-     anyway.
-   - `61`: offer id, `0.3`.
+   - `83`: file `~/Desktop/breeder-topup.json`, amount `30`, `yes` (the same warning).
+   - `61`: offer id, `30`.
 
 ## Grower, window B
 
-8. - `61`: record credit issued or paid for you: offer id, `1`. Expect "Your credit:
-     1.000000 NIGHT".
-   - `62`: settle. Offer id, period `TEST-1`, units `5`, `yes`. Expect `Settled`. (5 × 0.1 =
-     0.5 is spent from credit; no money moves.)
-   - `63`: expect credit 0.500000 NIGHT, "licence …: live" and "settled TEST-1: 5".
+8. - `61`: record credit the breeder issued you: offer id, `100`. Expect "Your credit: 100
+     USD cents".
+   - `62`: settle. Offer id, period `TEST-1`, units `5`, `yes`. Expect `Settled`. (5 × 10 =
+     50 is spent from credit; no money moves.)
+   - `63`: expect credit 50 USD cents, "licence …: live" and "settled TEST-1: 5".
 
 ## Breeder, window A
 
 9. - `55`: read your licensees' settlements. Cards `~/Desktop/licence-card.json`, periods
      `TEST-1`. **Expect `period TEST-1  units 5`.** This is the breeder reading private books.
-     Then its own books: "the licences read settled 5 unit(s), worth 0.500000 NIGHT; this
-     computer issued 1.300000 NIGHT of credit on it (2 issuance(s))", and no WARNING.
+     Then its own books: "the licences read settled 5 unit(s), worth 50 USD cents; this
+     computer issued 130 USD cents of credit on it (2 issuance(s))", and no WARNING.
    - `66`: make a licence request. Offer id; period `TEST-1`; at least `3`; "accept a licence
      that has ended since?" Enter (no); "one-off scope?" Enter (no: your usual scope); file
      `~/Desktop/request.json`.
@@ -154,7 +162,7 @@ where to write a file BEFORE it sends anything, so a typo costs nothing.
     licence). This refusal comes from the grower's own client, which sees the revocation; the
     contract's own refusal of a revoked licence is covered by the tests, not by this run.
 
-If you are doing part 2 or part 3, do them now (below), then come back to step 16.
+If you are doing part 2, do it now (below), then come back to step 16.
 
 16. `0` to exit. Start once more the same way, read the NIGHT balance, then `0`.
 
@@ -168,69 +176,54 @@ If you are doing part 2 or part 3, do them now (below), then come back to step 1
 
 Do this after step 15, before exiting either window. The grower now plays the breeder of a
 new variety bred from yours. The breeder's variety (window A) is the parent. Everything is
-paid off chain: watch that what the new variety owes you is written down on chain.
+paid off chain, in USD cents: watch that what the new variety owes you is written down on
+chain.
 
 - **Window B:** `1` (anchor your record: the new variety; write its recovery secret on the
   scrap paper). **Write down the "Anchored record".**
 - **Window A:** `31` (show your record). **Write down "Your record".** Then `69` (offer terms
-  for varieties bred from yours): token Enter; fee `0.1`; share `10`; generations `2`; days
-  `30`; wallet Enter; the new variety's record: window B's record; file
-  `~/Desktop/terms.json`.
+  for varieties bred from yours): unit `USD cents`; fee `10`; share `10`; generations `2`;
+  days `30`; the new variety's record: window B's record; file `~/Desktop/terms.json`.
 - **Window B:** `16` (propose a parent) with window A's record. Then `70` (propose a link)
-  with `~/Desktop/terms.json`. It shows the parent record (**check it is window A's**), the
-  token (NIGHT) and the terms; `yes`.
-- **Window A:** `71` (confirm the new variety's link) with window B's record. It shows the
-  terms; `yes`. Then `17` (confirm a child) with window B's record.
+  with `~/Desktop/terms.json`. It shows the parent record (**check it is window A's**) and
+  "Terms: 10% of your licence list prices and royalty credit, for 2 generation(s); fee 10
+  USD cents per licence you issue; … counted in USD cents"; `yes`.
+- **Window A:** `71` (confirm the new variety's link) with window B's record. It shows "10%
+  for 2 generation(s), fee 10 USD cents, until …, in USD cents"; `yes`. Then `17` (confirm a
+  child) with window B's record.
 - **Window B:** `72` (make your variety's ancestors final). Before asking, it shows the chart:
-  "parent …: 10% + fee 0.100000 NIGHT to …", and no "STOP" lines. `yes`. Then `53` (post an
-  offer): terms file `~/Desktop/test-terms.txt`; token Enter; list price `1`; royalty `0.1`;
-  how many `3`; days `30`; revoke `y`; on chain Enter (no); offer card
-  `~/Desktop/offer-card-2.json`; `yes`. **Write down the offer id and its admin secret.**
+  "parent …: 10% + fee 10 USD cents, until …", and no "STOP" lines. `yes`. Then `53` (post an
+  offer): terms file `~/Desktop/test-terms.txt`; unit `USD cents`; list price `100`; royalty
+  `10`; how many `3`; days `30`; revoke `y`; offer card `~/Desktop/offer-card-2.json`;
+  `yes`. **Write down the offer id and its admin secret.**
 - **Window A:** `84` (ask for a licence) with `~/Desktop/offer-card-2.json`, licence card
   `~/Desktop/licence-card-2.json`, `yes`.
-- **Window B:** `82` (issue a licence) with `~/Desktop/licence-card-2.json`. Before asking,
-  it says the variety's ancestors take a share and that issuing records on chain what you
-  owe them: "parent …: 10% (about 0.100000 NIGHT) + fee 0.100000 NIGHT to …". Admin secret
-  Enter; `yes`. No money moves.
+- **Window B:** `82` (issue a licence) with `~/Desktop/licence-card-2.json`; check the
+  fingerprint against the one window A's `84` showed. Before asking, it says the variety's
+  ancestors take a share and that issuing records on chain what you owe them: "parent …: 10%
+  (about 10 USD cents) + fee 10 USD cents, until …". Admin secret Enter; `yes`. No money
+  moves.
 - **Window A:** `60` (ask for credit) with offer id 2, file `~/Desktop/topup-2.json`.
 - **Window B:** `83` (issue credit) with `~/Desktop/topup-2.json`; check the fingerprint;
-  amount `1`. It says this issuance names the offer and the amount on chain, and records
-  "parent …: 10% (about 0.100000 NIGHT)". `yes` (no "send anyway" here).
+  amount `100`. It says this issuance names the offer and the amount on chain, and records
+  "parent …: 10% (about 10 USD cents)". `yes`.
 - **Window A:** `85` (what varieties bred from yours owe you), Enter for your own record.
-  Expect "variety …, offer …: 0.300000 NIGHT (1 licence(s), 1 credit issuance(s))": 0.1
-  share and 0.1 fee for the licence, 0.1 share of the credit.
+  Expect "variety …, offer …: 30 USD cents (1 licence(s), 1 credit issuance(s))": 10 share
+  and 10 fee for the licence, 10 share of the credit. It says each record keeps the base
+  amount and your cut, shown added up and rounded down once; whether it was paid is between
+  you and the new variety's breeder.
 - **Window B:** `73` (show a variety's pedigree chart) with your own record. Expect
   "Pedigree: matches the VeilCore contract." and "Recorded as owed to its ancestors … parent
-  …: 0.300000 NIGHT (1 licence(s), 1 credit issuance(s))".
-
-## Part 3: an offer that takes payment on chain (about 15 minutes, optional)
-
-The path an offer can opt into: money moves through the contract, from one wallet to
-another, in one transaction.
-
-- **Window A:** `53`: terms file `~/Desktop/test-terms.txt`; token Enter; list price `1`;
-  royalty `0.1`; how many **`2`** (so it is not taken for a repeat of step 3's offer); days
-  `30`; revoke `y`; "Also take payment THROUGH the contract?" **`y`**; wallet Enter; offer
-  card `~/Desktop/offer-card-3.json`; `yes`. **Write down the offer id.**
-- **Window B:** `58` (buy a licence) with `~/Desktop/offer-card-3.json`. It shows the offer,
-  the breeder's record and wallet, the terms fingerprint, the rate 0.1 and "in all, this
-  sends from this wallet: 1.000000 NIGHT". Licence card `~/Desktop/licence-card-3.json`;
-  `yes`.
-- **Window B:** `59` (top up your own credit): offer id 3, `0.5`. It warns that this is the
-  only royalty offer paid to that wallet, so the top-up shows which offer it is for:
-  expected here. `yes` to go on despite it, then `yes`.
+  …: 30 USD cents (1 licence(s), 1 credit issuance(s))".
 
 ## Paste back to Claude
 
 - The royalties contract address and the offer id(s).
 - The last 30 lines of each window after steps 4, 5, 7, 8, 9, 10, 11 and 15.
-- Both NIGHT balances before and after. **Without part 3, neither should change** (fees are
-  paid in DUST): that is the point of protocol 4. With part 3, expect the grower about
-  1,500,000 lower (in the smallest unit) and the breeder about 1,500,000 higher: 1 NIGHT for
-  the licence and 0.5 for the top-up.
-- If you did part 2: the last 30 lines of window B after `82` and `83`, and of window A
-  after `85`.
-- If you did part 3: the last 30 lines of window B after `58` and `59`.
+- Both NIGHT balances before and after. **Neither should change** (fees are paid in DUST):
+  no circuit of this contract can move NIGHT or any other token.
+- If you did part 2: the last 30 lines of window B after `72`, `82` and `83`, and of window
+  A after `85`.
 
 Nothing in those is secret. Do not paste the admin secrets, the wallet seeds, the recovery
 secrets, or the card files (the offer card holds the private rate; the licence card lets
@@ -239,13 +232,15 @@ licence).
 
 ## Not covered by this run
 
-- Naming a new credit issuer (86) and a private issuance whose proof is voided by a seal and
-  proved again: the tests cover them, this run does not.
-- A purchase or top-up that fails on chain (say, two buyers racing for the last licence):
-  that the payer's transfer fails with it. That needs two wallets submitting at once and is
-  a separate check before mainnet.
-- Presentation cards (79 and 80), lowering a link's terms (81) and moving a payee (74): the
-  tests cover them, this run does not.
+- Naming a new credit issuer (86), the seal the client sends for it at a later royalties
+  choice once due, and a private issuance whose proof is voided by a seal and proved again:
+  the tests cover them, this run does not.
+- The issuance warning with more offers on the contract (it counts them; at four or more it
+  does not warn): the tests cover it.
+- An offer counted in another unit (`NIGHT` is only a label, shown with 6 decimals): the
+  tests cover it.
+- Presentation cards (79 and 80), lowering a link's terms (81), and 85 after a key change in
+  the main contract: the tests cover them, this run does not.
 
 ## If something goes differently
 
@@ -256,8 +251,8 @@ licence).
 - **84 says this computer already holds a licence from that offer:** answer `no`, and write
   the card again with `78` if you need it.
 - **60 says this client holds no live licence:** step 5 hasn't landed yet, or was skipped.
-- **Part 3, buy or top-up fails with a balance or "imbalanced" error:** stop and paste the
-  last 30 lines. That is the payment path part 3 exists to test.
+- **Any royalties choice says "Sealed: a replaced credit issuer key …":** only after `86`;
+  the client sent the seal that stops the old key. Nothing to do.
 - **A settle says it may already have been done:** a timeout came after it landed. Answer
   `no`, check with `63`, and tell Claude.
 - **Step 8 settle says your own credit note or licence is still the newest:** step 7 hasn't

@@ -14,19 +14,27 @@ import {
   type VeilCore,
   type VeilCoreClaims,
   LandedButUnconfirmedError,
+  type PairingEvidence,
   commit,
+  dnaPairBinding,
   errorChain,
   fromHex,
   identityOf,
   isContractRefusal,
+  isLive,
   labKeyOf,
   newLabKey,
+  newPairingSalt,
   newSecret,
   openObligations,
+  pairingEvidence,
+  reportHashOf,
   sealFields,
   signRecord,
   toHex,
 } from '@veilcore/contracts';
+import { readFile } from 'node:fs/promises';
+import * as path from 'node:path';
 import { type AuditFields, type AuditLog, auditHead } from './audit.ts';
 import { type RecoveryPool, fingerprintMatches } from './partner-keys.ts';
 import {
@@ -34,6 +42,7 @@ import {
   type HeldLicence,
   type IssuedLicence,
   type ObligationEntry,
+  type PairingEntry,
   type PartnerVault,
   type RecordEntry,
   type RecoveryHolder,
@@ -280,15 +289,120 @@ export const dateRoot = async (ctx: Ctx, o: { readonly root: string; readonly la
   return sent(ctx, { op: 'date', label: o.label, note: `root ${toHex(root)}` }, () => needVc(ctx).anchorBatch(root));
 };
 
-/** Bind a report's fingerprint (e.g. the SHA-256 of a DNA report) to a record. */
-export const pairDna = async (ctx: Ctx, o: { readonly record: string; readonly report: string }): Promise<TxRef> => {
+/** A file's name as an evidence file may carry it: no folders, no control characters. */
+const plainName = (file: string): string | undefined => {
+  const n = path.basename(file);
+  // eslint-disable-next-line no-control-regex
+  return n.length > 0 && n.length <= 200 && n !== '.' && n !== '..' && !/[/\\\u0000-\u001f\u007f]/.test(n)
+    ? n
+    : undefined;
+};
+
+/** The evidence file for a pairing in the vault, or a refusal saying why there is none. */
+const evidenceOf = (p: VaultPayload, x: PairingEntry): PairingEvidence => {
+  if (x.salt === undefined || x.reportSha256 === undefined)
+    throw new Error("That pairing's salt was purged from this vault: only the partner's bundle has it.");
+  if (x.txId === undefined)
+    throw new Error(
+      `The pairing ${x.binding.slice(0, 16)}… was sent but never confirmed here, so it cannot be shown. ` +
+        'Pair the report again (pair-dna --again): the new pairing gets its own evidence file.',
+    );
+  return pairingEvidence({
+    network: p.partner.network,
+    contractAddress: x.contractAddress,
+    txId: x.txId,
+    identity: fromHex(x.identity),
+    reportHash: fromHex(x.reportSha256),
+    salt: fromHex(x.salt),
+    ...(x.reportFile === undefined ? {} : { reportFile: x.reportFile }),
+  });
+};
+
+/**
+ * Pair a DNA report with a record so the pairing dates the report and cannot be copied
+ * (contract/src/pairing.ts; design.md, rule 9). Give the report file (`reportFile`) or its
+ * SHA-256 (`report`). What goes on chain is H("veilcore:v1:dnapair", reportSha256, identity,
+ * salt), never the report's hash: a published hash can be copied and paired first by anyone.
+ * The salt is stored in the vault BEFORE sending. Returns the evidence file for the partner:
+ * with the report, it is what shows the pairing; it is also in every bundle (the vault).
+ */
+export const pairDna = async (
+  ctx: Ctx,
+  o: { readonly record: string; readonly report?: string; readonly reportFile?: string; readonly again?: boolean },
+): Promise<TxRef & { readonly evidence: PairingEvidence }> => {
   await ctx.vault.assertActive();
   const r = recordOf(ctx.vault.read(), o.record);
-  const report = bytes32(o.report, 'A report fingerprint');
+  if ((o.report === undefined) === (o.reportFile === undefined))
+    throw new Error('Give the report file, or its SHA-256 (64 hex characters): one of the two.');
+  const reportHash =
+    o.reportFile !== undefined
+      ? reportHashOf(new Uint8Array(await readFile(o.reportFile)))
+      : bytes32(o.report!, "A report's SHA-256");
+  const reportSha256 = toHex(reportHash);
+  if (r.status !== 'anchored') throw new Error(`Record "${r.label}" is not anchored yet. Nothing was sent.`);
+  const earlier = ctx.vault.read().pairings.find((x) => x.identity === r.origin && x.reportSha256 === reportSha256);
+  if (earlier?.status === 'paired')
+    throw new Error(
+      `Record "${r.label}" already paired this report (transaction ${earlier.txId}). The first pairing is the ` +
+        'one that dates it: give the partner its evidence file (pair-evidence). Nothing was sent.',
+    );
+  if (earlier !== undefined && o.again !== true)
+    throw new Error(
+      `A pairing of this report was sent for "${r.label}" before, but never confirmed here: it may have landed. ` +
+        "Check the contract's history for its binding first; to send a new pairing anyway, pass --again. Nothing was sent.",
+    );
   await actAs(ctx, r);
-  return sent(ctx, { op: 'pair-dna', label: r.label, record: r.current, note: `report ${toHex(report)}` }, () =>
-    needVc(ctx).pairDna(report),
+  const vc = needVc(ctx);
+  const ledger = await vc.ledger();
+  const me = fromHex(r.current);
+  const identity = identityOf(ledger, me);
+  if (toHex(identity) !== r.origin || !isLive(ledger, me))
+    throw new Error(`The chain does not show "${r.label}" as a live record of its identity. Nothing was sent.`);
+  const salt = newPairingSalt();
+  const binding = toHex(dnaPairBinding(reportHash, identity, salt));
+  const reportFile = o.reportFile === undefined ? undefined : plainName(o.reportFile);
+  // Stored before sending: a pairing that lands while this computer crashes still has its salt.
+  await ctx.vault.update(
+    (v) =>
+      void v.pairings.push({
+        recordLabel: r.label,
+        identity: r.origin,
+        reportSha256,
+        salt: toHex(salt),
+        binding,
+        contractAddress: vc.address.toLowerCase(),
+        ...(reportFile === undefined ? {} : { reportFile }),
+        createdAt: new Date().toISOString(),
+        status: 'sending',
+      }),
   );
+  const ref = await sent(ctx, { op: 'pair-dna', label: r.label, record: r.current, note: `binding ${binding}` }, () =>
+    vc.pairDna(fromHex(binding)),
+  );
+  await ctx.vault.update((v) => {
+    const x = v.pairings.find((y) => y.binding === binding)!;
+    x.status = 'paired';
+    x.txId = ref.txId.toLowerCase().replace(/^0x/, '');
+  });
+  const p = ctx.vault.read();
+  return { ...ref, evidence: evidenceOf(p, p.pairings.find((y) => y.binding === binding)!) };
+};
+
+/**
+ * The evidence file for a pairing made earlier: the newest one of a record, or the one
+ * with a given binding. No chain needed.
+ */
+export const pairEvidence = (ctx: Ctx, o: { readonly record?: string; readonly binding?: string }): PairingEvidence => {
+  const p = ctx.vault.read();
+  const want = o.binding?.trim().toLowerCase().replace(/^0x/, '');
+  const label = o.record === undefined ? undefined : recordOf(p, o.record).label;
+  const hits = p.pairings.filter(
+    (x) => (want === undefined || x.binding === want) && (label === undefined || x.recordLabel === label),
+  );
+  if (want === undefined && label === undefined) throw new Error("Name the record, or the pairing's binding.");
+  const x = hits.at(-1);
+  if (x === undefined) throw new Error('No such pairing in this vault.');
+  return evidenceOf(p, x);
 };
 
 /** Answer a verifier's challenge for a record. Give the verifier the txId. */

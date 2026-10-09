@@ -218,6 +218,11 @@ Schedule A. Pools and exit answers are confirmed by their fingerprint (below) as
 - `date`, `seal-fields`, `pair-dna`, `prove-ownership`, `rotate`; `licence-*`; `lineage-*`; `obligation-*`
   (terms typed at the prompt, or `--terms-file`); `lab-key`, `claim`. Only on the partner's instruction,
   confirmed as above where it says so; keep the instruction with the audit log.
+- `pair-dna --record <L> --report-file <file> --evidence <out.json>`: pairs a DNA report the safe way
+  (design.md, rule 9). The report's hash never goes on chain, only a binding made with a random salt, which
+  is stored in the vault before sending. It writes an evidence file: give it to the partner privately, to
+  keep with the report. With both, anyone can check the pairing; without the salt, nobody can.
+  `pair-evidence` writes the file again. Every bundle carries the salts too.
 - `seal-fields --file` reads a field-set file holding hidden values. Keep such files on an encrypted
   external disk or in a temporary RAM disk, not on the operations computer's own disk, and delete them once
   in custody.

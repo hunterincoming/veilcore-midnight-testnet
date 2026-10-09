@@ -741,6 +741,12 @@ export const procedure = (
       '- Sealed field sets: whoever holds one can prove claims about that record, and the chain cannot',
       '  change that. VeilCore deletes its copies when you confirm you can open this bundle ("purge").',
     );
+  if (p.pairings.some((x) => x.status === 'paired'))
+    say(
+      '- DNA pairings: each one is shown with the report file and its salt, which is in this bundle',
+      '  (vault.pairings). Keep them with the reports: without the salt a pairing can never be shown,',
+      '  and nothing on chain or in your secrets brings it back.',
+    );
   if (p.labKeys.length > 0)
     say(
       '- Laboratory claims keys: a key cannot be changed on chain. Make a new one, publish its public key,',

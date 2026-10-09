@@ -100,6 +100,7 @@ export {
 export { numberFrom } from '../../contract/src/fields.js';
 export {
   PAIRING_EVIDENCE_FORMAT,
+  dnaPairBinding,
   isWeakSalt,
   newPairingSalt,
   pairingEvidence,

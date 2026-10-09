@@ -81,8 +81,21 @@ describe('records', () => {
     const r = await op.anchorRecord(lab, { label: 'acc-1' });
     expect(r.recoveryHeldBy).toBe('custody');
     const record = kit.fromHex(r.record);
-    await op.pairDna(lab, { record: 'acc-1', report: 'ab'.repeat(32) });
-    expect(kit.toHex((await vc.ledger()).lastPairedDna)).toBe('ab'.repeat(32));
+    // A bound pairing: the report's hash never goes on chain, and the evidence file checks out.
+    const report = 'ab'.repeat(32);
+    const paired = await op.pairDna(lab, { record: 'acc-1', report });
+    const onChain = kit.toHex((await vc.ledger()).lastPairedDna);
+    expect(onChain).not.toBe(report);
+    expect(onChain).toBe(paired.evidence.binding);
+    expect(lab.vault.read().pairings).toMatchObject([
+      { status: 'paired', txId: paired.evidence.txId, reportSha256: report },
+    ]);
+    const ev = kit.readPairingEvidence(JSON.stringify(paired.evidence));
+    const verdict = await kit.checkPairing({ ...ev, ...read(), indexerWS: chain.endpoints.indexerWS });
+    expect(verdict).toMatchObject({ accepted: true, publishedRawEarlier: [] });
+    // The same report again is refused: the first pairing is the one that dates it.
+    await expect(op.pairDna(lab, { record: 'acc-1', report })).rejects.toThrow(/already paired this report/);
+    await expect(op.pairDna(lab, { record: 'acc-1' })).rejects.toThrow(/one of the two/);
 
     const challenge = kit.newChallenge(); // the verifier's
     const proof = await op.proveOwnership(lab, { record: 'acc-1', challenge: kit.toHex(challenge) });
@@ -91,6 +104,13 @@ describe('records', () => {
     const before = lab.vault.read().records[0].secret!;
     await op.rotateRecord(lab, { record: 'acc-1' });
     const after = lab.vault.read().records[0];
+    // The pairing still shows after a rotation (it is bound to the identity), from the vault alone.
+    const again = op.pairEvidence(lab, { record: 'acc-1' });
+    expect(again).toEqual(paired.evidence);
+    expect(
+      (await kit.checkPairing({ ...kit.readPairingEvidence(again), ...read(), indexerWS: chain.endpoints.indexerWS }))
+        .accepted,
+    ).toBe(true);
     expect(after.secret).not.toBe(before);
     expect(after.pendingSecret).toBeUndefined();
     await expect(vc.useRecordSecret(kit.fromHex(before))).rejects.toThrow(/not the current one/);

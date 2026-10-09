@@ -2,7 +2,7 @@
 // at the prompts), on the partner kit's chain stand-in: everything printed is checked for
 // every secret the partner's vault holds and every password typed.
 // SPDX-License-Identifier: Apache-2.0
-import { mkdir, readFile, readdir } from 'node:fs/promises';
+import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setNetworkId } from '@midnight-ntwrk/midnight-js-network-id';
@@ -102,9 +102,29 @@ describe('the operator CLI', () => {
     const anchored = await run(['anchor', '--partner', 'lab', '--label', 'acc-1'], [password]);
     expect(anchored.text).toMatch(/Anchored: transaction [0-9a-f]{64}/);
     expect(anchored.text).toMatch(/held by: the partner/);
+    const reportFile = path.join(t.root, 'report.pdf');
+    await writeFile(reportFile, 'a lab report (test data)');
+    const evidence = path.join(t.root, 'pairing.json');
+    const pairArgs = ['pair-dna', '--partner', 'lab', '--record', 'acc-1', '--report-file', reportFile];
+    expect((await run(pairArgs, [password])).text).toMatch(/needs --evidence/);
+    const paired = await run([...pairArgs, '--evidence', evidence], [password]);
+    expect(paired.code).toBe(0);
+    expect(paired.text).toMatch(/Evidence written to/);
+    const ev = JSON.parse(await readFile(evidence, 'utf8')) as {
+      reportFile: string;
+      salt: string;
+      reportSha256: string;
+    };
+    expect(ev.reportFile).toBe('report.pdf');
+    expect(paired.text).not.toContain(ev.salt);
+    expect(paired.text).not.toContain(ev.reportSha256);
+    // An existing evidence file is refused before anything is sent.
+    expect((await run([...pairArgs, '--evidence', evidence], [password])).text).toMatch(/nothing was sent/);
+    const again = path.join(t.root, 'pairing-again.json');
     expect(
-      (await run(['pair-dna', '--partner', 'lab', '--record', 'acc-1', '--report', 'ab'.repeat(32)], [password])).code,
+      (await run(['pair-evidence', '--partner', 'lab', '--record', 'acc-1', '--evidence', again], [password])).code,
     ).toBe(0);
+    expect(await readFile(again, 'utf8')).toBe(await readFile(evidence, 'utf8'));
     // Obligation terms come from a prompt (or a file), never the command line.
     expect(
       (
@@ -161,7 +181,17 @@ describe('the operator CLI', () => {
     expect((await run(['exit', '--partner', 'lab', '--mode', 'self', '--out', out], [password, 'lab'])).code).toBe(0);
     const n = chainLog.length;
     const refused = await run(
-      ['pair-dna', '--partner', 'lab', '--record', 'acc-1', '--report', 'cd'.repeat(32)],
+      [
+        'pair-dna',
+        '--partner',
+        'lab',
+        '--record',
+        'acc-1',
+        '--report',
+        'cd'.repeat(32),
+        '--evidence',
+        path.join(t.root, 'x.json'),
+      ],
       [password],
     );
     expect(refused.text).toMatch(/left VeilCore-run/);

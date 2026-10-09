@@ -109,6 +109,31 @@ export type LabKeyEntry = {
   readonly key: { readonly x: string; readonly y: string };
 };
 
+/**
+ * A bound DNA pairing (contract/src/pairing.ts): what went on chain is the binding
+ * H("veilcore:v1:dnapair", reportSha256, identity, salt), never the report's hash. The salt
+ * is stored BEFORE the transaction is sent: without it the pairing can never be shown.
+ */
+export type PairingEntry = {
+  /** The partner's record that paired it. */
+  readonly recordLabel: string;
+  /** The identity (origin) of that record: the binding holds across rotations. */
+  readonly identity: string;
+  /** SHA-256 of the report file. Private until the partner shows it: once public, anyone can bind it. */
+  reportSha256?: string;
+  /** The 32 random bytes that hide the report. Private. */
+  salt?: string;
+  readonly binding: string;
+  /** The VeilCore contract it was sent to. */
+  readonly contractAddress: string;
+  /** The report file's name, if VeilCore was given the file (a plain name, no folders). */
+  readonly reportFile?: string;
+  readonly createdAt: string;
+  /** 'sending': stored before the transaction, so a landed pairing is never lost from here. */
+  status: 'sending' | 'paired';
+  txId?: string;
+};
+
 export type ExitMode = 'self' | 'assisted';
 
 /** A bundle written for the partner (sealed to their key). purge deletes the file. */
@@ -174,6 +199,8 @@ export type VaultPayload = {
   obligations: ObligationEntry[];
   fieldSets: FieldSetEntry[];
   labKeys: LabKeyEntry[];
+  /** Bound DNA pairings. Absent in vaults made before pairings were bound: read as empty. */
+  pairings: PairingEntry[];
   recoveryPools: StoredPool[];
   /** The partner's public bundle key (from their master), confirmed by fingerprint. */
   partnerKey?: { readonly bundleKey: string; readonly poolId: string; readonly at: string };
@@ -219,6 +246,10 @@ export const secretsIn = (p: VaultPayload): Set<string> => {
   for (const o of p.obligations) add(o.salt);
   for (const f of p.fieldSets) add(f.file?.fieldSecret?.replace(/^0x/i, ''));
   for (const k of p.labKeys) add(k.secret);
+  for (const x of p.pairings ?? []) {
+    add(x.salt);
+    add(x.reportSha256);
+  }
   return s;
 };
 
@@ -332,6 +363,7 @@ export class PartnerVault {
         obligations: [],
         fieldSets: [],
         labKeys: [],
+        pairings: [],
         recoveryPools: [],
         bundles: [],
       };
@@ -374,6 +406,7 @@ export class PartnerVault {
       if (payload.version !== 1 || payload.partner.id !== o.id || payload.partner.network !== o.network)
         throw new Error('That vault does not match its folder. Refused.');
       payload.bundles ??= [];
+      payload.pairings ??= [];
       return new PartnerVault(dir, key, payload, release);
     } catch (e) {
       await release();
@@ -490,6 +523,10 @@ export class PartnerVault {
       }
       for (const f of p.fieldSets) delete f.file;
       for (const k of p.labKeys) delete k.secret;
+      for (const x of p.pairings) {
+        delete x.salt;
+        delete x.reportSha256;
+      }
       p.purgedAt = now();
     });
     return { deleted, missing };

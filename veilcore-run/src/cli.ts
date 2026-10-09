@@ -29,7 +29,7 @@ import { type ExitBundle, readBundle, bundleRecipient } from './bundle.ts';
 import { sameText } from './box.ts';
 import { type Chain, openChain, settingsFrom } from './chain.ts';
 import { cancelExit, exitAssisted, exitRequest, exitSelf, exportBundle, readJson } from './exit.ts';
-import { defaultRoot, partnerDir, writePrivate } from './files.ts';
+import { defaultRoot, exists, partnerDir, writePrivate } from './files.ts';
 import { type Io, describeError, scrub, terminalIo } from './io.ts';
 import * as op from './operator.ts';
 import {
@@ -67,7 +67,10 @@ Records (send transactions)
   abandon --record <L> | --licence <X>         drop a record never anchored / a licence never countersigned
   date --root <hex> [--label <L>]              timestamp a batch root or a record's SDK commitment
   seal-fields --label <L> --file <field-set.json> [--date]
-  pair-dna --record <L> --report <hex>
+  pair-dna --record <L> (--report-file <file> | --report <sha256 hex>) --evidence <out.json> [--again]
+                                               a bound pairing: the report's hash never goes on chain;
+                                               give the partner the evidence file with the report
+  pair-evidence (--record <L> | --binding <hex>) --evidence <out.json>   that file again (no transaction)
   prove-ownership --record <L> --challenge <hex>
   rotate --record <L>
 Licences
@@ -145,6 +148,10 @@ const OPTIONS = {
   date: { type: 'boolean' },
   record: { type: 'string' },
   report: { type: 'string' },
+  'report-file': { type: 'string' },
+  evidence: { type: 'string' },
+  binding: { type: 'string' },
+  again: { type: 'boolean' },
   challenge: { type: 'string' },
   commitment: { type: 'string' },
   issuer: { type: 'string' },
@@ -580,9 +587,33 @@ export const main = async (argv: readonly string[], io: Io = terminalIo, deps: M
         );
         return 0;
       }
-      case 'pair-dna':
-        out(`Paired: ${tx(await op.pairDna(ctx, { record: need('record'), report: need('report') }))}.`);
+      case 'pair-dna': {
+        const file = need('evidence');
+        // Checked before sending: the transaction cannot be taken back if the file then fails.
+        if (await exists(file)) throw new Error(`${file} already exists. Refused: nothing was sent.`);
+        const r = await op.pairDna(ctx, {
+          record: need('record'),
+          ...(o.report === undefined ? {} : { report: o.report }),
+          ...(o['report-file'] === undefined ? {} : { reportFile: o['report-file'] }),
+          again: o.again === true,
+        });
+        await writePrivate(file, JSON.stringify(r.evidence, null, 2) + '\n', { exclusive: true });
+        out(`Paired: ${tx(r)}.`);
+        out(
+          `Evidence written to ${file}. It holds the salt that hides the report: give it to the partner privately, ` +
+            'to keep with the report file. With both, anyone can check the pairing; without the salt, nobody can.',
+        );
         return 0;
+      }
+      case 'pair-evidence': {
+        const ev = op.pairEvidence(ctx, {
+          ...(o.record === undefined ? {} : { record: o.record }),
+          ...(o.binding === undefined ? {} : { binding: o.binding }),
+        });
+        await writePrivate(need('evidence'), JSON.stringify(ev, null, 2) + '\n', { exclusive: true });
+        out(`Evidence written to ${need('evidence')} (pairing ${ev.txId}). Give it to the partner privately.`);
+        return 0;
+      }
       case 'prove-ownership':
         out(
           `Proved. Give the verifier ${tx(await op.proveOwnership(ctx, { record: need('record'), challenge: need('challenge') }))}.`,

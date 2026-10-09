@@ -18,9 +18,15 @@ import {
 import { type Logger } from 'pino';
 import * as Veilcore from '../../contract/src/managed/veilcore/contract/index.js';
 import { CompiledVeilcore, PROVABLE_CIRCUITS, compiledVeilcoreDeploying } from '../../contract/src/veilcore';
-import { type VeilcorePrivateState, createVeilcorePrivateState } from '../../contract/src/witnesses.js';
+import {
+  type PairingNote,
+  type VeilcorePrivateState,
+  createVeilcorePrivateState,
+} from '../../contract/src/witnesses.js';
+import { dnaPairBinding } from '../../contract/src/pairing.js';
 import {
   acceptOwnership,
+  acceptPairing,
   acceptPresentationAt,
   checkLineage,
   currentHead,
@@ -132,10 +138,67 @@ export class VeilcoreAPI {
     return { ...this.logged('proveOwnership', txData), commitment: txData.private.result };
   }
 
-  /** Bind a DNA report fingerprint to the caller's record (lastPairedRecord, lastPairedDna). */
+  /**
+   * Pair any non-zero 32 bytes with the caller's record (lastPairedRecord, lastPairedDna),
+   * as given. COPYABLE: the value is public once sent, even before it lands, so anyone can
+   * pair the same value to a record of their own, first. Pairing a raw report hash this way
+   * does not show who had the report first. Use pairReport.
+   */
   async pairDna(dnaCommitment: Uint8Array): Promise<TxRef & { recordCommitment: Uint8Array }> {
     const txData = await this.deployedContract.callTx.pairDna(dnaCommitment);
     return { ...this.logged('pairDna', txData), recordCommitment: txData.private.result };
+  }
+
+  /**
+   * Pair a report with the caller's record so the pairing dates the report and cannot be
+   * copied (contract/src/pairing.ts; design.md, rule 9). `reportHash` is the SHA-256 of the
+   * report file. What goes on chain is H("veilcore:v1:dnapair", reportHash, identity, salt):
+   * `identity` is the record's identity (its origin), `salt` 32 fresh random bytes. Nothing
+   * about the report can be learnt from it, and it verifies for no other identity.
+   *
+   * The salt is saved in private state BEFORE the call is sent, and the pairing with its
+   * transaction id once it lands (`pairings()`). Keep the salt with the report: without it
+   * the pairing can never be shown. To show it, give a verifier the report, the salt, the
+   * record and `txId` (pairingEvidence, pairing.ts).
+   */
+  async pairReport(reportHash: Uint8Array): Promise<
+    TxRef & {
+      readonly binding: Uint8Array;
+      readonly salt: Uint8Array;
+      readonly identity: Uint8Array;
+      readonly recordCommitment: Uint8Array;
+    }
+  > {
+    if (!(reportHash instanceof Uint8Array) || reportHash.length !== 32)
+      throw new Error("A report hash is 32 bytes: the report file's SHA-256.");
+    const ledger = await this.currentLedger();
+    const me = Veilcore.pureCircuits.commit(await this.currentSecret());
+    const identity = identityOf(ledger, me);
+    if (!ledger.recoveryOf.member(identity)) throw new Error('Anchor this record before pairing a report with it.');
+    if (!isLive(ledger, me))
+      throw new Error('This record secret was rotated or recovered away; act under the current one to pair.');
+    const salt = utils.randomBytes(32);
+    const binding = dnaPairBinding(reportHash, identity, salt);
+    const note: PairingNote = {
+      binding: toHex(binding),
+      reportSha256: toHex(reportHash),
+      identity: toHex(identity),
+      salt: toHex(salt),
+    };
+    // Saved before sending: a pairing that lands with its confirmation failing still has its salt.
+    await this.patchPrivateState({ pairings: [...(await this.pairings()), note] });
+    const txData = await this.deployedContract.callTx.pairDna(binding);
+    const ref = this.logged('pairDna', txData);
+    await this.patchPrivateState({
+      pairings: (await this.pairings()).map((p) => (p.binding === note.binding ? { ...p, txId: ref.txId } : p)),
+    });
+    return { ...ref, binding, salt, identity, recordCommitment: txData.private.result };
+  }
+
+  /** The bound pairings this client made (pairReport), with their salts. Oldest first. */
+  async pairings(): Promise<readonly PairingNote[]> {
+    const ps = await this.providers.privateStateProvider.get(veilcorePrivateStateKey);
+    return ps?.pairings ?? [];
   }
 
   /** Timestamp a batch root. Unauthenticated by design: inclusion is not possession. */
@@ -535,6 +598,64 @@ export class VeilcoreAPI {
     const v = acceptOwnership(Veilcore.ledger(found.state.data), record, challenge, Veilcore.ledger(nowState.data));
     // The authority reported is the one at the proof, as for a licence presentation.
     return { ...v, authority: found.authority };
+  }
+
+  /**
+   * Rule 9: check a bound DNA pairing. The holder gives `txId`, `record` (any record of the
+   * identity), the report (hash it yourself: `reportHash` is its SHA-256) and the `salt`.
+   * Accepted when that transaction is a single pairDna call on this contract that paired
+   * H("veilcore:v1:dnapair", reportHash, identity, salt) for `record`'s identity; the
+   * verdict's `pairedAt` (block time, ms) is the date the identity's holder had the report
+   * by. It does not show who controls the record now (checkOwnership). On mainnet the state
+   * at the pairing and the state now must both carry the pinned build's verifier keys.
+   */
+  async checkPairing(
+    indexerUri: string,
+    txId: string,
+    record: Uint8Array,
+    reportHash: Uint8Array,
+    salt: Uint8Array,
+    check: LookupCheck = {},
+  ): Promise<
+    ReturnType<typeof acceptPairing> & {
+      readonly blockHeight?: number;
+      readonly authority?: AuthorityReport;
+    }
+  > {
+    const req = this.lookupCheck(check);
+    let found: Awaited<ReturnType<typeof singleCallState>>;
+    try {
+      found = await singleCallState(
+        indexerUri,
+        this.deployedContractAddress,
+        txId,
+        ['pairDna'],
+        'That transaction is not a single pairDna call on this contract.',
+        undefined,
+        req,
+      );
+    } catch (e) {
+      if (e instanceof ContractStateMismatchError)
+        return { accepted: false, reason: e.message, authority: e.authority };
+      throw e;
+    }
+    // The state now resolves a record made after the pairing (a later rotation).
+    const nowState = await this.currentState();
+    if (req.verifierKeys !== undefined || req.authorityCounter !== undefined) {
+      try {
+        checkContractState(nowState, req, 'the current state');
+      } catch (e) {
+        if (e instanceof ContractStateMismatchError)
+          return { accepted: false, reason: e.message, authority: found.authority };
+        throw e;
+      }
+    }
+    const v = acceptPairing(
+      Veilcore.ledger(found.state.data),
+      { record, reportHash, salt },
+      { landedAt: found.blockTime, blockHeight: found.blockHeight, now: Veilcore.ledger(nowState.data) },
+    );
+    return { ...v, blockHeight: found.blockHeight, authority: found.authority };
   }
 
   /**

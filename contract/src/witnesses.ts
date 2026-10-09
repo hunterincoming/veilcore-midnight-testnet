@@ -60,6 +60,24 @@ export type VeilcorePrivateState = {
    * in private state written before it existed, which reads as none.
    */
   readonly revokedLicenses?: readonly string[];
+  /**
+   * Client bookkeeping, never read by a circuit: the bound DNA pairings this party made
+   * (pairing.ts), saved BEFORE each is sent, so a pairing whose confirmation fails keeps
+   * its salt. Without the salt a pairing can never be shown. Absent reads as none.
+   */
+  readonly pairings?: readonly PairingNote[];
+};
+
+/** One bound DNA pairing, as the client keeps it (all hex). */
+export type PairingNote = {
+  /** What pairDna was given. */
+  readonly binding: string;
+  readonly reportSha256: string;
+  /** The identity (origin) the binding names. */
+  readonly identity: string;
+  readonly salt: string;
+  /** The pairDna transaction, once it landed. */
+  readonly txId?: string;
 };
 
 const ZERO32 = (): Uint8Array => new Uint8Array(32);

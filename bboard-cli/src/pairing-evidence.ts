@@ -19,6 +19,7 @@ import {
 } from '../../contract/src/pairing.js';
 import { type PairingNote } from '../../contract/src/witnesses.js';
 import { type VeilcoreAPI } from '../../api/src/veilcore-api.js';
+import { type ActionSource } from '../../api/src/pairing-history.js';
 
 const hex = (b: Uint8Array): string => Buffer.from(b).toString('hex');
 const fromHex = (h: string): Uint8Array => new Uint8Array(Buffer.from(h, 'hex'));
@@ -84,16 +85,19 @@ export type PairingVerdict = Awaited<ReturnType<VeilcoreAPI['checkPairing']>> & 
 
 /**
  * Check an evidence file as a verifier, on the contract this client joined. Refused before
- * anything is read when the file names another network or contract, or when the report
- * file given is not the one paired. Without a report file the hash in the evidence is
- * used, and the verdict says so: it then rests on the holder's word for the hash.
+ * anything is read when the file names another network or contract, when no report file
+ * is given, or when the report file given is not the one paired. Without the report the
+ * hash in the evidence is the holder's word, and a hash is all anyone needs to make such a
+ * pairing (the 9 October review, M1). With `history` (pairing-history.ts), the verdict
+ * also says whether the report's hash was paired raw earlier.
  */
 export const checkEvidence = async (
   api: Pick<VeilcoreAPI, 'checkPairing' | 'deployedContractAddress'>,
   indexerUri: string,
   network: string,
   evidence: ReadPairingEvidence,
-  report?: Uint8Array,
+  report: Uint8Array | undefined,
+  history?: ActionSource,
 ): Promise<PairingVerdict> => {
   if (evidence.network !== network)
     return {
@@ -107,12 +111,36 @@ export const checkEvidence = async (
       reason: 'the evidence names another contract than the one this client joined',
       reportChecked: false,
     };
-  if (report !== undefined && hex(reportHashOf(report)) !== hex(evidence.reportHash))
+  if (report === undefined)
+    return {
+      accepted: false,
+      reason:
+        "no report file was given. The SHA-256 in the evidence file is the holder's word, and anyone who has seen " +
+        'that hash can make such a pairing without the report. Ask for the report file and give it here',
+      reportChecked: false,
+    };
+  if (hex(reportHashOf(report)) !== hex(evidence.reportHash))
     return {
       accepted: false,
       reason: 'the report file you were given is not the one paired (its SHA-256 differs)',
       reportChecked: true,
     };
-  const v = await api.checkPairing(indexerUri, evidence.txId, evidence.record, evidence.reportHash, evidence.salt);
-  return { ...v, reportChecked: report !== undefined };
+  const v = await api.checkPairing(indexerUri, evidence.txId, evidence.record, evidence.reportHash, evidence.salt, {
+    history,
+  });
+  return { ...v, reportChecked: true };
 };
+
+/**
+ * What the holder is told after pairing. Plain about what the date shows, and about a hash
+ * typed in rather than a file hashed here.
+ */
+export const afterPairingMessage = (fromFile: boolean): string =>
+  (fromFile
+    ? "Paired. It shows that whoever controlled this record's identity at that date had this report, or its SHA-256, " +
+      'by then; not who controls the record later. '
+    : "Paired the SHA-256 you typed (no file was read here). It shows that whoever controlled this record's identity " +
+      'at that date had a report with that SHA-256, or the hash itself, by then; a verifier needs the report file. ') +
+  'To show it, give a verifier the report file and the evidence file (their option 44). Back up the evidence ' +
+  'file with the report: without the salt in it this pairing can never be shown, and the salt is not derived from ' +
+  'your record secret, so your paper copy of that does not bring it back.';

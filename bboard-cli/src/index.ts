@@ -71,7 +71,9 @@ import { ChallengeFile } from './challenge-file';
 import { redactThisSession, writeUnscrubbed } from './logger-utils';
 import { existsSync, readFileSync } from 'node:fs';
 import { type PairingEvidence, pairingEvidence } from '../../contract/src/pairing.js';
+import { type ActionSource, indexerHistory } from '../../api/src/pairing-history';
 import {
+  afterPairingMessage,
   checkEvidence,
   defaultEvidencePath,
   evidenceFromNotes,
@@ -518,7 +520,15 @@ const mainLoop = async (
   zkConfigPath: string,
   indexerUri: string,
   claimsProviders?: ClaimsProviders,
+  indexerWsUri?: string,
 ): Promise<void> => {
+  // The contract's history, for rule 9's raw-pairing check and finding a lost pairing.
+  const history: ActionSource =
+    indexerWsUri === undefined
+      ? () => {
+          throw new Error("No indexer subscription URL, so the contract's history cannot be read.");
+        }
+      : indexerHistory(indexerUri, indexerWsUri);
   const api = await deployOrJoin(providers, rli, logger, zkConfigPath, indexerUri, undefined, claimsProviders);
   if (api === null) return;
   const claims: ClaimsMenuContext = {
@@ -587,8 +597,8 @@ const mainLoop = async (
               p = await api.pairReport(report.reportHash);
             } catch (e) {
               logger.error(
-                'The pairing was not confirmed. If it was sent, its salt is saved here: option 45 shows it. ' +
-                  'Check the chain before pairing the same report again.',
+                'The pairing was not confirmed. If it was sent, its salt is saved here: option 45 shows it and can ' +
+                  'look for its transaction on chain. Check that before pairing the same report again.',
               );
               throw e;
             }
@@ -608,11 +618,7 @@ const mainLoop = async (
                 defaultEvidencePath(p.binding),
               logger,
             );
-            logger.info(
-              'Paired. To show it, give a verifier the report file and the evidence file (their option 44). ' +
-                'Keep both: without the salt in it, this pairing can never be shown. The date shows you had the ' +
-                'report by then; it does not show who controls the record later.',
-            );
+            logger.info(afterPairingMessage(report.reportFile !== undefined));
             break;
           }
           case '4': {
@@ -994,9 +1000,7 @@ const mainLoop = async (
           }
           case '44': {
             const evidence = readEvidenceFile(await rli.question('The evidence file (path): '));
-            const reportPath = (
-              await rli.question('The report file the holder gave you (path; blank = use the hash in the evidence): ')
-            ).trim();
+            const reportPath = (await rli.question('The report file the holder gave you (path): ')).trim();
             if (reportPath !== '' && !existsSync(reportPath))
               throw new InputError('No such report file. Nothing was checked.');
             const verdict = await checkEvidence(
@@ -1005,20 +1009,32 @@ const mainLoop = async (
               getNetworkId(),
               evidence,
               reportPath === '' ? undefined : new Uint8Array(readFileSync(reportPath)),
+              history,
             );
             logger.info(`${verdict.accepted ? 'ACCEPTED' : 'NOT ACCEPTED'}: ${verdict.reason}.`);
-            if (verdict.accepted && !verdict.reportChecked)
-              logger.warn(
-                "No report file was given, so the report's SHA-256 is the holder's word. Hash the report you were " +
-                  'shown and compare before relying on this.',
-              );
             break;
           }
           case '45': {
-            const { ready, unconfirmed } = evidenceFromNotes(await api.pairings(), {
-              network: getNetworkId(),
-              contractAddress: api.deployedContractAddress,
-            });
+            const where = { network: getNetworkId(), contractAddress: api.deployedContractAddress };
+            let { ready, unconfirmed } = evidenceFromNotes(await api.pairings(), where);
+            if (
+              unconfirmed.length > 0 &&
+              (
+                await rli.question(
+                  `${unconfirmed.length} saved pairing(s) never got a transaction id here. Look for them on chain now? (y/N) `,
+                )
+              )
+                .trim()
+                .toLowerCase()
+                .startsWith('y')
+            ) {
+              ({ ready, unconfirmed } = evidenceFromNotes(await api.findPairingTransactions(history), where));
+              logger.info(
+                unconfirmed.length === 0
+                  ? 'Found every one.'
+                  : `${unconfirmed.length} not on chain: never sent, or the indexer does not show it yet.`,
+              );
+            }
             if (ready.length === 0 && unconfirmed.length === 0) logger.info('No bound pairings were made from here.');
             const folder =
               ready.length === 0
@@ -1032,7 +1048,7 @@ const mainLoop = async (
               );
             for (const n of unconfirmed) {
               writeUnscrubbed(
-                `\n  Sent or about to be sent, never confirmed here. Look for a pairDna transaction that paired ${n.binding}.\n` +
+                `\n  Sent or about to be sent, never confirmed here, and not found on chain. It paired ${n.binding}.\n` +
                   `  record ${n.identity}\n  report SHA-256 ${n.reportSha256}\n  salt ${n.salt}\n\n`,
               );
             }
@@ -1437,7 +1453,15 @@ export const run = async (config: Config, testEnv: TestEnvironment, logger: Logg
       midnightProvider: walletProvider,
     };
 
-    await mainLoop(providers, rli, logger, config.zkConfigPath, envConfiguration.indexer, claimsProviders);
+    await mainLoop(
+      providers,
+      rli,
+      logger,
+      config.zkConfigPath,
+      envConfiguration.indexer,
+      claimsProviders,
+      envConfiguration.indexerWS,
+    );
   } catch (e) {
     if (e instanceof SavedProgressNotOpenedError) logger.info(e.message);
     // Stopped at a prompt (Ctrl+C, or the input closed): nothing went wrong.

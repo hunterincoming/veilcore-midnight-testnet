@@ -83,8 +83,18 @@ const str = (s: string): string => {
   return out + '"';
 };
 
-/** The canonical serialisation of a JSON value (SPEC 4.4; RFC 8785 where they overlap). */
-export const canonicalise = (value: unknown): string => {
+/**
+ * The canonical serialisation of a JSON value (SPEC 4.4; RFC 8785 where they overlap).
+ * Refuses exactly what veilcore-records 0.15 refuses (8 October 2026 review): an array
+ * with a hole (`[1,,3]` serialised as "[1,,3]", not JSON, and hashed), binary data (a
+ * Uint8Array serialised as {"0":..,"1":..}, which no other implementation produces), and
+ * a value that contains itself.
+ */
+export const canonicalise = (value: unknown): string => canon(value, new Set());
+
+// `open` holds the arrays and objects being serialised, so a value that contains itself
+// is refused with a reason instead of recursing until the stack runs out.
+const canon = (value: unknown, open: Set<object>): string => {
   if (value === null)
     throw new Error(
       "null cannot be committed: omit the field instead (spec 4.4 rule 4)",
@@ -94,8 +104,28 @@ export const canonicalise = (value: unknown): string => {
   if (typeof value === "boolean") return String(value);
   if (typeof value === "number") return num(value);
   if (typeof value === "string") return str(value);
-  if (Array.isArray(value)) return `[${value.map(canonicalise).join(",")}]`;
+  if (Array.isArray(value)) {
+    if (open.has(value))
+      throw new Error("a value that contains itself cannot be committed");
+    open.add(value);
+    const parts: string[] = [];
+    // Indexed rather than value.map(): map skips a sparse array's holes and join then
+    // writes them as nothing.
+    for (let i = 0; i < value.length; i++) {
+      if (!(i in value))
+        throw new Error("an array with a missing element cannot be committed");
+      parts.push(canon(value[i], open));
+    }
+    open.delete(value);
+    return `[${parts.join(",")}]`;
+  }
   if (typeof value === "object") {
+    if (ArrayBuffer.isView(value) || value instanceof ArrayBuffer)
+      throw new Error(
+        "binary data cannot be committed directly: encode it as a hex or base64 string first",
+      );
+    if (open.has(value))
+      throw new Error("a value that contains itself cannot be committed");
     const proto = Object.getPrototypeOf(value) as unknown;
     const isPlain =
       proto === Object.prototype ||
@@ -117,9 +147,11 @@ export const canonicalise = (value: unknown): string => {
         );
       seen.set(n, k);
     }
+    open.add(value);
     const parts = [...seen.keys()]
       .sort(byCodePoint)
-      .map((n) => `${str(n)}:${canonicalise(src[seen.get(n) as string])}`);
+      .map((n) => `${str(n)}:${canon(src[seen.get(n) as string], open)}`);
+    open.delete(value);
     return `{${parts.join(",")}}`;
   }
   throw new Error(`cannot canonicalise ${typeof value}`);

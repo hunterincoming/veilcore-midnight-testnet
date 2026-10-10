@@ -75,6 +75,7 @@ Required:
 | `PROOF_SERVER_URL` | The proof server this service uses for its own fee payments and for `anchorBatch` (see step 4 below). Nothing secret of a visitor's is ever sent to it. |
 | `STATE_DIR` | Where the Railway volume is mounted, e.g. `/data`. Holds sync progress, the day's budget and the anchoring attempt. |
 | `ALLOWED_ORIGINS` | `https://veilcore.org,https://www.veilcore.org` (the default) |
+| `BLOCKFROST_PROJECT_ID` | On preprod: your Blockfrost **Midnight Preprod** project id (Midnight runs no public preprod indexer or node since 9 October 2026). Kept out of the service's logs. Not needed if you set all three of `INDEXER_URL`, `INDEXER_WS_URL`, `NODE_WS_URL`. |
 
 For the anchoring job (it stays off without these two):
 

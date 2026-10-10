@@ -32,7 +32,8 @@ describe('credentials in endpoint URLs', () => {
     const e = blockfrostMainnet(FAKE_ID);
     expect(urlSecrets(Object.values(e))).toEqual([FAKE_ID]);
     expect(urlSecrets(['https://u:hunter2secret@host/x', 'not a url', undefined])).toEqual(['hunter2secret']);
-    expect(urlSecrets(Object.values(endpointsFor('preprod')))).toEqual([]);
+    expect(urlSecrets(Object.values(endpointsFor('preview')))).toEqual([]);
+    expect(urlSecrets(Object.values(endpointsFor('preprod', {}, { blockfrostProjectId: FAKE_ID })))).toEqual([FAKE_ID]);
   });
 
   it('SeedWallet.create with Blockfrost endpoints installs the scrubbing for its id', async () => {

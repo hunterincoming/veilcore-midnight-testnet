@@ -142,7 +142,11 @@ Costs nothing. The chain is new every run and thrown away at the end.
 
 Preprod is Midnight's test network. Use the **test wallet only**.
 
-1. `cd bboard-cli`, then `npm run preprod-remote`
+1. `cd bboard-cli`. Since 9 October 2026 preprod is reached through Blockfrost: run
+   `read -s VEILCORE_BLOCKFROST_PREPROD_PROJECT_ID`, paste your **Midnight Preprod** project
+   id (not the mainnet one), press Enter (nothing shows), then
+   `export VEILCORE_BLOCKFROST_PREPROD_PROJECT_ID`. Then `npm run preprod-remote`. It should
+   say `Connected to the preprod indexer (Blockfrost)`; `HTTP 403` means a wrong id.
 2. **Private-state password:** paste, Enter, then again. Use the same one every preprod
    run, or the saved sync progress cannot be read and the sync starts from the beginning.
 3. The wallet menu appears:

@@ -64,21 +64,36 @@ describe('the address rule', () => {
 describe('endpoints', () => {
   it('are the ones the CLI uses, and a proof server on this machine', () => {
     const cli = readFileSync(new URL('../../bboard-cli/src/config.ts', import.meta.url), 'utf8');
-    for (const n of ['preprod', 'preview'] as const) {
-      const e = endpointsFor(n);
-      for (const url of [e.indexer, e.indexerWS, e.node, e.nodeWS]) expect(cli).toContain(`'${url}'`);
-      expect(e.proofServer).toBe('http://127.0.0.1:6300');
-    }
-    expect(endpointsFor('preprod', { proofServer: 'http://10.0.0.5:6300' }).proofServer).toBe('http://10.0.0.5:6300');
+    const e = endpointsFor('preview');
+    for (const url of [e.indexer, e.indexerWS, e.node, e.nodeWS]) expect(cli).toContain(`'${url}'`);
+    expect(e.proofServer).toBe('http://127.0.0.1:6300');
+    // The CLI builds Blockfrost URLs from the same host pattern for both networks.
+    expect(cli).toContain('midnight-${this.network}.blockfrost.io');
+    const p = endpointsFor(
+      'preprod',
+      { proofServer: 'http://10.0.0.5:6300' },
+      { blockfrostProjectId: 'preprodAbCd123' },
+    );
+    expect(p.proofServer).toBe('http://10.0.0.5:6300');
   });
 
-  it('on mainnet need a Blockfrost project id or every chain endpoint', () => {
-    expect(() => endpointsFor('mainnet')).toThrow(/Blockfrost project id/);
-    expect(() => endpointsFor('mainnet', {}, { blockfrostProjectId: 'x' })).toThrow(/not a Blockfrost project id/);
-    const e = endpointsFor('mainnet', {}, { blockfrostProjectId: 'mainnetAbCdEf123' });
-    expect(e.indexer).toBe('https://midnight-mainnet.blockfrost.io/api/v0?project_id=mainnetAbCdEf123');
-    const own = { indexer: 'https://i/graphql', indexerWS: 'wss://i/ws', node: 'https://n', nodeWS: 'wss://n' };
-    expect(endpointsFor('mainnet', own)).toMatchObject(own);
+  it('on mainnet and preprod need that network’s Blockfrost project id or every chain endpoint', () => {
+    for (const n of ['mainnet', 'preprod'] as const) {
+      expect(() => endpointsFor(n)).toThrow(/Blockfrost project id/);
+      expect(() => endpointsFor(n, {}, { blockfrostProjectId: 'x' })).toThrow(/not a Blockfrost project id/);
+      const own = { indexer: 'https://i/graphql', indexerWS: 'wss://i/ws', node: 'https://n', nodeWS: 'wss://n' };
+      expect(endpointsFor(n, own)).toMatchObject(own);
+    }
+    expect(() => endpointsFor('preprod')).toThrow(/since 9 October 2026/);
+    expect(endpointsFor('mainnet', {}, { blockfrostProjectId: 'mainnetAbCdEf123' })).toMatchObject({
+      indexer: 'https://midnight-mainnet.blockfrost.io/api/v0?project_id=mainnetAbCdEf123',
+    });
+    expect(endpointsFor('preprod', {}, { blockfrostProjectId: 'preprodAbCdEf123' })).toMatchObject({
+      indexer: 'https://midnight-preprod.blockfrost.io/api/v0?project_id=preprodAbCdEf123',
+      indexerWS: 'wss://midnight-preprod.blockfrost.io/api/v0/ws?project_id=preprodAbCdEf123',
+      node: 'https://rpc.midnight-preprod.blockfrost.io/?project_id=preprodAbCdEf123',
+      nodeWS: 'wss://rpc.midnight-preprod.blockfrost.io/?project_id=preprodAbCdEf123',
+    });
     expect(() => endpointsFor('devnet' as never)).toThrow(/Unknown network/);
   });
 });
@@ -89,7 +104,8 @@ const { ProofServerRefusedError, assertProofServer, connect } = await import('..
 const { SeedWallet } = await import('../src/wallet');
 describe('the proof server', () => {
   const base = {
-    network: 'preprod' as const,
+    // preview: still served by Midnight's own public endpoints (preprod needs a Blockfrost id).
+    network: 'preview' as const,
     wallet: {} as never,
     privateState: { veilcore: {} as never, claims: {} as never },
     publicDataProvider: {} as never,
@@ -126,7 +142,10 @@ describe('the proof server', () => {
   });
 
   it("the seed wallet's own proof server follows the same rule", async () => {
-    const endpoints = { ...endpointsFor('preprod'), proofServer: 'http://10.0.0.5:6300' };
+    const endpoints = {
+      ...endpointsFor('preprod', {}, { blockfrostProjectId: 'preprodAbCd123' }),
+      proofServer: 'http://10.0.0.5:6300',
+    };
     await expect(SeedWallet.create({ network: 'preprod', endpoints, seed: '5e'.repeat(32) })).rejects.toThrow(
       ProofServerRefusedError,
     );

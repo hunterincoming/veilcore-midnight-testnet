@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Preprod through Blockfrost (9 Oct 2026)
+
+- Midnight shut its own preprod indexer and RPC (`indexer.preprod.midnight.network`,
+  `rpc.preprod.midnight.network`) at 22:00 UTC on 9 October 2026, as it did on mainnet on
+  30 September. Preprod is now reached through Blockfrost everywhere, with its own project
+  id: the CLI (`VEILCORE_BLOCKFROST_PREPROD_PROJECT_ID`, kept out of the log and the
+  terminal as on mainnet), VeilCore-run (asked hidden, or the same variable), and the
+  partner kit (`endpointsFor('preprod', …, { blockfrostProjectId })`, `blockfrostEndpoints`,
+  `BLOCKFROST_ENV`). Breaking for kit users on preprod: a project id, or all four endpoints,
+  is now required. Preview is unchanged. The faucet is Nethermind's, as before.
+- Docker images pinned by digest (proof-server 8.0.3, midnight-node 0.22.3,
+  indexer-standalone 4.0.1).
+
 ### Bound DNA pairing (9 Oct 2026)
 
 - **No contract change.** `pairDna` still publishes any non-zero 32 bytes, so a raw

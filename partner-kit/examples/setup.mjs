@@ -5,6 +5,10 @@
 //
 // Settings (environment):
 //   VEILCORE_NETWORK            preprod (default) or undeployed (the local chain, partner-kit/local)
+//   VEILCORE_BLOCKFROST_PREPROD_PROJECT_ID  preprod only: a Blockfrost "Midnight Preprod" project id.
+//                               Midnight's own preprod indexer and RPC shut on 9 October 2026. Set it
+//                               without it showing: `read -s VEILCORE_BLOCKFROST_PREPROD_PROJECT_ID`,
+//                               paste, Enter, then `export VEILCORE_BLOCKFROST_PREPROD_PROJECT_ID`.
 //   VEILCORE_WALLET_SEED        the paying wallet's hex seed; asked for (hidden) when not set
 //   VEILCORE_PRIVATE_STATE_PASSWORD  encrypts private state; asked for (hidden) when not set
 //   VEILCORE_KEYS_DIR           a folder of keys (a build's contract/src/managed, or `veilcore-keys fetch --to`)
@@ -30,10 +34,12 @@ import {
   VeilCore,
   VeilCoreClaims,
   checkKeys,
+  BLOCKFROST_ENV,
   connect,
   encryptedPrivateState,
   endpointsFor,
   errorChain,
+  isBlockfrostNetwork,
   isLocalUrl,
   isNetwork,
   passwordProblem,
@@ -80,7 +86,7 @@ const take = (name) => {
   return v === undefined || v === '' ? undefined : v;
 };
 
-/** Settings from the environment, with nothing secret in them. */
+/** Settings from the environment. On preprod the endpoints carry the Blockfrost project id: never print them. */
 export const settings = () => {
   const network = process.env.VEILCORE_NETWORK ?? 'preprod';
   if (!isNetwork(network) || network === 'mainnet')
@@ -105,7 +111,17 @@ export const settings = () => {
   // Only needed if joining stops with StartingStateUnreachableError: the main contract's
   // deploy transaction id, from whoever deployed it.
   const deployTxId = process.env.VEILCORE_DEPLOY_TX_ID || undefined;
-  return { network, addresses, keys, proofServer, deployTxId, endpoints: endpointsFor(network, { proofServer }) };
+  // Preprod is reached through Blockfrost since 9 October 2026. The endpoints then carry the
+  // project id: connect() and the wallet keep it out of the terminal; never log them.
+  const blockfrostProjectId = isBlockfrostNetwork(network) ? process.env[BLOCKFROST_ENV[network]]?.trim() : undefined;
+  if (isBlockfrostNetwork(network) && !blockfrostProjectId)
+    throw new Error(
+      `${BLOCKFROST_ENV[network]} is not set. Since 9 October 2026 preprod is reached through Blockfrost: create a ` +
+        `"Midnight Preprod" project at blockfrost.io, then: read -s ${BLOCKFROST_ENV[network]} (paste, Enter), ` +
+        `export ${BLOCKFROST_ENV[network]}.`,
+    );
+  const endpoints = endpointsFor(network, { proofServer }, blockfrostProjectId ? { blockfrostProjectId } : {});
+  return { network, addresses, keys, proofServer, deployTxId, endpoints };
 };
 
 /**

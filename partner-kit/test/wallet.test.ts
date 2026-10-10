@@ -43,7 +43,11 @@ const cliDustAddress = (seed: string, network: string): string =>
 describe('a seed wallet', () => {
   it('is the wallet the CLI makes from the same seed (same DUST address)', async () => {
     setNetworkId('preprod');
-    const w = await SeedWallet.create({ network: 'preprod', endpoints: endpointsFor('preprod'), seed: SEED });
+    const w = await SeedWallet.create({
+      network: 'preprod',
+      endpoints: endpointsFor('preprod', {}, { blockfrostProjectId: 'testPreprodId123' }),
+      seed: SEED,
+    });
     made.push(w);
     expect(w.dustAddress()).toBe(cliDustAddress(SEED, 'preprod'));
     expect(w.dustAddress()).toMatch(/^mn_dust/);
@@ -53,7 +57,7 @@ describe('a seed wallet', () => {
     setNetworkId('preprod');
     const w = await SeedWallet.create({
       network: 'preprod',
-      endpoints: endpointsFor('preprod'),
+      endpoints: endpointsFor('preprod', {}, { blockfrostProjectId: 'testPreprodId123' }),
       mnemonic: TEST_MNEMONIC,
     });
     made.push(w);
@@ -61,7 +65,7 @@ describe('a seed wallet', () => {
   });
 
   it('refuses a bad seed or phrase without repeating it, and needs exactly one', async () => {
-    const e = endpointsFor('preprod');
+    const e = endpointsFor('preprod', {}, { blockfrostProjectId: 'testPreprodId123' });
     await expect(SeedWallet.create({ network: 'preprod', endpoints: e, seed: 'SECRETzz' })).rejects.toThrow(
       /^A wallet seed is hex/,
     );
@@ -124,7 +128,7 @@ describe('a password that does not open saved progress (review M2)', () => {
     await expect(
       SeedWallet.create({
         network: 'preprod',
-        endpoints: endpointsFor('preprod'),
+        endpoints: endpointsFor('preprod', {}, { blockfrostProjectId: 'testPreprodId123' }),
         seed: SEED,
         saveProgress: { password: 'A-Different-Pw-417x', dir },
       }),
@@ -140,7 +144,7 @@ describe('a password that does not open saved progress (review M2)', () => {
     made.push(
       await SeedWallet.create({
         network: 'preprod',
-        endpoints: endpointsFor('preprod'),
+        endpoints: endpointsFor('preprod', {}, { blockfrostProjectId: 'testPreprodId123' }),
         seed: SEED,
         saveProgress: { password: 'A-Different-Pw-417x', dir, onUnreadable: 'setAside' },
         logger: silent,
@@ -154,7 +158,10 @@ describe('a password that does not open saved progress (review M2)', () => {
     const upper = '5E'.repeat(32);
     const dir = mkdtempSync(path.join(tmpdir(), 'vc-ws-'));
     await save(dir, upper, PASSWORD);
-    const opts = { network: 'preprod' as const, endpoints: endpointsFor('preprod') };
+    const opts = {
+      network: 'preprod' as const,
+      endpoints: endpointsFor('preprod', {}, { blockfrostProjectId: 'testPreprodId123' }),
+    };
     // Found (so a wrong password stops): the same name as the CLI's.
     await expect(
       SeedWallet.create({ ...opts, seed: upper, saveProgress: { password: 'A-Different-Pw-417x', dir } }),
@@ -172,7 +179,7 @@ describe('nothing secret in what a wallet prints (review M3)', () => {
     const dir = mkdtempSync(path.join(tmpdir(), 'vc-ws-'));
     const w = await SeedWallet.create({
       network: 'preprod',
-      endpoints: endpointsFor('preprod'),
+      endpoints: endpointsFor('preprod', {}, { blockfrostProjectId: 'testPreprodId123' }),
       seed: SEED,
       saveProgress: { password: PASSWORD, dir },
     });

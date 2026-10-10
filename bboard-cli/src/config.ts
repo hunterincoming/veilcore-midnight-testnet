@@ -99,33 +99,55 @@ export class MainnetConfig implements Config {
   mainnet = true;
 }
 
-/** Endpoints from docs.midnight.network, "Networks and environments". No faucet. */
-/** The Blockfrost project id for Midnight mainnet, from the environment. Never logged. */
-export const BLOCKFROST_VAR = 'VEILCORE_BLOCKFROST_PROJECT_ID';
-export const blockfrostProjectId = (): string => {
-  const id = (process.env[BLOCKFROST_VAR] ?? '').trim();
+/** The networks served only through Blockfrost: mainnet since 30 Sep 2026, preprod since 9 Oct 2026. */
+export type BlockfrostNetwork = 'mainnet' | 'preprod';
+
+/** Where each network's Blockfrost project id comes from. One project per network. */
+export const BLOCKFROST_VARS: Record<BlockfrostNetwork, string> = {
+  mainnet: 'VEILCORE_BLOCKFROST_PROJECT_ID',
+  preprod: 'VEILCORE_BLOCKFROST_PREPROD_PROJECT_ID',
+};
+/** Mainnet's, kept under its old name. */
+export const BLOCKFROST_VAR = BLOCKFROST_VARS.mainnet;
+
+const SHUT: Record<BlockfrostNetwork, string> = {
+  mainnet:
+    "Since 30 Sep 2026 Midnight mainnet's indexer and RPC are served by Blockfrost: create a Midnight Mainnet project",
+  preprod:
+    "Since 9 Oct 2026 Midnight preprod's indexer and RPC are served by Blockfrost: create a Midnight Preprod project",
+};
+
+/** A network's Blockfrost project id, from the environment. Never logged. */
+export const blockfrostProjectIdFor = (network: BlockfrostNetwork): string => {
+  const name = BLOCKFROST_VARS[network];
+  const id = (process.env[name] ?? '').trim();
   if (!/^[A-Za-z0-9_-]{8,}$/.test(id)) {
     throw new Error(
-      `${BLOCKFROST_VAR} is not set. Since 30 Sep 2026 Midnight mainnet's indexer and RPC are served by Blockfrost: ` +
-        'create a Midnight Mainnet project at blockfrost.io and export its project id.',
+      `${name} is not set. ${SHUT[network]} at blockfrost.io, then in this terminal run ` +
+        `\`read -s ${name}\`, paste the id (nothing shows), press Enter, and run \`export ${name}\`.`,
     );
   }
   return id;
 };
+/** Mainnet's project id (blockfrostProjectIdFor('mainnet')). */
+export const blockfrostProjectId = (): string => blockfrostProjectIdFor('mainnet');
 
 /**
- * Mainnet through Blockfrost, the public provider since Midnight shut its own mainnet
- * indexer and RPC on 30 Sep 2026. The project id rides as a query parameter, since
- * midnight-js cannot set headers; the logger scrubs it (launcher/mainnet.ts).
+ * A network served through Blockfrost. The project id rides as a query parameter, since
+ * midnight-js cannot set headers; the launcher scrubs it from the log and the terminal.
  *
  * The test kit's own health check rebuilds each URL without its query string, so it
  * would call Blockfrost without the project id and fail. This one keeps it.
  */
-export class MainnetEnvironment extends RemoteTestEnvironment {
-  private readonly projectId = blockfrostProjectId();
+export class BlockfrostEnvironment extends RemoteTestEnvironment {
+  private readonly projectId: string;
 
-  constructor(logger: Logger) {
+  constructor(
+    logger: Logger,
+    private readonly network: BlockfrostNetwork,
+  ) {
     super(logger);
+    this.projectId = blockfrostProjectIdFor(network);
     this.healthCheck = async (): Promise<void> => {
       const cfg = this.getEnvironmentConfiguration();
       const post = async (url: string, body: unknown): Promise<unknown> => {
@@ -144,15 +166,15 @@ export class MainnetEnvironment extends RemoteTestEnvironment {
           data?: { block?: { height?: number } };
         };
         if (typeof block.data?.block?.height !== 'number') throw new Error('no block height in the answer');
-        logger.info(`Connected to the mainnet indexer (Blockfrost): block ${block.data.block.height}`);
+        logger.info(`Connected to the ${network} indexer (Blockfrost): block ${block.data.block.height}`);
       } catch (e) {
-        throw new Error(`Mainnet indexer check failed: ${e instanceof Error ? e.message : String(e)}`);
+        throw new Error(`${network} indexer check failed: ${e instanceof Error ? e.message : String(e)}`);
       }
       try {
         await post(cfg.node, { jsonrpc: '2.0', id: 1, method: 'system_health', params: [] });
-        logger.info('Connected to the mainnet node RPC (Blockfrost)');
+        logger.info(`Connected to the ${network} node RPC (Blockfrost)`);
       } catch (e) {
-        throw new Error(`Mainnet node RPC check failed: ${e instanceof Error ? e.message : String(e)}`);
+        throw new Error(`${network} node RPC check failed: ${e instanceof Error ? e.message : String(e)}`);
       }
       await new ProofServerClient(cfg.proofServer, logger).health();
     };
@@ -168,17 +190,25 @@ export class MainnetEnvironment extends RemoteTestEnvironment {
 
   getEnvironmentConfiguration(): EnvironmentConfiguration {
     const q = `?project_id=${encodeURIComponent(this.projectId)}`;
+    const host = `midnight-${this.network}.blockfrost.io`;
     return {
-      walletNetworkId: 'mainnet',
-      networkId: 'mainnet',
-      indexer: `https://midnight-mainnet.blockfrost.io/api/v0${q}`,
-      indexerWS: `wss://midnight-mainnet.blockfrost.io/api/v0/ws${q}`,
-      node: `https://rpc.midnight-mainnet.blockfrost.io/${q}`,
-      nodeWS: `wss://rpc.midnight-mainnet.blockfrost.io/${q}`,
-      // There is no mainnet faucet. Empty, so no faucet check.
-      faucet: '',
+      walletNetworkId: this.network,
+      networkId: this.network,
+      indexer: `https://${host}/api/v0${q}`,
+      indexerWS: `wss://${host}/api/v0/ws${q}`,
+      node: `https://rpc.${host}/${q}`,
+      nodeWS: `wss://rpc.${host}/${q}`,
+      // No mainnet faucet; preprod's is Nethermind's (it was never one of the hosts that shut).
+      faucet: this.network === 'preprod' ? 'https://midnight-tmnight-preprod.nethermind.dev/' : '',
       proofServer: this.getProofServerUrl(),
     };
+  }
+}
+
+/** Mainnet through Blockfrost. */
+export class MainnetEnvironment extends BlockfrostEnvironment {
+  constructor(logger: Logger) {
+    super(logger, 'mainnet');
   }
 }
 
@@ -209,29 +239,9 @@ export class PreviewTestEnvironment extends RemoteTestEnvironment {
   }
 }
 
-export class PreprodTestEnvironment extends RemoteTestEnvironment {
+/** Preprod through Blockfrost: Midnight's own preprod indexer and RPC shut on 9 Oct 2026, 22:00 UTC. */
+export class PreprodTestEnvironment extends BlockfrostEnvironment {
   constructor(logger: Logger) {
-    super(logger);
-  }
-
-  private getProofServerUrl(): string {
-    const container = this.proofServerContainer as { getUrl(): string } | undefined;
-    if (!container) {
-      throw new Error('Proof server container is not available.');
-    }
-    return container.getUrl();
-  }
-
-  getEnvironmentConfiguration(): EnvironmentConfiguration {
-    return {
-      walletNetworkId: 'preprod',
-      networkId: 'preprod',
-      indexer: 'https://indexer.preprod.midnight.network/api/v4/graphql',
-      indexerWS: 'wss://indexer.preprod.midnight.network/api/v4/graphql/ws',
-      node: 'https://rpc.preprod.midnight.network',
-      nodeWS: 'wss://rpc.preprod.midnight.network',
-      faucet: 'https://midnight-tmnight-preprod.nethermind.dev/',
-      proofServer: this.getProofServerUrl(),
-    };
+    super(logger, 'preprod');
   }
 }

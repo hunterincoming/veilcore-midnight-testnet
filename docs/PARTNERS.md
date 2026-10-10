@@ -158,7 +158,10 @@ Three complete, runnable examples are in [`partner-kit/examples/`](../partner-ki
 Run one with `node examples/lab.mjs` from `partner-kit/` (settings at the top of
 `examples/setup.mjs`: `VEILCORE_NETWORK`, keys, proof server; the wallet seed and the
 private-state password are asked for, hidden, unless your secret manager sets them in the
-environment). `node examples/check.mjs` runs all three and prints a PASS line per check;
+environment). **On preprod you also need a Blockfrost "Midnight Preprod" project id:**
+Midnight shut its own preprod indexer and RPC on 9 October 2026. Set it without it showing:
+`read -s VEILCORE_BLOCKFROST_PREPROD_PROJECT_ID`, paste, Enter, then
+`export VEILCORE_BLOCKFROST_PREPROD_PROJECT_ID`. `node examples/check.mjs` runs all three and prints a PASS line per check;
 from the repository root that is `npm run partner-check`.
 
 **On a local chain.** `partner-kit/local/compose.yml` runs a node, an indexer and a proof

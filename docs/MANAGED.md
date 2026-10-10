@@ -184,7 +184,10 @@ operating.
 
 From the repository folder: `npm run managed -- <command> --partner <id> [options]`.
 `npm run managed -- help` lists them all. The network is `--network` or `VEILCORE_NETWORK` (default
-preprod). Each command asks for that partner's store password (hidden), does one thing, and closes the
+preprod). Mainnet and preprod are reached through Blockfrost (Midnight shut its own mainnet endpoints
+on 30 September and its preprod ones on 9 October 2026): the tool asks for that network's Blockfrost
+project id (hidden), or reads `VEILCORE_BLOCKFROST_PROJECT_ID` (mainnet) or
+`VEILCORE_BLOCKFROST_PREPROD_PROJECT_ID` (preprod). Each command asks for that partner's store password (hidden), does one thing, and closes the
 store. Commands that send a transaction also start the operator wallet. Nothing private is ever taken
 from the command line (it would stay in shell history and be visible to other programs).
 

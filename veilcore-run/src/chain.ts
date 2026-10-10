@@ -7,6 +7,8 @@ import { existsSync } from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+  BLOCKFROST_ENV,
+  isBlockfrostNetwork,
   type KeySource,
   type Network,
   DEFAULT_KEYS_URL,
@@ -113,10 +115,14 @@ export const openChain = async (
     );
   io.print(`Checking the proving keys against the deployment record...`);
   await checkKeys(s.keys);
-  const blockfrostProjectId =
-    s.network === 'mainnet'
-      ? (take(env, 'VEILCORE_BLOCKFROST_PROJECT_ID') ?? (await io.askHidden('Blockfrost project id (nothing shows): ')))
-      : undefined;
+  // Mainnet (since 30 Sep 2026) and preprod (since 9 Oct 2026) are reached through
+  // Blockfrost, each with its own project id.
+  const blockfrostProjectId = isBlockfrostNetwork(s.network)
+    ? (take(env, BLOCKFROST_ENV[s.network]) ??
+      (await io.askHidden(
+        `Blockfrost ${s.network === 'mainnet' ? 'Mainnet' : 'Preprod'} project id (nothing shows): `,
+      )))
+    : undefined;
   const endpoints = endpointsFor(s.network, { proofServer: s.proofServer }, { blockfrostProjectId });
   const seed = (
     take(env, 'VEILCORE_WALLET_SEED') ??

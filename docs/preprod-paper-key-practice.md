@@ -19,8 +19,12 @@ mistaken for the mainnet key. Shred them at the end.
    git pull
    npm ci
    cd bboard-cli
+   read -s VEILCORE_BLOCKFROST_PREPROD_PROJECT_ID
+   export VEILCORE_BLOCKFROST_PREPROD_PROJECT_ID
    npm run preprod-remote
    ```
+   (After `read -s`, paste your Blockfrost **Midnight Preprod** project id and press Enter;
+   nothing shows. Midnight's own preprod endpoints shut on 9 October 2026.)
 2. Private-state password (twice), then wallet menu `2`, paste seed 2. Wait for the sync and
    `DUST available`.
 3. Deploy menu: type `1` (Deploy a new VeilCore contract).

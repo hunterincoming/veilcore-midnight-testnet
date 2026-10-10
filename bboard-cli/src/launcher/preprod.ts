@@ -13,11 +13,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { createLogger } from '../logger-utils.js';
+import { createLogger, scrubTerminal } from '../logger-utils.js';
 import { run } from '../index.js';
-import { PreprodRemoteConfig } from '../config.js';
+import { PreprodRemoteConfig, blockfrostProjectIdFor } from '../config.js';
 
 const config = new PreprodRemoteConfig();
-const logger = await createLogger(config.logDir);
+// Since 9 Oct 2026 preprod is reached through Blockfrost, and the project id travels in
+// the endpoint URLs: keep it out of the terminal and the log file, as on mainnet.
+const projectId = blockfrostProjectIdFor('preprod');
+const logger = await createLogger(config.logDir, [projectId]);
+scrubTerminal([projectId]);
 const testEnvironment = config.getEnvironment(logger);
 await run(config, testEnvironment, logger);

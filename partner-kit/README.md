@@ -65,7 +65,8 @@ Verifying needs no wallet:
 
 ```js
 import { checkPresentation } from '@veilcore/contracts';
-const verdict = await checkPresentation({ network: 'preprod', txId, issuer, challenge, issuedAt });
+// Mainnet and preprod are reached through Blockfrost: pass that network's project id.
+const verdict = await checkPresentation({ network: 'preprod', blockfrostProjectId, txId, issuer, challenge, issuedAt });
 ```
 
 - Node 24, ES modules. A proof server on your own machine (`docker run -d -p 127.0.0.1:6300:6300 midnightntwrk/proof-server:8.0.3@sha256:8e6c36c3c175ef6e1b337952155b30470f252af79a20c3f65153a86a983e17ab midnight-proof-server -v`; bound to

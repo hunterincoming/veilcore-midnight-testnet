@@ -18,8 +18,10 @@ import { randomBytes } from 'node:crypto';
 import {
   type FieldSetFile,
   type RangeDirection,
+  BLOCKFROST_ENV,
   checkBatchAnchor,
   fromHex,
+  isBlockfrostNetwork,
   passwordProblem,
   readLedger,
   toHex,
@@ -248,6 +250,11 @@ export const main = async (argv: readonly string[], io: Io = terminalIo, deps: M
         : // Typed secrets (seed, password, Blockfrost id) go through `hidden`, so every
           // line printed afterwards has them redacted too.
           openChain(settingsFrom(env, network), { ...io, print: out, askHidden: hidden }, env, { claims, who });
+    // The network's Blockfrost project id for read-only checks (mainnet and preprod), if set.
+    const readBlockfrost = (): { blockfrostProjectId?: string } => {
+      const v = isBlockfrostNetwork(network) ? env[BLOCKFROST_ENV[network]]?.trim() : undefined;
+      return v ? { blockfrostProjectId: v } : {};
+    };
     const chainCheck =
       (address?: string) =>
       async (txId: string, head: string): Promise<boolean> =>
@@ -257,14 +264,14 @@ export const main = async (argv: readonly string[], io: Io = terminalIo, deps: M
             txId,
             root: fromHex(head),
             ...(address === undefined ? {} : { address }),
-            ...(env.VEILCORE_BLOCKFROST_PROJECT_ID ? { blockfrostProjectId: env.VEILCORE_BLOCKFROST_PROJECT_ID } : {}),
+            ...readBlockfrost(),
           })
         ).accepted;
     const ledgerNow = () =>
       readLedger({
         network: network as never,
         ...(env.VEILCORE_ADDRESS ? { address: env.VEILCORE_ADDRESS } : {}),
-        ...(env.VEILCORE_BLOCKFROST_PROJECT_ID ? { blockfrostProjectId: env.VEILCORE_BLOCKFROST_PROJECT_ID } : {}),
+        ...readBlockfrost(),
       });
 
     // ── commands with no partner vault ─────────────────────────────────────────

@@ -36,13 +36,20 @@ export const DEFAULT_PROOF_SERVER = 'http://127.0.0.1:6300';
 export const PROOF_SERVER_IMAGE =
   'midnightntwrk/proof-server:8.0.3@sha256:8e6c36c3c175ef6e1b337952155b30470f252af79a20c3f65153a86a983e17ab';
 
-const PUBLIC: Record<Exclude<Network, 'mainnet'>, Omit<Endpoints, 'proofServer'>> = {
-  preprod: {
-    indexer: 'https://indexer.preprod.midnight.network/api/v4/graphql',
-    indexerWS: 'wss://indexer.preprod.midnight.network/api/v4/graphql/ws',
-    node: 'https://rpc.preprod.midnight.network',
-    nodeWS: 'wss://rpc.preprod.midnight.network',
-  },
+/** The networks served only through Blockfrost: mainnet since 30 September 2026, preprod since 9 October 2026. */
+export type BlockfrostNetwork = 'mainnet' | 'preprod';
+export const isBlockfrostNetwork = (n: string): n is BlockfrostNetwork => n === 'mainnet' || n === 'preprod';
+
+/**
+ * Where VeilCore's own tools read each network's Blockfrost project id from. One project per
+ * network: Blockfrost refuses a preprod id on mainnet and the other way round.
+ */
+export const BLOCKFROST_ENV: Record<BlockfrostNetwork, string> = {
+  mainnet: 'VEILCORE_BLOCKFROST_PROJECT_ID',
+  preprod: 'VEILCORE_BLOCKFROST_PREPROD_PROJECT_ID',
+};
+
+const PUBLIC: Record<Exclude<Network, BlockfrostNetwork>, Omit<Endpoints, 'proofServer'>> = {
   preview: {
     indexer: 'https://indexer.preview.midnight.network/api/v4/graphql',
     indexerWS: 'wss://indexer.preview.midnight.network/api/v4/graphql/ws',
@@ -58,26 +65,41 @@ const PUBLIC: Record<Exclude<Network, 'mainnet'>, Omit<Endpoints, 'proofServer'>
   },
 };
 
+const BLOCKFROST_NAME: Record<BlockfrostNetwork, string> = { mainnet: 'Midnight Mainnet', preprod: 'Midnight Preprod' };
+
 /**
- * Mainnet's indexer and node through Blockfrost, the public provider since Midnight shut
- * its own mainnet endpoints on 30 September 2026. The project id rides in the query
- * string (midnight-js cannot set headers), so treat these URLs as secrets: never log them.
+ * A network's indexer and node through Blockfrost, the public provider since Midnight shut
+ * its own mainnet endpoints (30 September 2026) and preprod endpoints (9 October 2026). The
+ * project id rides in the query string (midnight-js cannot set headers), so treat these URLs
+ * as secrets: never log them.
  */
-export const blockfrostMainnet = (projectId: string): Omit<Endpoints, 'proofServer'> => {
+export const blockfrostEndpoints = (network: BlockfrostNetwork, projectId: string): Omit<Endpoints, 'proofServer'> => {
   if (!/^[A-Za-z0-9_-]{8,}$/.test(projectId))
-    throw new Error('That is not a Blockfrost project id. Create a Midnight Mainnet project at blockfrost.io.');
+    throw new Error(
+      `That is not a Blockfrost project id. Create a ${BLOCKFROST_NAME[network]} project at blockfrost.io.`,
+    );
   const q = `?project_id=${encodeURIComponent(projectId)}`;
+  const host = `midnight-${network}.blockfrost.io`;
   return {
-    indexer: `https://midnight-mainnet.blockfrost.io/api/v0${q}`,
-    indexerWS: `wss://midnight-mainnet.blockfrost.io/api/v0/ws${q}`,
-    node: `https://rpc.midnight-mainnet.blockfrost.io/${q}`,
-    nodeWS: `wss://rpc.midnight-mainnet.blockfrost.io/${q}`,
+    indexer: `https://${host}/api/v0${q}`,
+    indexerWS: `wss://${host}/api/v0/ws${q}`,
+    node: `https://rpc.${host}/${q}`,
+    nodeWS: `wss://rpc.${host}/${q}`,
   };
 };
 
+/** Mainnet through Blockfrost (blockfrostEndpoints). */
+export const blockfrostMainnet = (projectId: string): Omit<Endpoints, 'proofServer'> =>
+  blockfrostEndpoints('mainnet', projectId);
+
+/** Preprod through Blockfrost (blockfrostEndpoints). Midnight's own preprod hosts shut on 9 October 2026. */
+export const blockfrostPreprod = (projectId: string): Omit<Endpoints, 'proofServer'> =>
+  blockfrostEndpoints('preprod', projectId);
+
 /**
- * The endpoints for `network`, with any of them replaced by `overrides`. Mainnet needs a
- * Blockfrost project id, or all four of indexer, indexerWS, node and nodeWS given.
+ * The endpoints for `network`, with any of them replaced by `overrides`. Mainnet and preprod
+ * need a Blockfrost project id for that network, or all four of indexer, indexerWS, node and
+ * nodeWS given.
  */
 export const endpointsFor = (
   network: Network,
@@ -87,14 +109,15 @@ export const endpointsFor = (
   if (!isNetwork(network)) throw new Error(`Unknown network ${String(network)}. Use one of ${NETWORKS.join(', ')}.`);
   const given = Object.fromEntries(Object.entries(overrides).filter(([, v]) => v !== undefined && v !== ''));
   let base: Omit<Endpoints, 'proofServer'>;
-  if (network === 'mainnet') {
+  if (isBlockfrostNetwork(network)) {
     const all = ['indexer', 'indexerWS', 'node', 'nodeWS'].every((k) => typeof given[k] === 'string');
-    if (options.blockfrostProjectId !== undefined) base = blockfrostMainnet(options.blockfrostProjectId);
+    if (options.blockfrostProjectId !== undefined) base = blockfrostEndpoints(network, options.blockfrostProjectId);
     else if (all) base = given as unknown as Omit<Endpoints, 'proofServer'>;
     else
       throw new Error(
-        'Mainnet has no public endpoints of its own: give a Blockfrost project id (blockfrostProjectId), or all of ' +
-          'indexer, indexerWS, node and nodeWS for a provider you trust.',
+        `${network === 'mainnet' ? 'Mainnet' : 'Preprod'} has no public endpoints of its own` +
+          `${network === 'preprod' ? ' since 9 October 2026' : ''}: give a ${BLOCKFROST_NAME[network]} Blockfrost ` +
+          'project id (blockfrostProjectId), or all of indexer, indexerWS, node and nodeWS for a provider you trust.',
       );
   } else base = PUBLIC[network];
   return { ...base, proofServer: DEFAULT_PROOF_SERVER, ...given };

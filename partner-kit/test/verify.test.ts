@@ -161,6 +161,7 @@ describe('the network name, the indexers and the address agree', () => {
     await expect(
       checkBatchAnchor({
         network: 'preprod',
+        indexer: 'http://one/',
         secondIndexer: 'https://indexer.mainnet.example/graphql',
         txId: TX,
         root: forged,
@@ -172,7 +173,13 @@ describe('the network name, the indexers and the address agree', () => {
   it("REFUSED: VeilCore's mainnet address under another network name", async () => {
     indexers({});
     await expect(
-      checkBatchAnchor({ network: 'preprod', address: MAINNET_ADDRESSES.veilcore, txId: TX, root: forged }),
+      checkBatchAnchor({
+        network: 'preprod',
+        indexer: 'http://one/',
+        address: MAINNET_ADDRESSES.veilcore,
+        txId: TX,
+        root: forged,
+      }),
     ).rejects.toThrow(/is VeilCore's mainnet contract, but the network is preprod/);
     await expect(
       readAuthority({ network: 'undeployed', indexer: 'http://one/', address: MAINNET_ADDRESSES.veilcore }),
@@ -184,11 +191,11 @@ describe('the network name, the indexers and the address agree', () => {
     await expect(
       checkBatchAnchor({
         network: 'mainnet',
-        indexer: 'https://indexer.preprod.midnight.network/api/v4/graphql',
+        indexer: 'https://midnight-preprod.blockfrost.io/api/v0',
         txId: TX,
         root: forged,
       }),
-    ).rejects.toThrow(/network is mainnet but the indexer indexer\.preprod\.midnight\.network is not/);
+    ).rejects.toThrow(/network is mainnet but the indexer midnight-preprod\.blockfrost\.io is not/);
   });
 
   it('preprod checks the pinned keys by default; the preprod address is accepted', async () => {

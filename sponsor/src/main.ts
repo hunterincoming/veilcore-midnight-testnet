@@ -19,7 +19,7 @@ import { JsonFile } from './state-file.js';
 import { Anchorer, type Attempt } from './anchorer.js';
 import { HttpRegistry } from './registry.js';
 import { loadVeilcore, MidnightAnchorChain } from './chain.js';
-import { log } from './log.js';
+import { log, scrubOutput } from './log.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -39,6 +39,8 @@ const isAttempt = (v: unknown): v is Attempt =>
 const main = async (): Promise<void> => {
   if (!('WebSocket' in globalThis)) (globalThis as { WebSocket?: unknown }).WebSocket = WebSocket;
   const cfg = loadConfig(process.env);
+  // Before anything can print an endpoint URL: they carry the Blockfrost project id.
+  scrubOutput(cfg.logSecrets);
   setNetworkId(cfg.network);
   const now = () => Date.now();
 

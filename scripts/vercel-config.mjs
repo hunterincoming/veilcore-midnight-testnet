@@ -21,6 +21,13 @@ if (REAL_CHAIN) {
   if (!sponsor) throw new Error('VITE_REAL_CHAIN=1 needs VITE_SPONSOR_URL (the sponsor service), or the site cannot reach it.');
   const network = (process.env.VITE_NETWORK_ID || 'preprod').toLowerCase();
   if (network === 'mainnet') throw new Error('VITE_REAL_CHAIN=1 is for a test network only.');
+  // Midnight's own preprod indexer shut on 9 October 2026; preprod needs the indexer named.
+  if (network === 'preprod' && !(process.env.VITE_INDEXER_URL && process.env.VITE_INDEXER_WS_URL))
+    throw new Error('VITE_REAL_CHAIN=1 on preprod needs VITE_INDEXER_URL and VITE_INDEXER_WS_URL (Midnight runs no public preprod indexer).');
+  // A key in an indexer URL would be published inside the page for anyone to use.
+  for (const v of [process.env.VITE_INDEXER_URL, process.env.VITE_INDEXER_WS_URL])
+    if (v && /[?&](project_id|api[_-]?key|token)=/i.test(v))
+      throw new Error('VITE_INDEXER_URL carries a key (project_id=…). That build is for your own computer only; it is never deployed.');
   const indexer = new URL(process.env.VITE_INDEXER_URL || `https://indexer.${network}.midnight.network/api/v4/graphql`);
   const indexerWs = new URL(process.env.VITE_INDEXER_WS_URL || `wss://indexer.${network}.midnight.network/api/v4/graphql/ws`);
   chainOrigins.push(new URL(sponsor).origin, indexer.origin, `${indexerWs.protocol}//${indexerWs.host}`);

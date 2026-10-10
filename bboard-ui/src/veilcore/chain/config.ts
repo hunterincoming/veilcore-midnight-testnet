@@ -5,7 +5,7 @@
 //   VITE_REAL_CHAIN=1                     turn the real-chain features on
 //   VITE_REAL_CHAIN_CONTRACT_ADDRESS=…    the demo contract on preprod (64 hex characters)
 //   VITE_SPONSOR_URL=https://…            the sponsor service that pays the fees
-//   VITE_INDEXER_URL / VITE_INDEXER_WS_URL  optional; the network's public indexer by default
+//   VITE_INDEXER_URL / VITE_INDEXER_WS_URL  the network's indexer (required on preprod: see INDEXERS)
 // SPDX-License-Identifier: Apache-2.0
 
 import { NETWORK } from '../../config/network';
@@ -22,11 +22,11 @@ export const CHAIN_CONTRACT: string | undefined = /^[0-9a-f]{64}$/.test(addr) ? 
 const sponsor = (env.VITE_SPONSOR_URL ?? '').trim().replace(/\/$/, '');
 export const SPONSOR_URL: string | undefined = /^https?:\/\/[^\s]+$/.test(sponsor) ? sponsor : undefined;
 
+// Midnight's own public indexers, where it still runs one. Preprod has none since 9 October
+// 2026 (it is served by Blockfrost, which needs a project id): a preprod build must set
+// VITE_INDEXER_URL and VITE_INDEXER_WS_URL. A project id in those is a key inside the page,
+// so such a build is for this computer only; scripts/vercel-config.mjs refuses to deploy it.
 const INDEXERS: Record<string, { http: string; ws: string }> = {
-  preprod: {
-    http: 'https://indexer.preprod.midnight.network/api/v4/graphql',
-    ws: 'wss://indexer.preprod.midnight.network/api/v4/graphql/ws',
-  },
   preview: {
     http: 'https://indexer.preview.midnight.network/api/v4/graphql',
     ws: 'wss://indexer.preview.midnight.network/api/v4/graphql/ws',

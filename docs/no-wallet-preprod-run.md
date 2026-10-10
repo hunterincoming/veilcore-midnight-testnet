@@ -10,11 +10,14 @@ mainnet registry, the 1AM wallet or real money. The sponsor service refuses main
 it refuses any registry that does not say it anchors on preprod.
 
 **You need:** the Mac with Docker running; the Railway account; your password manager; a
+Blockfrost **Midnight Preprod** project id (blockfrost.io; Midnight shut its own preprod
+indexer and RPC on 9 October 2026, so preprod is only reachable through Blockfrost now); a
 small PDF to stand in for a DNA report; about 2 hours (the wallet sync and the first
 anchoring are slow).
 
-**Never paste to Claude or anyone:** the sponsor seed, the preprod registry's operator
-token, the sponsor's status token, the record-keys backup file. Everything this asks you to
+**Never paste to Claude or anyone:** the sponsor seed, the Blockfrost preprod project id,
+the preprod registry's operator token, the sponsor's status token, the record-keys backup
+file. Everything this asks you to
 paste back is public.
 
 ## Part 1: the sponsor wallet (Mac, about 20 minutes, mostly waiting)
@@ -29,9 +32,16 @@ never re-registering NIGHT for DUST is about that mainnet wallet and does not ap
    git pull
    npm ci
    cd bboard-cli
+   read -s VEILCORE_BLOCKFROST_PREPROD_PROJECT_ID
+   ```
+   Paste your Blockfrost preprod project id and press Enter (nothing shows). Then:
+   ```
+   export VEILCORE_BLOCKFROST_PREPROD_PROJECT_ID
    npm run preprod-remote
    ```
-   Your preprod password, then wallet menu **1 (create a new wallet)**.
+   It should say `Connected to the preprod indexer (Blockfrost)` (`HTTP 403` means a wrong
+   id: do `read -s` again). Your preprod password, then wallet menu **1 (Build a fresh
+   wallet)**.
 2. It shows the new seed once (64 characters). Save it in your password manager as
    **"VeilCore sponsor seed (preprod)"**, then press Enter.
 3. Copy the line **"Using unshielded address: mn_addr_preprod1…"**. Paste it into the
@@ -99,6 +109,8 @@ these variables:
 - `LIMIT_PER_NETWORK_HOUR=10` and `LIMIT_PER_NETWORK_DAY=30` (for this test only: the
   normal limit is 3 an hour, and this run makes 3 calls plus any retry)
 - `SPONSOR_STATUS_TOKEN=` another `openssl rand -hex 32`
+- `BLOCKFROST_PROJECT_ID=` your Blockfrost preprod project id (the sponsor keeps it out of
+  its logs)
 
 Then, on the Mac: `railway link` (pick the project and `veilcore-sponsor`), then the
 `railway up …` command the stage step printed. If the Mac says `railway: command not found`:
@@ -132,12 +144,17 @@ The first sync can take a long time.
    commits them.
 2. Build and start the site in test mode. The settings go on the build line itself, not
    `export`, so nothing stays in the terminal for a later deploy (a mainnet build refuses
-   them anyway). Replace the two `<…>` with the domains, keep it all on one line:
+   them anyway). The browser reads the chain through Blockfrost too, so this build carries
+   your preprod project id **inside the page**: it is for your own computer only (the
+   deploy script refuses to publish it). In this same terminal, if you have not already:
+   `read -s VEILCORE_BLOCKFROST_PREPROD_PROJECT_ID` (paste, Enter). Then replace the two
+   `<…>` with the domains, keep it all on one line:
    ```
-   VITE_REAL_CHAIN=1 VITE_REAL_CHAIN_CONTRACT_ADDRESS=72fe33436d424fcf247919c8e2f0de224175cc55061739be0ebffb2d650f2f73 VITE_SPONSOR_URL=https://<sponsor domain> VITE_API_BASE=https://<preprod registry domain> npm run build
+   VITE_REAL_CHAIN=1 VITE_REAL_CHAIN_CONTRACT_ADDRESS=72fe33436d424fcf247919c8e2f0de224175cc55061739be0ebffb2d650f2f73 VITE_SPONSOR_URL=https://<sponsor domain> VITE_API_BASE=https://<preprod registry domain> VITE_INDEXER_URL="https://midnight-preprod.blockfrost.io/api/v0?project_id=$VEILCORE_BLOCKFROST_PREPROD_PROJECT_ID" VITE_INDEXER_WS_URL="wss://midnight-preprod.blockfrost.io/api/v0/ws?project_id=$VEILCORE_BLOCKFROST_PREPROD_PROJECT_ID" npm run build
    npx vite preview --port 4173
    ```
-   When you are done with the whole run, close this terminal window.
+   When you are done with the whole run, close this terminal window and delete the build:
+   `rm -rf ~/Desktop/veilcore/bboard-ui/dist`.
 3. Open **http://localhost:4173** in Chrome. Time each step with your phone's stopwatch.
 
 ## Part 4: the test itself (about 30 minutes)
@@ -161,10 +178,13 @@ In Chrome at http://localhost:4173:
 7. **Check the pairing with the command-line tool**, which shares no code with the site:
    ```
    cd ~/Desktop/veilcore/bboard-cli
+   read -s VEILCORE_BLOCKFROST_PREPROD_PROJECT_ID
+   export VEILCORE_BLOCKFROST_PREPROD_PROJECT_ID
    npm run preprod-remote
    ```
-   Your usual preprod wallet, join 72fe…, then option **44 (Check a DNA pairing)** with the
-   evidence file and the PDF. Expect it accepted.
+   (Paste the preprod project id after `read -s`.) Your usual preprod wallet, join 72fe…,
+   then option **44 (Check a DNA pairing)** with the evidence file and the PDF. Expect it
+   accepted.
 8. **Restore test:** on the record's page, remove its keys from this browser (it warns
    you; you have the backup), then restore them from the **newest** backup file. The anchor,
    the pairing and "Download the evidence file" should all be back.
@@ -179,13 +199,15 @@ In Chrome at http://localhost:4173:
 - Anything that looked wrong or confusing, in your own words. That matters as much as the
   rest: students will see the same screens.
 
-Do **not** paste the sponsor seed, either operator token, the status token or the
-record-keys backup.
+Do **not** paste the sponsor seed, the Blockfrost project id, the operator token, the
+status token or the record-keys backup.
 
 ## Not covered by this run
 
-- **Phones.** This run is on your laptop. A phone needs the site hosted on a test address
-  (not localhost); that is the next run once this one passes.
+- **Phones, and a hosted site.** This run is on your laptop. Since preprod is Blockfrost-only,
+  a hosted site cannot read the chain without a key in the page; the browser's reads must go
+  through a VeilCore service that holds the key (the sponsor is the natural place). That is
+  the next build, before any hosted test or the students' site.
 - **Mainnet.** The sponsor and the site both refuse it. Turning it on is a separate
   decision for you and Mako: a funded mainnet fee wallet, the mainnet registry's own
   settings, and real fees.

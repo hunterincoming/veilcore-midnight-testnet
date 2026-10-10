@@ -6,6 +6,7 @@ const base = {
   SPONSOR_FORBIDDEN_ADDRESSES: 'mn_addr_preprod1deployer',
   VEILCORE_CONTRACT_ADDRESS: '9c7b69275e53acc38fcbebff93c53febe46a3898580c11fd2c4b923fc5efb7a3',
   PROOF_SERVER_URL: 'http://proof-server.railway.internal:6300',
+  BLOCKFROST_PROJECT_ID: 'preprodTestProjectId123',
 };
 
 const problems = (env: Record<string, string>): string[] => {
@@ -24,6 +25,21 @@ describe('configuration', () => {
     expect(loadConfig({ ...base, SPONSOR_STATUS_TOKEN: 'f'.repeat(64) }).statusToken).toBe('f'.repeat(64));
     expect(problems({ ...base, SPONSOR_STATUS_TOKEN: 'short' })).toEqual([expect.stringMatching(/SPONSOR_STATUS_TOKEN/)]);
     expect(problems({ ...base, SPONSOR_STATUS_TOKEN: `${'a'.repeat(20)} ${'b'.repeat(20)}` })).toHaveLength(1);
+  });
+
+  it('preprod goes through Blockfrost: a project id is required, kept as a log secret', () => {
+    const c = loadConfig(base);
+    expect(c.indexer).toBe('https://midnight-preprod.blockfrost.io/api/v0?project_id=preprodTestProjectId123');
+    expect(c.indexerWS).toBe('wss://midnight-preprod.blockfrost.io/api/v0/ws?project_id=preprodTestProjectId123');
+    expect(c.nodeWS).toBe('wss://rpc.midnight-preprod.blockfrost.io/?project_id=preprodTestProjectId123');
+    expect(c.logSecrets).toEqual(['preprodTestProjectId123']);
+    const { BLOCKFROST_PROJECT_ID: _drop, ...without } = base;
+    void _drop;
+    expect(problems(without)).toEqual([expect.stringMatching(/BLOCKFROST_PROJECT_ID is required on preprod.*9 October 2026/)]);
+    expect(problems({ ...without, BLOCKFROST_PROJECT_ID: 'x' })).toEqual([expect.stringMatching(/not a Blockfrost project id/)]);
+    const own = { INDEXER_URL: 'https://i/graphql', INDEXER_WS_URL: 'wss://i/ws', NODE_WS_URL: 'wss://n' };
+    expect(loadConfig({ ...without, ...own })).toMatchObject({ indexer: 'https://i/graphql', logSecrets: [] });
+    expect(loadConfig({ ...without, SPONSOR_NETWORK: 'preview' }).indexer).toMatch(/indexer\.preview\.midnight\.network/);
   });
 
   it('loads with the minimum, with preprod defaults', () => {

@@ -1422,23 +1422,41 @@ describe('headers for a build that sends transactions (test networks only)', () 
   it('adds exactly the sponsor and the network indexer, nothing else', () => {
     const h = prodHeaders({
       VITE_REAL_CHAIN: '1',
-      VITE_NETWORK_ID: 'preprod',
+      VITE_NETWORK_ID: 'preview',
       VITE_SPONSOR_URL: 'https://sponsor.example.org/',
     });
     expect(connectSrc(h).split(' ')).toEqual([
       "'self'",
       API,
       'https://sponsor.example.org',
-      'https://indexer.preprod.midnight.network',
-      'wss://indexer.preprod.midnight.network',
+      'https://indexer.preview.midnight.network',
+      'wss://indexer.preview.midnight.network',
     ]);
+  });
+
+  it('on preprod needs the indexer named, and never deploys one carrying a key', () => {
+    const pre = { VITE_REAL_CHAIN: '1', VITE_NETWORK_ID: 'preprod', VITE_SPONSOR_URL: 'https://s.example.org' };
+    expect(() => prodHeaders(pre)).toThrow(/needs VITE_INDEXER_URL/);
+    expect(() =>
+      prodHeaders({
+        ...pre,
+        VITE_INDEXER_URL: 'https://midnight-preprod.blockfrost.io/api/v0?project_id=preprodSecret123',
+        VITE_INDEXER_WS_URL: 'wss://midnight-preprod.blockfrost.io/api/v0/ws?project_id=preprodSecret123',
+      }),
+    ).toThrow(/carries a key/);
+    const own = prodHeaders({
+      ...pre,
+      VITE_INDEXER_URL: 'https://indexer.veilcore.example/graphql',
+      VITE_INDEXER_WS_URL: 'wss://indexer.veilcore.example/graphql/ws',
+    });
+    expect(connectSrc(own)).toContain('https://indexer.veilcore.example');
   });
 
   it('refuses mainnet, and refuses a build with no sponsor', () => {
     expect(() =>
       prodHeaders({ VITE_REAL_CHAIN: '1', VITE_NETWORK_ID: 'mainnet', VITE_SPONSOR_URL: 'https://s.example.org' }),
     ).toThrow(/test network only/);
-    expect(() => prodHeaders({ VITE_REAL_CHAIN: '1', VITE_NETWORK_ID: 'preprod' })).toThrow(/needs VITE_SPONSOR_URL/);
+    expect(() => prodHeaders({ VITE_REAL_CHAIN: '1', VITE_NETWORK_ID: 'preview' })).toThrow(/needs VITE_SPONSOR_URL/);
   });
 
   it('a site build without the flag gets the plain policy', () => {

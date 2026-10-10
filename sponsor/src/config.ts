@@ -11,12 +11,13 @@ export const SPECKS_PER_DUST = 1_000_000_000_000_000n;
 
 export type Network = 'preprod' | 'preview' | 'undeployed';
 
-export const ENDPOINTS: Record<Network, { indexer: string; indexerWS: string; nodeWS: string }> = {
-  preprod: {
-    indexer: 'https://indexer.preprod.midnight.network/api/v4/graphql',
-    indexerWS: 'wss://indexer.preprod.midnight.network/api/v4/graphql/ws',
-    nodeWS: 'wss://rpc.preprod.midnight.network',
-  },
+type Endpoints = { indexer: string; indexerWS: string; nodeWS: string };
+
+/**
+ * Midnight's own public endpoints, where it still runs them. Preprod has none since
+ * 22:00 UTC on 9 October 2026: it is reached through Blockfrost (blockfrostPreprod).
+ */
+export const ENDPOINTS: Record<Exclude<Network, 'preprod'>, Endpoints> = {
   preview: {
     indexer: 'https://indexer.preview.midnight.network/api/v4/graphql',
     indexerWS: 'wss://indexer.preview.midnight.network/api/v4/graphql/ws',
@@ -27,6 +28,16 @@ export const ENDPOINTS: Record<Network, { indexer: string; indexerWS: string; no
     indexerWS: 'ws://127.0.0.1:8088/api/v4/graphql/ws',
     nodeWS: 'ws://127.0.0.1:9944',
   },
+};
+
+/** Preprod through Blockfrost. The project id rides in the URLs: they are secrets (main.ts scrubs the logs). */
+export const blockfrostPreprod = (projectId: string): Endpoints => {
+  const q = `?project_id=${encodeURIComponent(projectId)}`;
+  return {
+    indexer: `https://midnight-preprod.blockfrost.io/api/v0${q}`,
+    indexerWS: `wss://midnight-preprod.blockfrost.io/api/v0/ws${q}`,
+    nodeWS: `wss://rpc.midnight-preprod.blockfrost.io/${q}`,
+  };
 };
 
 export type Config = {
@@ -53,6 +64,8 @@ export type Config = {
   readonly trustProxyHops: number;
   /** Shows the detailed /sponsor/status (exact budget, counters, error text). Empty: public view only. */
   readonly statusToken: string;
+  /** Values that must never reach the logs: the Blockfrost project id carried in the endpoint URLs. */
+  readonly logSecrets: readonly string[];
   readonly anchorer:
     | { readonly enabled: false; readonly why: string }
     | {
@@ -168,7 +181,21 @@ export const loadConfig = (env: Record<string, string | undefined>): Config => {
     problems.push('SPONSOR_STATUS_TOKEN must be at least 32 characters with no spaces (for example 64 random hex characters).');
   }
 
-  const ep = ENDPOINTS[network];
+  // Preprod: a Blockfrost "Midnight Preprod" project id, or all three endpoints given.
+  const blockfrostId = env.BLOCKFROST_PROJECT_ID?.trim() || '';
+  const allGiven = Boolean(env.INDEXER_URL?.trim() && env.INDEXER_WS_URL?.trim() && env.NODE_WS_URL?.trim());
+  let ep: Endpoints = { indexer: '', indexerWS: '', nodeWS: '' };
+  if (network === 'preprod') {
+    if (blockfrostId) {
+      if (!/^[A-Za-z0-9_-]{8,}$/.test(blockfrostId))
+        problems.push('BLOCKFROST_PROJECT_ID is not a Blockfrost project id (a Midnight Preprod project at blockfrost.io).');
+      else ep = blockfrostPreprod(blockfrostId);
+    } else if (!allGiven)
+      problems.push(
+        'BLOCKFROST_PROJECT_ID is required on preprod: Midnight shut its own preprod indexer and RPC on 9 October 2026. ' +
+          'Create a Midnight Preprod project at blockfrost.io (or set INDEXER_URL, INDEXER_WS_URL and NODE_WS_URL).',
+      );
+  } else ep = ENDPOINTS[network];
   const cfg: Config = {
     network,
     port: int(env.PORT, 8080, 1, 65535, 'PORT', problems),
@@ -197,6 +224,7 @@ export const loadConfig = (env: Record<string, string | undefined>): Config => {
     },
     trustProxyHops: int(env.TRUST_PROXY_HOPS, 1, 0, 5, 'TRUST_PROXY_HOPS', problems),
     statusToken,
+    logSecrets: blockfrostId ? [blockfrostId] : [],
     anchorer: anchorerOff
       ? { enabled: false, why: 'ANCHORER_ENABLED=0' }
       : !registryUrl || !operatorToken
